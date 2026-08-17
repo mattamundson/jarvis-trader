@@ -273,6 +273,93 @@ class TestInsertPaperTradePersistsTakeProfit:
         assert merged.get("take_profit") == 5530.0, "take_profit not mirrored into strategy_params"
 
 
+class TestInsertTradePersistsBrackets:
+    """Regression net for the parallel-paper / insert_trade bracket drop.
+
+    ``insert_trade`` (used by parallel_paper._write_trade, paper_runner,
+    paper_tracker fallback, trade_logger) had NO stop_loss/take_profit in its
+    INSERT — challenger-config trades stored brackets only in strategy_params
+    JSON. Fixed 2026-08-16 alongside the insert_paper_trade column drop.
+    """
+
+    def _fresh_db(self, tmp_path):
+        import sqlite3
+
+        from database._mixins_trades import TradesMixin
+
+        class _Lock:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                pass
+
+        class _FakeDB(TradesMixin):
+            def __init__(self, path):
+                self._db_path = path
+                self._lock = _Lock()
+                conn = self._connect()
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS paper_trades (
+                        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                        trade_id        TEXT    NOT NULL UNIQUE,
+                        symbol          TEXT    NOT NULL,
+                        side            TEXT    NOT NULL,
+                        quantity        REAL    NOT NULL,
+                        entry_price     REAL    NOT NULL,
+                        exit_price      REAL,
+                        entry_time      TEXT    NOT NULL,
+                        exit_time       TEXT,
+                        pnl             REAL,
+                        status          TEXT    NOT NULL DEFAULT 'open',
+                        stop_loss       REAL,
+                        take_profit     REAL,
+                        strategy_params TEXT,
+                        notes           TEXT    DEFAULT '',
+                        idempotency_key TEXT    NOT NULL,
+                        strategy_id     TEXT,
+                        account_id      TEXT    DEFAULT 'A'
+                    )
+                    """
+                )
+                conn.commit()
+                conn.close()
+
+            def _connect(self):
+                conn = sqlite3.connect(self._db_path)
+                conn.row_factory = sqlite3.Row
+                return conn
+
+        return _FakeDB(str(tmp_path / "it.db"))
+
+    def test_insert_trade_writes_brackets_to_dedicated_columns(self, tmp_path):
+        import sqlite3
+
+        db = self._fresh_db(tmp_path)
+        db.insert_trade(
+            trade_id="test-it-col-0000000000000000",
+            symbol="ES",
+            side="buy",
+            quantity=1,
+            entry_price=5500.0,
+            stop_loss=5490.0,
+            take_profit=5530.0,
+            strategy_params={"source": "parallel_paper"},
+        )
+        conn = sqlite3.connect(str(tmp_path / "it.db"))
+        try:
+            row = conn.execute(
+                "SELECT stop_loss, take_profit FROM paper_trades WHERE trade_id = ?",
+                ("test-it-col-0000000000000000",),
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None, "insert_trade row not written"
+        assert row[0] == 5490.0, f"insert_trade stop_loss not persisted: {row[0]}"
+        assert row[1] == 5530.0, f"insert_trade take_profit not persisted: {row[1]}"
+
+
 class TestPatchPositionGuard:
     """update_position must raise HTTP 422 on an inverted stop update."""
 
