@@ -65,6 +65,60 @@ def analyze_signal_quality(trades: list[dict], signals: list[dict] = None) -> Si
         )
         return SignalQualityReport(overall=empty_metrics)
 
+    # 2026-08-17: normalize types up front. sqlite3 returns price columns as
+    # TEXT when the column affinity is numeric-but-empty in mixed rows, so
+    # `exit_price - entry_price` threw "unsupported operand type(s) for -:
+    # 'str' and 'str'" (500 on /analytics/signal-quality). Coerce every
+    # numeric field; drop rows whose prices are unusable.
+    import datetime as _dt
+
+    def _f(v) -> float | None:
+        if v is None:
+            return None
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    def _t(v):
+        if v is None or isinstance(v, (_dt.datetime, _dt.date)):
+            return v
+        try:
+            return _dt.datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            return None
+
+    normalized: list[dict] = []
+    for t in trades:
+        entry = _f(t.get("entry_price"))
+        exit_val = _f(t.get("exit_price"))
+        if entry is None or exit_val is None:
+            continue
+        t = dict(t)
+        t["entry_price"] = entry
+        t["exit_price"] = exit_val
+        if t.get("signal_time"):
+            t["signal_time"] = _t(t["signal_time"])
+        if t.get("entry_time"):
+            t["entry_time"] = _t(t["entry_time"])
+        if t.get("exit_time"):
+            t["exit_time"] = _t(t["exit_time"])
+        normalized.append(t)
+    trades = normalized
+    if not trades:
+        return SignalQualityReport(
+            overall=SignalMetrics(
+                total_signals=0,
+                profitable_signals=0,
+                accuracy=0.0,
+                avg_signal_to_entry_minutes=0.0,
+                avg_entry_to_peak_minutes=0.0,
+                avg_pnl_per_signal=0.0,
+                best_time_of_day="N/A",
+                worst_time_of_day="N/A",
+            )
+        )
+
     # Overall metrics
     total_signals = len(trades)
     profitable_trades = [t for t in trades if t.get("exit_price", 0) > t.get("entry_price", 0)]
