@@ -101,10 +101,11 @@ DEFAULT_GRID = {
 CACHE_PATTERNS = {
     "MES": "backtest/cache/MES_2015-01-01_2026-08-16_1h.csv",
     "MGC": "backtest/cache/MGC_2015-01-01_2026-08-16_1h.csv",
-    "SPY": "backtest/cache/SPY_1993-01-29_2026-06-24_1d.csv",
-    "QQQ": "backtest/cache/QQQ_1999-03-10_2026-08-14_1d.csv",
-    "AAPL": "backtest/cache/AAPL_1980-12-12_2026-08-14_1d.csv",
-    "TSLA": "backtest/cache/TSLA_2010-06-29_2026-08-14_1d.csv",
+    # Equity daily deep caches (2015-2026, 2,922 bars) fetched 2026-08-17.
+    "SPY": "backtest/cache/SPY_2015-01-01_2026-08-17_1d.csv",
+    "QQQ": "backtest/cache/QQQ_2015-01-01_2026-08-17_1d.csv",
+    "AAPL": "backtest/cache/AAPL_2015-01-01_2026-08-17_1d.csv",
+    "TSLA": "backtest/cache/TSLA_2015-01-01_2026-08-17_1d.csv",
 }
 CAPITAL = 50_000.0
 SYMBOL_MULTIPLIER = {"MES": 5.0, "MGC": 10.0, "SPY": 1.0, "QQQ": 1.0, "AAPL": 1.0, "TSLA": 1.0}
