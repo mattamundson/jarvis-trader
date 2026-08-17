@@ -892,11 +892,15 @@ Respond with JSON in exactly this format:
         try:
             # Use JarvisLLMClient.call() so every LLM call is tracked in the
             # cost database (token counts, latency, USD cost per call).
+            # max_tokens=1600: the 14-field JSON (incl. multi-sentence summary/
+            # reasoning/mtf_alignment strings) truncates at 1024 on slower local
+            # models, yielding unparseable half-JSON that degrades health.
+            # Matches the trader/fund_manager decision tier (2026-08-17).
             llm_result = await self._llm.call(
                 model="claude-sonnet-4-6",
                 system=self.SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=1024,
+                max_tokens=1600,
                 agent_name="technical_analyst",
             )
             if not llm_result.success:
