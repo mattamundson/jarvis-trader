@@ -401,9 +401,9 @@ class TradesMixin:
         sql = """
             INSERT INTO paper_trades
                 (trade_id, symbol, side, quantity, entry_price, entry_time,
-                 status, stop_loss, strategy_params, notes, idempotency_key,
+                 status, stop_loss, take_profit, strategy_params, notes, idempotency_key,
                  strategy_id)
-            VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?, '', ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, '', ?, ?)
         """
         params = (
             trade_id,
@@ -413,6 +413,7 @@ class TradesMixin:
             entry_price,
             entry_time,
             stop_loss,
+            take_profit,
             _to_json(merged_params) if merged_params else None,
             idempotency_key,
             strategy_id,

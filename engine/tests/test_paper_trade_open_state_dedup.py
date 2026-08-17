@@ -50,6 +50,7 @@ class _FakeDB(TradesMixin):
                 pnl             REAL,
                 status          TEXT    NOT NULL DEFAULT 'open',
                 stop_loss       REAL,
+                take_profit     REAL,
                 strategy_params TEXT,
                 notes           TEXT    DEFAULT '',
                 idempotency_key TEXT    NOT NULL,
