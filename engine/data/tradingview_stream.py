@@ -50,9 +50,13 @@ class TVStreamer:
             self.redis_client = redis.from_url(
                 settings.REDIS_URL or "redis://localhost:6379/0",
                 encoding="utf-8",
-                decode_responses=True
+                decode_responses=True,
+                # Bounded so a wedged/hung Redis (e.g. a relay that accepts TCP
+                # but never responds — 2026-08-17 crash-loop) cannot stall boot.
+                socket_connect_timeout=3.0,
+                socket_timeout=3.0,
             )
-            await self.redis_client.ping()
+            await asyncio.wait_for(self.redis_client.ping(), timeout=3.0)
             logger.info("✅ TVStreamer: Redis connection established")
         except Exception as e:
             logger.error(f"❌ TVStreamer: Redis connection failed: {e}")
