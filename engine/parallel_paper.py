@@ -183,6 +183,10 @@ def _write_trade(
 
     sig = inspect.signature(db_manager.insert_trade)
     has_account_id = "account_id" in sig.parameters
+    # 2026-08-16: insert_trade now accepts stop_loss/take_profit for the
+    # dedicated columns. Pass them through when supported; the JSON mirror
+    # below remains for backwards-compatible reads on older DBs.
+    has_brackets = "stop_loss" in sig.parameters and "take_profit" in sig.parameters
 
     kwargs: Dict[str, Any] = {
         "trade_id": trade_id,
@@ -193,7 +197,12 @@ def _write_trade(
         "entry_time": entry_time,
         "status": "open",
         "notes": "",
+        "stop_loss": stop_loss,
+        "take_profit": take_profit,
     }
+    if not has_brackets:
+        kwargs.pop("stop_loss", None)
+        kwargs.pop("take_profit", None)
 
     # Merge stop_loss / take_profit into strategy_params for storage.
     merged: Dict[str, Any] = dict(strategy_params or {})

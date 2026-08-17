@@ -73,6 +73,8 @@ class TradesMixin:
         notes: str = "",
         account_id: str = "A",
         strategy_id: Optional[str] = None,
+        stop_loss: Optional[float] = None,
+        take_profit: Optional[float] = None,
     ) -> int:
         """
         Insert a new trade record (typically called on trade open).
@@ -87,6 +89,12 @@ class TradesMixin:
             Optional explicit strategy attribution. When omitted, derived from
             strategy_params JSON (decision_identity.config_hash / stark_signal),
             matching the paper-ledger reader.
+        stop_loss / take_profit:
+            Optional bracket prices written to the dedicated columns AND
+            mirrored into strategy_params JSON for backwards-compatible reads
+            (2026-08-16: previously only the JSON mirror was written; the
+            dedicated columns stayed NULL for every parallel-paper/challenger
+            trade).
 
         Returns the auto-incremented ``id`` primary key.
         """
@@ -94,12 +102,21 @@ class TradesMixin:
         idempotency_key = compute_order_idempotency_key(symbol, side, quantity, entry_price)
         if strategy_id is None:
             strategy_id = _derive_strategy_id(strategy_params)
+        merged_params: dict = {}
+        if isinstance(strategy_params, dict):
+            merged_params.update(strategy_params)
+        elif strategy_params is not None:
+            merged_params["raw"] = strategy_params
+        if stop_loss is not None:
+            merged_params["stop_loss"] = stop_loss
+        if take_profit is not None:
+            merged_params["take_profit"] = take_profit
         sql = """
             INSERT INTO paper_trades
                 (trade_id, symbol, side, quantity, entry_price, entry_time,
-                 status, strategy_params, notes, account_id, idempotency_key,
-                 strategy_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 status, stop_loss, take_profit, strategy_params, notes, account_id,
+                 idempotency_key, strategy_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         params = (
             trade_id,
@@ -109,7 +126,9 @@ class TradesMixin:
             entry_price,
             entry_time,
             status,
-            _to_json(strategy_params),
+            stop_loss,
+            take_profit,
+            _to_json(merged_params) if merged_params else None,
             notes,
             account_id,
             idempotency_key,
@@ -401,9 +420,9 @@ class TradesMixin:
         sql = """
             INSERT INTO paper_trades
                 (trade_id, symbol, side, quantity, entry_price, entry_time,
-                 status, stop_loss, strategy_params, notes, idempotency_key,
+                 status, stop_loss, take_profit, strategy_params, notes, idempotency_key,
                  strategy_id)
-            VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?, '', ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, '', ?, ?)
         """
         params = (
             trade_id,
@@ -413,6 +432,7 @@ class TradesMixin:
             entry_price,
             entry_time,
             stop_loss,
+            take_profit,
             _to_json(merged_params) if merged_params else None,
             idempotency_key,
             strategy_id,

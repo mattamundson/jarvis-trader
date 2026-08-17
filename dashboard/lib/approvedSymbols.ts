@@ -23,6 +23,22 @@ export function symbolTradeStatus(symbol: string): "APPROVED" | "HALTED" {
 }
 
 /**
+ * Human-readable label for the baseline status that qualifies for live
+ * promotion. Used by scorecard/validation pages ("No APPROVED baseline JSON").
+ * Was lost when the approved-symbols module was refactored around
+ * symbolTradeStatus(); the build broke on the missing export.
+ */
+export const PREFERRED_BASELINE_LABEL = "APPROVED" as const;
+
+/** Every symbol this component set knows about, active pair first. */
+export const ALL_TRACKED_SYMBOLS = [
+  ...DEFAULT_BRIEFING_SYMBOLS,
+  ...HALTED_SYMBOLS,
+] as const;
+
+export type TrackedSymbol = (typeof ALL_TRACKED_SYMBOLS)[number];
+
+/**
  * Substrings matched against `symbol` + `_filename` when picking a dashboard
  * backtest baseline. Derived from DEFAULT_BRIEFING_SYMBOLS (not a separate
  * literal) so it can't drift the way it did before -- this used to be its own
