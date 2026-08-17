@@ -45,26 +45,29 @@ export type PipelineWsEvent =
   | AnalystSignalsEvent;
 
 // ── URL resolution ────────────────────────────────────────────────────────
+//
+// SECURITY (2026-08-17): client-side WS now ALWAYS connects same-origin so
+// the Next.js rewrite in next.config.ts injects the server-only ENGINE_API_KEY
+// (see /ws/pipeline rewrite). We removed the NEXT_PUBLIC_ENGINE_URL direct-
+// connect path and the NEXT_PUBLIC_ENGINE_API_KEY fallback: shipping the engine
+// key to the browser was an active secret-leak vector (any visitor could
+// extract it from the bundle). Deploy targets that need direct-connect must
+// configure the rewrite server-side instead of exposing the key client-side.
 
 function resolveWsUrl(): string {
-  // In the browser, use the engine origin from the env var when available,
-  // otherwise fall back to current window origin (Next.js proxy rewrite handles WS upgrade).
+  // Same-origin only — the Next.js proxy rewrite handles the WS upgrade and
+  // injects the server-only ENGINE_API_KEY.
   if (typeof window === "undefined") return "";
-  const engineHttp =
-    process.env.NEXT_PUBLIC_ENGINE_URL ?? window.location.origin;
-  return engineHttp.replace(/^http/, "ws");
+  return window.location.origin;
 }
 
 // /ws/pipeline requires api_key auth (browsers can't send custom headers on a
-// WS upgrade — see engine/routers/pipeline_ws_router.py). When connecting
-// same-origin (no NEXT_PUBLIC_ENGINE_URL override), the Next.js rewrite in
-// next.config.ts injects the server-only ENGINE_API_KEY and the client sends
-// no key at all. NEXT_PUBLIC_ENGINE_API_KEY only matters for the direct-connect
-// fallback (Vercel/ngrok, local :3010 override) and must be explicitly set —
-// no hardcoded default. See dashboard/DEPLOY_VERCEL.md "Known limitation —
-// WebSocket pages" for why that fallback still carries the key client-side.
+// WS upgrade — see engine/routers/pipeline_ws_router.py). With same-origin
+// resolution the Next.js rewrite (next.config.ts) injects the server-only key,
+// so the client must NOT append one. Direct-connect deployments must use the
+// rewrite, not a client key.
 function resolveApiKey(): string {
-  return process.env.NEXT_PUBLIC_ENGINE_API_KEY ?? "";
+  return "";
 }
 
 // ── usePipelineSocket hook ─────────────────────────────────────────────────
