@@ -2,6 +2,7 @@
 Market pricing endpoints with caching and rate limit handling.
 """
 
+import asyncio
 import logging
 import time
 
@@ -38,12 +39,13 @@ async def get_price_snapshot(symbols: str = "SPY,QQQ,MES,MNQ,MCL"):
         return {}
 
     result = {}
-    for original_symbol in symbol_list:
+
+    async def _fetch_one(original_symbol: str) -> None:
         # Try cache first
         cached = await _price_cache.get(original_symbol)
         if cached:
             result[original_symbol] = cached
-            continue
+            return
 
         # Cache miss — fetch via data_manager
         try:
@@ -106,6 +108,13 @@ async def get_price_snapshot(symbols: str = "SPY,QQQ,MES,MNQ,MCL"):
                 "stale_after_s": DEFAULT_STALE_AFTER_S,
                 "error": str(e),
             }
+
+    # 2026-08-17: fetch cache-missed symbols CONCURRENTLY. The previous
+    # sequential loop serialized N Polygon/IBKR round-trips — a 6-symbol cold
+    # fetch took ~9s and froze /pipeline/actionable (the recommendation card)
+    # on every 60s price-cache expiry. gather() keeps total latency ≈
+    # single-symbol latency.
+    await asyncio.gather(*(_fetch_one(s) for s in symbol_list))
 
     return result
 
