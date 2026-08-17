@@ -698,8 +698,18 @@ class SignalScanner:
                             approval_id[:8],
                         )
                     else:
+                        # 2026-08-17: target extraction was reading
+                        # `target_price`/`take_profit`, but the LLM's
+                        # trade_decision emits `target_1`/`target_2` — so
+                        # take_profit never persisted from scanner-executed
+                        # trades (0/119). Mirror approval/service.py:350-353:
+                        # target_1 first (nearer profit target), then aliases.
                         target_price = (
-                            trade_dec.get("target_price") or trade_dec.get("take_profit") or None
+                            trade_dec.get("target_1")
+                            or trade_dec.get("target_price")
+                            or trade_dec.get("take_profit")
+                            or trade_dec.get("target_2")
+                            or None
                         )
                         conviction = fund_decision.get("final_conviction", 0.0) or trade_dec.get(
                             "confidence", 0.0
