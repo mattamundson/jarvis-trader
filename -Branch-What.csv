@@ -1,6 +1,0 @@
-"#","Branch","What"
-"#213","meanrev-v2","Signal module + runners + tests"
-"#214","docs/funnel-audits","Forensic reports"
-"#215","funnel-skill","The full skill under tools/jarvis-funnel/"
-"#216","ci/quality-gates","Initial CI gates (PBO block, rationale check)"
-"#218","ci/quality-gates-v2","Tuned PR health + drift monitor + retroactive analysis"
