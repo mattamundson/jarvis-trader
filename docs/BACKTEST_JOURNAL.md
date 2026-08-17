@@ -66,8 +66,11 @@ intraday edge.
 - **Harness:** `backtest/iterate.py --cache <15m file> --grid-json grid_15m.json --mc-resamples 1000`
 - **Data:** `MES_2021-08-01_2026-07-30_15m_cont.csv` — 118,027 bars, 4.99y, 23,635 bars/yr.
   Integrity clean: 0 dupes / 0 OHLC violations / 0 NaNs / 0 zero-vol / 8 holiday gaps.
-- **Grid:** fast [50,100,200] × slow [200,400,800] × atr [2.0,2.5] (18 combos, periods
-  scaled ~4x to keep comparable lookback in wall-clock terms)
+- **Grid:** fast [50,100,200] × slow [200,400,800] × atr [2.0,2.5] = 18 points, of which
+  **16 are meaningful**: `fast=200/slow=200` (2 points, both atr values) is degenerate —
+  fast == slow can never cross, so both returned 0 trades. Grid-design error on my part;
+  it wasted 2 runs but did not affect the conclusion. Periods scaled ~4x vs the 1h grid to
+  hold lookback roughly constant in wall-clock terms.
 - **Weights:** risk_per_trade=0.01, capital $50k, commission 0.62, slippage 2 ticks
 - **Sharpe below is HONEST** (post-PR #714, annualized by observed trade frequency)
 
