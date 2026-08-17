@@ -71,6 +71,14 @@ INSTRUMENT_MULTIPLIERS: dict = {
     "NQ": 20.0,
     "CL": 1000.0,
     "GC": 100.0,
+    # Equities / ETFs: $1 per $1 of price movement, per share. These are the
+    # OPTIONS_WATCHLIST names the pipeline trades; without them _resolve_multiplier
+    # RAISED on every equity while utils.position_sizing silently sized the same
+    # symbol at 5.0 -- the engine could open a position it then refused to price.
+    "SPY": 1.0,
+    "QQQ": 1.0,
+    "AAPL": 1.0,
+    "TSLA": 1.0,
 }
 _DEFAULT_MULTIPLIER = 1.0
 
