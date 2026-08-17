@@ -56,6 +56,74 @@
 
 ## Run history
 
+### 2026-08-17 — MES 15m screen: higher frequency does NOT rescue the edge
+
+First use of the 5y continuous 15m cache (previously untouched). Motivation: the 1h
+campaign made only 17.6 trades/yr, too few for Sharpe to be informative. Hypothesis:
+a finer timeframe yields enough trades to measure edge properly, and possibly a real
+intraday edge.
+
+- **Harness:** `backtest/iterate.py --cache <15m file> --grid-json grid_15m.json --mc-resamples 1000`
+- **Data:** `MES_2021-08-01_2026-07-30_15m_cont.csv` — 118,027 bars, 4.99y, 23,635 bars/yr.
+  Integrity clean: 0 dupes / 0 OHLC violations / 0 NaNs / 0 zero-vol / 8 holiday gaps.
+- **Grid:** fast [50,100,200] × slow [200,400,800] × atr [2.0,2.5] (18 combos, periods
+  scaled ~4x to keep comparable lookback in wall-clock terms)
+- **Weights:** risk_per_trade=0.01, capital $50k, commission 0.62, slippage 2 ticks
+- **Sharpe below is HONEST** (post-PR #714, annualized by observed trade frequency)
+
+| combo | trades | t/yr | PF | p_edge | honest Sharpe | CAGR% | DD% |
+|---|---|---|---|---|---|---|---|
+| 200/800/2.0 | 41 | 8.2 | 1.2059 | 0.689 | **0.2217** | 0.61 | 5.72 |
+| 50/400/2.5 | 46 | 9.2 | 1.1681 | 0.663 | 0.1794 | 0.46 | 5.18 |
+| 100/800/2.0 | 51 | 10.2 | 1.1381 | 0.649 | 0.1707 | 0.45 | 5.80 |
+| 50/800/2.5 | 42 | 8.4 | 1.1704 | 0.635 | 0.1764 | 0.39 | 5.15 |
+| 100/400/2.5 | 67 | 13.4 | 1.1067 | 0.634 | 0.1552 | 0.54 | 5.20 |
+| *1h 55/200/2.0 (baseline)* | *128* | *17.6* | *1.3858* | *0.923* | ***0.5516*** | *1.90* | *4.37* |
+
+**VERDICT: the 15m hypothesis is FALSIFIED, and the falsification is clean.**
+
+1. **Frequency went DOWN, not up.** Best 15m combos trade 8–13/yr vs the 1h champion's
+   17.6/yr. Scaling MA periods to hold lookback constant means the signal fires no more
+   often; the finer bars only tighten the ATR trail, which exits sooner and *reduces*
+   trade count. The premise "more bars ⇒ more trades ⇒ measurable Sharpe" was wrong.
+2. **Every metric is worse.** Best 15m honest Sharpe 0.22 vs 0.55 on 1h; best CAGR 0.61%
+   vs 1.90%; drawdowns are larger (5.1–5.8% vs 4.37%).
+3. **Costs bite as predicted.** Median 15m bar range is 19 ticks vs 40 on 1h, so the
+   ~3-tick round trip is 16% of a bar instead of 7%. The scope note flagged this and the
+   screen confirms it.
+
+**Nothing promoted.** The certified 1h SMA-trend family remains the only MES edge, and it
+is still economically thin (1.90% CAGR at best, and the *deployed* 50/200/2.0 is −0.26%).
+
+**Do NOT re-run 5m on this hypothesis.** The cost hurdle there is 27% of a median bar —
+strictly worse on the axis that already failed. A 5m attempt would need a genuinely
+different strategy family (microstructure//order-flow), not a rescaled trend system.
+
+### 2026-08-17 — DSR campaign trial accounting (`backtest/campaign_trials.py`)
+
+Runners deflate DSR using their OWN grid size — `run_mes_trend_rank11.py` passes
+`n_grid_combos = 3`. A campaign against one cache spans far more trials.
+
+Measured on the real 55/200/2.0 series (128 trades, empirical DSR, 2000 permutations):
+
+| n_trials | DSR | CORE ≥0.1 | ALT ≥0.3 |
+|---|---|---|---|
+| 3 (as certified) | 0.8000 | PASS | PASS |
+| 9 | 0.5210 | PASS | PASS |
+| 27 | 0.1430 | PASS | **FAIL** |
+| 54 | 0.0165 | **FAIL** | FAIL |
+| 82 | 0.0020 | FAIL | FAIL |
+| 150 | 0.0000 | FAIL | FAIL |
+
+`count_journaled_trials("MES")` currently returns **9** — and that is only a lower bound
+(journaled verdicts, not screening combos). CORE breaks at 54, ALT at 27.
+
+**Deliberately NON-BREAKING:** no verdict is altered. Flipping a live PASS to FAIL is a
+trading-authorization decision for Amo, not a library default. The module exposes
+`dsr_campaign_diagnostic()` so a verdict can carry proof of its own selection-bias
+exposure at read time.
+
+
 ### 2026-08-17 — ⚠️ INDEPENDENT VERIFICATION AUDIT
 
 Re-derived every headline number from raw per-trade PnL using code independent of
@@ -180,10 +248,11 @@ shipped the empirical fix. **Trial-count accounting was not part of that fix and
 
 | Item | Status |
 |---|---|
-| Re-deflate DSR at true campaign trial count | **OPEN** — not covered by PR #595; CORE breaks 27–54 trials |
-| Regenerate/annotate historical Sharpe after PR #714 | **OPEN** — 157-row journal CSV + archived verdicts |
-| Full 54-combo MES grid + VIX regimes | Now unblocked (VIX cache exists) |
+| Re-deflate DSR at true campaign trial count | **DIAGNOSED, decision pending** — `campaign_trials.py` quantifies it (CORE breaks 54, ALT 27); no verdict flipped, awaiting Amo |
+| Regenerate/annotate historical Sharpe after PR #714 | **OPEN** — 157-row journal CSV + archived verdicts still carry inflated values |
+| **MES 15m higher-frequency hypothesis** | **CLOSED — FALSIFIED** 2026-08-17. Worse on every axis; do not retry |
+| MES 5m | **DO NOT RETRY as a trend system** — 27% cost hurdle; needs a different family entirely |
+| Full 54-combo MES 1h grid + VIX regimes | Now unblocked (VIX cache exists) |
 | QQQ/AAPL/TSLA deep caches | Missing — `free_daily_export.py` fetch needed |
-| **MES 1m/5m/15m (5y continuous) — never used** | **OPEN — highest-value untapped data** |
-| Equity 1h certification (live scanner cadence) | Queued |
+| Equity 1h certification (live scanner cadence) | Queued — SPY trades live paper on a REJECTED verdict; QQQ/AAPL/TSLA on none |
 | Options vertical-spread certification | Scaffold only |
