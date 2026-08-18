@@ -168,6 +168,11 @@ class Backtester:
         # impact surcharge (unchanged behavior).
         self.max_volume_pct = max_volume_pct
 
+        # Entries skipped for R:R < 1.2 (signal-bar pre-check or actual-entry
+        # recalc). Reset per run(); stamped onto BacktestResult as
+        # rr_filtered_entries so 0-trade runs are diagnosable (T5, 2026-08-18).
+        self._rr_filtered_entries = 0
+
     def _pov_impact_multiplier(self, contracts: int, bar_volume: Optional[float]) -> float:
         """Almgren-Chriss-style quadratic temporary impact multiplier for slippage.
 
@@ -376,6 +381,10 @@ class Backtester:
 
         rr = abs(target_1 - entry_price) / stop_dist
         if rr < 1.2:
+            # T5 metric-honesty pass (2026-08-18): count these instead of
+            # dropping silently — 0 trades + no error used to look like a
+            # signal bug when it was actually the R:R filter.
+            self._rr_filtered_entries += 1
             return None, 0, 0, 0, [], 0.0
 
         if self.fixed_contracts is not None:
@@ -813,6 +822,9 @@ class Backtester:
 
         tick_size = self._get_tick_size(symbol, multiplier)
 
+        # Reset per-run counters (the instance may be reused across backtests).
+        self._rr_filtered_entries = 0
+
         capital = self.initial_capital
         high_water_mark = capital
         completed_trades: List[Trade] = []
@@ -1017,6 +1029,9 @@ class Backtester:
                     # R:R pre-check on signal bar (Bug 6: lowered from 1.5 to 1.2)
                     rr = abs(target_1 - signal_price) / stop_dist
                     if rr < 1.2:
+                        # T5 metric-honesty pass (2026-08-18): count, don't drop
+                        # silently (0 trades + no error was misread as a signal bug).
+                        self._rr_filtered_entries += 1
                         continue
 
                     pending_entry = {
@@ -1053,6 +1068,7 @@ class Backtester:
             equity_curve=equity_curve,
             total_bars=len(df),
             spread_cost_total=spread_cost_total,
+            rr_filtered_entries=self._rr_filtered_entries,
         )
 
         return calculate_metrics(result)
