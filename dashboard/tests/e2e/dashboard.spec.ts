@@ -1,7 +1,8 @@
 import { test, expect } from "@playwright/test";
 
 test("dashboard route smoke: /dashboard resolves to command center content", async ({ page }) => {
-  await page.goto("/dashboard", { waitUntil: "domcontentloaded" });
+  await page.goto("/dashboard");
+  await page.waitForURL("**/command-center");
 
   // /dashboard is a client-side redirect stub to /command-center: the redirect
   // completes AFTER domcontentloaded (a router push, not a server 30x), so

@@ -121,6 +121,7 @@ def _backtest(study, df, symbol, mode, params, *, commission, slippage_ticks):
         max_drawdown=0.05,
         commission_per_contract=commission,
         slippage_ticks=slippage_ticks,
+        spread_ticks=0.5,
         eod_close=True,
         fixed_contracts=1,
     )

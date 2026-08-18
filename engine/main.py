@@ -150,6 +150,7 @@ from routers.hidden_pivots_router import router as hidden_pivots_router
 from routers.hidden_pivots_router import inject_dependencies as inject_hp_deps
 from routers.decisions_router import router as decisions_router
 from routers.decisions_router import set_db_manager as set_decisions_db
+from routers.decisions_router import set_data_manager as set_decisions_data_manager
 from routers.admin_router import router as admin_router
 from routers.cache_router import router as cache_router
 from routers.readiness_router import router as readiness_router
@@ -776,6 +777,11 @@ async def lifespan(app: FastAPI):
     # Market data connections — Instance creation (initialization moved to background)
     data_manager = MarketDataManager(settings)
     set_analytics_data_manager(data_manager)
+    # Wire the data manager into SafetyLayer so submit_paper_order() can run the
+    # entry-price-sanity check on client-supplied limit prices (2026-08-03 incident —
+    # see the price-sanity block in SafetyLayer.submit_paper_order()).
+    safety_layer.attach_data_manager(data_manager)
+    set_decisions_data_manager(data_manager)
     # Wire the real-price source into the paper connector so simulated fills use
     # the live get_tick_price waterfall instead of static mock quotes. Without
     # this, unlisted symbols (e.g. MGC) filled at the 100.5 sentinel and poisoned
@@ -1796,7 +1802,11 @@ async def lifespan(app: FastAPI):
     # Default-OFF: only activated when ENABLE_AUTONOMOUS_PIPELINE=1 in .env.
     # The router is always registered (serves /approvals/* to review the queue).
     # The background loop is only started when the flag is explicitly set.
-    inject_approval_queue_deps(safety_layer, db_path=str(db_manager._db_path))
+    inject_approval_queue_deps(
+        safety_layer,
+        db_path=str(db_manager._db_path),
+        paper_tracker=paper_tracker,
+    )
     logger.info("✅ Approval queue router wired (prefix=/approvals)")
     inject_openclaw_deps(db_manager, paper_tracker, safety_layer)
     logger.info("✅ OpenClaw webhook router wired (prefix=/openclaw)")
@@ -1849,7 +1859,13 @@ async def lifespan(app: FastAPI):
 
     inject_scheduler_router_scheduler(scheduler)
     inject_pipeline_deps(
-        scheduler, trading_pipeline, safety_layer, db_manager, paper_tracker, sdk_pipeline
+        scheduler,
+        trading_pipeline,
+        safety_layer,
+        db_manager,
+        paper_tracker,
+        sdk_pipeline,
+        data_manager=data_manager,
     )
     inject_messaging_deps(db_manager, paper_tracker=paper_tracker, safety_layer=safety_layer)
     inject_session_brief_deps(db_manager)
@@ -2900,6 +2916,100 @@ async def lifespan(app: FastAPI):
                 replace_existing=True,
             )
             logger.info("✅ Weekly self-audit & drift detection registered (Sunday 18:00 CT)")
+
+        # ── Batch processing (Anthropic Message Batches API) ───────────────
+        # Generic poll sweep: harvests any ended batch job (any agent) into
+        # batch_results as soon as it ends, decoupled from each consumer's
+        # own collection cadence. See engine/llm/batch_client.py.
+        async def _run_batch_poll_sweep() -> None:
+            try:
+                from llm.batch_client import JarvisBatchClient
+
+                summary = await JarvisBatchClient().sweep_pending()
+                if summary["newly_ended"] or summary["newly_stale"]:
+                    logger.info("[BatchPollSweep] %s", summary)
+            except Exception as _sweep_err:
+                logger.warning(f"[BatchPollSweep] failed (non-fatal): {_sweep_err}")
+
+        if scheduler is not None:
+            scheduler.add_job(
+                _run_batch_poll_sweep,
+                CronTrigger(minute="*/15"),
+                id="batch_poll_sweep",
+                name="Batch Job Poll Sweep",
+                max_instances=1,
+                replace_existing=True,
+                misfire_grace_time=600,
+            )
+            logger.info("✅ Batch poll sweep registered (every 15 minutes)")
+
+        # Research agent weekend pass — batch-API pilot (replaces the
+        # standalone Windows Scheduled Task; same default symbols/cadence).
+        async def _run_research_agent_weekend_submit() -> None:
+            try:
+                from scheduler.research_agent_weekend import run_weekend_research_pass_submit
+
+                symbols_env = os.environ.get("RESEARCH_AGENT_SYMBOLS", "")
+                symbols = [s.strip().upper() for s in symbols_env.split(",") if s.strip()] or [
+                    "MES",
+                    "MNQ",
+                    "MCL",
+                    "MGC",
+                ]
+                n_hyp_env = os.environ.get("RESEARCH_AGENT_N_HYPOTHESES", "3")
+                try:
+                    n_hypotheses = int(n_hyp_env)
+                except ValueError:
+                    n_hypotheses = 3
+
+                result = await run_weekend_research_pass_submit(
+                    symbols=symbols, n_hypotheses_per_symbol=n_hypotheses
+                )
+                logger.info("[ResearchAgentWeekendSubmit] %s", result)
+            except Exception as _submit_err:
+                logger.warning(f"[ResearchAgentWeekendSubmit] failed (non-fatal): {_submit_err}")
+
+        async def _run_research_agent_weekend_collect() -> None:
+            try:
+                from scheduler.research_agent_weekend import run_weekend_research_pass_collect
+
+                result = await run_weekend_research_pass_collect()
+                logger.info("[ResearchAgentWeekendCollect] %s", result)
+            except Exception as _collect_err:
+                logger.warning(f"[ResearchAgentWeekendCollect] failed (non-fatal): {_collect_err}")
+
+        if scheduler is not None:
+            scheduler.add_job(
+                _run_research_agent_weekend_submit,
+                CronTrigger(day_of_week="sat", hour=10, minute=0, timezone="America/Chicago"),
+                id="research_agent_weekend_submit",
+                name="Research Agent Weekend Batch Submit",
+                max_instances=1,
+                replace_existing=True,
+                misfire_grace_time=3600,
+            )
+            scheduler.add_job(
+                _run_research_agent_weekend_collect,
+                CronTrigger(day_of_week="sat", hour=16, minute=0, timezone="America/Chicago"),
+                id="research_agent_weekend_collect_sat",
+                name="Research Agent Weekend Batch Collect (Saturday)",
+                max_instances=1,
+                replace_existing=True,
+                misfire_grace_time=3600,
+            )
+            scheduler.add_job(
+                _run_research_agent_weekend_collect,
+                CronTrigger(day_of_week="sun", hour=8, minute=0, timezone="America/Chicago"),
+                id="research_agent_weekend_collect_sun",
+                name="Research Agent Weekend Batch Collect (Sunday)",
+                max_instances=1,
+                replace_existing=True,
+                misfire_grace_time=3600,
+            )
+            logger.info(
+                "✅ Research agent weekend batch pass registered "
+                "(submit Sat 10:00 CT, collect Sat 16:00 CT + Sun 08:00 CT)"
+            )
 
     except Exception as _gv2_init_err:
         logger.warning(f"Weekly gate v2 job init failed (non-fatal): {_gv2_init_err}")

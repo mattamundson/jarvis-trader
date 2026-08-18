@@ -37,6 +37,7 @@ const MULTIPLIER_LABELS: Record<Symbol, string> = {
   MGC: "$10/pt",
   MNQ: "$2/pt",
   MCL: "$100/pt",
+  M2K: "$5/pt",
 };
 
 // ── Component ──────────────────────────────────────────────────────────────

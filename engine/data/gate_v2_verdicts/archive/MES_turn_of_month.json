@@ -1,0 +1,699 @@
+{
+  "symbol": "MES",
+  "family": "calendar",
+  "strategy_name": "MES_turn_of_month",
+  "verdict": "FAIL",
+  "passed_via": null,
+  "core_verdict": "FAIL",
+  "alt_verdict": "FAIL",
+  "n_core_passed": 3,
+  "n_alt_passed": 4,
+  "created_at": "2026-08-17T06:37:02.284560+00:00",
+  "aux_freshness": {
+    "rolling_wfo": "2026-08-17T06:37:02.284560+00:00",
+    "fixed_params": "2026-08-17T06:37:02.284560+00:00",
+    "cost_sweep": "2026-08-17T06:37:02.284560+00:00"
+  },
+  "gate_v2": {
+    "verdict": "FAIL",
+    "passed_via": null,
+    "core_verdict": "FAIL",
+    "alt_verdict": "FAIL",
+    "n_core_passed": 3,
+    "n_core_criteria": 4,
+    "n_alt_passed": 4,
+    "n_alt_criteria": 5,
+    "core_reasons": [
+      "mbb_pf_ci_lower=2.2514 >= 1.1",
+      "FAIL p_positive_edge=0.6543 >= 0.95",
+      "mc_95th_dd_pct=9.9330 > 5.0",
+      "dsr=0.967800 >= 0.1 (not selection-bias)"
+    ],
+    "alt_reasons": [
+      "dsr=0.967800 >= 0.3 (alt floor)",
+      "rolling_wfo=MODERATE in ['MODERATE', 'STRONG']",
+      "fixed_params_min_pf=1.450 >= 1.2",
+      "cost_survives_through=catastrophic >= realistic",
+      "FAIL mc_95th_dd_pct=9.9330 <= 4.0 (alt ceiling)"
+    ],
+    "reasons": [
+      "mbb_pf_ci_lower=2.2514 >= 1.1",
+      "FAIL p_positive_edge=0.6543 >= 0.95",
+      "mc_95th_dd_pct=9.9330 > 5.0",
+      "dsr=0.967800 >= 0.1 (not selection-bias)",
+      "dsr=0.967800 >= 0.3 (alt floor)",
+      "rolling_wfo=MODERATE in ['MODERATE', 'STRONG']",
+      "fixed_params_min_pf=1.450 >= 1.2",
+      "cost_survives_through=catastrophic >= realistic",
+      "FAIL mc_95th_dd_pct=9.9330 <= 4.0 (alt ceiling)"
+    ]
+  },
+  "wfo_config": {
+    "train_months": 6,
+    "test_months": 2,
+    "step_months": 1,
+    "n_windows": 82,
+    "n_oos_windows": 82,
+    "n_oos_windows_with_trades": 81,
+    "total_oos_trades": 161,
+    "grid_combos": 1,
+    "note": "Calendar strategy -- no IS parameter grid (no selection bias)"
+  },
+  "gate_v2_metrics": {
+    "pf_ci_lower": 2.2514,
+    "p_edge": 0.6543,
+    "mc_95th_dd": 0.09933,
+    "mc_95th_dd_pct": 9.933,
+    "mc_95th_dd_window_legacy": 0.022042,
+    "dsr": 0.9678,
+    "wfo_consistency": "MODERATE",
+    "fixed_params_min_pf": 1.4495,
+    "fixed_params_mean_pf": 1.4495,
+    "fixed_params_max_pf": 1.4495,
+    "cost_survives_through": "catastrophic",
+    "cost_tier_results": {
+      "optimistic": {
+        "pf": 1.4495,
+        "trades": 87,
+        "passes": true
+      },
+      "realistic": {
+        "pf": 1.4495,
+        "trades": 87,
+        "passes": true
+      },
+      "pessimistic": {
+        "pf": 1.4391,
+        "trades": 87,
+        "passes": true
+      },
+      "catastrophic": {
+        "pf": 1.4287,
+        "trades": 87,
+        "passes": true
+      }
+    },
+    "total_oos_trades": 161,
+    "min_oos_trades_total": 30,
+    "sample_adequate": true,
+    "win_rate_ci_lower": 0.472
+  },
+  "thresholds": {
+    "pf_ci_lower": 1.1,
+    "p_edge": 0.95,
+    "mc_95th_dd_core": 0.05,
+    "mc_95th_dd_alt": 0.04,
+    "dsr_core": 0.1,
+    "dsr_alt": 0.3,
+    "fixed_params_min_pf_alt": 1.2
+  },
+  "contract_spec": {
+    "symbol": "MES",
+    "multiplier": 5.0,
+    "tick_size": 0.25,
+    "commission": 0.62,
+    "slippage_ticks": 1.0,
+    "capital": 50000.0,
+    "note": "VALIDATION ONLY -- no live routing without Tier-3/Amo authorization"
+  },
+  "windows": [
+    {
+      "window": 1,
+      "oos_period": "2019-11 -> 2020-01",
+      "oos_pf": 0.095,
+      "oos_dd": 0.0041,
+      "oos_trades": 2
+    },
+    {
+      "window": 2,
+      "oos_period": "2019-12 -> 2020-02",
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_trades": 2
+    },
+    {
+      "window": 3,
+      "oos_period": "2020-01 -> 2020-03",
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_trades": 2
+    },
+    {
+      "window": 4,
+      "oos_period": "2020-02 -> 2020-04",
+      "oos_pf": 1.73,
+      "oos_dd": 0.0093,
+      "oos_trades": 2
+    },
+    {
+      "window": 5,
+      "oos_period": "2020-03 -> 2020-05",
+      "oos_pf": 0.0,
+      "oos_dd": 0.0137,
+      "oos_trades": 2
+    },
+    {
+      "window": 6,
+      "oos_period": "2020-04 -> 2020-06",
+      "oos_pf": 1.88,
+      "oos_dd": 0.0043,
+      "oos_trades": 2
+    },
+    {
+      "window": 7,
+      "oos_period": "2020-05 -> 2020-07",
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_trades": 2
+    },
+    {
+      "window": 8,
+      "oos_period": "2020-06 -> 2020-08",
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_trades": 2
+    },
+    {
+      "window": 9,
+      "oos_period": "2020-07 -> 2020-09",
+      "oos_pf": 1.376,
+      "oos_dd": 0.004,
+      "oos_trades": 2
+    },
+    {
+      "window": 10,
+      "oos_period": "2020-08 -> 2020-10",
+      "oos_pf": 1.188,
+      "oos_dd": 0.004,
+      "oos_trades": 2
+    },
+    {
+      "window": 11,
+      "oos_period": "2020-09 -> 2020-11",
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_trades": 2
+    },
+    {
+      "window": 12,
+      "oos_period": "2020-10 -> 2020-12",
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_trades": 2
+    },
+    {
+      "window": 13,
+      "oos_period": "2020-11 -> 2021-01",
+      "oos_pf": 1.691,
+      "oos_dd": 0.0027,
+      "oos_trades": 2
+    },
+    {
+      "window": 14,
+      "oos_period": "2020-12 -> 2021-02",
+      "oos_pf": 30.097,
+      "oos_dd": 0.0004,
+      "oos_trades": 2
+    },
+    {
+      "window": 15,
+      "oos_period": "2021-01 -> 2021-03",
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_trades": 2
+    },
+    {
+      "window": 16,
+      "oos_period": "2021-02 -> 2021-04",
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_trades": 2
+    },
+    {
+      "window": 17,
+      "oos_period": "2021-03 -> 2021-05",
+      "oos_pf": 5.752,
+      "oos_dd": 0.0017,
+      "oos_trades": 2
+    },
+    {
+      "window": 18,
+      "oos_period": "2021-04 -> 2021-06",
+      "oos_pf": 0.0,
+      "oos_dd": 0.003,
+      "oos_trades": 2
+    },
+    {
+      "window": 19,
+      "oos_period": "2021-05 -> 2021-07",
+      "oos_pf": 4.359,
+      "oos_dd": 0.0013,
+      "oos_trades": 2
+    },
+    {
+      "window": 20,
+      "oos_period": "2021-06 -> 2021-08",
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_trades": 2
+    },
+    {
+      "window": 21,
+      "oos_period": "2021-07 -> 2021-09",
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_trades": 2
+    },
+    {
+      "window": 22,
+      "oos_period": "2021-08 -> 2021-10",
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_trades": 2
+    },
+    {
+      "window": 23,
+      "oos_period": "2021-09 -> 2021-11",
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_trades": 2
+    },
+    {
+      "window": 24,
+      "oos_period": "2021-10 -> 2021-12",
+      "oos_pf": 2.091,
+      "oos_dd": 0.0026,
+      "oos_trades": 2
+    },
+    {
+      "window": 25,
+      "oos_period": "2021-11 -> 2022-01",
+      "oos_pf": 0.0,
+      "oos_dd": 0.0094,
+      "oos_trades": 2
+    },
+    {
+      "window": 26,
+      "oos_period": "2021-12 -> 2022-02",
+      "oos_pf": 0.0,
+      "oos_dd": 0.0099,
+      "oos_trades": 2
+    },
+    {
+      "window": 27,
+      "oos_period": "2022-01 -> 2022-03",
+      "oos_pf": 0.0,
+      "oos_dd": 0.0041,
+      "oos_trades": 2
+    },
+    {
+      "window": 28,
+      "oos_period": "2022-02 -> 2022-04",
+      "oos_pf": 0.0,
+      "oos_dd": 0.0017,
+      "oos_trades": 2
+    },
+    {
+      "window": 29,
+      "oos_period": "2022-03 -> 2022-05",
+      "oos_pf": 26.412,
+      "oos_dd": 0.0007,
+      "oos_trades": 2
+    },
+    {
+      "window": 30,
+      "oos_period": "2022-04 -> 2022-06",
+      "oos_pf": 6.769,
+      "oos_dd": 0.0025,
+      "oos_trades": 2
+    },
+    {
+      "window": 31,
+      "oos_period": "2022-05 -> 2022-07",
+      "oos_pf": 1.814,
+      "oos_dd": 0.0025,
+      "oos_trades": 2
+    },
+    {
+      "window": 32,
+      "oos_period": "2022-06 -> 2022-08",
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_trades": 2
+    },
+    {
+      "window": 33,
+      "oos_period": "2022-07 -> 2022-09",
+      "oos_pf": 0.745,
+      "oos_dd": 0.0031,
+      "oos_trades": 2
+    },
+    {
+      "window": 34,
+      "oos_period": "2022-08 -> 2022-10",
+      "oos_pf": 4.418,
+      "oos_dd": 0.0046,
+      "oos_trades": 2
+    },
+    {
+      "window": 35,
+      "oos_period": "2022-09 -> 2022-11",
+      "oos_pf": 1.273,
+      "oos_dd": 0.0154,
+      "oos_trades": 2
+    },
+    {
+      "window": 36,
+      "oos_period": "2022-10 -> 2022-12",
+      "oos_pf": 0.0,
+      "oos_dd": 0.0238,
+      "oos_trades": 2
+    },
+    {
+      "window": 37,
+      "oos_period": "2022-11 -> 2023-01",
+      "oos_pf": 0.0,
+      "oos_dd": 0.0114,
+      "oos_trades": 2
+    },
+    {
+      "window": 38,
+      "oos_period": "2022-12 -> 2023-02",
+      "oos_pf": 1.717,
+      "oos_dd": 0.0034,
+      "oos_trades": 2
+    },
+    {
+      "window": 39,
+      "oos_period": "2023-01 -> 2023-03",
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_trades": 2
+    },
+    {
+      "window": 40,
+      "oos_period": "2023-02 -> 2023-04",
+      "oos_pf": 3.695,
+      "oos_dd": 0.0021,
+      "oos_trades": 2
+    },
+    {
+      "window": 41,
+      "oos_period": "2023-03 -> 2023-05",
+      "oos_pf": 0.0,
+      "oos_dd": 0.0104,
+      "oos_trades": 2
+    },
+    {
+      "window": 42,
+      "oos_period": "2023-04 -> 2023-06",
+      "oos_pf": 1.082,
+      "oos_dd": 0.0083,
+      "oos_trades": 2
+    },
+    {
+      "window": 43,
+      "oos_period": "2023-05 -> 2023-07",
+      "oos_pf": 26.407,
+      "oos_dd": 0.0004,
+      "oos_trades": 2
+    },
+    {
+      "window": 44,
+      "oos_period": "2023-06 -> 2023-08",
+      "oos_pf": 0.0,
+      "oos_dd": 0.0149,
+      "oos_trades": 2
+    },
+    {
+      "window": 45,
+      "oos_period": "2023-07 -> 2023-09",
+      "oos_pf": 0.0,
+      "oos_dd": 0.0109,
+      "oos_trades": 2
+    },
+    {
+      "window": 46,
+      "oos_period": "2023-08 -> 2023-10",
+      "oos_pf": 0.0,
+      "oos_dd": 0.0075,
+      "oos_trades": 2
+    },
+    {
+      "window": 47,
+      "oos_period": "2023-09 -> 2023-11",
+      "oos_pf": 5.302,
+      "oos_dd": 0.0031,
+      "oos_trades": 2
+    },
+    {
+      "window": 48,
+      "oos_period": "2023-10 -> 2023-12",
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_trades": 2
+    },
+    {
+      "window": 49,
+      "oos_period": "2023-11 -> 2024-01",
+      "oos_pf": 0.01,
+      "oos_dd": 0.0089,
+      "oos_trades": 2
+    },
+    {
+      "window": 50,
+      "oos_period": "2023-12 -> 2024-02",
+      "oos_pf": 1.031,
+      "oos_dd": 0.009,
+      "oos_trades": 2
+    },
+    {
+      "window": 51,
+      "oos_period": "2024-01 -> 2024-03",
+      "oos_pf": 8.448,
+      "oos_dd": 0.0011,
+      "oos_trades": 2
+    },
+    {
+      "window": 52,
+      "oos_period": "2024-02 -> 2024-04",
+      "oos_pf": 0.0,
+      "oos_dd": 0.0052,
+      "oos_trades": 2
+    },
+    {
+      "window": 53,
+      "oos_period": "2024-03 -> 2024-05",
+      "oos_pf": 2.195,
+      "oos_dd": 0.0041,
+      "oos_trades": 2
+    },
+    {
+      "window": 54,
+      "oos_period": "2024-04 -> 2024-06",
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_trades": 2
+    },
+    {
+      "window": 55,
+      "oos_period": "2024-05 -> 2024-07",
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_trades": 2
+    },
+    {
+      "window": 56,
+      "oos_period": "2024-06 -> 2024-08",
+      "oos_pf": 0.29,
+      "oos_dd": 0.0335,
+      "oos_trades": 2
+    },
+    {
+      "window": 57,
+      "oos_period": "2024-07 -> 2024-09",
+      "oos_pf": 0.0,
+      "oos_dd": 0.0482,
+      "oos_trades": 2
+    },
+    {
+      "window": 58,
+      "oos_period": "2024-08 -> 2024-10",
+      "oos_pf": 0.0,
+      "oos_dd": 0.0212,
+      "oos_trades": 2
+    },
+    {
+      "window": 59,
+      "oos_period": "2024-09 -> 2024-11",
+      "oos_pf": 1.141,
+      "oos_dd": 0.0068,
+      "oos_trades": 2
+    },
+    {
+      "window": 60,
+      "oos_period": "2024-10 -> 2024-12",
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_trades": 2
+    },
+    {
+      "window": 61,
+      "oos_period": "2024-11 -> 2025-01",
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_trades": 2
+    },
+    {
+      "window": 62,
+      "oos_period": "2024-12 -> 2025-02",
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_trades": 2
+    },
+    {
+      "window": 63,
+      "oos_period": "2025-01 -> 2025-03",
+      "oos_pf": 0.186,
+      "oos_dd": 0.0114,
+      "oos_trades": 2
+    },
+    {
+      "window": 64,
+      "oos_period": "2025-02 -> 2025-04",
+      "oos_pf": 0.0,
+      "oos_dd": 0.0335,
+      "oos_trades": 2
+    },
+    {
+      "window": 65,
+      "oos_period": "2025-03 -> 2025-05",
+      "oos_pf": 0.408,
+      "oos_dd": 0.0221,
+      "oos_trades": 2
+    },
+    {
+      "window": 66,
+      "oos_period": "2025-04 -> 2025-06",
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_trades": 2
+    },
+    {
+      "window": 67,
+      "oos_period": "2025-05 -> 2025-07",
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_trades": 2
+    },
+    {
+      "window": 68,
+      "oos_period": "2025-06 -> 2025-08",
+      "oos_pf": 0.512,
+      "oos_dd": 0.0046,
+      "oos_trades": 2
+    },
+    {
+      "window": 69,
+      "oos_period": "2025-07 -> 2025-09",
+      "oos_pf": 0.772,
+      "oos_dd": 0.0047,
+      "oos_trades": 2
+    },
+    {
+      "window": 70,
+      "oos_period": "2025-08 -> 2025-10",
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_trades": 2
+    },
+    {
+      "window": 71,
+      "oos_period": "2025-09 -> 2025-11",
+      "oos_pf": 0.571,
+      "oos_dd": 0.0049,
+      "oos_trades": 2
+    },
+    {
+      "window": 72,
+      "oos_period": "2025-10 -> 2025-12",
+      "oos_pf": 0.757,
+      "oos_dd": 0.0049,
+      "oos_trades": 2
+    },
+    {
+      "window": 73,
+      "oos_period": "2025-11 -> 2026-01",
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_trades": 2
+    },
+    {
+      "window": 74,
+      "oos_period": "2025-12 -> 2026-02",
+      "oos_pf": 1.521,
+      "oos_dd": 0.0062,
+      "oos_trades": 2
+    },
+    {
+      "window": 75,
+      "oos_period": "2026-01 -> 2026-03",
+      "oos_pf": 0.0,
+      "oos_dd": 0.0078,
+      "oos_trades": 2
+    },
+    {
+      "window": 76,
+      "oos_period": "2026-02 -> 2026-04",
+      "oos_pf": 3.488,
+      "oos_dd": 0.0016,
+      "oos_trades": 2
+    },
+    {
+      "window": 77,
+      "oos_period": "2026-03 -> 2026-05",
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_trades": 2
+    },
+    {
+      "window": 78,
+      "oos_period": "2026-04 -> 2026-06",
+      "oos_pf": 2.059,
+      "oos_dd": 0.0024,
+      "oos_trades": 2
+    },
+    {
+      "window": 79,
+      "oos_period": "2026-05 -> 2026-07",
+      "oos_pf": 0.0,
+      "oos_dd": 0.0043,
+      "oos_trades": 2
+    },
+    {
+      "window": 80,
+      "oos_period": "2026-06 -> 2026-08",
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_trades": 2
+    },
+    {
+      "window": 81,
+      "oos_period": "2026-07 -> 2026-08",
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_trades": 1
+    },
+    {
+      "window": 82,
+      "oos_period": "2026-08 -> 2026-08",
+      "oos_pf": 0.0,
+      "oos_dd": 0.0,
+      "oos_trades": 0
+    }
+  ],
+  "lineage": {
+    "family": "calendar",
+    "hypothesis": "MES_turn_of_month: pure time-based edge (no SMA/momentum). VALIDATION ONLY -- Tier-3/owner authorization required for live routing."
+  }
+}
