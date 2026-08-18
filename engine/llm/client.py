@@ -16,6 +16,7 @@ Cost per token (as of 2026-03-29):
 
 import asyncio
 import contextlib
+import contextvars
 import logging
 import os
 import time
@@ -35,6 +36,29 @@ from tenacity import (
 )
 
 from .cost_tracker import CostTracker
+
+# T4: current pipeline run context. The pipeline sets run_id + symbol before
+# fanning out agent calls so each LLM call can be attributed to a run in the
+# persistent pipeline_llm_costs table. Contextvar so concurrent runs (scanner
+# fan-out across symbols) don't cross-contaminate.
+_llm_run_context: contextvars.ContextVar[tuple[str, str] | None] = contextvars.ContextVar(
+    "llm_run_context", default=None
+)
+
+
+def set_llm_run_context(run_id: str, symbol: str) -> None:
+    """Bind subsequent LLM calls in this task to a pipeline run."""
+    _llm_run_context.set((run_id, symbol))
+
+
+def get_llm_run_context() -> tuple[str, str] | None:
+    """Return (run_id, symbol) for the current task, or None."""
+    return _llm_run_context.get()
+
+
+def clear_llm_run_context() -> None:
+    """Clear the run context (end of pipeline run)."""
+    _llm_run_context.set(None)
 
 try:
     from utils.token_proxy import get_token_proxy
@@ -362,14 +386,24 @@ class JarvisLLMClient:
     # AttributeError.  __init__ overwrites with the env-derived value.
     provider: str = "ollama"
 
-    def __init__(self, api_key: Optional[str] = None, db_path: str = "data/llm_costs.db"):
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        db_path: str = "data/llm_costs.db",
+        db_manager=None,
+    ):
         """
         Initialize the LLM client.
 
         Args:
             api_key: Anthropic API key (not required when JARVIS_LLM_PROVIDER=ollama)
             db_path: Path to SQLite cost tracking database
+            db_manager: Optional DatabaseManager. When set, every successful
+                call also persists a row in the pipeline_llm_costs table
+                (run_id/symbol from the run context) and threshold alerts are
+                written to alert_log.
         """
+        self._db_manager = db_manager
         self.provider = os.getenv("JARVIS_LLM_PROVIDER", "ollama").strip().lower()
         self.api_key = "" if self.provider == "ollama" else (api_key or "")
         # Hard wall-clock ceiling for any single provider call (see module note).
@@ -797,6 +831,42 @@ class JarvisLLMClient:
             agent_name=agent_name,
             success=True,
         )
+
+        # T4: persist per-call cost into the pipeline table when a run context
+        # is active and a db_manager is available. Best-effort — a DB failure
+        # must never break the API call.
+        run_ctx = get_llm_run_context()
+        if self._db_manager is not None and run_ctx is not None:
+            try:
+                self._db_manager.record_llm_cost(
+                    run_id=run_ctx[0],
+                    symbol=run_ctx[1],
+                    stage=agent_name,
+                    model=current_model,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                )
+            except Exception as _rec_err:
+                logger.warning(
+                    "[LLM-COST] pipeline_llm_costs write failed (non-fatal): %s", _rec_err
+                )
+
+        # T4: fire-once threshold alerts (daily/monthly spend).
+        if self._db_manager is not None:
+            try:
+                fired = await self.cost_tracker.check_thresholds()
+                for alert in fired:
+                    try:
+                        self._db_manager.insert_alert_log(
+                            alert_type=f"llm_cost_{alert['alert_type']}",
+                            message=alert["message"],
+                            channel="log",
+                            status="sent",
+                        )
+                    except Exception as _al_err:
+                        logger.warning("[LLM-ALERT] alert_log insert failed: %s", _al_err)
+            except Exception as _thr_err:
+                logger.warning("[LLM-ALERT] threshold check failed (non-fatal): %s", _thr_err)
 
         # Log to console
         logger.info(
@@ -2230,6 +2300,24 @@ class JarvisLLMClient:
             agent_name=agent_name,
             success=success,
         )
+
+        # T4: persist raw calls into the pipeline table too (same best-effort
+        # semantics as the .call() path — never breaks the caller).
+        run_ctx = get_llm_run_context()
+        if success and self._db_manager is not None and run_ctx is not None:
+            try:
+                self._db_manager.record_llm_cost(
+                    run_id=run_ctx[0],
+                    symbol=run_ctx[1],
+                    stage=agent_name,
+                    model=model,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                )
+            except Exception as _rec_err:
+                logger.warning(
+                    "[LLM-COST] pipeline_llm_costs write failed (non-fatal): %s", _rec_err
+                )
 
     async def get_daily_stats(self) -> dict:
         """
