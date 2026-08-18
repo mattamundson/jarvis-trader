@@ -245,6 +245,37 @@ shipped the empirical fix. **Trial-count accounting was not part of that fix and
   FAIL; pre_fomc INSUFFICIENT_SAMPLE; orb FAIL; MGC trend_rank4 FAIL.
 - **Notes:** Established the deep-data standard. Only MES trend survives full history.
 
+### 2026-08-18 — E3: MGC_trend_rank4 2829% DD anomaly — RESOLVED (sizing artifact, verdict corrected)
+- **Harness/runner:** `engine/backtest/run_mgc_trend_rank4.py` (8-combo tight grid, gate v2)
+- **Symbol / family:** MGC trend, rank 4
+- **Data:** `MGC_2015-01-01_2026-08-16_1h.csv` | 40,575 rows | 2015-01-01 → 2026-08-14
+  (price-sane: min 1042.10 / max 5587.00, 0 dupes / zeros / negatives / NaNs)
+- **Parameters tested:** fast=[40,50] × slow=[80,120] × atr_trail=[1.5,2.0] (8 combos),
+  train 6mo / test 2mo / step 1mo, min_rv=0.0
+- **Weights/sizing:** **fixed_contracts=1 (equal-weight WFO basis)** — replaces the ATR
+  `risk_per_trade=0.01` sizing that CAUSED the 2829% artifact (low-ATR gold → 2-13
+  contracts in low-vol regimes → gap-stop amplification). capital=$50K,
+  commission=0.85/ct, slippage=2.0 ticks
+- **MC:** trade-level bootstrap (per `_gate_v2_trade_metrics`), n_grid=8
+- **Results:** FAIL (via NONE) — pf_ci_lower=0.9263 (need ≥1.1), p_edge=0.9478 (need ≥0.95),
+  mc_95th_dd=3.8855% (core ≤5 / alt ≤4 ✓), dsr=0.6314 (≥0.1 ✓ / ≥0.3 ✓), wfo=WEAK,
+  fixed_params_min_pf=0.5104 (need ≥1.2), cost_survives=catastrophic (✓)
+- **Window DD distribution:** 134 windows, 129 with trades, 345 OOS trades;
+  max window DD 1.85%, p95 0.58%, **0/134 windows >100%** (was 7/134 in the ATR run)
+- **Verdict file(s) written:** `engine/data/gate_v2_verdicts/MGC_trend_rank4.json`
+  (production, replaced shallow-contaminated 23-window verdict — original archived to
+  `engine/data/gate_v2_verdicts/archive/MGC_trend_rank4_shallow-contaminated-2026-08-18.json`)
+- **Command used:** `env -u PYTHONPATH -u PYTHONHOME C:/Users/mattm/ThinkorSwim/jarvis-trader/engine/.venv/Scripts/python.exe engine/backtest/run_mgc_trend_rank4.py`
+  (runner patched with `fixed_contracts=1` in throwaway worktree wt-mgc-fixedcontracts-e3)
+- **Notes / what this killed or promoted:** Root cause CONFIRMED = ATR sizing artifact, NOT
+  a cache defect (cache scan clean). Equal-weight sizing → sane 3.89% MC DD, but every gate
+  fails on 345 OOS trades → **MGC trend_rank4 is genuinely dead**. ATR-sized paper profit
+  (+$3,906) was a sizing artifact. MGC stays halted / DO_NOT_TRADE; no promote. Reproducible:
+  two independent runs (run-10 crashed attempt + this one) produced byte-identical metrics.
+  NOTE: 08-17 skill doc recorded p_edge=0.3984/dd=6.91%/361 trades from an earlier cache
+  state; current cache (08-16) yields p_edge=0.9478/dd=3.89%/345 trades — verdict direction
+  unchanged (FAIL).
+
 ---
 
 ## Open gaps / queued work
