@@ -252,7 +252,7 @@ class BearResearcherAgent:
             model=self.MODEL,
             system="",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=256,
+            max_tokens=800,
             agent_name="bear_researcher",
         )
         raw_text = (result_obj.content or "").strip() if result_obj.success else ""
