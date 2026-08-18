@@ -1,0 +1,13 @@
+name: CI Diagnostic
+
+on:
+  push:
+    branches: [fix/reaction-watcher-backoff-auth-20260818]
+
+jobs:
+  diag:
+    name: Diagnostic job
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hello
+        run: echo "diagnostic workflow builds fine"
