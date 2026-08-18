@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from datetime import datetime
 
 
 @dataclass
@@ -21,6 +22,52 @@ class TradeAnalytics:
     avg_loss: float
     best_trade: float
     worst_trade: float
+    # C3 metric-honesty pass (2026-08-18): annualization transparency. The
+    # Sharpe above is annualized by the strategy's OBSERVED trade frequency
+    # (not a fixed 252) whenever the trade timestamps support it; these fields
+    # record what factor was used and the honest CAGR over the actual span.
+    annualization_trades_per_year: float = 252.0
+    cagr: float = 0.0
+
+
+# Fallback annualization factor, matching engine/backtest/metrics.py
+# DEFAULT_ANNUALIZATION_TRADES_PER_YEAR. Used only when the trade timestamps
+# cannot support an honest observed-frequency estimate (missing dates or a
+# window shorter than MIN_ANNUALIZATION_WINDOW_DAYS).
+DEFAULT_ANNUALIZATION_TRADES_PER_YEAR = 252.0
+MIN_ANNUALIZATION_WINDOW_DAYS = 90.0
+MAX_ANNUALIZATION_TRADES_PER_YEAR = 2520.0
+
+
+def _observed_annualization_trades_per_year(trades: list[dict]) -> float:
+    """Observed trades-per-year from the trade dates, or the 252 fallback.
+
+    Mirrors engine/backtest/metrics.py `_annualization_factor`: uses the
+    calendar span of the trade records (n_trades / elapsed_years), falls back
+    to DEFAULT_ANNUALIZATION_TRADES_PER_YEAR when the window is missing,
+    unparseable, or shorter than MIN_ANNUALIZATION_WINDOW_DAYS (a sub-90-day
+    record cannot be honestly annualized), and caps at
+    MAX_ANNUALIZATION_TRADES_PER_YEAR.
+    """
+    parsed = []
+    for trade in trades:
+        raw = trade.get("exit_time") or trade.get("entry_time") or trade.get("timestamp") or trade.get("date")
+        if not raw:
+            continue
+        try:
+            dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        except (ValueError, AttributeError, TypeError):
+            continue
+        parsed.append(dt)
+    if len(parsed) < 2:
+        return DEFAULT_ANNUALIZATION_TRADES_PER_YEAR
+    span_days = (max(parsed) - min(parsed)).total_seconds() / 86400.0
+    if span_days < MIN_ANNUALIZATION_WINDOW_DAYS:
+        return DEFAULT_ANNUALIZATION_TRADES_PER_YEAR
+    tpy = len(parsed) / (span_days / 365.25)
+    if tpy <= 0:
+        return DEFAULT_ANNUALIZATION_TRADES_PER_YEAR
+    return float(min(tpy, MAX_ANNUALIZATION_TRADES_PER_YEAR))
 
 
 def calculate_analytics(trades: list[dict]) -> TradeAnalytics:
@@ -59,7 +106,16 @@ def calculate_analytics(trades: list[dict]) -> TradeAnalytics:
     expectancy = (total_pnl / total_trades) if total_trades > 0 else 0.0
 
     daily_returns = _calculate_daily_returns(trades)
-    sharpe = calculate_sharpe_ratio(daily_returns)
+    # C3 metric-honesty pass: annualize by the OBSERVED trade frequency, not a
+    # fixed 252. A strategy that closes trades on ~60 days a year was
+    # previously overstated by sqrt(252/60) ≈ 2.05x.
+    ann_tpy = _observed_annualization_trades_per_year(trades)
+    sharpe = calculate_sharpe_ratio(daily_returns, annualization_trades_per_year=ann_tpy)
+
+    # Honest CAGR over the actual elapsed calendar span of the trade record.
+    # Compounding uses (1 + total_return)^(1/years) - 1 with years derived from
+    # the first/last trade timestamps, not 252 fixed periods per year.
+    cagr = _calculate_cagr(trades, ann_tpy)
 
     equity_curve = _build_equity_curve(trades)
     drawdown = calculate_max_drawdown(equity_curve)
@@ -78,12 +134,48 @@ def calculate_analytics(trades: list[dict]) -> TradeAnalytics:
         avg_loss=avg_loss,
         best_trade=best_trade,
         worst_trade=worst_trade,
+        annualization_trades_per_year=round(ann_tpy, 4),
+        cagr=round(cagr, 6),
     )
 
 
-def calculate_sharpe_ratio(daily_returns: list[float], risk_free_rate: float = 0.0) -> float:
+def _calculate_cagr(trades: list[dict], annualization_trades_per_year: float) -> float:
+    """Honest CAGR from per-trade returns over the record's actual span.
+
+    total_return = sum(pnl) / DEFAULT_STARTING_CAPITAL (the paper-account
+    notional convention used across the engine); years = n_trades /
+    annualization_trades_per_year when the observed frequency is usable, else
+    the 252 fallback. Returns 0.0 when the record cannot support the math
+    (no trades, no capital base, or total return <= -100%).
     """
-    Annualized Sharpe ratio from daily returns.
+    if not trades:
+        return 0.0
+    total_pnl = sum(t.get("pnl", 0) for t in trades)
+    if DEFAULT_STARTING_CAPITAL <= 0:
+        return 0.0
+    total_return = total_pnl / DEFAULT_STARTING_CAPITAL
+    if total_return <= -1.0:
+        return 0.0
+    n = len(trades)
+    years = n / annualization_trades_per_year if annualization_trades_per_year > 0 else 0.0
+    if years <= 0:
+        return 0.0
+    cagr = (1.0 + total_return) ** (1.0 / years) - 1.0
+    return float(cagr) if math.isfinite(cagr) else 0.0
+
+
+def calculate_sharpe_ratio(
+    daily_returns: list[float],
+    risk_free_rate: float = 0.0,
+    annualization_trades_per_year: float = DEFAULT_ANNUALIZATION_TRADES_PER_YEAR,
+) -> float:
+    """
+    Annualized Sharpe ratio from per-period returns.
+
+    The annualization factor is the strategy's OBSERVED periods-per-year, not
+    a fixed 252 — annualizing a low-frequency series by 252 overstated Sharpe
+    by sqrt(252 / actual) (C3 metric-honesty pass, 2026-08-18; mirrors
+    engine/backtest/metrics.py `compute_sharpe_sortino`).
     Returns 0.0 if insufficient data or zero std dev.
     """
     if not daily_returns or len(daily_returns) < 2:
@@ -97,8 +189,9 @@ def calculate_sharpe_ratio(daily_returns: list[float], risk_free_rate: float = 0
         # float("inf") is not JSON-serializable via FastAPI's JSONResponse; use sentinel 9999.0
         return 9999.0 if mean_return > 0 else 0.0
 
-    daily_sharpe = (mean_return - risk_free_rate) / std_dev
-    annualized_sharpe = daily_sharpe * math.sqrt(252)
+    periods = annualization_trades_per_year if annualization_trades_per_year > 0 else DEFAULT_ANNUALIZATION_TRADES_PER_YEAR
+    per_period_sharpe = (mean_return - risk_free_rate) / std_dev
+    annualized_sharpe = per_period_sharpe * math.sqrt(periods)
     return annualized_sharpe
 
 
