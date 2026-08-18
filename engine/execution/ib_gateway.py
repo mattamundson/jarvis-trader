@@ -291,6 +291,17 @@ class IBGatewayManager:
         self._status = IBConnectionStatus.DISCONNECTED
         self._connect_time: Optional[float] = None
         self._last_error: Optional[str] = None
+        # Set when get_positions() finds reqPositionsAsync() AND the local
+        # position cache BOTH empty while is_connected() reports True — the
+        # 2026-08-03/08-10 failure signature where the execution leg's own
+        # position subscription is desynced even though the socket is alive.
+        # Cleared on a successful get_positions() call that returns real data
+        # or is legitimately flat (confirmed by a matching fill on record, or
+        # by resyncing via a fresh reconnect()). See classify_positions_staleness()
+        # below (module-level — shared with IBKRDataConnector.get_positions()
+        # in data/market_data.py).
+        self._positions_stale: bool = False
+        self._last_known_positions: dict[str, float] = {}
 
         logger.info(
             "IBGatewayManager created | broker=%s host=%s port=%d client_id=%d account=%s",
@@ -701,6 +712,23 @@ class IBGatewayManager:
         if action_upper is None:
             return None
 
+        # Defense-in-depth: SafetyLayer._check_do_not_trade_symbols() is the
+        # designed choke point for this halt list, but not every caller routes
+        # through SafetyLayer first (2026-08-11: a test called this method
+        # directly, which would have bypassed the halt entirely for a
+        # DO_NOT_TRADE_SYMBOLS instrument had a client-ID collision not
+        # incidentally prevented the connection). Mirror the check here too.
+        from backtest.signals import DO_NOT_TRADE_SYMBOLS
+
+        symbol_upper = symbol.upper()
+        if symbol_upper in DO_NOT_TRADE_SYMBOLS:
+            logger.error(
+                "place_paper_order: REJECTED — %s is on the DO_NOT_TRADE_SYMBOLS "
+                "halt list (backtest/signals.py); refusing to route to IB",
+                symbol_upper,
+            )
+            return None
+
         order_type_upper = order_type.upper()
 
         # Tag every JARVIS-routed order so reconciliation can filter our fills
@@ -770,6 +798,163 @@ class IBGatewayManager:
                 exc_info=True,
             )
             return None
+
+    async def place_bracket_order(
+        self,
+        symbol: str,
+        action: str,
+        quantity: int,
+        entry_type: str = "MKT",
+        limit_price: Optional[float] = None,
+        stop_loss: Optional[float] = None,
+        take_profit: Optional[float] = None,
+    ) -> dict:
+        """Place a native IB bracket: entry + OCA-linked stop-loss + take-profit.
+
+        Drop-in replacement for ``IBGatewayConnector.place_bracket_order`` — same
+        signature and same return contract — but this routes a REAL broker-side
+        bracket so the stop actually rests at IB (survives an engine restart),
+        which the in-process simulator can never do.
+
+        Atomicity via transmit sequencing: the parent entry is placed with
+        ``transmit=False`` and only the LAST leg placed carries ``transmit=True``,
+        so IB releases all legs as one group. Because the parent stays
+        un-transmitted until the final child is accepted, there is no window in
+        which the entry can fill without its stop already staged — a mid-sequence
+        failure leaves nothing resting (the opposite of the immediate-transmit
+        ``submit_bracket`` path, which needs a rollback-cancel to close a naked
+        position). The two children share an OCA group (``ocaType=1``) so a fill
+        on one cancels the other, and both carry ``parentId=<entry orderId>`` so
+        ``get_order_status`` / ``SafetyLayer._verify_parent_linkage`` confirm the
+        broker-side linkage.
+
+        Returns the connector's exact dict shape:
+            success -> {"status":"placed","entry_id","sl_id","tp_id",
+                        "symbol","action","quantity"}   (sl_id/tp_id may be None)
+            failure -> {"status":"error","error": <reason>}
+
+        Registry / DB / migration-031 writes are intentionally NOT done here — the
+        simulator does none either; those live in ``brokers.bracket_orders``.
+        """
+        if not self.is_connected():
+            return {"status": "error", "error": "Not connected"}
+
+        action_upper = self._validate_order_preconditions(action, quantity)
+        if action_upper is None:
+            return {"status": "error", "error": "Failed to place entry order"}
+
+        # Normalise entry type. entry_type arrives lowercased from the safety
+        # layer (req.order_type = order_type.lower()); alias MARKET/LIMIT so the
+        # exact-match _build_order_object accepts it.
+        entry_type_upper = entry_type.upper()
+        entry_type_upper = {"MARKET": "MKT", "LIMIT": "LMT"}.get(
+            entry_type_upper, entry_type_upper
+        )
+        if entry_type_upper not in ("MKT", "LMT"):
+            logger.error("place_bracket_order: unsupported entry_type '%s'", entry_type)
+            return {"status": "error", "error": "Failed to place entry order"}
+
+        exit_action = "SELL" if action_upper == "BUY" else "BUY"
+        want_sl = stop_loss is not None
+        want_tp = take_profit is not None
+        has_children = want_sl or want_tp
+        # Shared reconciliation tag + unique OCA group for this bracket.
+        order_ref = f"JARVIS-{uuid.uuid4().hex[:12]}"
+        oca_group = f"JARVIS-OCA-{uuid.uuid4().hex[:12]}"
+
+        placed_trades: list = []
+        try:
+            contract = self._resolve_contract(symbol)
+            if contract is None:
+                logger.error("place_bracket_order: could not resolve contract for %s", symbol)
+                return {"status": "error", "error": "Failed to place entry order"}
+            contract = await self._qualify_contract(contract)
+            if contract is None:
+                logger.error("place_bracket_order: could not qualify contract for %s", symbol)
+                return {"status": "error", "error": "Failed to place entry order"}
+
+            # Parent entry. transmit=False while children follow (atomic bundle).
+            parent = self._build_order_object(
+                entry_type_upper, action_upper, quantity, limit_price, None,
+                order_ref=order_ref,
+            )
+            if parent is None:
+                return {"status": "error", "error": "Failed to place entry order"}
+            if self._config.account:
+                parent.account = self._config.account
+            parent.transmit = not has_children
+            parent_trade = self._ib.placeOrder(contract, parent)
+            placed_trades.append(parent_trade)
+            entry_id = int(parent_trade.order.orderId)
+
+            # Children: SL then TP; the LAST leg placed carries transmit=True to
+            # release the whole bracket at the broker.
+            child_specs = []
+            if want_sl:
+                child_specs.append(("STP", None, stop_loss))
+            if want_tp:
+                child_specs.append(("LMT", take_profit, None))
+
+            sl_id = None
+            tp_id = None
+            for idx, (otype, lmt, aux) in enumerate(child_specs):
+                child = self._build_order_object(
+                    otype, exit_action, quantity, lmt, aux, order_ref=order_ref,
+                )
+                if child is None:
+                    raise RuntimeError(f"failed to build {otype} child order")
+                if self._config.account:
+                    child.account = self._config.account
+                child.parentId = entry_id
+                child.ocaGroup = oca_group
+                child.ocaType = 1
+                child.transmit = idx == len(child_specs) - 1
+                child_trade = self._ib.placeOrder(contract, child)
+                placed_trades.append(child_trade)
+                child_id = int(child_trade.order.orderId)
+                if otype == "STP":
+                    sl_id = child_id
+                else:
+                    tp_id = child_id
+
+            logger.info(
+                "place_bracket_order placed | symbol=%s entry=%d sl=%s tp=%s ref=%s oca=%s",
+                symbol, entry_id, sl_id, tp_id, order_ref, oca_group,
+            )
+            return {
+                "status": "placed",
+                "entry_id": entry_id,
+                "sl_id": sl_id,
+                "tp_id": tp_id,
+                "symbol": symbol,
+                "action": action,
+                "quantity": quantity,
+            }
+
+        except Exception as exc:
+            if not placed_trades:
+                logger.error(
+                    "place_bracket_order: entry failed symbol=%s: %s",
+                    symbol, exc, exc_info=True,
+                )
+                return {"status": "error", "error": "Failed to place entry order"}
+            # A child leg failed AFTER the parent was placed. Every leg so far is
+            # transmit=False -> none is live -> no naked position. Best-effort
+            # cancel the un-transmitted legs, then surface the failure.
+            logger.critical(
+                "place_bracket_order: child leg failed symbol=%s — rolling back "
+                "%d un-transmitted leg(s): %s",
+                symbol, len(placed_trades), exc, exc_info=True,
+            )
+            for tr in reversed(placed_trades):
+                try:
+                    self._ib.cancelOrder(tr.order)
+                except Exception as cexc:
+                    logger.critical(
+                        "place_bracket_order: rollback cancel FAILED id=%s: %s",
+                        getattr(getattr(tr, "order", None), "orderId", "?"), cexc,
+                    )
+            return {"status": "error", "error": "Failed to place bracket child order"}
 
     async def cancel_order(self, order_id: int) -> bool:
         """
@@ -878,7 +1063,27 @@ class IBGatewayManager:
             return {}
 
         try:
-            account_values = await self._ib.accountSummaryAsync(account=self._config.account or "")
+            # Request ALL accounts, then select the target in Python. Filtering the
+            # REQUEST by a mis-configured IB_ACCOUNT_ID silently returns an empty set,
+            # so NetLiquidation stays 0.0 and the SafetyLayer would read equity as
+            # ZERO — a dangerous state. Fall back to the broker's actual account (and
+            # warn loudly) rather than report a false zero. (Observed 2026-07-23:
+            # IB_ACCOUNT_ID=DUP662235 but the Gateway is logged into DUR162217.)
+            account_values = await self._ib.accountSummaryAsync()
+
+            accounts_present = {av.account for av in account_values if av.account}
+            target = self._config.account or ""
+            if target and target not in accounts_present:
+                logger.warning(
+                    "get_account_summary: configured IB_ACCOUNT_ID=%s NOT found at IB "
+                    "(accounts present: %s). Falling back to the broker account so equity "
+                    "is not read as 0 - FIX IB_ACCOUNT_ID to match the logged-in account.",
+                    target,
+                    sorted(accounts_present),
+                )
+                target = ""
+            if not target and len(accounts_present) == 1:
+                target = next(iter(accounts_present))
 
             KEYS_OF_INTEREST = {
                 "NetLiquidation",
@@ -894,13 +1099,14 @@ class IBGatewayManager:
 
             summary: dict = dict.fromkeys(KEYS_OF_INTEREST, 0.0)
             for av in account_values:
-                if av.tag in KEYS_OF_INTEREST:
+                if av.tag in KEYS_OF_INTEREST and (not target or av.account == target):
                     try:
                         summary[av.tag] = float(av.value)
                     except (ValueError, TypeError):
                         pass
 
-            # Convenience alias used by SafetyLayer / OrderRouter
+            # Convenience aliases used by SafetyLayer / OrderRouter
+            summary["account"] = target
             summary["equity"] = summary["NetLiquidation"]
             return summary
 
@@ -910,7 +1116,7 @@ class IBGatewayManager:
 
     # ── Positions ─────────────────────────────────────────────────────────
 
-    async def get_positions(self) -> list[dict]:
+    async def get_positions(self, _retrying: bool = False) -> list[dict]:
         """
         Return current IB positions as a list of dicts.
 
@@ -924,6 +1130,40 @@ class IBGatewayManager:
 
         try:
             positions = await self._ib.reqPositionsAsync()
+        except Exception as exc:
+            logger.error("get_positions: reqPositionsAsync failed: %s", exc, exc_info=True)
+            positions = []
+
+        # Cross-check against ib_async's continuously-updated position cache
+        # (self._ib.positions() — no I/O, populated automatically on connect).
+        # 2026-08-03 incident: reqPositionsAsync() silently returned [] while the
+        # account genuinely held 5 MES contracts (2.5x over the configured cap) —
+        # the dashboard's /brokers/positions showed a flat/reconciled view while
+        # the real account was over its limit. The cache reflects the same
+        # account state a fresh manual IB query hits and isn't subject to
+        # whatever made that particular reqPositionsAsync round-trip come back
+        # empty, so prefer it over silently trusting an empty result.
+        try:
+            cached = self._ib.positions()
+        except Exception:
+            cached = []
+        if not positions and cached:
+            logger.error(
+                "get_positions: reqPositionsAsync returned EMPTY but the position cache "
+                "holds %d entries — using the cache instead. This mismatch indicates "
+                "reqPositionsAsync is unreliable right now and is worth investigating.",
+                len(cached),
+            )
+            positions = cached
+        elif positions and cached and len(positions) != len(cached):
+            logger.warning(
+                "get_positions: reqPositionsAsync (%d) and position cache (%d) entry "
+                "counts disagree",
+                len(positions),
+                len(cached),
+            )
+
+        try:
             result = []
             for pos in positions:
                 contract = pos.contract
@@ -941,11 +1181,79 @@ class IBGatewayManager:
                         "account": pos.account,
                     }
                 )
-            return result
 
         except Exception as exc:
             logger.error("get_positions failed: %s", exc, exc_info=True)
             return []
+
+        return await self._reconcile_positions_staleness(result, _retrying=_retrying)
+
+    async def _reconcile_positions_staleness(
+        self, result: list[dict], _retrying: bool
+    ) -> list[dict]:
+        """See ``classify_positions_staleness`` (module-level, below this class)
+        for the shared decision logic -- also used by ``IBKRDataConnector`` in
+        ``data/market_data.py``."""
+        is_stale, updated_last_known, unexplained = classify_positions_staleness(
+            result, self._last_known_positions, self._ib
+        )
+        self._last_known_positions = updated_last_known
+        self._positions_stale = is_stale
+
+        if not is_stale:
+            return result
+
+        logger.critical(
+            "get_positions: %s previously held non-zero but now reads EMPTY with "
+            "NO explaining fill on record — treating as a stale/desynced execution "
+            "leg, not a real flatten (2026-08-03/08-10 failure signature).%s",
+            unexplained,
+            " Retry after reconnect also came back this way." if _retrying else "",
+        )
+
+        if not _retrying:
+            logger.warning("get_positions: attempting one reconnect + retry to resync.")
+            if await self.reconnect():
+                return await self.get_positions(_retrying=True)
+
+        # Don't fabricate the last-known data as if it were fresh — an
+        # unreachable retry means we genuinely don't know current state.
+        # Surface the uncertainty via positions_stale() rather than guessing.
+        return result
+
+    def positions_stale(self) -> bool:
+        """True when the last get_positions() call hit the double-empty /
+        no-explaining-fill staleness signature and couldn't resync via
+        reconnect."""
+        return self._positions_stale
+
+    def get_cached_position(self, symbol: str) -> Optional[float]:
+        """
+        Sync, no-I/O net position for ``symbol`` from ib_async's continuously-
+        updated position cache (``self._ib.positions()``).
+
+        Intended for latency-sensitive pre-trade risk checks (e.g. the
+        cumulative-position cap in SafetyLayer.check_order()) where an async
+        round-trip to IB is undesirable and, per the 2026-08-03 incident,
+        reqPositionsAsync() can itself silently return an empty result.
+
+        Returns None when the gateway isn't connected/available — callers
+        should treat that as "cannot verify" and fail open on this specific
+        check, not as "position is zero".
+        """
+        if self._ib is None or not IB_INSYNC_AVAILABLE or not self.is_connected():
+            return None
+        try:
+            total = 0.0
+            found = False
+            for pos in self._ib.positions():
+                if pos.contract.symbol.upper() == symbol.upper():
+                    total += float(pos.position)
+                    found = True
+            return total if found else 0.0
+        except Exception as exc:
+            logger.warning("get_cached_position(%s) failed: %s", symbol, exc)
+            return None
 
     async def get_portfolio_value(self) -> float:
         """
@@ -1024,6 +1332,8 @@ class IBGatewayManager:
           open_orders     (int)
           last_error      (str | None)
           ib_library      (str)
+          broker_probe_ok (bool)        — socket up AND all RPC probes responded
+          degraded_reason (str | None)  — which probe(s) failed, when degraded
         """
         start = time.monotonic()
 
@@ -1031,26 +1341,48 @@ class IBGatewayManager:
         latency_ms: Optional[float] = None
         net_liq: float = 0.0
         open_order_count: int = 0
+        # Honesty signal: a socket that is "connected" can still have every RPC
+        # probe time out / auth-fail. Narrow the excepts so a degraded broker is
+        # surfaced (broker_probe_ok=False) rather than masquerading as healthy
+        # with latency_ms=null / net_liq=0 behind connected=True.
+        probe_errors: list[str] = []
 
         if connected:
-            # Measure round-trip latency with a lightweight reqCurrentTime call
+            # Measure round-trip latency with a lightweight reqCurrentTime call.
+            # `connected` above is only the shallow is_connected() flag, captured
+            # before this probe runs -- a wedged Gateway (socket open, API dead)
+            # previously still reported connected=True here even when this exact
+            # probe failed, since nothing revised it afterward. Same class of bug
+            # as the 2026-08-15 data-leg incident (data/market_data.py's
+            # IBKRDataConnector.health_check) -- a failed round-trip means we are
+            # not actually connected, whatever the socket flag says.
             try:
                 t0 = time.monotonic()
                 await asyncio.wait_for(self._ib.reqCurrentTimeAsync(), timeout=5.0)
                 latency_ms = (time.monotonic() - t0) * 1000
-            except Exception:
+            except (asyncio.TimeoutError, ConnectionError, OSError) as exc:
                 latency_ms = None
+                probe_errors.append(f"latency:{type(exc).__name__}")
+                logger.warning("health_check latency probe failed: %s", exc)
+                # NOTE: `connected` stays the shallow socket flag (is_connected());
+                # probe failure is surfaced via broker_probe_ok/degraded_reason so
+                # /health can flip to "degraded" while still distinguishing a
+                # socket-up broker from a fully disconnected one (A2). Master's
+                # 2026-08-15 data-leg incident fix lives on the data-connector
+                # path (data/market_data.py + health_router round-trip probe).
 
             try:
                 net_liq = await self.get_portfolio_value()
-            except Exception:
-                pass
+            except (asyncio.TimeoutError, ConnectionError, OSError, AttributeError) as exc:
+                probe_errors.append(f"net_liq:{type(exc).__name__}")
+                logger.warning("health_check portfolio_value probe failed: %s", exc)
 
             try:
                 orders = await self.get_open_orders()
                 open_order_count = len(orders)
-            except Exception:
-                pass
+            except (asyncio.TimeoutError, ConnectionError, OSError, AttributeError) as exc:
+                probe_errors.append(f"open_orders:{type(exc).__name__}")
+                logger.warning("health_check open_orders probe failed: %s", exc)
 
         uptime: Optional[float] = None
         if self._connect_time is not None:
@@ -1072,6 +1404,8 @@ class IBGatewayManager:
             "last_error": self._last_error,
             "ib_library": lib_name,
             "paper_trading_only": True,  # SAFETY: always True — port 4001 is disabled
+            "broker_probe_ok": connected and not probe_errors,
+            "degraded_reason": ("; ".join(probe_errors) or None),
         }
 
         elapsed = (time.monotonic() - start) * 1000
@@ -1097,3 +1431,43 @@ class IBGatewayManager:
             f"status={self._status.value}, "
             f"account={self._config.account!r})"
         )
+
+
+def classify_positions_staleness(
+    result: list[dict], last_known: dict, ib_client
+) -> tuple[bool, dict, list[str]]:
+    """
+    Shared decision logic for both the order-routing ``IBGatewayManager``
+    above and the always-on ``IBKRDataConnector`` (data leg, in
+    ``data/market_data.py``) -- 2026-08-10 follow-up to the 2026-08-03 MES
+    overage incident (see ``IBGatewayManager._reconcile_positions_staleness``).
+
+    reqPositionsAsync() AND the local position cache can BOTH come back empty
+    even though a real position exists on the account. Emptiness alone can't
+    be the staleness signal -- that's ALSO what a genuinely flat account looks
+    like. Instead, compare against the caller's last confirmed non-zero
+    snapshot: if it flips to empty with no fill on record that would explain
+    the close, that's suspicious rather than a legitimate flatten.
+
+    Deliberately a plain module-level function, not a method on either
+    connector class -- it has no connector state of its own and both
+    IBGatewayManager and IBKRDataConnector need to call it identically.
+
+    Returns (is_stale, updated_last_known_positions, unexplained_symbols).
+    """
+    current_map = {r["symbol"]: r["position"] for r in result if r["position"] != 0}
+
+    if current_map or not last_known:
+        return False, current_map, []
+
+    try:
+        fills = ib_client.fills()
+    except Exception:
+        fills = []
+    filled_symbols = {f.contract.symbol for f in fills}
+    unexplained = sorted(set(last_known) - filled_symbols)
+
+    if not unexplained:
+        return False, {}, []
+
+    return True, last_known, unexplained

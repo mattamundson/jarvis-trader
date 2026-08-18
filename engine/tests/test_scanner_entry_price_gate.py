@@ -27,7 +27,7 @@ import pytest
 # A fixed instant: Tuesday 2026-06-16 17:00 UTC == 12:00 ET. Chosen so the
 # scanner's wall-clock gates in _scan_symbol() all resolve to "scan allowed":
 #   - not in the 9:30-9:35 / 15:45-16:00 ET banned session windows,
-#   - not Wednesday (so the MCL 10:15-11:00 ET EIA blackout never triggers),
+#   - not Wednesday (so no futures EIA blackout window ever triggers),
 #   - inside equity Regular Trading Hours.
 # Without this, the outcome depends on the wall-clock time CI runs at (flaky).
 _FROZEN_UTC = datetime(2026, 6, 16, 17, 0, 0, tzinfo=timezone.utc)
@@ -115,7 +115,7 @@ def _build_scanner(pipeline_result: dict, paper_tracker: MagicMock) -> "object":
     scanner = SignalScanner(
         trading_pipeline=mock_pipeline,
         db_manager=mock_db,
-        symbols=["MCL"],
+        symbols=["ZZTEST"],
         initial_delay_seconds=0,
     )
     scanner.set_paper_tracker(paper_tracker)
@@ -128,7 +128,7 @@ async def _run_scan(scanner) -> None:
         patch("config.settings") as mock_settings,
     ):
         mock_settings.LIVE_TRADING_ENABLED = False
-        await scanner._scan_symbol("MCL")
+        await scanner._scan_symbol("ZZTEST")
 
 
 # ── Tests ────────────────────────────────────────────────────────────────────

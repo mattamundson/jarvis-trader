@@ -322,3 +322,52 @@ class AgentFeedbackTracker:
             data = json.load(f)
 
         return {k: v for k, v in data.items() if k in AGENT_NAMES}
+
+    def get_recent_trades_for_eval(self, limit: int = 100) -> list[dict]:
+        """
+        Read-only accessor for offline eval sources (e.g. engine/llm/prompt_evolution.py's
+        GEPA optimiser). Returns raw trade_outcomes rows shaped for that module's
+        TradeEvalSource protocol — trade_id, symbol, timestamp, per-analyst signal
+        context, and the actual winning side (direction if the trade won, the
+        opposite side if it lost).
+
+        Additive only. Does not read or modify anything load_weights()/
+        compute_accuracy()/get_agent_weights() depend on — those stay untouched.
+
+        The ``pnl_usd IS NOT NULL`` filter is a defensive belt-and-suspenders
+        guard: record_outcome() (the sole writer) can never itself produce a
+        NULL-pnl row today (it compares ``pnl_usd > 0`` before any other
+        logic, so a None pnl raises there), but this accessor should still
+        never hand the GEPA optimizer an unrealized/open-trade row if some
+        future writer or a legacy migration ever leaves one behind.
+        """
+        with sqlite3.connect(DB_PATH) as conn:
+            rows = conn.execute("""
+                SELECT trade_id, timestamp, symbol, direction, pnl_usd, outcome,
+                       technical_signal, news_signal, social_signal, fundamental_signal, corey_signal
+                FROM trade_outcomes
+                WHERE pnl_usd IS NOT NULL
+                ORDER BY timestamp DESC
+                LIMIT ?
+            """, (limit,)).fetchall()
+
+        trades = []
+        for (trade_id, timestamp, symbol, direction, pnl_usd, outcome,
+             technical, news, social, fundamental, corey) in rows:
+            opposite = "SHORT" if direction == "LONG" else "LONG"
+            actual_winning_side = direction if outcome == "WIN" else opposite
+            trades.append({
+                "trade_id": trade_id,
+                "symbol": symbol,
+                "timestamp": timestamp,
+                "context": {
+                    "technical": technical,
+                    "news": news,
+                    "social": social,
+                    "fundamental": fundamental,
+                    "corey": corey,
+                },
+                "actual_winning_side": actual_winning_side,
+                "pnl_usd": pnl_usd,
+            })
+        return trades

@@ -97,8 +97,16 @@ DEFAULT_CADENCE_DAYS = 28  # 4-week rolling cadence per JARVIS_TRADER_MASTER.md 
 class RollingWFEState:
     """Persistent state for the rolling WFE scheduler."""
 
-    def __init__(self, state_file: Path = STATE_FILE):
-        self.state_file = state_file
+    def __init__(self, state_file: Path | None = None):
+        # Default resolved here (call-time), not as a `= STATE_FILE` parameter
+        # default -- a parameter default is bound once at module-load time, so
+        # a test's patch("backtest.rolling_wfe_scheduler.STATE_FILE", tmp_path)
+        # silently has no effect on RollingWFEState() call sites that rely on
+        # the default. 2026-08-11: this let test_good_verdict_sets_halt_
+        # required_false write its mocked WFE (0.60) straight into the real
+        # production rolling_wfe_state.json via run_scheduler()'s no-arg
+        # `RollingWFEState()` call, clobbering the real MCL run_count.
+        self.state_file = state_file if state_file is not None else STATE_FILE
         self._state = self._load()
 
     def _load(self) -> Dict[str, Any]:

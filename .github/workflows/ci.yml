@@ -115,6 +115,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # See .github/actions/free-disk-space/action.yml for why this runs here
+      # (engine/requirements-core.txt's torch/gymnasium/stable-baselines3 install
+      # + pip's ~3.5GB cache restore ran this runner out of disk repeatedly).
+      - name: Free disk space (unused Android SDK + .NET toolchains)
+        uses: ./.github/actions/free-disk-space
+
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
@@ -156,6 +162,10 @@ jobs:
       COVERAGE_FILE: ${{ github.workspace }}/.coverage.fast
     steps:
       - uses: actions/checkout@v4
+
+      # See .github/actions/free-disk-space/action.yml for why this runs here.
+      - name: Free disk space (unused Android SDK + .NET toolchains)
+        uses: ./.github/actions/free-disk-space
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -221,6 +231,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # See .github/actions/free-disk-space/action.yml for why this runs here.
+      - name: Free disk space (unused Android SDK + .NET toolchains)
+        uses: ./.github/actions/free-disk-space
+
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
@@ -258,6 +272,10 @@ jobs:
     if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && needs.engine-test-fast.result == 'success' && needs.engine-test-slow.result == 'success' }}
     steps:
       - uses: actions/checkout@v4
+
+      # See .github/actions/free-disk-space/action.yml for why this runs here.
+      - name: Free disk space (unused Android SDK + .NET toolchains)
+        uses: ./.github/actions/free-disk-space
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -352,10 +370,30 @@ jobs:
       # Output is tee'd so the bundle-budget gate below can read the route table
       # instead of paying for a second ~2 minute build to reprint numbers this
       # one already produced. pipefail keeps a build failure fatal through tee.
+      # Retry once for the transient next/font/google network flake (fonts.gstatic.com
+      # intermittently times out on the runner — proven flaky: the same build passed
+      # on rerun with identical code, and master's own pre-deploy check failed the
+      # same way on 2026-08-16). The retry stays visible (::warning::) so a genuine
+      # build regression is never silently masked. A fresh process is required —
+      # the failed font fetch leaves .next/font cache state that an in-place retry
+      # would not necessarily clear.
       - name: Build Next.js
         run: |
           set -euo pipefail
-          pnpm run build 2>&1 | tee ../build-output.log
+          set +e
+          attempts=2
+          ec=0
+          for i in $(seq 1 "$attempts"); do
+            echo "::group::next build (attempt $i/$attempts)"
+            pnpm run build 2>&1 | tee ../build-output.log
+            ec=${PIPESTATUS[0]}
+            echo "::endgroup::"
+            [ "$ec" -eq 0 ] && break
+            if [ "$i" -lt "$attempts" ]; then
+              echo "::warning title=dashboard-build retry::attempt $i failed (exit $ec); retrying once in a fresh process (intermittent next/font/google font-fetch flake)"
+            fi
+          done
+          exit "$ec"
         working-directory: dashboard
         env:
           NODE_ENV: production
@@ -467,12 +505,38 @@ jobs:
             exit 1
           fi
 
+      # INC-15 (2026-08-16): Secret-Value.csv sat undetected at the repo tip for 48
+      # days because no check ever looked at the filename — the content scan below
+      # only covers *.py/*.ts/*.tsx/*.js, and a credential export named after its
+      # own shape (a 1Password/Perplexity-style CSV dump) has no code-file content
+      # to match. scripts/hooks/check-secrets.sh (c8b1f02) added the same filename
+      # patterns to the local pre-commit hook, but that hook is opt-in and can be
+      # bypassed (--no-verify, not installed, pushed from an unhooked machine) —
+      # this step is the non-bypassable backstop. Keep these patterns in sync with
+      # FILENAME_PATTERNS in scripts/hooks/check-secrets.sh.
+      - name: Check for secret-shaped filenames
+        run: |
+          set -euo pipefail
+          HITS=$(git ls-files | grep -E '[Ss]ecret.*\.csv$|[Cc]redential.*\.csv$|\.pem$|\.p12$|\.pfx$' || true)
+          if [[ -n "${HITS}" ]]; then
+            echo "${HITS}"
+            echo "ERROR: Secret-shaped filename(s) found in the repo tree. Even if the content"
+            echo "looks harmless, files named like a credential export should never be committed."
+            exit 1
+          fi
+          echo "No secret-shaped filenames found."
+
       - name: Check for hardcoded secrets
         run: |
           set -euo pipefail
           # Raw key material only — avoids false positives on settings.ANTHROPIC_API_KEY, risk_*, etc.
+          # File types include data/export formats (csv, json, yaml, md, txt) in addition to code —
+          # INC-15's leaked CSV had no code-file content to match, only *.py/*.ts/*.tsx/*.js were
+          # ever scanned here, so a credential value pasted into a non-code file was invisible to CI.
           HITS=$(grep -rE "sk-ant-api[0-9]{2}-[A-Za-z0-9_-]{20,}|sk_live_[0-9a-zA-Z]{20,}|xox[baprs]-[0-9a-z-]{10,}|AKIA[0-9A-Z]{16}" \
             --include="*.py" --include="*.ts" --include="*.tsx" --include="*.js" \
+            --include="*.csv" --include="*.json" --include="*.yaml" --include="*.yml" \
+            --include="*.md" --include="*.txt" \
             --exclude-dir=node_modules --exclude-dir=.venv --exclude-dir=.next \
             engine/ dashboard/ 2>/dev/null || true)
           if [[ -n "${HITS}" ]]; then

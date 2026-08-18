@@ -82,6 +82,10 @@ class BacktestResult:
     avg_win_loss_ratio: float = 0.0
     sharpe_ratio: float = 0.0
     sortino_ratio: float = 0.0
+    # Trades/year actually used to annualize sharpe_ratio & sortino_ratio. Derived from the
+    # backtest window (2026-08-17 fix); falls back to 252 when the window is unknown or
+    # shorter than the guard rail. Recorded so any Sharpe can be audited or rescaled.
+    annualization_trades_per_year: float = 0.0
     max_consecutive_losses: int = 0
     max_consecutive_wins: int = 0
     equity_curve: List[float] = field(default_factory=list)

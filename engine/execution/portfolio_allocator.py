@@ -107,9 +107,15 @@ class PortfolioAllocator:
         if not raw_allocs:
             return {}
 
-        # Create a pivot table of daily P&L per cell
+        # Create a pivot table of daily P&L per cell.
+        # Tolerant parse (2026-08-17): exit_time rows can be ISO with or without
+        # microseconds/offset (e.g. "2026-07-01T00:50:04"), which strict inference
+        # rejected and killed the whole allocator at boot. format="mixed" + coerce
+        # parses each row independently; malformed rows become NaT (dropped below).
         df_trades = pd.DataFrame(trades)
-        df_trades["date"] = pd.to_datetime(df_trades["exit_time"]).dt.date
+        df_trades["date"] = pd.to_datetime(
+            df_trades["exit_time"], format="mixed", errors="coerce", utc=True
+        ).dt.date
 
         # Extract cell key components
         def get_strategy(params_json):

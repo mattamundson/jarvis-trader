@@ -345,15 +345,15 @@ class TestDispatcherCrossCheckLogic:
         """
         paper_configs = {
             "MES": {"symbol": "MES", "interval": "1h", "enabled": True},
-            "MGC": {"symbol": "MGC", "interval": "1h", "enabled": True},
+            "MGC": {"symbol": "MGC", "interval": "1h", "enabled": False},  # disabled 2026-08-16 fresh FAIL
             "MNQ": {"symbol": "MNQ", "interval": "1h", "enabled": True},   # should be blocked
             "MCL": {"symbol": "MCL", "interval": "1h", "enabled": False},  # disabled
         }
-        do_not_trade = frozenset({"MCL", "MNQ", "M2K"})
+        do_not_trade = frozenset({"MGC", "MCL", "MNQ", "M2K"})
 
         accepted, rejected = self._run_dispatcher_filter(paper_configs, do_not_trade)
 
-        assert set(accepted) == {"MES", "MGC"}, f"Unexpected accepted: {accepted}"
+        assert set(accepted) == {"MES"}, f"Unexpected accepted: {accepted}"
         assert set(rejected) == {"MNQ"}, f"Unexpected rejected: {rejected}"
 
     def test_dispatcher_empty_configs_returns_empty(self):
@@ -370,7 +370,7 @@ class TestDispatcherCrossCheckLogic:
 class TestDoNotTradeSymbolsConstant:
     """
     The DO_NOT_TRADE_SYMBOLS frozenset must contain exactly the expected symbols
-    and must not accidentally include symbols with validated edges (MES, MGC).
+    and must not accidentally include a symbol with a currently-valid edge (MES).
     """
 
     def test_donottrade_symbols_is_frozenset(self):
@@ -379,20 +379,33 @@ class TestDoNotTradeSymbolsConstant:
         assert isinstance(DO_NOT_TRADE_SYMBOLS, frozenset)
 
     def test_donottrade_symbols_contains_expected_blocked(self):
-        """MCL, MNQ, M2K are all in DO_NOT_TRADE_SYMBOLS per 2026-05-06 exhaustion."""
+        """MCL, MNQ, M2K are all in DO_NOT_TRADE_SYMBOLS. MGC re-added
+        2026-08-16 (fresh rank4 gate-v2 FAIL — the 08-04 PASS degraded on the
+        refreshed cache window; see paper_config.py / signals.py)."""
         from backtest.signals import DO_NOT_TRADE_SYMBOLS
         assert "MCL" in DO_NOT_TRADE_SYMBOLS
         assert "MNQ" in DO_NOT_TRADE_SYMBOLS
         assert "M2K" in DO_NOT_TRADE_SYMBOLS
+        assert "MGC" in DO_NOT_TRADE_SYMBOLS
 
-    def test_donottrade_symbols_does_not_block_active_instruments(self):
-        """MES and MGC (both gate v2 PASS) must NOT be in DO_NOT_TRADE_SYMBOLS."""
+    def test_donottrade_symbols_does_not_block_mes(self):
+        """MES (gate v2 PASS, still active) must NOT be in DO_NOT_TRADE_SYMBOLS."""
         from backtest.signals import DO_NOT_TRADE_SYMBOLS
         assert "MES" not in DO_NOT_TRADE_SYMBOLS, (
             "MES is in DO_NOT_TRADE_SYMBOLS but has a gate v2 PASS verdict — remove it."
         )
-        assert "MGC" not in DO_NOT_TRADE_SYMBOLS, (
-            "MGC is in DO_NOT_TRADE_SYMBOLS but has a gate v2 PASS verdict — remove it."
+
+    def test_donottrade_symbols_includes_mgc(self):
+        """MGC's 2026-08-04 blocklist removal (fresh rank4 PASS, PR #597/#598)
+        is REVERSED 2026-08-16: a fresh re-evaluation FAILs gate v2 (pf_ci_lower
+        1.0681 < 1.1, mc_95th_dd 4.42% > ALT ceiling, on the completeness-
+        preferred refreshed cache). The blocklist removal contract (\"fresh PASS
+        + explicit auth\") is no longer satisfied, so MGC is blocked again until
+        a fresh honest gate-v2 CORE PASS."""
+        from backtest.signals import DO_NOT_TRADE_SYMBOLS
+        assert "MGC" in DO_NOT_TRADE_SYMBOLS, (
+            "MGC re-added to DO_NOT_TRADE_SYMBOLS on fresh gate-v2 FAIL "
+            "(2026-08-16) — it must stay blocked until a fresh honest PASS."
         )
 
 
@@ -435,13 +448,18 @@ class TestCapitalAllocatorUsesSingleAuthority:
             "must import the authority from backtest.signals, not keep a private list."
         )
 
-    def test_rebalance_blocks_m2k_and_allows_mgc(self):
-        """Pins the two symbols the old private list got wrong: M2K and MGC."""
+    def test_rebalance_blocks_m2k_and_mgc(self):
+        """M2K is blocked by the shared authority. MGC was RE-ADDED 2026-08-16
+        (fresh rank4 gate-v2 FAIL superseded the 08-04 PASS — see
+        signals.py DO_NOT_TRADE contract) so it must be zeroed by rebalance()
+        again, exactly like M2K — the allocator reads DO_NOT_TRADE_SYMBOLS
+        directly, so it picked up the change with zero code edits here, which
+        is exactly the single-authority guarantee this class exists to pin."""
         from orchestrator.capital_allocator import CapitalAllocator
 
         perf = {
             "M2K": {"sharpe": 2.0, "current_allocation": 0.25},  # blocked authority
-            "MGC": {"sharpe": 2.0, "current_allocation": 0.25},  # tradeable (gate-v2 PASS)
+            "MGC": {"sharpe": 2.0, "current_allocation": 0.25},  # re-added 2026-08-16
             "MES": {"sharpe": 2.0, "current_allocation": 0.25},  # tradeable
         }
         allocator = CapitalAllocator(
@@ -452,6 +470,10 @@ class TestCapitalAllocatorUsesSingleAuthority:
         assert new_alloc.get("M2K", 1.0) == 0.0, (
             "M2K is in DO_NOT_TRADE_SYMBOLS and must be zeroed by rebalance()."
         )
-        assert new_alloc.get("MGC", 0.0) > 0.0, (
-            "MGC is tradeable (gate-v2 PASS) and must receive a non-zero allocation."
+        assert new_alloc.get("MGC", 0.0) == 0.0, (
+            "MGC is back in DO_NOT_TRADE_SYMBOLS (2026-08-16 fresh FAIL, "
+            "PR pending) and must be zeroed by rebalance()."
+        )
+        assert new_alloc.get("MES", 0.0) > 0.0, (
+            "MES is tradeable and must receive a non-zero allocation."
         )

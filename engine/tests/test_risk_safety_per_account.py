@@ -1,5 +1,5 @@
 """
-Tests for risk/safety_layer.py — per-account kill state with ENABLE_PARALLEL_PAPER=1.
+Tests for risk/safety_layer.py ΓÇö per-account kill state with ENABLE_PARALLEL_PAPER=1.
 
 These tests set the env var and use a real SQLite in-memory file to exercise
 get_per_account_kill_state, trigger_per_account_kill, clear_per_account_kill,
@@ -67,11 +67,51 @@ class TestGetPerAccountKillStateWithDb:
         assert state["account_id"] == "A"
         assert state["active"] is False
 
+    def test_no_row_is_intentional_fail_open_not_missed_hardening(
+        self, sl_parallel, parallel_paper_db
+    ):
+        """PRB-09: 'row is None' stays fail-open by design; document why.
+
+        This is a *different* class of missing-state than the two GT-49
+        siblings (no db_path configured / DB read raised an exception),
+        both of which were hardened to fail CLOSED because they represent
+        a genuinely unknown/unverifiable state. 'row is None' is not that:
+
+          - migration_028 creates per_account_kill_state empty and never
+            seeds an active=0 row for any account_id, so a brand-new,
+            never-triggered account legitimately has no row.
+          - Neither trigger_per_account_kill() nor clear_per_account_kill()
+            ever DELETEs a row (both are INSERT ... ON CONFLICT DO UPDATE),
+            so a row that once existed cannot vanish through normal
+            application code.
+          - A fully wiped/dropped TABLE raises a sqlite3.OperationalError
+            from the SELECT, which is caught by the except block and
+            already fails CLOSED there ΓÇö that failure mode is the sibling
+            branch's job, not this one's.
+
+        This test proves the table is genuinely empty (no row for A at
+        all, not merely active=0) and that get_per_account_kill_state
+        still ΓÇö intentionally ΓÇö reports active=False, matching the
+        justification comment in risk/safety_layer.py.
+        """
+        conn = sqlite3.connect(parallel_paper_db)
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM per_account_kill_state WHERE account_id='A'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row[0] == 0, "test setup must start with a genuinely absent row, not active=0"
+
+        state = sl_parallel.get_per_account_kill_state("A")
+        assert state["active"] is False
+        assert sl_parallel.is_account_halted("A") is False
+
     def test_db_path_none_returns_active_fail_closed(self, mock_settings):
         """GT-49 follow-up: no db_path is an unknown state, fails CLOSED."""
         os.environ["ENABLE_PARALLEL_PAPER"] = "1"
         try:
-            sl = SafetyLayer(mock_settings)  # no db_path → _db_path=None
+            sl = SafetyLayer(mock_settings)  # no db_path ΓåÆ _db_path=None
             sl._db_path = None
             state = sl.get_per_account_kill_state("A")
             assert state["active"] is True
@@ -163,7 +203,7 @@ class TestGetPerAccountKillStateException:
     def test_corrupt_db_path_returns_active_fail_closed(self, mock_settings):
         """When DB connect fails (bad path chars on Windows), FAILS CLOSED (GT-49).
 
-        A DB read failure is an unknown state, not a safe one — the account
+        A DB read failure is an unknown state, not a safe one ΓÇö the account
         must be reported as halted (active=True) until a real read succeeds,
         matching the fail-closed contract enforced in the except block of
         get_per_account_kill_state.
@@ -188,7 +228,7 @@ class TestGetPerAccountKillStateException:
         (see risk/safety_layer.py::is_account_halted, docstring: "Return True if
         this account should NOT emit orders"). Before the fix, a DB exception
         here would have returned active=False, meaning is_account_halted("A")
-        also returned False — i.e. an unreadable kill-state DB would have let
+        also returned False ΓÇö i.e. an unreadable kill-state DB would have let
         this account keep trading. After the fix it must return True.
         """
         os.environ["ENABLE_PARALLEL_PAPER"] = "1"
@@ -224,14 +264,14 @@ class TestDormantEarlyReturnUnaffectedByFailClosedFix:
     (get_per_account_kill_state line ~699) must NOT be touched or weakened by
     the except-block fail-closed fix. Live .env has ENABLE_PARALLEL_PAPER=0
     today, so this early-return path is the one actually exercised in
-    production — it must keep mirroring the global kill switch exactly as
+    production ΓÇö it must keep mirroring the global kill switch exactly as
     before, even when the underlying DB is completely unreachable.
     """
 
     def test_disabled_flag_mirrors_global_kill_switch_even_if_db_would_raise(
         self, mock_settings
     ):
-        """ENABLE_PARALLEL_PAPER unset → returns synthetic global-mirror record
+        """ENABLE_PARALLEL_PAPER unset ΓåÆ returns synthetic global-mirror record
         without ever touching the DB, regardless of whether the DB read would
         succeed or raise. This proves the dormant branch short-circuits before
         reaching the except block changed by GT-49.
@@ -245,14 +285,14 @@ class TestDormantEarlyReturnUnaffectedByFailClosedFix:
             assert state["active"] == sl._kill_switch_active
             assert state["active"] is True
             assert state["reason"] == sl._kill_switch_reason.value
-            # Fail-closed diagnostic reason text must NOT appear — proves the
+            # Fail-closed diagnostic reason text must NOT appear ΓÇö proves the
             # except block (the code path this fix touched) was never reached.
             assert "kill-state read failed" not in (state["reason"] or "")
         finally:
             os.environ.pop("ENABLE_PARALLEL_PAPER", None)
 
     def test_explicit_zero_flag_mirrors_global_kill_switch_inactive(self, mock_settings):
-        """ENABLE_PARALLEL_PAPER=0 (today's live .env value) → inactive mirror,
+        """ENABLE_PARALLEL_PAPER=0 (today's live .env value) ΓåÆ inactive mirror,
         unaffected by the fail-closed except-block fix.
         """
         os.environ["ENABLE_PARALLEL_PAPER"] = "0"
