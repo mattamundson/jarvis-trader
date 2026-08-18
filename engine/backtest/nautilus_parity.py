@@ -262,7 +262,14 @@ def run_nautilus(
     engine.add_instrument(instrument)
 
     wrangler = BarDataWrangler(bar_type=bar_type, instrument=instrument)
-    bars = wrangler.process(df[["open", "high", "low", "close", "volume"]])
+
+    # pandas >= 3.0 (copy-on-write) hands the wrangler read-only numpy buffers,
+    # which nautilus_trader's cython BarDataWrangler.process rejects with
+    # "buffer source array is read-only". Force writable contiguous copies.
+    bars_df = df[["open", "high", "low", "close", "volume"]].copy()
+    for col in bars_df.columns:
+        bars_df[col] = np.ascontiguousarray(bars_df[col].to_numpy(dtype="float64"))
+    bars = wrangler.process(bars_df)
     engine.add_data(bars)
 
     strategy = _SmaCross(StrategyConfig())
