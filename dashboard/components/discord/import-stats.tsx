@@ -2,6 +2,7 @@
 
 import useSWR from "swr";
 import { fetchEngine } from "@/lib/api";
+import { winRatePercent } from "@/lib/discordWinRate";
 
 const REFRESH_MS = 30_000;
 
@@ -127,7 +128,7 @@ export function ImportStats() {
                   {row.shorts}
                 </span>
                 <span className="text-right tabular-nums text-muted-foreground">
-                  {row.avg_win_rate != null ? `${(row.avg_win_rate * 100).toFixed(1)}%` : "—"}
+                  {row.avg_win_rate != null ? `${winRatePercent(row.avg_win_rate).toFixed(1)}%` : "—"}
                 </span>
               </div>
             ))}

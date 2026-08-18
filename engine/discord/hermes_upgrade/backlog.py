@@ -600,10 +600,52 @@ def merge_with_existing(
     return merged
 
 
+def is_classifier_error(entry: BacklogEntry) -> bool:
+    """True iff this entry represents a failed classification attempt.
+
+    classify_one() degrades errors (network, credit-exhaustion, malformed
+    reply) to title="<classifier error>" rather than raising (see
+    classifier.py). Those are NOT a real classification result and must
+    stay eligible for retry on the next incremental scan, unlike a genuine
+    upgrade_type="none" verdict which the classifier reached successfully.
+    """
+    return entry.title == "<classifier error>"
+
+
+def load_prior_entries(jsonl_path: Path) -> dict[str, BacklogEntry]:
+    """Load the previous run's BacklogEntry objects, keyed by bookmark_id.
+
+    Powers incremental scanning: a bookmark_id with a real (non-error) prior
+    classification doesn't need to hit the LLM again next run. Malformed
+    rows are skipped rather than raising, matching merge_with_existing's
+    defensive-read style.
+    """
+    if not jsonl_path.exists():
+        return {}
+    prior: dict[str, BacklogEntry] = {}
+    try:
+        with jsonl_path.open("r", encoding="utf-8") as f:
+            for raw in f:
+                raw = raw.strip()
+                if not raw:
+                    continue
+                try:
+                    entry = BacklogEntry.model_validate(json.loads(raw))
+                except (json.JSONDecodeError, ValueError):
+                    continue
+                prior[entry.bookmark_id] = entry
+    except OSError as exc:  # pragma: no cover - defensive
+        logger.warning("load_prior_entries: failed to read %s: %s", jsonl_path, exc)
+        return {}
+    return prior
+
+
 __all__ = [
     "assign_tier",
     "default_backlog_dir",
     "hydrate_entry",
+    "is_classifier_error",
+    "load_prior_entries",
     "merge_with_existing",
     "render_markdown",
     "write_backlog",

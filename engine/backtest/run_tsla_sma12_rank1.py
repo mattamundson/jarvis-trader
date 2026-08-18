@@ -1,0 +1,138 @@
+"""
+run_tsla_sma12_rank1 -- backtest + gate-v2 validation of the `sma12_monthly_momentum`
+strategy on TSLA, adapted from run_spy_sma12_rank1.py (SPY Tier-A survivor, 2026-07-02
+X-bookmark edge scan).
+
+Long TSLA while monthly close > 12-month SMA; flat to cash below. Monthly rebalance.
+Feeds the per-month in-market PnL series through the repo's real gate-v2 battery
+(validate_strategy.validate + _evaluate_gate_v2) -- the same acceptance logic used
+for the intraday futures strategies and for the SPY equity-swing template, but on
+monthly observations.
+
+Why this strategy/timeframe and not the live 1h scanner cadence: the live options
+scanner (main.py -> SignalScanner._scan_symbol -> pipeline.analyze_and_decide) calls
+the pipeline with timeframe="1h" for TSLA (is_futures=False does NOT mean daily bars --
+confirmed 2026-08-15 by reading signal_scanner.py:454-458 and market_data.py's
+get_bars() waterfall, which serves 1h bars for equities exactly like futures). This
+script does NOT attempt to backtest that live hourly LLM-pipeline decision process --
+doing so would require a wholly new backtest harness capable of replaying the 5-stage
+debate pipeline bar-by-bar, which is out of scope for a validation-gap-filling task and
+would itself be a novel, un-reviewed methodology. Instead this mirrors the SPY
+precedent exactly: a simple, parameter-light, long-only monthly trend overlay run
+through the SAME gate-v2 statistical battery already accepted for SPY. See the PR
+description / summary doc for the resulting caveat: a PASS here validates a monthly
+regime filter, not the mechanism actually generating TSLA's live paper fills. TSLA in
+particular is a much higher-volatility single name than SPY/QQQ -- see the buy&hold vs
+strategy drawdown comparison in the output for how that shows up in the metrics.
+
+This is a DRAFT/research runner: it validates a candidate long-horizon edge, it does
+NOT authorize paper routing. Run:
+    python backtest/run_tsla_sma12_rank1.py
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+
+import numpy as np
+import pandas as pd
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_ENGINE = os.path.dirname(_HERE)
+sys.path.insert(0, os.path.join(_ENGINE, "scripts"))
+sys.path.insert(0, _HERE)
+
+import validate_strategy as vs  # noqa: E402
+from generate_sma12_momentum_signals import generate_sma12_momentum_signals  # noqa: E402
+from research_verdict import write_research_verdict  # noqa: E402
+
+# TSLA daily, fetched via `python -m backtest.free_daily_export --symbols TSLA` (yfinance,
+# free/no-key). Relative to the engine root (unlike the SPY templates' hardcoded
+# absolute main-checkout path) so this script runs unmodified from any checkout or
+# worktree -- re-run the exporter if this file is missing or stale.
+_DEFAULT_DATA = os.path.join(_ENGINE, "backtest", "cache", "TSLA_2010-06-29_2026-08-14_1d.csv")
+_CAPITAL = 10_000.0
+# Documented parameterization surface for honest DSR deflation (matches the SPY
+# template's disclosed grid even though only sma_len=12/SMA is actually run here):
+# sma_len in {6,9,10,12,15,18} x {SMA,EMA} filter = 12 combinations considered.
+_N_GRID_TRIALS = 12
+
+
+def _metrics(monthly_strat_ret: pd.Series) -> dict:
+    eq = (1 + monthly_strat_ret.fillna(0)).cumprod()
+    yrs = len(monthly_strat_ret) / 12.0
+    cagr = eq.iloc[-1] ** (1 / yrs) - 1 if yrs > 0 and eq.iloc[-1] > 0 else float("nan")
+    mu, sd = monthly_strat_ret.mean(), monthly_strat_ret.std()
+    sharpe = (mu / sd) * np.sqrt(12) if sd and sd > 0 else float("nan")
+    dd = (eq / eq.cummax() - 1).min()
+    return {"cagr": round(float(cagr), 4), "sharpe_ann": round(float(sharpe), 3),
+            "max_dd": round(float(dd), 4), "final_mult": round(float(eq.iloc[-1]), 2)}
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--data", default=_DEFAULT_DATA)
+    ap.add_argument("--out", default=os.path.join(_ENGINE, "data", "research_reports", "TSLA_sma12momentum_rank1.json"))
+    args = ap.parse_args()
+
+    daily = pd.read_csv(args.data, parse_dates=["timestamp"]).set_index("timestamp").sort_index()
+    monthly = daily.resample("ME").agg({"open": "first", "high": "max", "low": "min", "close": "last"}).dropna()
+
+    sig = generate_sma12_momentum_signals(monthly, sma_len=12)
+    pos = sig["position"].shift(1).fillna(0.0)          # hold next month on this month's signal (no look-ahead)
+    mret = monthly["close"].pct_change()
+    strat_ret = (pos * mret).dropna()
+
+    # buy & hold benchmark
+    bh = _metrics(mret.dropna())
+    strat = _metrics(strat_ret)
+
+    # gate-v2 trade list: dollar PnL of each IN-MARKET month (flat months are non-trades)
+    in_mkt = strat_ret[pos.reindex(strat_ret.index).fillna(0) > 0]
+    pnls = (_CAPITAL * in_mkt).tolist()
+    n_flips = int(((pos.diff().abs() > 0)).sum())
+
+    report = vs.validate(pnls, n_grid_trials=_N_GRID_TRIALS, initial_capital=_CAPITAL)
+    verdict = vs._evaluate_gate_v2(report)
+
+    out = {
+        "strategy": "sma12_monthly_momentum", "symbol": "TSLA", "rank": 1,
+        "source": "adapted from SPY sma12_monthly_momentum template (2026-08-15, GT-52 validation-gap fill)",
+        "period": [str(monthly.index[0].date()), str(monthly.index[-1].date())],
+        "n_months": int(len(strat_ret)), "n_in_market_trades": len(pnls), "n_regime_flips": n_flips,
+        "n_grid_trials": _N_GRID_TRIALS,
+        "strategy_metrics": strat, "buy_hold_metrics": bh,
+        "gate_v2": {"verdict": verdict.get("verdict"), "passed_via": verdict.get("passed_via"),
+                     "core_verdict": verdict.get("core_verdict"), "alt_verdict": verdict.get("alt_verdict"),
+                     "reasons": verdict.get("reasons")},
+        "report_keys": sorted(report.keys()),
+        "note": "Monthly regime filter (not intraday) -- does NOT validate the live 1h options-scanner "
+                "pipeline that actually generates TSLA's paper fills. Validated on monthly in-market PnL. "
+                "Draft/research only -- does NOT authorize paper routing.",
+    }
+    os.makedirs(os.path.dirname(args.out), exist_ok=True)
+    with open(args.out, "w", encoding="utf-8") as fh:
+        json.dump(out, fh, indent=2)
+
+    rv_path = write_research_verdict(
+        strategy="sma12_monthly_momentum", symbol="TSLA", family="research_equity_trend", rank=1,
+        report=report, verdict=verdict, strategy_class="equity_swing",
+        provenance={"source": "adapted from SPY sma12_monthly_momentum template",
+                    "adapted_by": "GT-52 equities validation-gap fill", "adapted_date": "2026-08-15"},
+        class_note=("Validation-gap fill for TSLA (no wfe_snapshots row, no results/ artifact, no "
+                     "run_tsla_*.py prior to this PR -- engine/CLAUDE.md 'Active Instruments > Equities'). "
+                     "Data-only: does not authorize or change routing."),
+    )
+
+    print(json.dumps({k: out[k] for k in ("strategy", "period", "n_in_market_trades", "n_regime_flips",
+                                          "strategy_metrics", "buy_hold_metrics", "gate_v2")}, indent=2))
+    print("written:", args.out)
+    print("research verdict:", rv_path)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

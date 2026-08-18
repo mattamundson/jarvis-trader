@@ -223,7 +223,7 @@ function Header() {
   return (
     <div className="flex items-center gap-4">
       <Link href="/master" className="text-sm text-zinc-400 transition-colors hover:text-zinc-200">
-        ← Mission Control
+        ← Master Jarvis
       </Link>
       <h1 className="text-2xl font-bold text-zinc-100">Trading</h1>
     </div>

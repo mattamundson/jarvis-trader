@@ -430,7 +430,7 @@ def get_regime():
 @app.get("/api/ibkr/status")
 def ibkr_status():
     base = {
-        "account": "DUP662235",
+        "account": os.environ.get("IB_ACCOUNT_ID", ""),
         "port": 4002,
         "mode": "PAPER",
         "last_dry_run": None,
@@ -611,7 +611,7 @@ def get_alerts():
                 log = json.load(f)
             ts = (log.get("timestamp") or "")[:16].replace("T"," ")
             alerts.append({"time": ts, "type": "ok",
-                "msg": "IBKR dry-run PASSED — DUP662235 paper account"})
+                "msg": f"IBKR dry-run PASSED — {os.environ.get('IB_ACCOUNT_ID', '')} paper account"})
         except Exception:
             pass
 

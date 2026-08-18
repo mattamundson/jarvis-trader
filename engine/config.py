@@ -23,12 +23,22 @@ def _validate_required_env_vars():
     """
     # Load .env into os.environ so the checks below see file-based values
     # Use override=True to ensure .env values take precedence over system env vars (e.g., ANTHROPIC_API_KEY=test from system)
-    try:
-        from dotenv import load_dotenv as _load_dotenv
+    #
+    # Skip entirely under pytest (TESTING=1, set by tests/conftest.py before
+    # config is ever imported): loading the LIVE .env here would clobber
+    # conftest's safe test stubs and, for provider keys conftest doesn't
+    # stub (MOONSHOT_API_KEY, JARVIS_DECISION_PRIMARY, GOOGLE_API_KEY, ...),
+    # inject real credentials into a test process — llm/client.py reads
+    # those straight from os.environ, so a leaked key means a test can make
+    # a real, billed network call to an LLM provider instead of the
+    # deterministic mocked/unconfigured path it's asserting on.
+    if os.environ.get("TESTING") != "1":
+        try:
+            from dotenv import load_dotenv as _load_dotenv
 
-        _load_dotenv(dotenv_path=".env", override=True)
-    except ImportError:
-        pass  # python-dotenv not installed — fall back to os.environ only
+            _load_dotenv(dotenv_path=".env", override=True)
+        except ImportError:
+            pass  # python-dotenv not installed — fall back to os.environ only
 
     required_vars = {
         # API Security — must be set to something other than the default stub
@@ -371,6 +381,19 @@ class TradingConfig(BaseSettings):
         description="When True, paper trading mode allows simulated orders via check_order route",
     )
 
+    ALLOW_MOCK_QUOTES: bool = Field(
+        False,
+        description=(
+            "TEST FIXTURES ONLY. When True, IBGatewayConnector.get_quote may fall "
+            "back to a frozen static quote table (MES 5300.10, MCL 82.60, ...) if "
+            "no real price is available. MUST stay False in every real paper or "
+            "live context: until 2026-07-21 this fallback was unconditional, so "
+            "every fill booked at a 2024-era constant whenever the market-data "
+            "waterfall returned None, manufacturing a 3,475-fill phantom track "
+            "record. Production must refuse to fill without a real price basis."
+        ),
+    )
+
     # ── HB-1 broker-side bracket orders ────────────────────────────────────
     # When True, approved trades that carry stop_price (and optionally target_price)
     # are submitted via SafetyLayer.submit_entry_with_stop so broker-side STP + TP
@@ -431,6 +454,19 @@ class TradingConfig(BaseSettings):
             "FastAPI lifespan fast when IB Gateway is stopped (dev restarts, "
             "tests). Bump to 10-15s if launching Gateway races engine startup."
         ),
+    )
+    IB_PAPER_BROKER_ENABLED: bool = Field(
+        False,  # P0-2 default OFF — flip only after the broker-observed proof passes
+        description=(
+            "Attach the real IBGatewayManager (port 4002 paper) to the order path "
+            "instead of the in-process IBGatewayConnector simulator. When False, "
+            "orders are simulated and never reach a broker. See "
+            "docs/ROADMAP_P0-2_SCOPE_2026-07-21.md. [safety-review]"
+        ),
+    )
+    IB_ACCOUNT_ID: str = Field(
+        "",
+        description="IB paper account id (e.g. DUxxxxxxx) tagged on real order routing when IB_PAPER_BROKER_ENABLED.",
     )
 
     # ── Broker: Charles Schwab ────────────────────────────────────────────
@@ -607,8 +643,13 @@ class TradingConfig(BaseSettings):
         "All three are active in the FuturesMarketModule.",
     )
     # Options module: dry-run in paper before enabling live routing; see docs/backlog/EPICS_12_17_FOLLOWONS.md
+    # 2026-08-17: AAPL/TSLA REMOVED — daily SMA-trend gate-v2 WFO certification
+    # FAILED both (AAPL sample-starvation 1-3 OOS trades; TSLA p_edge 0.50-0.56).
+    # SPY/QQQ PASSED (p_edge 0.68-0.73, 15-30 OOS trades). Verdicts in
+    # data/gate_v2_verdicts/<SYM>_sma_cert_*.json. SCAN_SYMBOLS unchanged
+    # (display-only scanner never routes).
     OPTIONS_WATCHLIST: Union[str, list[str]] = Field(
-        default=["SPY", "QQQ", "AAPL", "TSLA"], description="Underlying symbols for options trading"
+        default=["SPY", "QQQ"], description="Underlying symbols for options trading"
     )
     # HiddenPivots scan universe — futures + ETFs + liquid individual names.
     # Display/analysis only (the HP scanner never routes orders), so the roster

@@ -16,7 +16,7 @@ Goal: raise pipeline.py coverage 58% → ≥65% with non-brittle behavioral test
 
 import os
 import sys
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -154,6 +154,136 @@ class TestTechnicalOnlyFallback:
         reports = {"technical": {"indicators": {}}}  # no stc
         result = pipeline._check_technical_only_fallback("MES", reports, errors)
         assert result is None
+
+    # ── PRB-12 regression: directional STC must NEVER produce a real order ──
+    # Audit finding: on this exact Anthropic-400 condition, the pipeline took
+    # a REAL qty=1 trade off a bare STC reading (conviction=3/10, no LLM
+    # synthesis), bypassing the analyst/debate stack. Every other LLM-failure
+    # path in this codebase defaults to HOLD/qty=0 — this must too.
+    def test_oversold_stc_with_3_llm_400s_forces_hold_not_buy(self, pipeline):
+        """STC=5.0 (OVERSOLD -> 'buy') must still resolve to HOLD/qty=0, not a live buy."""
+        errors = [
+            "news analyst failed: api.anthropic.com 400 credit_balance_too_low",
+            "social analyst failed: api.anthropic.com 400 credit_balance_too_low",
+            "fundamental analyst failed: api.anthropic.com 400 credit_balance_too_low",
+        ]
+        reports = {"technical": {"indicators": {"stc": 5.0}}}
+        result = pipeline._check_technical_only_fallback("MES", reports, errors)
+
+        assert result is not None
+        # The historical bug: final_action == "buy" and final_quantity == 1
+        assert result["final_action"] == "hold"
+        assert result["final_quantity"] == 0
+        assert result["requires_human"] is False
+        assert result["trade_decision"]["action"] == "hold"
+        assert result["trade_decision"]["quantity"] == 0
+        assert result["risk_decision"]["approved"] is False
+        assert result["fund_decision"] is None
+        # Observability: the would-have-been directional signal is still surfaced.
+        assert result["technical_only_would_have_signaled"] == "buy"
+        assert result["technical_only_signal"] == "OVERSOLD"
+
+    def test_overbought_stc_with_3_llm_400s_forces_hold_not_sell(self, pipeline):
+        """STC=95.0 (OVERBOUGHT -> 'sell') must still resolve to HOLD/qty=0, not a live sell."""
+        errors = [
+            "news analyst failed: api.anthropic.com 400 credit_balance_too_low",
+            "social analyst failed: api.anthropic.com 400 credit_balance_too_low",
+            "fundamental analyst failed: api.anthropic.com 400 credit_balance_too_low",
+        ]
+        reports = {"technical": {"indicators": {"stc": 95.0}}}
+        result = pipeline._check_technical_only_fallback("MES", reports, errors)
+
+        assert result is not None
+        assert result["final_action"] == "hold"
+        assert result["final_quantity"] == 0
+        assert result["requires_human"] is False
+        assert result["trade_decision"]["action"] == "hold"
+        assert result["trade_decision"]["quantity"] == 0
+        assert result["risk_decision"]["approved"] is False
+        assert result["fund_decision"] is None
+        assert result["technical_only_would_have_signaled"] == "sell"
+        assert result["technical_only_signal"] == "OVERBOUGHT"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# _run_trader — PRB-12 regression: TraderAgent's own Anthropic-400 must HOLD
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestRunTraderAnthropic400Failsafe:
+    """
+    Audit finding (PRB-12): when the TraderAgent's own LLM call raised an
+    Anthropic 400 error, _run_trader's exception handler took a REAL qty=1
+    trade off a bare STC reading via the "last-resort STC fallback" — instead
+    of falling through to this function's own documented contract: "Run the
+    Trader agent. Returns HOLD on failure."
+    """
+
+    @pytest.mark.asyncio
+    async def test_trader_anthropic_400_with_directional_stc_forces_hold(self, pipeline):
+        mock_trader = MagicMock()
+        mock_trader.decide = AsyncMock(
+            side_effect=Exception(
+                "Client error '400 Bad Request' for url 'https://api.anthropic.com/v1/messages' "
+                "credit_balance_too_low"
+            )
+        )
+        pipeline._agents["trader"] = mock_trader
+
+        analyst_reports = {"technical": {"indicators": {"stc": 5.0}}}  # OVERSOLD -> would-be "buy"
+        errors: list = []
+
+        decision = await pipeline._run_trader(
+            "MES", debate_result={}, analyst_reports=analyst_reports,
+            safety_status={"kill_switch_active": False}, errors=errors,
+        )
+
+        # The historical bug: action == "buy" and quantity == 1 (a real order).
+        assert decision["action"] == "hold"
+        assert decision["quantity"] == 0
+        # Observability preserved: we still know what the bare indicator suggested.
+        assert decision.get("technical_only_would_have_signaled") == "buy"
+        assert any("Trader stage failed" in e for e in errors)
+
+    @pytest.mark.asyncio
+    async def test_trader_anthropic_400_overbought_forces_hold(self, pipeline):
+        mock_trader = MagicMock()
+        mock_trader.decide = AsyncMock(
+            side_effect=Exception(
+                "anthropic api.anthropic.com 400 Bad Request insufficient credit"
+            )
+        )
+        pipeline._agents["trader"] = mock_trader
+
+        analyst_reports = {"technical": {"indicators": {"stc": 95.0}}}  # OVERBOUGHT -> would-be "sell"
+        errors: list = []
+
+        decision = await pipeline._run_trader(
+            "MES", debate_result={}, analyst_reports=analyst_reports,
+            safety_status={"kill_switch_active": False}, errors=errors,
+        )
+
+        assert decision["action"] == "hold"
+        assert decision["quantity"] == 0
+        assert decision.get("technical_only_would_have_signaled") == "sell"
+
+    @pytest.mark.asyncio
+    async def test_trader_non_anthropic_error_still_holds(self, pipeline):
+        """Sanity: non-anthropic-400 exceptions already defaulted to HOLD — must still."""
+        mock_trader = MagicMock()
+        mock_trader.decide = AsyncMock(side_effect=Exception("connection timed out"))
+        pipeline._agents["trader"] = mock_trader
+
+        analyst_reports = {"technical": {"indicators": {"stc": 5.0}}}
+        errors: list = []
+
+        decision = await pipeline._run_trader(
+            "MES", debate_result={}, analyst_reports=analyst_reports,
+            safety_status={"kill_switch_active": False}, errors=errors,
+        )
+
+        assert decision["action"] == "hold"
+        assert decision["quantity"] == 0
 
 
 # ─────────────────────────────────────────────────────────────────────────────
