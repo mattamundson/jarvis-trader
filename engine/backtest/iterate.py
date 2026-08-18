@@ -123,9 +123,14 @@ SLIPPAGE_TICKS = 2.0
 VIX_TIERS = ("Crisis", "HighVol", "MidVol", "LowVol")
 
 
-def load_deep_cache(symbol: str, smoke: bool = False) -> pd.DataFrame:
-    """Load the deep 1h cache; hard-fail if missing. Smoke truncates to tail."""
-    path = Path(CACHE_PATTERNS[symbol])
+def load_deep_cache(symbol: str, smoke: bool = False, cache_override: str | None = None) -> pd.DataFrame:
+    """Load the deep cache; hard-fail if missing. Smoke truncates to tail.
+
+    `cache_override` screens a non-default timeframe (e.g. the 15m/5m continuous
+    caches) without editing CACHE_PATTERNS. The default remains the certified 1h
+    deep cache, so an override is always an explicit, visible choice.
+    """
+    path = Path(cache_override) if cache_override else Path(CACHE_PATTERNS[symbol])
     if not path.exists():
         raise FileNotFoundError(
             f"Deep cache not found: {path}. Fetch deep data first "
@@ -146,7 +151,11 @@ def load_deep_cache(symbol: str, smoke: bool = False) -> pd.DataFrame:
         raise ValueError(f"Missing columns in {path.name}: {missing}")
     if smoke:
         df = df.tail(2_000)  # ~3 months of 1h bars: fast wiring proof only
-    print(f"[{symbol}] {len(df)} bars | {df.index.min()} -> {df.index.max()}")
+    span_years = max((df.index.max() - df.index.min()).days / 365.25, 1e-9)
+    print(
+        f"[{symbol}] {len(df)} bars | {df.index.min()} -> {df.index.max()} "
+        f"| {span_years:.2f}y | {len(df) / span_years:,.0f} bars/yr | cache={path.name}"
+    )
     return df
 
 
@@ -337,6 +346,9 @@ def main() -> int:
     ap.add_argument("--mrb-bb-std", type=float, default=2.0, help="MRB Bollinger width in std")
     ap.add_argument("--mrb-max-hold", type=int, default=6, help="MRB max holding bars (time-stop)")
     ap.add_argument("--smoke", action="store_true", help="one combo, tail 2000 bars")
+    ap.add_argument("--cache", type=str, default=None,
+                    help="override the cache path (e.g. a 15m/5m continuous file). "
+                         "Default is the certified 1h deep cache for --symbol.")
     ap.add_argument("--grid-json", type=str, default=None, help="custom grid JSON")
     ap.add_argument("--vix-csv", type=str, default=None, help="VIX daily CSV path")
     ap.add_argument("--vix-min", type=float, default=0.0, help="VIX lower bound (inclusive)")
@@ -350,7 +362,7 @@ def main() -> int:
     ap.add_argument("--out", type=str, default=None, help="results JSON path")
     args = ap.parse_args()
 
-    df = load_deep_cache(args.symbol, smoke=args.smoke)
+    df = load_deep_cache(args.symbol, smoke=args.smoke, cache_override=args.cache)
 
     grid = DEFAULT_GRID[args.symbol]
     if args.grid_json:
@@ -393,8 +405,10 @@ def main() -> int:
         "symbol": args.symbol,
         "strategy": args.strategy,
         "smoke": args.smoke,
-        "cache": CACHE_PATTERNS[args.symbol],
+        "cache": args.cache or CACHE_PATTERNS[args.symbol],
+        "cache_is_override": bool(args.cache),
         "n_bars": len(df),
+        "span_years": round(max((df.index.max() - df.index.min()).days / 365.25, 1e-9), 4),
         "vix_config": {
             "min": args.vix_min,
             "max": args.vix_max,
