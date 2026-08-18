@@ -275,6 +275,50 @@ shipped the empirical fix. **Trial-count accounting was not part of that fix and
   NOTE: 08-17 skill doc recorded p_edge=0.3984/dd=6.91%/361 trades from an earlier cache
   state; current cache (08-16) yields p_edge=0.9478/dd=3.89%/345 trades — verdict direction
   unchanged (FAIL).
+  ⚠️ E7 CORRECTION (2026-08-18): the "cache scan clean" claim above covered price-sanity
+  only (range/dupes/zeros). A temporal-completeness scan (`backtest/cache_completeness.py`,
+  the engine's own data-trust gate) FAILS this file: `trustworthy=False`, 1,711 suspicious
+  gaps incl. dozens of multi-day full-weekday holes (e.g. 2017-10-11→29 18d, 2022-10-07→24
+  16d, 2015-10-08→22 14d, 2017-12-08→22 14d, 2017-08-11→23 12d). Both Databento pulls
+  (08-04 + 08-16) share the holes → systematic pull defect, not local corruption. The E3
+  run consumed this holed cache (E3 worktree had deleted the only clean 1h candidate,
+  `MGC_2024-03-04_2026-07-24_1h.csv`, so `find_trustworthy_cache` fell back to the holed
+  deep file). p_edge 0.9478 sits 0.002 under the 0.95 bar and has already proven
+  cache-state-dependent (0.3984 vs 0.9478) → FAIL direction is probable but NOT
+  promotion-grade trustworthy until re-run on a complete cache. See E7 section below.
+
+### 2026-08-18 — E7: MGC deep-cache decision + candidate ideas logged
+- **DECISION (a): MGC deep cache REQUIRES a Databento rebuild before ANY future MGC
+  revalidation.** The canonical completeness gate (`python -m backtest.cache_completeness
+  backtest/cache/MGC_2015-01-01_2026-08-16_1h.csv`) reports `trustworthy=False`,
+  `suspicious_gaps=1711` — the 11.6y "deep" cache is holed across 2015-2023 (multi-day
+  full-weekday holes; Oct-heavy pattern suggests pull-window/roll gaps in the Databento
+  fetch, not exchange closures). `find_trustworthy_cache("MGC","_1h.csv")` rejects it and
+  would pick `MGC_2024-03-04_2026-07-24_1h.csv` (2.4y, 0 full-day gaps) whenever it exists.
+- **Why now:** no MGC revalidation is queued (FAIL family, no new hypothesis) → do NOT
+  spend pull/backtest compute today. Rebuild is the PRECONDITION for t_041ebc0b GAP-A
+  ("deep-run MGC_trend_rank4") and for any future MGC hypothesis. Rebuild card created:
+  see E7 kanban follow-up.
+- **Rebuild spec (for the follow-up task):** re-pull MGC 1h via Databento (DATABENTO_API_KEY
+  present in engine/.env; adapter is documented-but-unexercised — verify response shape
+  first), span 2015-01-01 → present, then require `cache_completeness` → 0 full-day gaps
+  BEFORE any MGC gate-v2 run. Delete/quarantine holed 2015 files only after the new pull
+  passes. Do NOT trust row-count/price-range checks alone — E3 and E5 both "validated" the
+  holed cache that way.
+- **CANDIDATE IDEAS (b) — logged for deep validation, EQUAL priority with futures per
+  operating rules** (`docs/plans/2026-07-31-dashboard-autonomy-hardening-plan.md`: options
+  and futures receive equal priority in roadmap and UI):
+  1. **Equity options SPY/QQQ edge scans** — debit vertical spreads on the CERTIFIED
+     SPY/QQQ SMA-trend signals (SPY PASS 10/40/2.0+2.5, QQQ PASS 8/40/2.5; gate-v2 ALT
+     alignment per `run_spy_options_baseline.py` B6: ±5 strikes, 7-30 DTE, hold-to-expiry
+     intrinsic, half-spread + 5bps). Currently scaffold-only.
+  2. **SPY/QQQ variance-risk-premium harvest** — delta-hedged short premium
+     (links `delta_hedged_short_straddle_vrp` card from the 07-02 edge scan; needs the
+     options pipeline + strict tail sizing).
+  3. **SPY/QQQ dealer-gamma regime** — DATA-GATED: needs a GEX feed (flagged in the 07-02
+     scan; do not start until the feed decision lands).
+  Structured cards written to `docs/research/edge-roadmap-candidates-2026-08-18.cards.jsonl`
+  (funnel-schema compatible with `bookmark-edge-scan-2026-07-02.cards.jsonl`).
 
 ---
 
@@ -289,4 +333,6 @@ shipped the empirical fix. **Trial-count accounting was not part of that fix and
 | Full 54-combo MES 1h grid + VIX regimes | Now unblocked (VIX cache exists) |
 | QQQ/AAPL/TSLA deep caches | Missing — `free_daily_export.py` fetch needed |
 | Equity 1h certification (live scanner cadence) | Queued — SPY trades live paper on a REJECTED verdict; QQQ/AAPL/TSLA on none |
-| Options vertical-spread certification | Scaffold only |
+| Options vertical-spread certification | Scaffold only — see `run_spy_options_baseline.py` (B6) |
+| **MGC deep cache rebuild (Databento 1h re-pull)** | **REQUIRED before any future MGC revalidation** — `MGC_2015-01-01_2026-08-16_1h.csv` fails the completeness gate (1,711 suspicious gaps; multi-day holes 2015-2023). See E7 2026-08-18 entry + kanban follow-up card |
+| **Equity options SPY/QQQ edge scans** | **QUEUED — equal priority with futures per operating rules** (2026-07-31 plan). Cards in `docs/research/edge-roadmap-candidates-2026-08-18.cards.jsonl`; deep validation via kanban follow-up card |
