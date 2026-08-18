@@ -14,6 +14,9 @@ Trigger conditions (state-change, not every tick)
 - ``status != "ok"`` (engine degraded).
 - ``ibkr_data_connected`` flips False (was True).
 - ``kill_switch_active`` becomes True.
+- LLM provider failover: ``active_provider != primary_provider``.
+- LLM provider recovery: active provider returns to primary.
+- LLM primary provider config change (``.env`` edit).
 
 Debounce: alerts on state-change only.  Once a DOWN alert fires, no further
 DOWN alerts until the engine comes back up (RECOVERY alert sent on re-entry).
@@ -51,6 +54,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import logging
 import os
 import sys
@@ -66,6 +70,7 @@ import httpx
 # tweak.  Adds ``engine/`` to sys.path so notification imports resolve.
 _HERE = Path(__file__).resolve().parent
 _ENGINE_ROOT = _HERE.parent  # engine/
+_STATE_FILE = _ENGINE_ROOT / "data" / "watchdog_cron_state.json"
 if str(_ENGINE_ROOT) not in sys.path:
     sys.path.insert(0, str(_ENGINE_ROOT))
 # Also add parent of engine/ so "from notifications.xxx import" works
@@ -110,6 +115,10 @@ class WatchdogState:
     last_ibkr_data: Optional[bool] = None
     last_kill_switch: Optional[bool] = None
     alerted_keys: set[str] = field(default_factory=set)  # for deduplification
+    # LLM provider failover tracking
+    last_primary_provider: Optional[str] = None  # configured primary (anthropic|ollama|vertex|gemini)
+    last_active_provider: Optional[str] = None    # last provider that served a successful call
+    _provider_bootstrapped: bool = False           # True after first poll — suppresses boot alert
 
 
 # ── Multi-channel dispatch ────────────────────────────────────────────────────
@@ -260,6 +269,63 @@ def evaluate(
             f"Time: {_ts()}"
         )
     state.last_kill_switch = current_ks
+
+    # ── LLM provider failover detection ────────────────────────────────────────
+    llm_providers = health.get("llm_providers")
+    if llm_providers:
+        current_primary = llm_providers.get("primary_provider")
+        current_active = llm_providers.get("active_provider")
+        providers_configured = llm_providers.get("providers_configured", [])
+
+        # Primary provider config changed (e.g. Vertex → Ollama in .env)
+        if (
+            current_primary is not None
+            and state.last_primary_provider is not None
+            and current_primary != state.last_primary_provider
+        ):
+            alerts.append(
+                f"[JARVIS ALERT] LLM primary provider changed\n"
+                f"Before: {state.last_primary_provider} → Now: {current_primary}\n"
+                f"Active: {current_active or '(none)'}\n"
+                f"Configured: {', '.join(providers_configured)}\n"
+                f"Time: {_ts()}"
+            )
+
+        # Active provider failover (active differs from primary)
+        if (
+            current_active is not None
+            and current_primary is not None
+            and current_active != current_primary
+            and state._provider_bootstrapped
+            and current_active != state.last_active_provider
+        ):
+            alerts.append(
+                f"[JARVIS ALERT] LLM Provider failover\n"
+                f"Primary: {current_primary} → Active: {current_active}\n"
+                f"Configured: {', '.join(providers_configured)}\n"
+                f"Time: {_ts()}"
+            )
+
+        # Provider recovered back to primary
+        if (
+            current_active is not None
+            and current_primary is not None
+            and current_active == current_primary
+            and state._provider_bootstrapped
+            and state.last_active_provider is not None
+            and state.last_active_provider != current_active
+        ):
+            alerts.append(
+                f"[JARVIS ALERT] LLM Provider restored to primary\n"
+                f"Provider: {current_active}\n"
+                f"Configured: {', '.join(providers_configured)}\n"
+                f"Time: {_ts()}"
+            )
+
+        # Track last values
+        state.last_primary_provider = current_primary
+        state.last_active_provider = current_active
+        state._provider_bootstrapped = True
 
     return alerts
 
