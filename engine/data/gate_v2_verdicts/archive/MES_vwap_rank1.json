@@ -1,0 +1,565 @@
+{
+  "symbol": "MES",
+  "family": "vwap",
+  "hypothesis": "rank1",
+  "verdict": "FAIL",
+  "passed_via": null,
+  "core_verdict": "FAIL",
+  "alt_verdict": "FAIL",
+  "n_core_passed": 2,
+  "n_alt_passed": 4,
+  "created_at": "2026-07-27T03:27:17.690532+00:00",
+  "aux_freshness": {
+    "rolling_wfo": "2026-07-27T03:27:17.690532+00:00",
+    "fixed_params": "2026-07-27T03:27:17.690532+00:00",
+    "cost_sweep": "2026-07-27T03:27:17.690532+00:00"
+  },
+  "gate_v2": {
+    "verdict": "FAIL",
+    "passed_via": null,
+    "core_verdict": "FAIL",
+    "alt_verdict": "FAIL",
+    "n_core_passed": 2,
+    "n_core_criteria": 4,
+    "n_alt_passed": 4,
+    "n_alt_criteria": 5,
+    "core_reasons": [
+      "pf_ci_lower=1.7057 >= 1.1",
+      "FAIL p_edge=0.8571 >= 0.95",
+      "mc_95th_dd_pct=2.0316 <= 5.0",
+      "FAIL dsr=0.0000 >= 0.1"
+    ],
+    "alt_reasons": [
+      "FAIL dsr_alt=0.0000 >= 0.3",
+      "wfo_consistency=STRONG",
+      "fixed_params_min_pf=1.3480 >= 1.2",
+      "cost_survives_through=catastrophic >= realistic",
+      "mc_95th_dd_pct_alt=2.0316 <= 4.0"
+    ],
+    "reasons": [
+      "pf_ci_lower=1.7057 >= 1.1",
+      "FAIL p_edge=0.8571 >= 0.95",
+      "mc_95th_dd_pct=2.0316 <= 5.0",
+      "FAIL dsr=0.0000 >= 0.1",
+      "FAIL dsr_alt=0.0000 >= 0.3",
+      "wfo_consistency=STRONG",
+      "fixed_params_min_pf=1.3480 >= 1.2",
+      "cost_survives_through=catastrophic >= realistic",
+      "mc_95th_dd_pct_alt=2.0316 <= 4.0"
+    ],
+    "n_passed": 2,
+    "n_criteria": 4
+  },
+  "wfo_config": {
+    "train_months": 6,
+    "test_months": 3,
+    "step_months": 3,
+    "n_windows": 7,
+    "n_oos_windows": 7,
+    "n_oos_windows_with_trades": 7,
+    "total_oos_trades": 399,
+    "grid_combos": 36,
+    "grid_band_mult": [
+      1.5,
+      2.0,
+      2.5
+    ],
+    "grid_stop_mult": [
+      0.25,
+      0.5,
+      0.75
+    ],
+    "grid_require_reversal_bar": [
+      true,
+      false
+    ],
+    "grid_regime_filter": [
+      true,
+      false
+    ]
+  },
+  "gate_v2_metrics": {
+    "pf_ci_lower": 1.7057,
+    "p_edge": 0.8571,
+    "mc_95th_dd": 0.020316,
+    "mc_95th_dd_pct": 2.0316,
+    "dsr": 0.0,
+    "wfo_consistency": "STRONG",
+    "fixed_params_min_pf": 1.348,
+    "fixed_params_mean_pf": 2.4189,
+    "fixed_params_max_pf": 4.023,
+    "n_combos_with_trades": 36,
+    "combo_results": [
+      {
+        "band_mult": 1.5,
+        "stop_mult": 0.25,
+        "require_reversal_bar": true,
+        "regime_filter": true,
+        "pf": 1.907,
+        "trades": 449
+      },
+      {
+        "band_mult": 1.5,
+        "stop_mult": 0.25,
+        "require_reversal_bar": true,
+        "regime_filter": false,
+        "pf": 1.642,
+        "trades": 517
+      },
+      {
+        "band_mult": 1.5,
+        "stop_mult": 0.25,
+        "require_reversal_bar": false,
+        "regime_filter": true,
+        "pf": 3.207,
+        "trades": 1058
+      },
+      {
+        "band_mult": 1.5,
+        "stop_mult": 0.25,
+        "require_reversal_bar": false,
+        "regime_filter": false,
+        "pf": 2.934,
+        "trades": 1158
+      },
+      {
+        "band_mult": 1.5,
+        "stop_mult": 0.5,
+        "require_reversal_bar": true,
+        "regime_filter": true,
+        "pf": 1.928,
+        "trades": 390
+      },
+      {
+        "band_mult": 1.5,
+        "stop_mult": 0.5,
+        "require_reversal_bar": true,
+        "regime_filter": false,
+        "pf": 1.715,
+        "trades": 440
+      },
+      {
+        "band_mult": 1.5,
+        "stop_mult": 0.5,
+        "require_reversal_bar": false,
+        "regime_filter": true,
+        "pf": 2.943,
+        "trades": 912
+      },
+      {
+        "band_mult": 1.5,
+        "stop_mult": 0.5,
+        "require_reversal_bar": false,
+        "regime_filter": false,
+        "pf": 2.737,
+        "trades": 972
+      },
+      {
+        "band_mult": 1.5,
+        "stop_mult": 0.75,
+        "require_reversal_bar": true,
+        "regime_filter": true,
+        "pf": 1.962,
+        "trades": 352
+      },
+      {
+        "band_mult": 1.5,
+        "stop_mult": 0.75,
+        "require_reversal_bar": true,
+        "regime_filter": false,
+        "pf": 1.724,
+        "trades": 397
+      },
+      {
+        "band_mult": 1.5,
+        "stop_mult": 0.75,
+        "require_reversal_bar": false,
+        "regime_filter": true,
+        "pf": 2.718,
+        "trades": 812
+      },
+      {
+        "band_mult": 1.5,
+        "stop_mult": 0.75,
+        "require_reversal_bar": false,
+        "regime_filter": false,
+        "pf": 2.525,
+        "trades": 868
+      },
+      {
+        "band_mult": 2.0,
+        "stop_mult": 0.25,
+        "require_reversal_bar": true,
+        "regime_filter": true,
+        "pf": 1.687,
+        "trades": 292
+      },
+      {
+        "band_mult": 2.0,
+        "stop_mult": 0.25,
+        "require_reversal_bar": true,
+        "regime_filter": false,
+        "pf": 1.39,
+        "trades": 354
+      },
+      {
+        "band_mult": 2.0,
+        "stop_mult": 0.25,
+        "require_reversal_bar": false,
+        "regime_filter": true,
+        "pf": 3.631,
+        "trades": 666
+      },
+      {
+        "band_mult": 2.0,
+        "stop_mult": 0.25,
+        "require_reversal_bar": false,
+        "regime_filter": false,
+        "pf": 3.286,
+        "trades": 754
+      },
+      {
+        "band_mult": 2.0,
+        "stop_mult": 0.5,
+        "require_reversal_bar": true,
+        "regime_filter": true,
+        "pf": 1.715,
+        "trades": 257
+      },
+      {
+        "band_mult": 2.0,
+        "stop_mult": 0.5,
+        "require_reversal_bar": true,
+        "regime_filter": false,
+        "pf": 1.526,
+        "trades": 303
+      },
+      {
+        "band_mult": 2.0,
+        "stop_mult": 0.5,
+        "require_reversal_bar": false,
+        "regime_filter": true,
+        "pf": 3.106,
+        "trades": 582
+      },
+      {
+        "band_mult": 2.0,
+        "stop_mult": 0.5,
+        "require_reversal_bar": false,
+        "regime_filter": false,
+        "pf": 2.905,
+        "trades": 636
+      },
+      {
+        "band_mult": 2.0,
+        "stop_mult": 0.75,
+        "require_reversal_bar": true,
+        "regime_filter": true,
+        "pf": 1.848,
+        "trades": 234
+      },
+      {
+        "band_mult": 2.0,
+        "stop_mult": 0.75,
+        "require_reversal_bar": true,
+        "regime_filter": false,
+        "pf": 1.662,
+        "trades": 275
+      },
+      {
+        "band_mult": 2.0,
+        "stop_mult": 0.75,
+        "require_reversal_bar": false,
+        "regime_filter": true,
+        "pf": 2.881,
+        "trades": 515
+      },
+      {
+        "band_mult": 2.0,
+        "stop_mult": 0.75,
+        "require_reversal_bar": false,
+        "regime_filter": false,
+        "pf": 2.691,
+        "trades": 564
+      },
+      {
+        "band_mult": 2.5,
+        "stop_mult": 0.25,
+        "require_reversal_bar": true,
+        "regime_filter": true,
+        "pf": 1.577,
+        "trades": 173
+      },
+      {
+        "band_mult": 2.5,
+        "stop_mult": 0.25,
+        "require_reversal_bar": true,
+        "regime_filter": false,
+        "pf": 1.348,
+        "trades": 226
+      },
+      {
+        "band_mult": 2.5,
+        "stop_mult": 0.25,
+        "require_reversal_bar": false,
+        "regime_filter": true,
+        "pf": 4.023,
+        "trades": 439
+      },
+      {
+        "band_mult": 2.5,
+        "stop_mult": 0.25,
+        "require_reversal_bar": false,
+        "regime_filter": false,
+        "pf": 3.425,
+        "trades": 516
+      },
+      {
+        "band_mult": 2.5,
+        "stop_mult": 0.5,
+        "require_reversal_bar": true,
+        "regime_filter": true,
+        "pf": 1.824,
+        "trades": 149
+      },
+      {
+        "band_mult": 2.5,
+        "stop_mult": 0.5,
+        "require_reversal_bar": true,
+        "regime_filter": false,
+        "pf": 1.585,
+        "trades": 188
+      },
+      {
+        "band_mult": 2.5,
+        "stop_mult": 0.5,
+        "require_reversal_bar": false,
+        "regime_filter": true,
+        "pf": 3.74,
+        "trades": 378
+      },
+      {
+        "band_mult": 2.5,
+        "stop_mult": 0.5,
+        "require_reversal_bar": false,
+        "regime_filter": false,
+        "pf": 3.096,
+        "trades": 423
+      },
+      {
+        "band_mult": 2.5,
+        "stop_mult": 0.75,
+        "require_reversal_bar": true,
+        "regime_filter": true,
+        "pf": 1.998,
+        "trades": 136
+      },
+      {
+        "band_mult": 2.5,
+        "stop_mult": 0.75,
+        "require_reversal_bar": true,
+        "regime_filter": false,
+        "pf": 1.753,
+        "trades": 171
+      },
+      {
+        "band_mult": 2.5,
+        "stop_mult": 0.75,
+        "require_reversal_bar": false,
+        "regime_filter": true,
+        "pf": 3.413,
+        "trades": 344
+      },
+      {
+        "band_mult": 2.5,
+        "stop_mult": 0.75,
+        "require_reversal_bar": false,
+        "regime_filter": false,
+        "pf": 3.029,
+        "trades": 384
+      }
+    ],
+    "cost_survives_through": "catastrophic",
+    "cost_tier_results": {
+      "optimistic": {
+        "pf": 3.455,
+        "trades": 344,
+        "passes": true
+      },
+      "realistic": {
+        "pf": 3.413,
+        "trades": 344,
+        "passes": true
+      },
+      "pessimistic": {
+        "pf": 3.176,
+        "trades": 344,
+        "passes": true
+      },
+      "catastrophic": {
+        "pf": 2.902,
+        "trades": 344,
+        "passes": true
+      }
+    }
+  },
+  "thresholds": {
+    "pf_ci_lower": 1.1,
+    "p_edge": 0.95,
+    "mc_95th_dd_core": 0.05,
+    "mc_95th_dd_alt": 0.04,
+    "dsr_core": 0.1,
+    "dsr_alt": 0.3,
+    "fixed_params_min_pf_alt": 1.2,
+    "wfo_consistency_alt": [
+      "MODERATE",
+      "STRONG"
+    ],
+    "cost_survives_through_min": "realistic"
+  },
+  "champion_params": {
+    "band_mult": 2.5,
+    "stop_mult": 0.75,
+    "require_reversal_bar": false,
+    "regime_filter": true
+  },
+  "windows": [
+    {
+      "window": 1,
+      "is_period": "2024-04 -> 2024-10",
+      "oos_period": "2024-10 -> 2025-01",
+      "best_params": {
+        "band_mult": 2.5,
+        "stop_mult": 0.75,
+        "require_reversal_bar": false,
+        "regime_filter": true
+      },
+      "is_pf": 1.479,
+      "is_trades": 90,
+      "oos_pf": 1.201,
+      "oos_dd": 0.0115,
+      "oos_sharpe": 0.796,
+      "oos_trades": 38
+    },
+    {
+      "window": 2,
+      "is_period": "2024-07 -> 2025-01",
+      "oos_period": "2025-01 -> 2025-04",
+      "best_params": {
+        "band_mult": 1.5,
+        "stop_mult": 0.75,
+        "require_reversal_bar": true,
+        "regime_filter": true
+      },
+      "is_pf": 1.856,
+      "is_trades": 72,
+      "oos_pf": 1.479,
+      "oos_dd": 0.0166,
+      "oos_sharpe": 1.873,
+      "oos_trades": 39
+    },
+    {
+      "window": 3,
+      "is_period": "2024-10 -> 2025-04",
+      "oos_period": "2025-04 -> 2025-07",
+      "best_params": {
+        "band_mult": 2.0,
+        "stop_mult": 0.25,
+        "require_reversal_bar": true,
+        "regime_filter": true
+      },
+      "is_pf": 2.395,
+      "is_trades": 66,
+      "oos_pf": 0.379,
+      "oos_dd": 0.013,
+      "oos_sharpe": -4.02,
+      "oos_trades": 60
+    },
+    {
+      "window": 4,
+      "is_period": "2025-01 -> 2025-07",
+      "oos_period": "2025-07 -> 2025-10",
+      "best_params": {
+        "band_mult": 2.5,
+        "stop_mult": 0.5,
+        "require_reversal_bar": false,
+        "regime_filter": true
+      },
+      "is_pf": 2.185,
+      "is_trades": 88,
+      "oos_pf": 3.886,
+      "oos_dd": 0.0095,
+      "oos_sharpe": 4.192,
+      "oos_trades": 47
+    },
+    {
+      "window": 5,
+      "is_period": "2025-04 -> 2025-10",
+      "oos_period": "2025-10 -> 2026-01",
+      "best_params": {
+        "band_mult": 2.5,
+        "stop_mult": 0.25,
+        "require_reversal_bar": false,
+        "regime_filter": true
+      },
+      "is_pf": 3.384,
+      "is_trades": 116,
+      "oos_pf": 16.086,
+      "oos_dd": 0.0051,
+      "oos_sharpe": 12.25,
+      "oos_trades": 59
+    },
+    {
+      "window": 6,
+      "is_period": "2025-07 -> 2026-01",
+      "oos_period": "2026-01 -> 2026-04",
+      "best_params": {
+        "band_mult": 1.5,
+        "stop_mult": 0.25,
+        "require_reversal_bar": false,
+        "regime_filter": true
+      },
+      "is_pf": 7.274,
+      "is_trades": 227,
+      "oos_pf": 7.68,
+      "oos_dd": 0.0114,
+      "oos_sharpe": 11.303,
+      "oos_trades": 113
+    },
+    {
+      "window": 7,
+      "is_period": "2025-10 -> 2026-04",
+      "oos_period": "2026-04 -> 2026-07",
+      "best_params": {
+        "band_mult": 1.5,
+        "stop_mult": 0.25,
+        "require_reversal_bar": true,
+        "regime_filter": true
+      },
+      "is_pf": 5.3,
+      "is_trades": 69,
+      "oos_pf": 2.352,
+      "oos_dd": 0.0059,
+      "oos_sharpe": 3.9,
+      "oos_trades": 43
+    }
+  ],
+  "contract_spec": {
+    "symbol": "MES",
+    "multiplier": 5.0,
+    "tick_size": 0.25,
+    "commission": 0.62,
+    "slippage_ticks": 1.0,
+    "capital": 50000.0,
+    "note": "MES VWAP reversion; backtest sizing only"
+  },
+  "lineage": {
+    "family": "vwap",
+    "rank": 1,
+    "predecessor": null,
+    "rationale": "VWAP deviation reversion on MES 1h. Legacy WFE validator REJECTED (WFE=0.0196, 2/5 OOS windows profitable). This is the gate-v2 verdict for direct comparison with the M2K Donchian/ORB candidates run in the same funnel pass.",
+    "legacy_wfe_status": "REJECTED (WFE=0.0196, 2026-04-02)",
+    "mes_trend_status": "PASS via alt (rank11) - portfolio anchor",
+    "mgc_trend_status": "PASS via alt (rank4) - portfolio anchor"
+  }
+}
