@@ -1,0 +1,21 @@
+{
+  "recomputed_at": "2026-07-29T05:11:15.345289+00:00",
+  "source_verdict_file": "engine/data/gate_v2_verdicts/MGC_trend_baseline.json",
+  "source_data_file": "MGC_2024-03-04_2026-07-24_1h.csv",
+  "reproduction": {
+    "recorded_dsr": 0.999375,
+    "recomputed_dsr_n_trials_1": 0.999375,
+    "recorded_total_oos_trades": 31,
+    "recomputed_total_oos_trades": 31,
+    "matches_recorded": true
+  },
+  "corrected_dsr": {
+    "54": 0.0,
+    "70": 0.0
+  },
+  "thresholds": {
+    "dsr_core": 0.1,
+    "dsr_alt": 0.3
+  },
+  "conclusion": "MGC_trend_baseline.json's recorded PASS (dsr=0.999375, passed_via=alt) was computed at n_grid_combos=1 (the runner evaluates a single fixed champion param set, no grid search). At the true 2026-07-27 honest-data-drain campaign trial counts (54 verdict-producing scripts, or 70 full attempted universe), the SAME trade series' DSR collapses to 0.0 -- below both the CORE (>=0.10) and ALT (>=0.30) floors. The verdict should be treated as FAIL pending a superseding re-run; this script does not itself mutate the live (intentionally gitignored -- see .gitignore's 2026-06-06 incident note) verdict file."
+}

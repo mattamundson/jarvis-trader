@@ -138,6 +138,18 @@ export function RiskSettingsWidget() {
       </CardHeader>
 
       <CardContent className="space-y-1">
+        {/* PRB-28: this widget only ever displayed the engine's persisted
+            /settings/risk value — it never accepted edits. The sibling
+            editable form (formerly RiskSettingsPanel, further down this
+            page) posted changes to the same endpoint, but safety_layer.py
+            never reads them; it only reads the static .env-sourced
+            TradingConfig. That form was removed so a "Saved" toast can't
+            imply a live risk control changed. This note makes the real
+            edit path explicit, matching RiskParametersPanel below. */}
+        <div className="rounded-lg bg-muted/30 px-3 py-1 text-[10px] text-muted-foreground font-mono mb-2">
+          Read-only — edit via .env file and restart engine
+        </div>
+
         {/* Loading skeleton */}
         {loading && !cfg && (
           <div className="space-y-2 animate-pulse">
@@ -196,11 +208,6 @@ export function RiskSettingsWidget() {
               ? `Last refreshed: ${secondsAgo}s ago`
               : "Not yet loaded"}
           </span>
-          {data?.editable_keys && (
-            <span className="text-[11px] text-muted-foreground">
-              {data.editable_keys.length} editable keys
-            </span>
-          )}
         </div>
       </CardContent>
     </Card>

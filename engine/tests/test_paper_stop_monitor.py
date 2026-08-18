@@ -24,6 +24,7 @@ from services.paper_stop_monitor import (  # noqa: E402
     PaperStopMonitor,
     compute_stop_pnl,
     is_stop_breached,
+    is_target_hit,
     multiplier_for,
     normalize_side,
 )
@@ -65,6 +66,29 @@ def test_is_stop_breached_missing_inputs():
     assert is_stop_breached("long", None, 100.0) is False
     assert is_stop_breached("long", 100.0, None) is False
     assert is_stop_breached("flat", 100.0, 50.0) is False  # unknown side
+
+
+def test_is_target_hit_long():
+    # Long hits target when price >= target.
+    assert is_target_hit("long", 105.0, 105.01) is True
+    assert is_target_hit("long", 105.0, 105.0) is True
+    assert is_target_hit("long", 105.0, 104.99) is False
+    assert is_target_hit("buy", 7806.38, 7810.0) is True
+    assert is_target_hit("buy", 7806.38, 7800.0) is False
+
+
+def test_is_target_hit_short():
+    # Short hits target when price <= target.
+    assert is_target_hit("short", 100.0, 99.99) is True
+    assert is_target_hit("short", 100.0, 100.0) is True
+    assert is_target_hit("short", 100.0, 100.01) is False
+    assert is_target_hit("sell", 100.0, 95.0) is True
+
+
+def test_is_target_hit_missing_inputs():
+    assert is_target_hit("long", None, 100.0) is False
+    assert is_target_hit("long", 105.0, None) is False
+    assert is_target_hit("flat", 105.0, 110.0) is False  # unknown side
 
 
 def test_live_price_sources_excludes_ibkr_delayed():

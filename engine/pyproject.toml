@@ -40,13 +40,18 @@ addopts = [
     # 'manual' tests need a live IB Gateway and hang the asyncio loop (no timeout
     # can interrupt the tick subscription), so exclude them by default. Opt back
     # in explicitly with `pytest -m manual` (a CLI -m overrides this addopts -m).
-    "-m", "not manual",
+    # 'integration_ib' tests only self-skip when Gateway is unreachable -- when
+    # the paper Gateway is up (the normal state while trading), they connect for
+    # real and submit real paper orders (2026-08-11: an ordinary `pytest tests/`
+    # run placed live BUY 1 MES/MCL/MNQ orders this way). Excluded by default for
+    # the same reason as 'manual'; opt in explicitly with `pytest -m integration_ib`.
+    "-m", "not manual and not integration_ib",
 ]
 markers = [
     "asyncio: marks tests as async (deselect with '-m \"not asyncio\"')",
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
-    "integration_ib: needs IB Gateway on paper port 4002 (skips if unavailable)",
+    "integration_ib: needs IB Gateway on paper port 4002 -- submits REAL paper orders against it when reachable; only skips when Gateway is down. Never collected by default (see addopts); opt in explicitly with `pytest -m integration_ib`.",
     "manual: opt-in tests that require external setup (e.g. IB Gateway running); never collected in CI",
     "unit: marks tests as unit tests",
     "smoke: marks tests as smoke tests",
@@ -224,6 +229,19 @@ omit = [
 precision = 2
 show_missing = true
 skip_covered = false
+# PRB-17: coverage.xml was generated and uploaded as a CI artifact but nothing
+# gated on it -- a PR could drop coverage to 0% and CI would still pass, since
+# `coverage xml`/`coverage report` only fail on a non-zero fail_under. Baseline
+# measured 2026-07-30 against the latest green origin/master run (6856c4c,
+# https://github.com/mattamundson/jarvis-trader/actions/runs/30479806744):
+# 64.74% total line coverage (184275 lines valid, 119294 covered). Floor set a
+# few points below that baseline so ordinary coverage drift across unrelated
+# files doesn't false-positive a PR, while still catching a real regression
+# (e.g. a PR that guts test coverage or approaches 0%). Applies to `coverage
+# report`, `coverage html`, `coverage xml`, and `coverage json` alike -- raise
+# this over time as real coverage improves; never lower it without a
+# documented reason.
+fail_under = 60
 exclude_lines = [
     "pragma: no cover",
     "def __repr__",

@@ -8,6 +8,8 @@ import { fetchTradeJournal, type TradeJournalEntry } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { useHonestTrades } from "@/lib/useHonestTrades";
+import { dedupCaveat, isHonestUnavailable } from "@/lib/honestTrades";
 
 const REFRESH_MS = 30_000;
 
@@ -19,6 +21,16 @@ export default function JournalPage() {
     () => fetchTradeJournal(undefined, undefined, limit),
     { refreshInterval: REFRESH_MS }
   );
+
+  // Honest deduped trade record — source of truth for the aggregate stat
+  // cards below. /trades/journal (fetchTradeJournal above) is a raw,
+  // undeduped SELECT * FROM paper_trades that over-counts re-logged rows
+  // (see lib/honestTrades.ts header) -- the per-trade attribution table
+  // still reads from it (regime/stage/bull/bear/confidence columns have no
+  // honest-record equivalent), but Total/Wins/Losses/Win Rate/Total P&L must
+  // not be computed off the raw rows.
+  const { honest, isLoading: honestLoading } = useHonestTrades();
+  const honestUnavailable = isHonestUnavailable(honest, honestLoading);
 
   const formatDate = (dateString: string): string => {
     try {
@@ -111,6 +123,14 @@ export default function JournalPage() {
       )}
 
       {data && data.length > 0 && (
+        <p className="mb-2 text-[11px] text-muted-foreground">
+          Raw per-trade attribution (regime/stage/bull/bear/confidence) below — may include
+          re-logged/duplicate rows. Use the &quot;Honest Totals&quot; section for P&amp;L
+          accuracy, not the per-trade P&amp;L shading in this table.
+        </p>
+      )}
+
+      {data && data.length > 0 && (
         <div className="overflow-x-auto rounded-lg border border-border bg-card">
           <table className="w-full text-sm">
             <thead className="border-b border-border bg-muted/40">
@@ -177,45 +197,79 @@ export default function JournalPage() {
         </Card>
       )}
 
-      {data && data.length > 0 && (
-        <div className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-4">
-          <Card>
-            <CardContent className="pt-4">
-              <p className="text-sm text-muted-foreground">Total</p>
-              <p className="text-2xl font-bold text-foreground">{data.length}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4">
-              <p className="text-sm text-muted-foreground">Wins</p>
-              <p className="text-2xl font-bold text-bull">
-                {data.filter((t) => (t.pnl ?? 0) > 0).length}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4">
-              <p className="text-sm text-muted-foreground">Losses</p>
-              <p className="text-2xl font-bold text-bear">
-                {data.filter((t) => (t.pnl ?? 0) < 0).length}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4">
-              <p className="text-sm text-muted-foreground">Total P&L</p>
-              {(() => {
-                const totalPnl = data.reduce((sum, t) => sum + (t.pnl ?? 0), 0);
-                return (
-                  <p className={`text-2xl font-bold ${totalPnl > 0 ? "text-bull" : totalPnl < 0 ? "text-bear" : "text-muted-foreground"}`}>
-                    {totalPnl >= 0 ? "+" : ""}{formatNumber(totalPnl, 2)}
-                  </p>
-                );
-              })()}
-            </CardContent>
-          </Card>
+      <div className="mt-6">
+        <div className="mb-2 flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-muted-foreground">
+            Honest Totals
+          </h2>
+          {honest && <Badge variant="info">{dedupCaveat(honest)}</Badge>}
         </div>
-      )}
+
+        {honestLoading && (
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Card key={i}>
+                <CardContent className="pt-4 h-20 animate-pulse" />
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {honestUnavailable && (
+          <Card>
+            <CardContent className="pt-6 pb-6">
+              <p className="text-center text-sm text-muted-foreground">
+                Honest trade record unavailable — falling back is not shown to avoid
+                displaying inflated raw totals.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {honest && (
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
+            <Card>
+              <CardContent className="pt-4">
+                <p className="text-sm text-muted-foreground">Total</p>
+                <p className="text-2xl font-bold text-foreground">{honest.trades.length}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4">
+                <p className="text-sm text-muted-foreground">Wins</p>
+                <p className="text-2xl font-bold text-bull">{honest.wins}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4">
+                <p className="text-sm text-muted-foreground">Losses</p>
+                <p className="text-2xl font-bold text-bear">{honest.losses}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4">
+                <p className="text-sm text-muted-foreground">Win Rate</p>
+                <p className="text-2xl font-bold text-foreground">
+                  {formatNumber(honest.winRate * 100, 1)}%
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4">
+                <p className="text-sm text-muted-foreground">Total P&L</p>
+                <p
+                  className={`text-2xl font-bold ${
+                    honest.net > 0 ? "text-bull" : honest.net < 0 ? "text-bear" : "text-muted-foreground"
+                  }`}
+                >
+                  {honest.net >= 0 ? "+" : ""}
+                  {formatNumber(honest.net, 2)}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

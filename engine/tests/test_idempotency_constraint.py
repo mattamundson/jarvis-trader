@@ -474,6 +474,7 @@ class TestInsertPaperTradeRequiresKey:
                         take_profit         REAL,
                         account_id          TEXT    NOT NULL DEFAULT 'A',
                         idempotency_key     TEXT    NOT NULL,
+                        strategy_id         TEXT,
                         stop_order_id       TEXT,
                         target_order_id     TEXT,
                         bracket_status      TEXT

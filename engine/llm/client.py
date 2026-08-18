@@ -15,6 +15,7 @@ Cost per token (as of 2026-03-29):
 """
 
 import asyncio
+import contextlib
 import logging
 import os
 import time
@@ -91,6 +92,8 @@ def _provider_from_model(model: str) -> str:
         return "deepseek"
     if "ollama" in m or m.startswith("llama") or m.startswith("qwen"):
         return "ollama"
+    if m.startswith("kimi"):
+        return "kimi"
     return "anthropic"  # claude-* (direct or via Vertex — Vertex passes served_by)
 
 
@@ -242,6 +245,12 @@ class JarvisLLMClient:
         "gpt-4o-mini": {"input": 0.15, "output": 0.60},
         "deepseek-reasoner": {"input": 0.55, "output": 2.19},
         "hermes3:latest": {"input": 0.0, "output": 0.0},
+        # Kimi K3 (Moonshot AI), added 2026-07-29 (PRB-06). Live-verified
+        # pricing at platform.kimi.ai/docs/pricing/chat-k3: cache-hit input is
+        # $0.30/MTok, but the client doesn't parse cache-hit token counts from
+        # the response, so the conservative cache-miss rate is used here —
+        # this will overstate cost on cache hits, never understate it.
+        "kimi-k3": {"input": 3.0, "output": 15.0},
     }
 
     # Model fallback chain when overloaded
@@ -291,6 +300,31 @@ class JarvisLLMClient:
         "claude-haiku-4-5-20251001": "gpt-4o-mini",
     }
 
+    # 2026-08-13: on an Anthropic credit-exhaustion event, every pipeline agent
+    # (technical_analyst, fundamental_analyst, news_analyst, social_analyst,
+    # trader, risk_manager, fund_manager, debate agents) holds its OWN
+    # JarvisLLMClient instance (see e.g. bear_researcher.py/bull_researcher.py)
+    # and independently runs the Gemini->OpenAI cascade below within the same
+    # ~15s window. That thundering-herds Gemini/OpenAI with N simultaneous
+    # requests, tripping a 429 on both from the shared per-key rate limit even
+    # though neither provider is actually down -- self-inflicting a secondary
+    # outage on top of the real Anthropic one. This state is a CLASS attribute
+    # (not set on self in __init__) so it is shared across every instance in
+    # the process: the first agent to see a 429 protects the rest of the same
+    # pipeline cycle instead of each one re-tripping the identical limit.
+    #
+    # Scope limitation: this is reactive repeat-storm mitigation, not first-
+    # burst admission control. The cooldown window only arms AFTER a 429 has
+    # actually been caught, so a brand-new outage's very first concurrent
+    # burst (e.g. every analyst's simultaneous asyncio.gather call in
+    # pipeline.py's _run_analysts, before any single call has recorded a
+    # 429) still hits the provider unprotected -- only repeat storms within
+    # the same window, and across subsequent cycles, are prevented.
+    _provider_degraded_until: dict[str, float] = {}
+    _PROVIDER_DEGRADE_WINDOW_SECONDS = float(
+        os.getenv("LLM_PROVIDER_DEGRADE_WINDOW_SECONDS", "45")
+    )
+
     # Agents routed to Gemini 2.5-flash as primary provider (not as fallback).
     # These are context-enrichment / classification tasks — not trade decisions.
     # Keeps credit consumption on cost-efficient Gemini; Anthropic reserved for
@@ -320,6 +354,7 @@ class JarvisLLMClient:
         "gpt-4o-mini": 128_000,
         "deepseek-reasoner": 64_000,
         "hermes3:latest": 4_096,
+        "kimi-k3": 1_048_576,
     }
 
     # Class-level default — read at line 445/650 etc. Subclasses or callers that
@@ -498,17 +533,27 @@ class JarvisLLMClient:
         # decision tier (trader, risk_manager, fund_manager, debate/researchers),
         # with Anthropic/OpenAI still behind it as fallbacks.
         #
+        # 2026-08-13: extended to accept a kimi-* value too (Amo's explicit,
+        # standing decision to make Kimi the permanent decision-tier primary,
+        # superseding the 2026-07-02 Claude-primary/Gemini-failover-only design
+        # — see feedback_secret_incident.md's sibling memory
+        # project_gemini_pro_decision_routing_2026_07_02 for the prior decision
+        # this replaces). Routed via _resolve_kimi_primary, same shape as the
+        # Gemini resolver below.
+        #
         # Unset (default) => byte-identical to the previous Anthropic-primary
-        # behavior. Only Gemini values take effect today; a non-Gemini value is
-        # inert (logged at startup) rather than silently mis-routing, which is
+        # behavior. Only gemini-*/kimi-* values take effect today; anything else
+        # is inert (logged at startup) rather than silently mis-routing, which is
         # the trap JARVIS_LLM_PROVIDER=openai fell into — that var only ever
         # distinguished ollama from everything-else, so it looked configured
         # while changing nothing.
         self.decision_primary_model = os.getenv("JARVIS_DECISION_PRIMARY", "").strip()
-        if self.decision_primary_model and not self.decision_primary_model.startswith("gemini"):
+        if self.decision_primary_model and not self.decision_primary_model.startswith(
+            ("gemini", "kimi")
+        ):
             logger.warning(
                 "JARVIS_DECISION_PRIMARY='%s' is not a supported decision primary "
-                "(only gemini-* models route as primary today) — ignoring; "
+                "(only gemini-*/kimi-* models route as primary today) — ignoring; "
                 "decision tier stays on %s.",
                 self.decision_primary_model,
                 "ollama" if self.provider == "ollama" else "anthropic",
@@ -534,6 +579,37 @@ class JarvisLLMClient:
         ).strip().lower() not in {"0", "false", "no", "off"}
         self.openai_fallback_count = 0
 
+        # 2026-07-29 (PRB-06): Kimi K3 (Moonshot AI) as the FINAL leg of the
+        # cross-provider cascade (after OpenAI). This existed only on the
+        # long-lived feat/roadmap-execution branch (119+ commits ahead of
+        # master, not landing soon) — master had zero Kimi routing, which
+        # re-exposed the all-providers-exhausted scenario this session already
+        # hit once (Anthropic+Gemini+OpenAI simultaneously dead, 2026-07-26).
+        # Wired the same way as the other fallback legs: silently disabled
+        # with no key; override via JARVIS_LLM_KIMI_FALLBACK=0.
+        self.kimi_api_key = os.getenv("MOONSHOT_API_KEY", "").strip()
+        self.kimi_endpoint = os.getenv(
+            "MOONSHOT_ENDPOINT", "https://api.moonshot.ai/v1/chat/completions"
+        ).strip()
+        self.kimi_fallback_enabled = self.kimi_api_key != "" and os.getenv(
+            "JARVIS_LLM_KIMI_FALLBACK", "1"
+        ).strip().lower() not in {"0", "false", "no", "off"}
+        self.kimi_fallback_count = 0
+        # Kimi has a tighter per-key rate limit than Anthropic/Gemini/OpenAI.
+        # A dedicated sub-cap (nested INSIDE the global _llm_call_semaphore —
+        # lock order is always global-then-kimi, so this cannot deadlock)
+        # keeps a scan's fan-out from bursting past Moonshot's per-key rate
+        # limit once this leg starts serving real traffic. Tunable via
+        # KIMI_MAX_CONCURRENCY.
+        try:
+            _kimi_concurrency = int(os.getenv("KIMI_MAX_CONCURRENCY", "3"))
+        except (TypeError, ValueError):
+            _kimi_concurrency = 3
+        if _kimi_concurrency <= 0:
+            _kimi_concurrency = 3
+        self._kimi_max_concurrency = _kimi_concurrency
+        self._kimi_call_semaphore = asyncio.Semaphore(_kimi_concurrency)
+
         google_status = (
             "enabled"
             if self.google_fallback_enabled
@@ -545,37 +621,58 @@ class JarvisLLMClient:
             else ("disabled (no key)" if not self.openai_api_key else "disabled (env flag)")
         )
         deepseek_status = "enabled" if self.deepseek_api_key else "disabled (no key)"
+        kimi_status = (
+            "enabled"
+            if self.kimi_fallback_enabled
+            else ("disabled (no key)" if not self.kimi_api_key else "disabled (env flag)")
+        )
         decision_primary_status = (
             self.decision_primary_model
-            if self.decision_primary_model.startswith("gemini") and self.google_fallback_enabled
+            if (
+                self.decision_primary_model.startswith("gemini")
+                and self.google_fallback_enabled
+            )
+            or (self.decision_primary_model.startswith("kimi") and self.kimi_fallback_enabled)
             else "anthropic (default)"
         )
         logger.info(
             f"✅ JarvisLLMClient initialized with cost tracking at {db_path} "
             f"(provider={self.provider}, decision_primary={decision_primary_status}, "
             f"google_fallback={google_status}, "
-            f"openai_fallback={openai_status}, deepseek={deepseek_status})"
+            f"openai_fallback={openai_status}, deepseek={deepseek_status}, kimi={kimi_status})"
         )
 
         # Snapshot the wired legs for /health provider-redundancy reporting.
         # Order matters: primary first, then the credit-exhaustion failover order
-        # (vertex -> gemini -> openai), so get_llm_provider_summary can tell
-        # whether the active leg has another behind it.
-        # A configured Gemini decision primary IS the primary for trade
+        # (vertex -> gemini -> openai -> kimi), so get_llm_provider_summary can
+        # tell whether the active leg has another behind it.
+        # A configured Gemini/Kimi decision primary IS the primary for trade
         # decisions — report it as such so /health's single_leg_warning and the
         # dashboard's provider badge describe the path decisions actually take,
-        # not the historical Anthropic-first one.
+        # not the historical Anthropic-first one. Gemini and Kimi decision
+        # primaries are mutually exclusive (decision_primary_model can only
+        # start with one prefix), so at most one of these two flags is ever true.
         decision_primary_active = (
             self.provider != "ollama"
             and self.google_fallback_enabled
             and self.decision_primary_model.startswith("gemini")
         )
+        kimi_decision_primary_active = (
+            self.provider != "ollama"
+            and self.kimi_fallback_enabled
+            and self.decision_primary_model.startswith("kimi")
+        )
         base_provider = "vertex" if self.use_vertex else self.provider
-        primary_provider = "gemini" if decision_primary_active else base_provider
+        if decision_primary_active:
+            primary_provider = "gemini"
+        elif kimi_decision_primary_active:
+            primary_provider = "kimi"
+        else:
+            primary_provider = base_provider
         configured = [primary_provider]
-        if decision_primary_active and base_provider != primary_provider:
-            # The former primary (anthropic/vertex) stays wired BEHIND the Gemini
-            # primary as a real fallback leg — keep it listed so
+        if (decision_primary_active or kimi_decision_primary_active) and base_provider != primary_provider:
+            # The former primary (anthropic/vertex) stays wired BEHIND the new
+            # decision primary as a real fallback leg — keep it listed so
             # single_leg_warning doesn't fire on a fully-redundant chain.
             configured.append(base_provider)
         if self.vertex_failover_enabled:
@@ -584,8 +681,42 @@ class JarvisLLMClient:
             configured.append("gemini")
         if self.openai_fallback_enabled:
             configured.append("openai")
+        if self.kimi_fallback_enabled and primary_provider != "kimi":
+            # Kimi sits at the very back of the cross-provider cascade — the
+            # final leg after openai. List it so single_leg_warning and the
+            # dashboard provider badge count it as real redundancy. Skipped
+            # here when Kimi is already listed as the primary above (avoids
+            # double-listing it), mirroring the Gemini guard.
+            configured.append("kimi")
         _LLM_PATH_STATE["primary_provider"] = primary_provider
         _LLM_PATH_STATE["providers_configured"] = configured
+
+    def _is_provider_cooling_down(self, provider: str) -> bool:
+        """Thundering-herd guard: True if `provider` (e.g. "gemini", "openai")
+        tripped a 429 recently enough that this and every other agent's
+        concurrent cascade should skip straight past it this cycle.
+
+        Reactive repeat-storm mitigation, not first-burst admission control:
+        returns False for a provider's first 429 of a fresh outage (nothing
+        has armed the cooldown yet), so that initial concurrent burst is not
+        prevented -- only the repeat storms after it are.
+        """
+        return time.time() < self._provider_degraded_until.get(provider, 0.0)
+
+    def _note_provider_rate_limited(self, provider: str, exc: Exception) -> None:
+        """Record a 429 from `provider` so concurrent/subsequent cascades in
+        the same window skip it instead of re-tripping the same rate limit."""
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+        if status == 429:
+            self._provider_degraded_until[provider] = (
+                time.time() + self._PROVIDER_DEGRADE_WINDOW_SECONDS
+            )
+            logger.warning(
+                "[%s] 429 rate-limited -- cooling down %.0fs for all agents "
+                "(thundering-herd guard)",
+                provider,
+                self._PROVIDER_DEGRADE_WINDOW_SECONDS,
+            )
 
     async def _bounded(self, coro, *, what: str, model: str, agent_name: str):
         """Run a provider coroutine under a hard wall-clock ceiling.
@@ -691,8 +822,10 @@ class JarvisLLMClient:
                 proxy.set_cached(
                     compressed_key, result_obj, model=str(current_model), salt=cache_salt
                 )
-            except Exception:
-                pass  # graceful — cache write failure never breaks API call
+            except Exception as exc:
+                # graceful — cache write failure never breaks the API call, but
+                # log it so a consistently-failing proxy (disk full, perms) is visible
+                logger.debug("TokenProxy cache write failed: %s", exc)
 
         return result_obj
 
@@ -747,6 +880,279 @@ class JarvisLLMClient:
             return None
         return self.FALLBACK_CHAIN[current_model]
 
+    async def _cross_provider_fallback(
+        self,
+        *,
+        current_model: str,
+        system: str,
+        messages: list[dict],
+        max_tokens: int,
+        temperature: float,
+        agent_name: str,
+        tier: str,
+        proxy,
+        compressed_key,
+        cache_salt: str,
+        is_credit_exhaustion: bool,
+    ) -> Optional["LLMCallResult"]:
+        """Attempt Vertex -> Gemini -> OpenAI -> Kimi, in that order, for ANY
+        Anthropic-side failure (PRB-10) -- not just the narrow credit-exhaustion
+        string match. Before this fix, an Anthropic auth error, plain 5xx,
+        malformed response, or a sustained rate-limit/hard-timeout skipped this
+        ENTIRE cascade and failed the call immediately even when the other
+        providers were healthy; only the specific "credit balance is too low"
+        signature ever reached it.
+
+        `is_credit_exhaustion` selects only the /health failure-reason label and
+        log wording used if a leg succeeds -- it never changes which providers
+        get tried or in what order. Returns an LLMCallResult on the first
+        successful leg, or None once every wired leg has failed or is
+        unconfigured (the caller handles the terminal failure + alerting via
+        `_mark_unhealthy_and_notify`).
+        """
+        failure_label = "credit-exhaustion" if is_credit_exhaustion else "api-failure"
+
+        # Leg 1: Claude-on-Vertex — same model family (best output continuity)
+        # and GCP-billed, so unaffected by an Anthropic-side outage of any kind.
+        if self.vertex_failover_enabled and self._failover_vertex_client is not None:
+            logger.warning(
+                f"[{current_model}] anthropic {failure_label} for {agent_name} -- "
+                f"attempting Claude-on-Vertex failover"
+            )
+            start_time = time.time()
+            try:
+                vertex_result = await self._bounded(
+                    self._call_vertex_failover(
+                        current_model, system, messages, max_tokens, temperature
+                    ),
+                    what="vertex failover call",
+                    model=current_model,
+                    agent_name=agent_name,
+                )
+                self.vertex_failover_count += 1
+                _LLM_PATH_STATE["vertex_failover_count"] = self.vertex_failover_count
+                _LLM_PATH_STATE["healthy"] = True
+                _LLM_PATH_STATE["last_failure_ts"] = datetime.now(timezone.utc).isoformat()
+                _LLM_PATH_STATE["last_failure_reason"] = (
+                    f"anthropic {failure_label} -> vertex failover ok "
+                    f"(count: {self.vertex_failover_count})"
+                )
+                _LLM_PATH_STATE["last_failure_agent"] = agent_name
+                return await self._handle_success(
+                    vertex_result,
+                    current_model,
+                    start_time,
+                    0,
+                    agent_name,
+                    tier=tier,
+                    proxy=proxy,
+                    compressed_key=compressed_key,
+                    cache_salt=cache_salt,
+                    served_by="vertex",
+                )
+            except Exception as vex:
+                logger.warning(
+                    f"[{current_model}] Vertex failover failed for "
+                    f"{agent_name} -- trying Gemini next: {vex}"
+                )
+                # fall through to the Gemini fallback below
+
+        # Leg 2: Gemini — preserves quality tier (Opus/Sonnet -> 2.5-flash,
+        # Haiku -> 2.0-flash) and returns a normal LLMCallResult so call sites
+        # are provider-agnostic.
+        if self.google_fallback_enabled and self._is_provider_cooling_down("gemini"):
+            logger.warning(
+                f"[{current_model}] skipping Gemini fallback for {agent_name} "
+                f"-- cooling down from a recent 429 (thundering-herd guard)"
+            )
+        elif self.google_fallback_enabled:
+            google_model = self.GOOGLE_FAILOVER_MAP.get(current_model, "gemini-2.5-flash")
+            logger.warning(
+                f"[{current_model}] anthropic {failure_label} for {agent_name} -- "
+                f"attempting Gemini fallback ({google_model})"
+            )
+            start_time = time.time()
+            try:
+                google_result = await self._bounded(
+                    self._call_google(
+                        system=system,
+                        messages=messages,
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                        model=google_model,
+                    ),
+                    what="gemini fallback call",
+                    model=google_model,
+                    agent_name=agent_name,
+                )
+                self.google_fallback_count += 1
+                _LLM_PATH_STATE["google_fallback_count"] = self.google_fallback_count
+                _LLM_PATH_STATE["healthy"] = True
+                _LLM_PATH_STATE["last_failure_ts"] = datetime.now(timezone.utc).isoformat()
+                _LLM_PATH_STATE["last_failure_reason"] = (
+                    f"anthropic {failure_label} -> gemini fallback ok "
+                    f"(count: {self.google_fallback_count})"
+                )
+                _LLM_PATH_STATE["last_failure_agent"] = agent_name
+                return await self._handle_success(
+                    google_result,
+                    google_model,
+                    start_time,
+                    0,
+                    agent_name,
+                    tier=tier,
+                    proxy=proxy,
+                    compressed_key=compressed_key,
+                    cache_salt=cache_salt,
+                )
+            except Exception as gex:
+                self._note_provider_rate_limited("gemini", gex)
+                logger.error(
+                    f"[{google_model}] Gemini fallback also failed for "
+                    f"{agent_name}: {type(gex).__name__}: {gex}"
+                )
+                # fall through to OpenAI fallback below
+
+        # Leg 3: OpenAI — last resort before Kimi. Opus/Sonnet -> gpt-4o,
+        # Haiku -> gpt-4o-mini.
+        if self.openai_fallback_enabled and self._is_provider_cooling_down("openai"):
+            logger.warning(
+                f"[{current_model}] skipping OpenAI fallback for {agent_name} "
+                f"-- cooling down from a recent 429 (thundering-herd guard)"
+            )
+        elif self.openai_fallback_enabled:
+            openai_model = self.OPENAI_FAILOVER_MAP.get(current_model, "gpt-4o-mini")
+            logger.warning(
+                f"[{current_model}] Anthropic+Vertex+Gemini failed for {agent_name} -- "
+                f"attempting OpenAI fallback ({openai_model})"
+            )
+            start_time = time.time()
+            try:
+                openai_result = await self._bounded(
+                    self._call_openai(
+                        system=system,
+                        messages=messages,
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                        model=openai_model,
+                    ),
+                    what="openai fallback call",
+                    model=openai_model,
+                    agent_name=agent_name,
+                )
+                self.openai_fallback_count += 1
+                _LLM_PATH_STATE["healthy"] = True
+                _LLM_PATH_STATE["last_failure_ts"] = datetime.now(timezone.utc).isoformat()
+                _LLM_PATH_STATE["last_failure_reason"] = (
+                    f"anthropic {failure_label} -> openai fallback ok "
+                    f"(count: {self.openai_fallback_count})"
+                )
+                _LLM_PATH_STATE["last_failure_agent"] = agent_name
+                return await self._handle_success(
+                    openai_result,
+                    openai_model,
+                    start_time,
+                    0,
+                    agent_name,
+                    tier=tier,
+                    proxy=proxy,
+                    compressed_key=compressed_key,
+                    cache_salt=cache_salt,
+                )
+            except Exception as oex:
+                self._note_provider_rate_limited("openai", oex)
+                logger.error(
+                    f"[{openai_model}] OpenAI fallback also failed for "
+                    f"{agent_name}: {type(oex).__name__}: {oex}"
+                )
+                # fall through to the Kimi last-resort leg below
+
+        # Leg 4 (PRB-06, final): Kimi K3 — fires only when every cheaper leg
+        # has failed or is unconfigured. Slow (max-thinking) and paid, but
+        # strictly better than the pipeline going dark.
+        if self.kimi_fallback_enabled:
+            kimi_fb_model = "kimi-k3"
+            logger.warning(
+                f"[{current_model}] Anthropic+Vertex+Gemini+OpenAI all failed for "
+                f"{agent_name} -- attempting Kimi last-resort fallback ({kimi_fb_model})"
+            )
+            start_time = time.time()
+            try:
+                kimi_result = await self._bounded(
+                    self._call_kimi(
+                        system=system,
+                        messages=messages,
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                        model=kimi_fb_model,
+                    ),
+                    what="kimi last-resort fallback call",
+                    model=kimi_fb_model,
+                    agent_name=agent_name,
+                )
+                self.kimi_fallback_count += 1
+                _LLM_PATH_STATE["healthy"] = True
+                _LLM_PATH_STATE["last_failure_ts"] = datetime.now(timezone.utc).isoformat()
+                _LLM_PATH_STATE["last_failure_reason"] = (
+                    f"anthropic {failure_label} -> kimi last-resort ok "
+                    f"(count: {self.kimi_fallback_count})"
+                )
+                _LLM_PATH_STATE["last_failure_agent"] = agent_name
+                return await self._handle_success(
+                    kimi_result,
+                    kimi_fb_model,
+                    start_time,
+                    0,
+                    agent_name,
+                    tier=tier,
+                    proxy=proxy,
+                    compressed_key=compressed_key,
+                    cache_salt=cache_salt,
+                    served_by="kimi",
+                )
+            except Exception as kex:
+                logger.error(
+                    f"[{kimi_fb_model}] Kimi last-resort fallback also failed for "
+                    f"{agent_name}: {type(kex).__name__}: {kex}"
+                )
+                # every leg exhausted -- fall through to None below
+
+        return None
+
+    def _mark_unhealthy_and_notify(
+        self, reason: str, agent_name: str, is_credit_exhaustion: bool
+    ) -> None:
+        """Terminal failure bookkeeping once every cascade leg has failed.
+
+        PRB-10: keeps the credit-exhaustion-specific ops alert (which tells
+        ops to top up Anthropic billing) distinct from a generic Anthropic
+        API failure with everything else also down -- a plain 5xx/timeout/
+        auth error is a different incident than "we're out of credits" and
+        should not page the same misleading "buy more credits" message.
+        """
+        _LLM_PATH_STATE["healthy"] = False
+        _LLM_PATH_STATE["last_failure_ts"] = datetime.now(timezone.utc).isoformat()
+        _LLM_PATH_STATE["last_failure_agent"] = agent_name
+        if is_credit_exhaustion:
+            _LLM_PATH_STATE["last_failure_reason"] = reason[:500]
+            try:
+                from notifications.openclaw_notifier import notify_credits_exhausted
+
+                asyncio.create_task(
+                    notify_credits_exhausted(reason=reason[:300], agent=agent_name)
+                )
+            except Exception as notify_err:
+                logger.debug(f"credits-exhausted notifier failed: {notify_err}")
+        else:
+            _LLM_PATH_STATE["last_failure_reason"] = f"anthropic-api-failure (non-credit): {reason[:460]}"
+            logger.error(
+                "[%s] Anthropic API failure (non-credit) and ALL cross-provider "
+                "fallbacks (Vertex/Gemini/OpenAI/Kimi) also failed or are "
+                "unconfigured -- pipeline unhealthy: %s",
+                agent_name,
+                reason[:300],
+            )
+
     def _resolve_google_primary(self, agent_name: str) -> Optional[str]:
         """Which Gemini model (if any) should serve this agent as PRIMARY.
 
@@ -765,6 +1171,24 @@ class JarvisLLMClient:
         if agent_name in self.GEMINI_PRIMARY_AGENTS:
             return "gemini-2.5-flash"
         if self.decision_primary_model.startswith("gemini"):
+            return self.decision_primary_model
+        return None
+
+    def _resolve_kimi_primary(self, agent_name: str) -> Optional[str]:
+        """Which Kimi model (if any) should serve this agent as PRIMARY.
+
+        Mirrors _resolve_google_primary's decision-tier half exactly, but for
+        JARVIS_DECISION_PRIMARY=kimi-* instead of gemini-*. Enrichment/
+        classification agents (GEMINI_PRIMARY_AGENTS) are NOT rerouted here —
+        they stay pinned to Gemini flash for cost reasons regardless of the
+        decision-tier primary; only the decision tier (trader, risk_manager,
+        fund_manager, debate/researchers) follows JARVIS_DECISION_PRIMARY.
+
+        Returns None when Kimi should not serve as primary for this agent.
+        """
+        if agent_name in self.GEMINI_PRIMARY_AGENTS:
+            return None
+        if self.decision_primary_model.startswith("kimi"):
             return self.decision_primary_model
         return None
 
@@ -972,6 +1396,7 @@ class JarvisLLMClient:
             self.provider != "ollama"
             and self.google_fallback_enabled
             and google_primary_model is not None
+            and not self._is_provider_cooling_down("gemini")
         ):
             # Enrichment/classification agents (news/technical/fundamental, etc.)
             # are pinned to the cost-efficient flash tier as their PRIMARY — they
@@ -1007,11 +1432,60 @@ class JarvisLLMClient:
                     cache_salt=cache_salt,
                 )
             except Exception as gex:
+                self._note_provider_rate_limited("gemini", gex)
                 logger.warning(
                     "[%s] Gemini primary failed for %s — falling through to Anthropic: %s",
                     google_model,
                     agent_name,
                     gex,
+                )
+
+        # Kimi decision-tier primary (2026-08-13, Amo's standing decision — see
+        # _resolve_kimi_primary). Mutually exclusive with the Gemini-primary
+        # block above in practice (JARVIS_DECISION_PRIMARY can only start with
+        # one prefix), so at most one of these two proactive blocks ever fires
+        # for a given config. Falls through to the normal Anthropic retry loop
+        # (and from there the full Vertex/Gemini/OpenAI/Kimi cascade) on any
+        # failure, so a bad Kimi call is never a single point of failure.
+        kimi_primary_model = self._resolve_kimi_primary(agent_name)
+        if (
+            self.provider != "ollama"
+            and self.kimi_fallback_enabled
+            and kimi_primary_model is not None
+        ):
+            kimi_model = kimi_primary_model
+            try:
+                kimi_result = await self._bounded(
+                    self._call_kimi(
+                        system=system,
+                        messages=working_messages,
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                        model=kimi_model,
+                    ),
+                    what="kimi primary call",
+                    model=kimi_model,
+                    agent_name=agent_name,
+                )
+                self.kimi_fallback_count += 1
+                return await self._handle_success(
+                    kimi_result,
+                    kimi_model,
+                    start_time,
+                    retries,
+                    agent_name,
+                    tier=tier,
+                    proxy=proxy,
+                    compressed_key=compressed_key,
+                    cache_salt=cache_salt,
+                    served_by="kimi",
+                )
+            except Exception as kex:
+                logger.warning(
+                    "[%s] Kimi primary failed for %s — falling through to Anthropic: %s",
+                    kimi_model,
+                    agent_name,
+                    kex,
                 )
 
         # Retry loop with exponential backoff
@@ -1060,6 +1534,29 @@ class JarvisLLMClient:
                         retries = 0
                         start_time = time.time()
                         continue
+                    # PRB-10: same-family retries + FALLBACK_CHAIN exhausted --
+                    # try the full cross-provider cascade (Vertex/Gemini/OpenAI/
+                    # Kimi) before giving up. Previously this broke straight to
+                    # total failure, skipping the cascade entirely for a
+                    # sustained rate-limit even when other providers were healthy.
+                    cross_result = await self._cross_provider_fallback(
+                        current_model=current_model,
+                        system=system,
+                        messages=working_messages,
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                        agent_name=agent_name,
+                        tier=tier,
+                        proxy=proxy,
+                        compressed_key=compressed_key,
+                        cache_salt=cache_salt,
+                        is_credit_exhaustion=False,
+                    )
+                    if cross_result is not None:
+                        return cross_result
+                    self._mark_unhealthy_and_notify(
+                        str(e)[:500], agent_name, is_credit_exhaustion=False
+                    )
                     break
 
                 delay = 2 ** (retries - 1)
@@ -1084,6 +1581,29 @@ class JarvisLLMClient:
                         retries = 0
                         start_time = time.time()
                         continue
+                    # PRB-10: same as the RateLimitError branch above -- a
+                    # persistent APIConnectionError/APIStatusError (5xx, auth
+                    # error, etc.) used to skip the ENTIRE cross-provider
+                    # cascade and fail immediately here, even when Vertex/
+                    # Gemini/OpenAI/Kimi were healthy. Give it the same shot.
+                    cross_result = await self._cross_provider_fallback(
+                        current_model=current_model,
+                        system=system,
+                        messages=working_messages,
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                        agent_name=agent_name,
+                        tier=tier,
+                        proxy=proxy,
+                        compressed_key=compressed_key,
+                        cache_salt=cache_salt,
+                        is_credit_exhaustion=False,
+                    )
+                    if cross_result is not None:
+                        return cross_result
+                    self._mark_unhealthy_and_notify(
+                        str(e)[:500], agent_name, is_credit_exhaustion=False
+                    )
                     break
 
                 delay = 2 ** (retries - 1)
@@ -1111,180 +1631,34 @@ class JarvisLLMClient:
                     body_str = str(e)
                     logger.error(f"[{current_model}] Unexpected error for {agent_name}: {e}")
 
-                if _is_credit_exhaustion(body_str):
-                    # Phase 3.5: Claude-on-Vertex failover FIRST — same model
-                    # family (best output continuity) and GCP-billed, so it is
-                    # unaffected by the Anthropic credit outage. Falls through to
-                    # the Gemini fallback below if Vertex is disabled or also fails.
-                    if self.vertex_failover_enabled and self._failover_vertex_client is not None:
-                        logger.warning(
-                            f"[{current_model}] credit-exhaustion for {agent_name} -- "
-                            f"attempting Claude-on-Vertex failover"
-                        )
-                        start_time = time.time()
-                        try:
-                            vertex_result = await self._bounded(
-                                self._call_vertex_failover(
-                                    current_model,
-                                    system,
-                                    working_messages,
-                                    max_tokens,
-                                    temperature,
-                                ),
-                                what="vertex failover call",
-                                model=current_model,
-                                agent_name=agent_name,
-                            )
-                            self.vertex_failover_count += 1
-                            _LLM_PATH_STATE["vertex_failover_count"] = self.vertex_failover_count
-                            _LLM_PATH_STATE["healthy"] = True
-                            _LLM_PATH_STATE["last_failure_ts"] = datetime.now(
-                                timezone.utc
-                            ).isoformat()
-                            _LLM_PATH_STATE["last_failure_reason"] = (
-                                f"anthropic credit-exhaustion -> vertex failover ok "
-                                f"(count: {self.vertex_failover_count})"
-                            )
-                            _LLM_PATH_STATE["last_failure_agent"] = agent_name
-                            return await self._handle_success(
-                                vertex_result,
-                                current_model,
-                                start_time,
-                                retries,
-                                agent_name,
-                                tier=tier,
-                                proxy=proxy,
-                                compressed_key=compressed_key,
-                                cache_salt=cache_salt,
-                                served_by="vertex",
-                            )
-                        except Exception as vex:
-                            logger.warning(
-                                f"[{current_model}] Vertex failover failed for "
-                                f"{agent_name} -- trying Gemini next: {vex}"
-                            )
-                            # fall through to the Gemini fallback below
-
-                    # Phase 3: Anthropic credits exhausted — try transparent
-                    # Gemini fallback before declaring the call failed. The
-                    # fallback preserves quality tier (Opus/Sonnet -> 2.5-flash,
-                    # Haiku -> 2.0-flash) and returns a normal LLMCallResult so
-                    # call sites are provider-agnostic.
-                    if self.google_fallback_enabled:
-                        google_model = self.GOOGLE_FAILOVER_MAP.get(
-                            current_model, "gemini-2.5-flash"
-                        )
-                        logger.warning(
-                            f"[{current_model}] credit-exhaustion for {agent_name} -- "
-                            f"attempting Gemini fallback ({google_model})"
-                        )
-                        start_time = time.time()
-                        try:
-                            google_result = await self._bounded(
-                                self._call_google(
-                                    system=system,
-                                    messages=working_messages,
-                                    max_tokens=max_tokens,
-                                    temperature=temperature,
-                                    model=google_model,
-                                ),
-                                what="gemini fallback call",
-                                model=google_model,
-                                agent_name=agent_name,
-                            )
-                            self.google_fallback_count += 1
-                            _LLM_PATH_STATE["google_fallback_count"] = self.google_fallback_count
-                            # Successful failover -- mark path healthy with note
-                            _LLM_PATH_STATE["healthy"] = True
-                            _LLM_PATH_STATE["last_failure_ts"] = datetime.now(
-                                timezone.utc
-                            ).isoformat()
-                            _LLM_PATH_STATE["last_failure_reason"] = (
-                                f"anthropic credit-exhaustion -> gemini fallback ok "
-                                f"(count: {self.google_fallback_count})"
-                            )
-                            _LLM_PATH_STATE["last_failure_agent"] = agent_name
-                            return await self._handle_success(
-                                google_result,
-                                google_model,
-                                start_time,
-                                retries,
-                                agent_name,
-                                tier=tier,
-                                proxy=proxy,
-                                compressed_key=compressed_key,
-                                cache_salt=cache_salt,
-                            )
-                        except Exception as gex:
-                            logger.error(
-                                f"[{google_model}] Gemini fallback also failed for "
-                                f"{agent_name}: {type(gex).__name__}: {gex}"
-                            )
-                            # fall through to OpenAI fallback below
-
-                    # Phase 3.6: both Anthropic and Gemini failed (or Gemini is
-                    # disabled) — last-resort OpenAI before declaring the path
-                    # unhealthy. Opus/Sonnet → gpt-4o, Haiku → gpt-4o-mini.
-                    if self.openai_fallback_enabled:
-                        openai_model = self.OPENAI_FAILOVER_MAP.get(current_model, "gpt-4o-mini")
-                        logger.warning(
-                            f"[{current_model}] Anthropic+Gemini both failed for {agent_name} -- "
-                            f"attempting OpenAI fallback ({openai_model})"
-                        )
-                        start_time = time.time()
-                        try:
-                            openai_result = await self._bounded(
-                                self._call_openai(
-                                    system=system,
-                                    messages=working_messages,
-                                    max_tokens=max_tokens,
-                                    temperature=temperature,
-                                    model=openai_model,
-                                ),
-                                what="openai fallback call",
-                                model=openai_model,
-                                agent_name=agent_name,
-                            )
-                            self.openai_fallback_count += 1
-                            _LLM_PATH_STATE["healthy"] = True
-                            _LLM_PATH_STATE["last_failure_ts"] = datetime.now(
-                                timezone.utc
-                            ).isoformat()
-                            _LLM_PATH_STATE["last_failure_reason"] = (
-                                f"anthropic+gemini failed -> openai fallback ok "
-                                f"(count: {self.openai_fallback_count})"
-                            )
-                            _LLM_PATH_STATE["last_failure_agent"] = agent_name
-                            return await self._handle_success(
-                                openai_result,
-                                openai_model,
-                                start_time,
-                                retries,
-                                agent_name,
-                                tier=tier,
-                                proxy=proxy,
-                                compressed_key=compressed_key,
-                                cache_salt=cache_salt,
-                            )
-                        except Exception as oex:
-                            logger.error(
-                                f"[{openai_model}] OpenAI fallback also failed for "
-                                f"{agent_name}: {type(oex).__name__}: {oex}"
-                            )
-                            # fall through to unhealthy-path handling below
-
-                    _LLM_PATH_STATE["healthy"] = False
-                    _LLM_PATH_STATE["last_failure_ts"] = datetime.now(timezone.utc).isoformat()
-                    _LLM_PATH_STATE["last_failure_reason"] = body_str[:500]
-                    _LLM_PATH_STATE["last_failure_agent"] = agent_name
-                    try:
-                        from notifications.openclaw_notifier import notify_credits_exhausted
-
-                        asyncio.create_task(
-                            notify_credits_exhausted(reason=body_str[:300], agent=agent_name)
-                        )
-                    except Exception as notify_err:
-                        logger.debug(f"credits-exhausted notifier failed: {notify_err}")
+                # PRB-10: previously this cascade only fired when body_str matched
+                # the narrow _is_credit_exhaustion() string signature -- any other
+                # Anthropic-side failure landing here (a plain 5xx, an auth error,
+                # a hard timeout via LLMHardTimeoutError, a malformed response)
+                # fell straight through to total failure below, skipping
+                # Vertex/Gemini/OpenAI/Kimi entirely even when they were healthy.
+                # Attempt the cascade unconditionally for anything that reaches
+                # this generic handler -- `is_credit_exhaustion` is passed through
+                # ONLY to pick the /health failure-reason label and whether the
+                # credit-exhaustion-specific ops alert fires; it never changes
+                # which providers get tried.
+                is_credit = _is_credit_exhaustion(body_str)
+                cross_result = await self._cross_provider_fallback(
+                    current_model=current_model,
+                    system=system,
+                    messages=working_messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    agent_name=agent_name,
+                    tier=tier,
+                    proxy=proxy,
+                    compressed_key=compressed_key,
+                    cache_salt=cache_salt,
+                    is_credit_exhaustion=is_credit,
+                )
+                if cross_result is not None:
+                    return cross_result
+                self._mark_unhealthy_and_notify(body_str, agent_name, is_credit_exhaustion=is_credit)
                 break
 
         return await self._handle_failure(
@@ -1602,6 +1976,108 @@ class JarvisLLMClient:
         input_tokens = int(usage.get("prompt_tokens") or self._estimate_tokens(system, messages))
         output_tokens = int(usage.get("completion_tokens") or max(1, len(text) // 4))
 
+        return SimpleNamespace(
+            usage=SimpleNamespace(input_tokens=input_tokens, output_tokens=output_tokens),
+            content=[SimpleNamespace(text=text)],
+        )
+
+    async def _call_kimi(
+        self,
+        system: str,
+        messages: list[dict],
+        max_tokens: int,
+        temperature: float,
+        model: str,
+    ):
+        """Single call to Kimi K3 (Moonshot AI) via its OpenAI-compatible endpoint.
+
+        Returns a SimpleNamespace shaped like an Anthropic response, same
+        convention as _call_google/_call_openai/_call_deepseek. Per the
+        platform.kimi.ai quickstart, K3 always reasons server-side and fixes
+        temperature/top_p/penalties -- those must be OMITTED from the request,
+        not just left at a default, and the output budget field is
+        `max_completion_tokens` (not `max_tokens`). `temperature` (this
+        method's own param) is accepted only for call-site symmetry with the
+        other _call_* methods and is intentionally unused.
+        """
+        if not self.kimi_api_key:
+            raise RuntimeError("kimi_api_key not configured")
+
+        openai_messages: list[dict] = []
+        if system:
+            openai_messages.append({"role": "system", "content": system})
+        for m in messages:
+            role = m.get("role", "user")
+            content = m.get("content", "")
+            if not isinstance(content, str):
+                content = str(content)
+            openai_messages.append({"role": role, "content": content})
+
+        # K3 always runs max thinking effort (no way to disable it -- see the
+        # reasoning_effort note below) and the completion budget is shared
+        # between internal reasoning and the visible answer, the same failure
+        # class as gemini-2.5-pro above. Floor comfortably above typical
+        # observed need so real JSON responses don't truncate mid-object.
+        # Tunable via KIMI_MIN_OUTPUT_TOKENS; only ever raises.
+        try:
+            floor = int(os.getenv("KIMI_MIN_OUTPUT_TOKENS", "4096"))
+        except (TypeError, ValueError):
+            floor = 4096
+        effective_max_tokens = max(max_tokens, floor)
+
+        payload: dict = {
+            "model": model,
+            "messages": openai_messages,
+            "max_completion_tokens": effective_max_tokens,
+        }
+        # K3 supports only reasoning_effort="max" today (its own default) --
+        # omit the field entirely unless explicitly overridden, rather than
+        # risk sending an unsupported value as other levels roll out.
+        effort = os.getenv("KIMI_REASONING_EFFORT", "").strip().lower()
+        if effort:
+            payload["reasoning_effort"] = effort
+
+        # K3 always runs at max thinking effort, which is noticeably slower
+        # than a typical chat completion even for trivial prompts -- default
+        # timeout is generous accordingly.
+        timeout = float(os.getenv("KIMI_TIMEOUT_SECONDS", "180"))
+        headers = {
+            "Authorization": f"Bearer {self.kimi_api_key}",
+            "Content-Type": "application/json",
+        }
+        # Throttle the kimi path to its dedicated sub-cap so a scan's fan-out
+        # cannot burst past Moonshot's per-key rate limit (see
+        # _kimi_call_semaphore in __init__). Nested INSIDE the global
+        # _llm_call_semaphore already held by the call wrapper; lock order is
+        # always global-then-kimi, so this cannot deadlock. nullcontext keeps
+        # legacy/test instances constructed without the sub-semaphore working.
+        kimi_sem = getattr(self, "_kimi_call_semaphore", None) or contextlib.nullcontext()
+        async with kimi_sem:
+            async with httpx.AsyncClient(timeout=_granular_httpx_timeout(timeout)) as http_client:
+                response = await http_client.post(
+                    self.kimi_endpoint, json=payload, headers=headers
+                )
+                if response.status_code >= 400:
+                    try:
+                        body = response.text[:500]
+                    except Exception:  # pragma: no cover - defensive
+                        body = "<unreadable>"
+                    logger.warning(
+                        "[%s] Kimi endpoint returned HTTP %d: %s",
+                        model,
+                        response.status_code,
+                        body,
+                    )
+                response.raise_for_status()
+                data = response.json()
+
+        choices = data.get("choices") or []
+        if not choices:
+            raise RuntimeError(f"Kimi response missing choices: {str(data)[:300]}")
+        text = (choices[0].get("message") or {}).get("content", "")
+        usage = data.get("usage") or {}
+        input_tokens = int(usage.get("prompt_tokens") or self._estimate_tokens(system, messages))
+        output_tokens = int(usage.get("completion_tokens") or max(1, len(text) // 4))
         return SimpleNamespace(
             usage=SimpleNamespace(input_tokens=input_tokens, output_tokens=output_tokens),
             content=[SimpleNamespace(text=text)],

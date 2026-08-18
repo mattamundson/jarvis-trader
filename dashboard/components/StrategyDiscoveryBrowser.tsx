@@ -5,6 +5,7 @@ import useSWR from "swr";
 import { Search, Play, RefreshCw, CheckCircle, XCircle, Clock, Filter } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine, postEngine } from "@/lib/api";
+import { ALL_TRACKED_SYMBOLS, DEFAULT_BRIEFING_SYMBOLS, type TrackedSymbol } from "@/lib/approvedSymbols";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -87,7 +88,7 @@ function formatMetric(value: number | undefined, decimals = 2): string {
 
 export function StrategyDiscoveryBrowser() {
   const [filterStatus, setFilterStatus] = useState<FilterStatus>("ALL");
-  const [runSymbol, setRunSymbol] = useState<"MCL" | "MNQ">("MCL");
+  const [runSymbol, setRunSymbol] = useState<TrackedSymbol>(DEFAULT_BRIEFING_SYMBOLS[0]);
   const [isRunning, setIsRunning] = useState(false);
   const [lastRunResult, setLastRunResult] = useState<DiscoveryRunResult | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
@@ -170,11 +171,14 @@ export function StrategyDiscoveryBrowser() {
         <span className="font-mono text-[10px] text-zinc-400 uppercase tracking-wider">Run Discovery Cycle</span>
         <select
           value={runSymbol}
-          onChange={(e) => setRunSymbol(e.target.value as "MCL" | "MNQ")}
+          onChange={(e) => setRunSymbol(e.target.value as TrackedSymbol)}
           className="font-mono text-[10px] bg-zinc-800 border border-zinc-700 text-zinc-300 rounded px-2 py-1 focus:outline-none focus:border-cyan-600"
         >
-          <option value="MCL">MCL</option>
-          <option value="MNQ">MNQ</option>
+          {ALL_TRACKED_SYMBOLS.map((sym) => (
+            <option key={sym} value={sym}>
+              {sym}
+            </option>
+          ))}
         </select>
         <button
           onClick={handleRunCycle}

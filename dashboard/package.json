@@ -12,7 +12,11 @@
     "lint": "next lint",
     "test:unit": "node --test --experimental-strip-types --import ./tests/_register-alias.mjs \"tests/**/*.node.test.ts\"",
     "test:e2e": "playwright test",
+    "test:e2e:fresh": "playwright test --config=playwright.fresh.config.ts",
     "check:live": "node scripts/check-live-data.mjs",
+    "check:runtime-contract": "node scripts/check-runtime-contract.mjs",
+    "guards": "node scripts/check-guards.mjs",
+    "budget": "node scripts/check-bundle-budget.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -50,5 +54,11 @@
     "postcss": "^8.5.3",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.8.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "sharp",
+      "unrs-resolver"
+    ]
   }
 }

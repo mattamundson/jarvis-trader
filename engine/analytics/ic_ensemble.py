@@ -445,18 +445,54 @@ class ICWeightedEnsemble:
 BRIER_NEUTRAL = 0.25
 
 
+def score_forecast(signal: float, pnl: float) -> float:
+    """One agent-row Brier term under a *proper* scoring rule.
+
+    A scoring rule is *proper* iff an agent minimises its expected score by
+    reporting its true belief. ``(p - outcome)**2`` is the canonical strictly
+    proper (Brier) rule, where ``p`` is a probability and ``outcome`` ∈ {0, 1}.
+
+    The prior rule scored ``(|signal| - was_correct)**2`` — it compared
+    conviction *magnitude* to *correctness*, a different quantity, and was NOT
+    proper. Its pathology (measured on the real ledger 2026-07-17): below 0.5
+    conviction, being WRONG scored better than being RIGHT, and at exactly 0.5
+    it returned 0.25 regardless of outcome. Since ensemble weight is
+    ``1/(brier+eps)``, an agent that only ever emitted |signal|=0.5 (Corey) was
+    un-scoreable yet earned the LARGEST weight — the ensemble rewarded
+    abstention and punished conviction.
+
+    The fix reads ``signal`` ∈ [-1, 1] as a signed directional forecast and
+    maps it linearly to P(up-move)::
+
+        p       = (clip(signal, -1, 1) + 1) / 2   # +1 -> p=1, -1 -> p=0, 0 -> 0.5
+        outcome = 1 if pnl > 0 else 0
+        brier   = (p - outcome) ** 2
+
+    The map is a monotonic bijection, so reporting true belief still minimises
+    expected score — proper. It assumes *linear* calibration (a fitted
+    signal→probability map would be strictly better and is the natural next
+    refinement); properness — what was broken, and what the ensemble weighting
+    depends on — holds regardless of calibration quality.
+    """
+    p = (max(-1.0, min(1.0, signal)) + 1.0) / 2.0
+    outcome = 1.0 if pnl > 0 else 0.0
+    return (p - outcome) ** 2
+
+
 class BrierCalibrationTracker:
     """
     Rolling Brier-score calibration per agent.
 
     For each trade row in ``trade_outcomes``:
 
-        confidence_i = |agent_signal_i|            ∈ [0, 1]
-        correct_i    = 1 if sign(agent_signal_i) == sign(pnl_usd) else 0
-        brier_i      = (confidence_i - correct_i)² ∈ [0, 1]
+        p_i     = (clip(agent_signal_i, -1, 1) + 1) / 2   ∈ [0, 1]
+        o_i     = 1 if pnl_usd > 0 else 0
+        brier_i = (p_i - o_i)²                             ∈ [0, 1]
 
-    The per-agent Brier is the mean over the rolling window. Lower = better.
-    Zero-magnitude signals are excluded (the agent had no opinion).
+    (see :func:`score_forecast` for why this proper form replaced the earlier
+    ``(|signal| - correct)²``). The per-agent Brier is the mean over the
+    rolling window. Lower = better. Zero-magnitude signals are excluded (the
+    agent had no opinion).
 
     Weights for re-weighting the debate are derived as::
 
@@ -542,12 +578,7 @@ class BrierCalibrationTracker:
         if len(pairs) < self.min_trades:
             return BRIER_NEUTRAL
 
-        total = 0.0
-        for signal, pnl in pairs:
-            confidence = min(1.0, abs(signal))
-            correct = 1.0 if (signal > 0) == (pnl > 0) else 0.0
-            total += (confidence - correct) ** 2
-
+        total = sum(score_forecast(signal, pnl) for signal, pnl in pairs)
         return total / len(pairs)
 
     def get_calibration_weights(
@@ -576,6 +607,26 @@ class BrierCalibrationTracker:
         """Diagnostic — per-agent Brier across the window."""
         return {agent: self.compute_brier(agent) for agent in self.agents}
 
+    def fit_current_calibration_curve(self, agent_name: str):
+        """Fit a monotonic signal->probability curve on this agent's history (MR-1.1, second half).
+
+        PROSPECTIVE USE ONLY — see calibration.py's module docstring. Returns a
+        callable for scoring a NEW incoming signal, or ``None`` on insufficient
+        history / sklearn unavailable. Deliberately NOT used by
+        ``compute_brier``/``compute_rolling_brier``/``get_calibration_weights``
+        above: fitting on a window and rescoring that same window would be
+        in-sample and violate the project's point-in-time discipline (see
+        ``.claude/rules/testing.md``). This method changes no existing
+        behavior — it is purely additive.
+        """
+        try:
+            from engine.analytics.calibration import fit_isotonic_calibration
+        except ImportError:
+            from analytics.calibration import fit_isotonic_calibration
+
+        pairs = self._fetch_pairs(agent_name)
+        return fit_isotonic_calibration(pairs)
+
     def compute_rolling_brier(
         self,
         agents: Optional[List[str]] = None,
@@ -600,11 +651,7 @@ class BrierCalibrationTracker:
             pairs = self._fetch_pairs(agent)
             if len(pairs) < self.min_trades:
                 continue
-            total = 0.0
-            for signal, pnl in pairs:
-                confidence = min(1.0, abs(signal))
-                correct = 1.0 if (signal > 0) == (pnl > 0) else 0.0
-                total += (confidence - correct) ** 2
+            total = sum(score_forecast(signal, pnl) for signal, pnl in pairs)
             real_briers.append(total / len(pairs))
 
         if not real_briers:

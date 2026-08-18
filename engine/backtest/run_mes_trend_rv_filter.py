@@ -27,6 +27,7 @@ Grid (3 combos, identical to rank11):
 Usage (from engine/ directory):
     .venv/Scripts/python backtest/run_mes_trend_rv_filter.py
 """
+
 from __future__ import annotations
 
 import itertools
@@ -213,9 +214,19 @@ from backtest._constants import (  # noqa: E402
     GATE_FIXED_PARAMS_MIN_PF,
     GATE_WFO_CONSISTENCY_VALUES,
 )
-from backtest._gate_v2_helpers import _find_latest_cache  # noqa: E402
-from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower  # noqa: E402
 from backtest._gate_v2_helpers import (  # noqa: E402
+    GATE_DSR,
+    GATE_DSR_ALT,
+    GATE_MC_DD_ALT,
+    GATE_MC_DD_CORE,
+    GATE_P_EDGE,
+    GATE_PF_CI_LOWER,
+    _find_latest_cache,  # noqa: E402
+)
+from backtest._gate_v2_helpers import (
+    bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower,  # noqa: E402
+)
+from backtest._gate_v2_helpers import (
     classify_wfo_consistency as _classify_wfo_consistency,  # noqa: E402
 )
 

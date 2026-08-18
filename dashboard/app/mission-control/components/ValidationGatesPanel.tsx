@@ -4,6 +4,7 @@ import useSWR from "swr";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import type { LedgerEntry, LedgerResponse } from "@/lib/api";
+import { DEFAULT_BRIEFING_SYMBOLS } from "@/lib/approvedSymbols";
 import { fetcher, LoadingRows, UnreachableNote } from "./shared";
 
 // GET /validate/proactive-suite?symbol=X —
@@ -25,7 +26,11 @@ interface ProactiveReportLive {
   next_milestone: string;
 }
 
-const SYMBOLS = ["MCL", "MNQ"] as const;
+// GT-43 (2026-07-28 dashboard-integrity audit): was hardcoded ["MCL", "MNQ"]
+// — the halted pair — so this panel proactive-validated symbols that can't
+// trade while the actually-active MES/MGC pair got no suite at all. Derived
+// from DEFAULT_BRIEFING_SYMBOLS so it can't drift from the active pair again.
+const SYMBOLS = DEFAULT_BRIEFING_SYMBOLS;
 
 function overallBadgeVariant(
   overall: ProactiveReportLive["overall"] | undefined

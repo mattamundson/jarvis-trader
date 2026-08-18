@@ -1,17 +1,43 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import { Activity, MessageSquare } from "lucide-react";
 import { SWRConfig } from "swr";
-import { DiscordStats } from "@/components/discord/DiscordStats";
-import { DiscordWinRateChart } from "@/components/discord/DiscordWinRateChart";
-import { DiscordSignalTable } from "@/components/discord/DiscordSignalTable";
-import { SignalFeed } from "@/components/discord/signal-feed";
-import { IBReportCard } from "@/components/discord/ib-report-card";
-import { CoreyFeed } from "@/components/discord/corey-feed";
-import { DiscordIntelligenceWidget } from "@/components/DiscordIntelligenceWidget";
-import { KnowledgeContextWidget } from "@/components/KnowledgeContextWidget";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
+
+const DynamicDiscordStats = dynamic(
+  () => import("@/components/discord/DiscordStats").then(mod => ({ default: mod.DiscordStats })),
+  { ssr: false, loading: () => <DiscordPanelSkeleton label="Loading Discord stats..." /> }
+);
+const DynamicDiscordWinRateChart = dynamic(
+  () => import("@/components/discord/DiscordWinRateChart").then(mod => ({ default: mod.DiscordWinRateChart })),
+  { ssr: false, loading: () => <DiscordPanelSkeleton label="Loading win-rate chart..." /> }
+);
+const DynamicDiscordSignalTable = dynamic(
+  () => import("@/components/discord/DiscordSignalTable").then(mod => ({ default: mod.DiscordSignalTable })),
+  { ssr: false, loading: () => <DiscordPanelSkeleton label="Loading signal table..." /> }
+);
+const DynamicSignalFeed = dynamic(
+  () => import("@/components/discord/signal-feed").then(mod => ({ default: mod.SignalFeed })),
+  { ssr: false, loading: () => <DiscordPanelSkeleton label="Loading signal feed..." /> }
+);
+const DynamicIBReportCard = dynamic(
+  () => import("@/components/discord/ib-report-card").then(mod => ({ default: mod.IBReportCard })),
+  { ssr: false, loading: () => <DiscordPanelSkeleton label="Loading IB reports..." /> }
+);
+const DynamicCoreyFeed = dynamic(
+  () => import("@/components/discord/corey-feed").then(mod => ({ default: mod.CoreyFeed })),
+  { ssr: false, loading: () => <DiscordPanelSkeleton label="Loading Corey commentary..." /> }
+);
+const DynamicDiscordIntelligenceWidget = dynamic(
+  () => import("@/components/DiscordIntelligenceWidget").then(mod => ({ default: mod.DiscordIntelligenceWidget })),
+  { ssr: false, loading: () => <DiscordPanelSkeleton label="Loading Discord intelligence..." /> }
+);
+const DynamicKnowledgeContextWidget = dynamic(
+  () => import("@/components/KnowledgeContextWidget").then(mod => ({ default: mod.KnowledgeContextWidget })),
+  { ssr: false, loading: () => <DiscordPanelSkeleton label="Loading knowledge context..." /> }
+);
 
 type Tab = "overview" | "signals" | "ib-reports" | "commentary";
 
@@ -31,6 +57,18 @@ const DISCORD_SWR_CONFIG = {
   shouldRetryOnError: false,
   errorRetryCount: 0,
 } as const;
+
+function DiscordPanelSkeleton({ label }: { label: string }) {
+  return (
+    <div className="rounded-xl border border-border bg-card p-4">
+      <div className="h-4 w-40 rounded bg-muted animate-pulse" />
+      <div className="mt-4 h-28 rounded bg-muted/50 animate-pulse" />
+      <p className="mt-3 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+        {label}
+      </p>
+    </div>
+  );
+}
 
 export default function DiscordPage() {
   const [activeTab, setActiveTab] = useState<Tab>("overview");
@@ -116,21 +154,21 @@ export default function DiscordPage() {
         {activeTab === "overview" && (
           <div className="space-y-6">
             {/* Row 1: Summary stats (full width) */}
-            <DiscordStats />
+            <DynamicDiscordStats />
 
             {/* Discord signal features (left) + curated knowledge brain (right) */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <WidgetErrorBoundary name="Discord Intelligence">
-                <DiscordIntelligenceWidget />
+                <DynamicDiscordIntelligenceWidget />
               </WidgetErrorBoundary>
               <WidgetErrorBoundary name="Knowledge Context">
-                <KnowledgeContextWidget symbol="MES" />
+                <DynamicKnowledgeContextWidget symbol="MES" />
               </WidgetErrorBoundary>
             </div>
 
             {/* Row 2: Win rate chart (left) + commentary snippet (right) */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <DiscordWinRateChart />
+              <DynamicDiscordWinRateChart />
 
               {/* Quick-info commentary card */}
               <div className="rounded-xl border border-border bg-card p-4 space-y-4">
@@ -169,13 +207,13 @@ export default function DiscordPage() {
             </div>
 
             {/* Row 3: Recent signals table (full width) */}
-            <DiscordSignalTable />
+            <DynamicDiscordSignalTable />
           </div>
         )}
 
-        {activeTab === "signals" && <SignalFeed />}
-        {activeTab === "ib-reports" && <IBReportCard />}
-        {activeTab === "commentary" && <CoreyFeed />}
+        {activeTab === "signals" && <DynamicSignalFeed />}
+        {activeTab === "ib-reports" && <DynamicIBReportCard />}
+        {activeTab === "commentary" && <DynamicCoreyFeed />}
 
       </main>
     </div>

@@ -4,10 +4,11 @@ import React, { useState } from "react";
 import { DollarSign } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { fetchEngine } from "@/lib/api";
+import { ALL_TRACKED_SYMBOLS, type TrackedSymbol } from "@/lib/approvedSymbols";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-type Symbol = "MES" | "MNQ" | "MCL";
+type Symbol = TrackedSymbol;
 
 // Mirrors the actual fields returned by GET /position-sizing/calculate
 // (engine/routers/settings_router.py:calculate_position_size_alias) — that
@@ -24,12 +25,19 @@ interface PositionSizingResponse {
   reasoning: string;
 }
 
-const SYMBOLS: Symbol[] = ["MES", "MNQ", "MCL"];
+// Active pair (MES, MGC) first, then the halted symbols (MCL, MNQ) — this is
+// a purely informational what-if calculator (GET /position-sizing/calculate
+// doesn't execute trades or touch broker/execution paths), so keeping the
+// halted symbols selectable is fine; GT-46 was that MGC — half of the
+// actually-active MES/MGC pair — was missing entirely.
+const SYMBOLS: Symbol[] = [...ALL_TRACKED_SYMBOLS];
 
 const MULTIPLIER_LABELS: Record<Symbol, string> = {
   MES: "$5/pt",
+  MGC: "$10/pt",
   MNQ: "$2/pt",
   MCL: "$100/pt",
+  M2K: "$5/pt",
 };
 
 // ── Component ──────────────────────────────────────────────────────────────

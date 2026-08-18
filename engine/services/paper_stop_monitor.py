@@ -121,6 +121,32 @@ def is_stop_breached(side: Any, stop: Optional[float], price: Optional[float]) -
     return False
 
 
+def is_target_hit(side: Any, target: Optional[float], price: Optional[float]) -> bool:
+    """True iff ``price`` has reached the take-profit target.
+
+    Long  → hit when price >= target.
+    Short → hit when price <= target.
+    Missing target or price → False (cannot evaluate, never fabricate a hit).
+
+    Mirrors ``is_stop_breached`` so the same sweep can close at target with
+    the same live-price discipline (added 2026-08-16: paper trades recorded
+    targets but nothing closed at them, so the paper loop never banked T1/T2).
+    """
+    if target is None or price is None:
+        return False
+    try:
+        target_f = float(target)
+        price_f = float(price)
+    except (TypeError, ValueError):
+        return False
+    norm = normalize_side(side)
+    if norm == "long":
+        return price_f >= target_f
+    if norm == "short":
+        return price_f <= target_f
+    return False
+
+
 def _commission_per_contract() -> float:
     """Flat per-contract round-trip commission, mirroring PortfolioTracker.
 
@@ -420,11 +446,17 @@ class PaperStopMonitor:
             pnl = compute_stop_pnl(side, entry_price, price, quantity, mult)
 
             stop_hit = has_stop and is_stop_breached(side, stop, price)
+            # Take-profit leg (2026-08-16): close at the recorded target. The
+            # paper loop previously recorded take_profit but nothing closed at
+            # it — stops fired, targets never banked. Same live-price discipline
+            # as stops; idempotent close path below.
+            target = t.get("take_profit")
+            target_hit = is_target_hit(side, target, price)
             # Catastrophe backstop: force-close ANY position (stop recorded or
             # not) once its live unrealized loss exceeds the hard cap. This is the
             # net that the null-stop skip above used to leave open.
             max_loss_hit = max_loss > 0 and pnl <= -max_loss
-            if not stop_hit and not max_loss_hit:
+            if not stop_hit and not target_hit and not max_loss_hit:
                 continue
 
             closed = await asyncio.to_thread(
@@ -440,16 +472,16 @@ class PaperStopMonitor:
 
             fired += 1
             src = (quote or {}).get("source", "?")
-            reason = "STOP FIRED" if stop_hit else "MAX-LOSS BACKSTOP"
+            reason = "TARGET HIT" if target_hit else ("STOP FIRED" if stop_hit else "MAX-LOSS BACKSTOP")
             logger.critical(
-                f"🛡️ [PaperStopMonitor] {reason} {symbol} "
+                f"🎯 [PaperStopMonitor] {reason} {symbol} "
                 f"{normalize_side(side).upper()} qty={quantity} "
-                f"entry={entry_price} stop={stop} fill={price} ({src}) pnl={pnl:+.2f}"
+                f"entry={entry_price} stop={stop} target={target} fill={price} ({src}) pnl={pnl:+.2f}"
             )
             _notify(
-                f"🛡️ JARVIS PAPER | {symbol} {reason}\n"
+                f"🎯 JARVIS PAPER | {symbol} {reason}\n"
                 f"{normalize_side(side).upper()} {quantity} @ {entry_price}\n"
-                f"Stop {stop} | Fill {price} ({src})\n"
+                f"Target {target} | Fill {price} ({src})\n"
                 f"PnL {pnl:+.2f}"
             )
 
