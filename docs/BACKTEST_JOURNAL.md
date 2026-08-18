@@ -329,7 +329,7 @@ shipped the empirical fix. **Trial-count accounting was not part of that fix and
 | Regenerate/annotate historical Sharpe after PR #714 | **OPEN** — 157-row journal CSV + archived verdicts still carry inflated values |
 | **MES 15m higher-frequency hypothesis** | **CLOSED — FALSIFIED** 2026-08-17. Worse on every axis; do not retry |
 | MES 5m | **DO NOT RETRY as a trend system** — 27% cost hurdle; needs a different family entirely |
-| Full 54-combo MES 1h grid + VIX regimes | **DONE 2026-08-18** — VIX gate auto-discovery + smoke assert wired; MRB/ODF re-run confirmed |
+| Full 54-combo MES 1h grid + VIX regimes | **CRON'D** — `overnight-mes-sweep` job `c93fec77143e` (04:30 CT daily, waits ≤2h for ≥8GB free); first full-grid attempt 2026-08-18 OOM'd at combo 25/54 (loaded machine) — needs a genuinely idle window; VIX gate auto-discovery + smoke assert wired (2026-08-18); VIX pass via `SWEEP_VARIANT=vix` |
 | QQQ/AAPL/TSLA deep caches | Missing — `free_daily_export.py` fetch needed |
 | Equity 1h certification (live scanner cadence) | Queued — SPY trades live paper on a REJECTED verdict; QQQ/AAPL/TSLA on none |
 | Options vertical-spread certification | Scaffold only |
@@ -360,8 +360,9 @@ shipped the empirical fix. **Trial-count accounting was not part of that fix and
 
 - `iterate.py --smoke` (1 combo, MC 1000, 2,000-bar tail): **15.1s wall** incl. ~9s python/import/CSV startup.
 - Full deep cache (42,826 bars), champion **55/200/2.0, MC 1000: 91.9s wall** — reproduces the journal bit-for-bit (128 trades, PF 1.3858, p_edge 0.923, DD 4.37%; reproducibility re-confirmed).
-- Extrapolated full grid: **54 combos × MC 10k ≈ 9–10h single-threaded** on this desktop — fits the overnight window. Modal (8 vCPU parallel) would compress that to ~30 min at ~$0.30–1.00/run (ESTIMATE).
-- Guard live-tested: at **0.6GB free** the sweep correctly skipped (exit 0, log `SKIP: free memory 0.6 GB < 8.0 GB`), lockfile cleaned itself. The exact daytime-OOM failure mode is now defended.
+- Full-grid runtime is now MEASURED, not extrapolated: the peer cron run (03:37–04:11) swept **25 combos in ~34 min (~82s/combo incl. MC 10k)** — bootstrap is vectorized; signal generation dominates — so the full 54-combo grid ≈ **60–75 min**. My first-pass "9–10h" extrapolation (assuming MC scales 10x linearly) was wrong; corrected here.
+- **OOM live demo (2026-08-18 03:37–04:11):** that same full-grid run died at **combo 25/54** — `numpy._core._exceptions._ArrayMemoryError: Unable to allocate 335 KiB` — the machine is oversubscribed (32GB total, always-on engine + dashboard + Ollama 2 models + sentinel + master-api + Chrome). The memory guard is mandatory, not advisory: this run passed a ≥8GB check earlier in the evening, then the load crept back up.
+- Guard live-tested: at **0.6GB free** the sweep correctly skipped (exit 0, log `SKIP: free memory 0.6 GB < 8.0 GB`), lockfile cleaned itself. The exact daytime-OOM failure mode is now defended — but only when the guard actually gates the start.
 
 ### Certified-edge state at decision time (2026-08-18)
 
@@ -372,14 +373,12 @@ shipped the empirical fix. **Trial-count accounting was not part of that fix and
 | QQQ sma_cert 10/40/2.0 | FAIL | 2026-08-18T07:14Z | 113 windows, 31 OOS, p_edge 0.50 |
 | TSLA sma_cert 10/40/2.0 | FAIL | 2026-08-18T07:20Z | 113 windows, 36 OOS, p_edge 0.51 |
 
-### Sweep cron (provisioned this session)
+### Sweep cron (on the chosen target — reconciled 2026-08-18, one live job)
 
-- **Job:** `overnight MES sweep (t_41ec4b7a)` — id `17a40f45360f`, schedule `0 3 * * *` (03:00 daily), `no_agent` script cron → `%LOCALAPPDATA%\hermes\profiles\dev\scripts\overnight_sweep_launcher.py`.
-- **Chain:** launcher detaches `engine/backtest/run_overnight_sweep.py` (Windows `DETACHED_PROCESS`, survives the cron tick) → sweep runs the **full default MES grid (54 combos) × MC 10,000**, seed 42, risk_per_trade 0.01, capital $50k, comm 0.62, slippage 2 ticks, `OPENBLAS_NUM_THREADS=2`, `PYTHONUNBUFFERED=1`, **PYTHONPATH/PYTHONHOME stripped** (Hermes venv-poisoning lesson).
-- **Guards:** engine `/health` (127.0.0.1:8010) must be `ok`; free RAM ≥ 8GB; `engine/logs/sweep.lock` prevents concurrent sweeps. Skipped runs exit 0 silently.
-- **Output:** `engine/backtest/results/iterate_mes_full_<date>.json` → journal auto-appended in the standard template; run log `engine/logs/overnight_sweep_<date>.log`.
-- **Files:** `engine/backtest/run_overnight_sweep.py` (git-committed), launcher in the profile scripts dir (machine-local paths).
-- VIX-regime pass available via `SWEEP_VARIANT=vix` (adds Crisis,HighVol blocking pass over the grid).
+- **Live job:** `overnight-mes-sweep` — id `c93fec77143e`, schedule `30 4 * * *` (04:30 CT daily), `no_agent` script `%LOCALAPPDATA%\hermes\profiles\dev\scripts\overnight_mes_sweep.py` (built by card t_6316ea21; **the keeper** — it waits up to 2h for a ≥8GB quiet window, checks engine `/health` with retries, single-instance lock with staleness-stealing, appends this journal and commits it).
+- **Chain:** waits for quiet window → `/health` (127.0.0.1:8010) ok → `backtest/iterate.py --symbol MES --mc-resamples 10000` (full 54-combo grid × MC 10k, seed 42, risk_per_trade 0.01, capital $50k, comm 0.62, slippage 2 ticks; `OPENBLAS_NUM_THREADS=2`, `PYTHONUNBUFFERED=1`, PYTHONPATH/PYTHONHOME stripped) → `engine/backtest/results/iterate_mes_<ts>.json` + journal append + git commit of the journal.
+- **First live attempt 2026-08-18 03:37:** OOM'd at combo 25/54 (see baseline above) — expected outcome while the desktop is loaded; the guard's 2h wait is the mitigation, and a genuinely idle overnight window is the precondition.
+- **Dedup note:** a duplicate launcher cron created by this card (`17a40f45360f`, 03:00, `overnight_sweep_launcher.py`) was **removed the same session** — two crons with different lockfiles would have allowed concurrent sweeps and re-OOM. `engine/backtest/run_overnight_sweep.py` remains as a manual/fallback runner (same guards; now honors the same lockfile) and supports a VIX-regime pass via `SWEEP_VARIANT=vix`.
 
 ### Open decisions for Amo (none block the chosen path)
 

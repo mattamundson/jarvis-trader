@@ -40,6 +40,9 @@ JOURNAL = ENGINE_ROOT.parent / "docs" / "BACKTEST_JOURNAL.md"
 RESULTS_DIR = ENGINE_ROOT / "backtest" / "results"
 LOGS_DIR = ENGINE_ROOT / "logs"
 LOCK = LOGS_DIR / "sweep.lock"
+# The live cron (overnight_mes_sweep.py, job c93fec77143e) locks here — honor it so a
+# manual fallback run can never double-fire a concurrent sweep (t_41ec4b7a dedup).
+CRON_LOCK = RESULTS_DIR / ".overnight_sweep.lock"
 HEALTH_URL = "http://127.0.0.1:8010/health"
 MIN_FREE_GB = 8.0
 DATE = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -97,16 +100,17 @@ def top_rows(doc: dict, n: int = 5) -> list[dict]:
 def run() -> int:
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Lock: one sweep at a time.
-    if LOCK.exists():
-        try:
-            pid = int(LOCK.read_text().strip())
-            if pid_alive(pid):
-                print(f"SKIP: sweep already running (pid {pid})")
-                return 0
-        except Exception:
-            pass
-        LOCK.unlink(missing_ok=True)
+    # Lock: one sweep at a time (our lock + the live cron's lock).
+    for lock in (LOCK, CRON_LOCK):
+        if lock.exists():
+            try:
+                pid = int(lock.read_text().strip())
+                if pid_alive(pid):
+                    print(f"SKIP: sweep already running (pid {pid}, lock {lock})")
+                    return 0
+            except Exception:
+                pass
+            lock.unlink(missing_ok=True)
     LOCK.write_text(str(os.getpid()))
 
     try:
