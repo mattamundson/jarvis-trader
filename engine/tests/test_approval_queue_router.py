@@ -163,6 +163,7 @@ async def test_approve_submits_paper_order(tmp_path: Path) -> None:
 
         with (
             patch("routers.approval_queue_router._get_live_trading_enabled", return_value=False),
+            patch("backtest.gate_v2_policy.is_strategy_authorized", return_value=(True, "authorized")),
         ):
             from routers.approval_queue_router import ApproveBody, approve_candidate
 
@@ -210,7 +211,10 @@ async def test_approve_records_to_shared_dedup(tmp_path: Path) -> None:
         mod._db_path = db_path
         mod._dedup = SubmissionDedup(Path(tmp_path) / "dedup.jsonl")
 
-        with patch("routers.approval_queue_router._get_live_trading_enabled", return_value=False):
+        with (
+            patch("routers.approval_queue_router._get_live_trading_enabled", return_value=False),
+            patch("backtest.gate_v2_policy.is_strategy_authorized", return_value=(True, "authorized")),
+        ):
             from routers.approval_queue_router import ApproveBody, approve_candidate
 
             await approve_candidate(row_id, ApproveBody(entry_price=2010.0))
@@ -251,7 +255,10 @@ async def test_approve_skips_when_cross_path_already_submitted(tmp_path: Path) -
         )
         mod._dedup = shared
 
-        with patch("routers.approval_queue_router._get_live_trading_enabled", return_value=False):
+        with (
+            patch("routers.approval_queue_router._get_live_trading_enabled", return_value=False),
+            patch("backtest.gate_v2_policy.is_strategy_authorized", return_value=(True, "authorized")),
+        ):
             from routers.approval_queue_router import ApproveBody, approve_candidate
 
             with pytest.raises(HTTPException) as exc_info:
@@ -338,3 +345,139 @@ def test_no_duplicate_candidates_for_same_symbol_direction(tmp_path: Path) -> No
     # If the tick correctly checks, it would NOT insert a second row.
     # Verify the guard works for the opposite direction too.
     assert _has_pending_candidate(db_path, "MCL", "SHORT") is False
+
+
+@pytest.mark.asyncio
+async def test_approve_writes_ledger_with_stop_and_target(tmp_path: Path) -> None:
+    """An approved candidate must write a paper_trades row (stop+target) when
+    paper_tracker is injected — the 2026-08-16 ledger-gap fix.
+
+    Before the fix, approve_candidate routed orders to IB but never recorded
+    the paper_trades row, so 386 approved queue rows matched ZERO ledger rows.
+    """
+    db_path = _fresh_db(tmp_path)
+    # Insert candidate whose snapshot carries stop_price and target_1 (the
+    # pipeline's trade_decision shape).
+    now = datetime.now(timezone.utc)
+    with sqlite3.connect(db_path) as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO pipeline_approval_queue
+                (created_at, symbol, direction, confidence, verdict_json, expires_at, status)
+            VALUES (?, ?, ?, ?, ?, ?, 'pending')
+            """,
+            (
+                now.isoformat(),
+                "MCL",
+                "LONG",
+                0.75,
+                json.dumps(
+                    {
+                        "trade_decision": {
+                            "entry_price": 2000.0,
+                            "stop_price": 1990.0,
+                            "target_1": 2030.0,
+                            "target_2": 2050.0,
+                        }
+                    }
+                ),
+                (now + timedelta(seconds=1800)).isoformat(),
+            ),
+        )
+        row_id = cur.lastrowid
+        conn.commit()
+
+    mock_safety = MagicMock()
+    mock_safety.get_status.return_value = {"kill_switch_active": False}
+    mock_safety.submit_paper_order = AsyncMock(
+        return_value={"approved": True, "order_id": "TEST-LEDGER-1"}
+    )
+    mock_tracker = MagicMock()
+    mock_tracker.add_paper_trade = MagicMock(return_value="trade-abc123")
+
+    import routers.approval_queue_router as mod
+    from execution.submission_dedup import SubmissionDedup
+
+    original_sl = mod._safety_layer
+    original_db = mod._db_path
+    original_dedup = mod._dedup
+    original_tracker = mod._paper_tracker
+    try:
+        mod._safety_layer = mock_safety
+        mod._db_path = db_path
+        mod._dedup = SubmissionDedup(Path(tmp_path) / "dedup_ledger.jsonl")
+        mod._paper_tracker = mock_tracker
+
+        with (
+            patch("routers.approval_queue_router._get_live_trading_enabled", return_value=False),
+            patch("backtest.gate_v2_policy.is_strategy_authorized", return_value=(True, "authorized")),
+        ):
+            from routers.approval_queue_router import ApproveBody, approve_candidate
+
+            result = await approve_candidate(row_id, ApproveBody(entry_price=2000.0))
+
+        assert result["status"] == "approved"
+
+        # Ledger write: add_paper_trade must have been called with stop + target
+        # lifted from the pipeline snapshot, not None/omitted.
+        mock_tracker.add_paper_trade.assert_called_once()
+        kwargs = mock_tracker.add_paper_trade.call_args.kwargs
+        assert kwargs["symbol"] == "MCL"
+        assert kwargs["side"] == "buy"
+        assert kwargs["entry_price"] == 2000.0
+        assert kwargs["stop_loss"] == 1990.0
+        assert kwargs["take_profit"] == 2030.0  # target_1 preferred over target_2
+        assert kwargs["strategy_params"]["candidate_id"] == row_id
+    finally:
+        mod._safety_layer = original_sl
+        mod._db_path = original_db
+        mod._dedup = original_dedup
+        mod._paper_tracker = original_tracker
+
+
+@pytest.mark.asyncio
+async def test_approve_ledger_failure_does_not_fail_order(tmp_path: Path) -> None:
+    """A ledger write failure must not fail the already-submitted order — the
+    queue row remains the audit record of the broker submission."""
+    db_path = _fresh_db(tmp_path)
+    row_id = _insert_via_sql(db_path, symbol="MCL", direction="LONG", confidence=0.75)
+
+    mock_safety = MagicMock()
+    mock_safety.get_status.return_value = {"kill_switch_active": False}
+    mock_safety.submit_paper_order = AsyncMock(
+        return_value={"approved": True, "order_id": "TEST-LEDGER-2"}
+    )
+    mock_tracker = MagicMock()
+    mock_tracker.add_paper_trade = MagicMock(side_effect=RuntimeError("db locked"))
+
+    import routers.approval_queue_router as mod
+    from execution.submission_dedup import SubmissionDedup
+
+    original_sl = mod._safety_layer
+    original_db = mod._db_path
+    original_dedup = mod._dedup
+    original_tracker = mod._paper_tracker
+    try:
+        mod._safety_layer = mock_safety
+        mod._db_path = db_path
+        mod._dedup = SubmissionDedup(Path(tmp_path) / "dedup_ledger2.jsonl")
+        mod._paper_tracker = mock_tracker
+
+        with (
+            patch("routers.approval_queue_router._get_live_trading_enabled", return_value=False),
+            patch("backtest.gate_v2_policy.is_strategy_authorized", return_value=(True, "authorized")),
+        ):
+            from routers.approval_queue_router import ApproveBody, approve_candidate
+
+            # Should NOT raise despite the ledger failure.
+            result = await approve_candidate(row_id, ApproveBody(entry_price=2010.0))
+
+        assert result["status"] == "approved"
+        candidate = _get_candidate(db_path, row_id)
+        assert candidate["status"] == "approved"
+        assert candidate["order_id"] == "TEST-LEDGER-2"
+    finally:
+        mod._safety_layer = original_sl
+        mod._db_path = original_db
+        mod._dedup = original_dedup
+        mod._paper_tracker = original_tracker

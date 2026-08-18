@@ -86,7 +86,7 @@ def _fresh_verdict_dict(symbol: str = "MES", rank: int = 11, verdict: str = "PAS
 # Fixtures: fake DO_NOT_TRADE_SYMBOLS
 # ---------------------------------------------------------------------------
 
-_FAKE_DNTS = frozenset({"MCL", "MNQ", "M2K"})
+_FAKE_DNTS = frozenset({"MGC", "MCL", "MNQ", "M2K"})  # MGC re-added 2026-08-16 (fresh rank4 FAIL)
 
 # ---------------------------------------------------------------------------
 # test_all_pass_returns_green
@@ -320,13 +320,6 @@ def test_zero_donottrade_trades_passes_when_clean():
             "side": "buy",
             "filled_price": 5300.0,
         },
-        {
-            "timestamp": "2026-05-07T16:00:00Z",
-            "symbol": "MGC",
-            "side": "sell",
-            "filled_price": 3200.0,
-            "pnl": 50.0,
-        },
     ]
 
     with patch.dict(
@@ -334,7 +327,7 @@ def test_zero_donottrade_trades_passes_when_clean():
     ):
         result = _eval_g5_no_donottrade(paper_trades)
 
-    assert result.passed, f"G5 should pass with only MES/MGC trades; got: {result.observed}"
+    assert result.passed, f"G5 should pass with only MES trades; got: {result.observed}"
     assert result.gate_id == "G5"
 
 

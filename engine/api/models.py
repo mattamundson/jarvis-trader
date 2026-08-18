@@ -149,6 +149,14 @@ class HealthResponse(BaseModel):
     ibgateway_port: Optional[int] = Field(
         None, description="The IB port probed for ibgateway_alive (4002 paper / 4001 live)"
     )
+    ibkr_broker_probe_ok: Optional[bool] = Field(
+        True,
+        description="Whether the IBKR health-check RPC probes (latency/net_liq/open_orders) all responded. False = socket up but RPCs failing (degraded broker); distinct from ibkr_*_connected which is socket-level only.",
+    )
+    ibkr_degraded_reason: Optional[str] = Field(
+        None,
+        description="Which broker probe(s) failed (e.g. 'latency:TimeoutError'), populated only when ibkr_broker_probe_ok=false",
+    )
     schwab_connected: bool = Field(False, description="Whether Schwab is connected")
     uptime_seconds: float = Field(0, description="Server uptime in seconds")
     paper_trading: Optional[PaperTradingStatus] = Field(None, description="Paper trading status")
@@ -196,6 +204,18 @@ class HealthResponse(BaseModel):
     brier_30d_rolling: Optional[float] = Field(
         None,
         description="30-day rolling mean Brier score across agents with ≥ min_trades closed signals. 0 = perfect calibration, 1 = always confidently wrong. None when no agent has enough data.",
+    )
+    batch_jobs_health: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Anthropic Message Batches summary: {jobs_by_status, unconsumed_results}. Non-blocking — batches are async by design, so this never flips top-level status to degraded, only surfaces counts for observability. Populated by engine/llm/batch_client.py's JarvisBatchClient.get_batch_health_summary(). Field must exist here or _health_inner's dict key gets silently stripped by FastAPI's response_model, same class of bug as llm_providers/futures_sentiment above.",
+    )
+    market_data_fresh: Optional[bool] = Field(
+        True,
+        description="P3-1: whether every currently-authorized/tradeable symbol's `market:latest:{symbol}` Redis fabric entry is within MARKET_DATA_STALE_AFTER_S (900s, same threshold as /system/data-integrity). False flips top-level status to degraded. True (not stale) when the fabric can't be reached at all — a different, defense-in-depth signal (ibgateway_alive/tv_mcp_healthy) already covers total data-path outage.",
+    )
+    market_data_stale_symbols: Optional[List[str]] = Field(
+        None,
+        description="Symbols (subset of the authorized/tradeable set) whose Redis fabric entry is present but stale. Empty/None when market_data_fresh=True.",
     )
 
 
@@ -282,6 +302,20 @@ class SafetyStatusResponse(BaseModel):
     )
     equity_peak: Optional[float] = Field(None, description="Peak equity from safety snapshot")
     daily_realized_pnl: Optional[float] = Field(None, description="Daily realized P&L component")
+    orders_per_minute_limit: Optional[int] = Field(
+        None, description="Configured max orders per minute (rate throttle)"
+    )
+    last_kill_switch_ts: Optional[str] = Field(
+        None,
+        description="ISO-8601 UTC timestamp of the most recent kill-switch activation. Survives deactivate + restart. None if it has never fired.",
+    )
+    last_kill_switch_reason_value: Optional[str] = Field(
+        None, description="Reason value of the most recent kill-switch activation (history)"
+    )
+    time_since_kill_switch_sec: Optional[float] = Field(
+        None,
+        description="Seconds since the last kill-switch activation, or None if it has never fired. Lets a consumer tell a just-recovered-from-halt system from one running clean for hours.",
+    )
 
 
 class CircuitBreakerStatus(BaseModel):

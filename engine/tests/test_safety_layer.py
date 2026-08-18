@@ -176,36 +176,47 @@ class TestPaperConfigEnabled:
     of which approval router a candidate came through."""
 
     def test_disabled_symbol_blocks_regardless_of_approval_path(self, mock_safety_layer):
-        """MGC (paper_config.enabled=False as of 2026-06-26) is rejected by
-        check_order() even with default test settings (LIVE_TRADING_ENABLED
-        is False) -- proves the check fires before, and independent of, the
-        live-trading gate, exactly like TestDoNotTradeSymbols above."""
+        """MCL (paper_config.enabled=False, in DO_NOT_TRADE_SYMBOLS) is
+        rejected by _check_paper_config_enabled() even with default test
+        settings (LIVE_TRADING_ENABLED is False) -- proves the check fires
+        before, and independent of, the live-trading gate, exactly like
+        TestDoNotTradeSymbols above.
+
+        Calls the private check directly rather than check_order(): MCL is
+        also in DO_NOT_TRADE_SYMBOLS, and that check runs first in
+        check_order()'s pipeline, so going through check_order() would test
+        the DO_NOT_TRADE_SYMBOLS gate instead of this one. See
+        TestDoNotTradeSymbols and
+        test_submit_paper_order_rejects_disabled_symbol below for the
+        DO_NOT_TRADE_SYMBOLS-first behavior end-to-end."""
         safety = mock_safety_layer
         order = OrderRequest(
-            symbol="MGC",
+            symbol="MCL",
             quantity=1,
             order_type="market",
             estimated_value=1000.0,
         )
 
-        result = safety.check_order(order, 100_000.0)
+        result = safety._check_paper_config_enabled(order)
 
         assert result.approved is False
-        assert "MGC" in result.rejection_reason
+        assert "MCL" in result.rejection_reason
         assert "paper_config.enabled" in result.rejection_reason
 
     def test_disabled_symbol_blocks_lowercase_input(self, mock_safety_layer):
         """Symbol matching is case-insensitive (matches order.symbol.upper()
-        convention used by every other check in this file)."""
+        convention used by every other check in this file). Calls the
+        private check directly for the same reason as the test above --
+        MCL also hits DO_NOT_TRADE_SYMBOLS first in check_order()."""
         safety = mock_safety_layer
         order = OrderRequest(
-            symbol="mgc",
+            symbol="mcl",
             quantity=1,
             order_type="market",
             estimated_value=1000.0,
         )
 
-        result = safety.check_order(order, 100_000.0)
+        result = safety._check_paper_config_enabled(order)
 
         assert result.approved is False
         assert "paper_config.enabled" in result.rejection_reason
@@ -256,7 +267,7 @@ class TestPaperConfigEnabled:
         safety = mock_safety_layer
 
         blocked = OrderRequest(
-            symbol="MGC", quantity=1, order_type="market", estimated_value=1000.0
+            symbol="MCL", quantity=1, order_type="market", estimated_value=1000.0
         )
         allowed = OrderRequest(
             symbol="MES", quantity=1, order_type="market", estimated_value=1000.0
@@ -270,7 +281,7 @@ class TestPaperConfigEnabled:
         no_entry_result = safety._check_paper_config_enabled(no_entry)
 
         assert blocked_result.approved is False
-        assert "MGC" in blocked_result.rejection_reason
+        assert "MCL" in blocked_result.rejection_reason
         assert allowed_result.approved is True
         assert no_entry_result.approved is True
 
@@ -280,7 +291,16 @@ class TestPaperConfigEnabled:
         routers/approval_queue_router.py's approve_candidate() calls -- proves
         a disabled symbol never reaches the (mock) broker via this route
         either. This is the exact real-world path MGC's live paper orders
-        were taking despite paper_config.enabled=False (PRB-22)."""
+        were taking despite paper_config.enabled=False (PRB-22); MGC has been
+        re-authorized (PR #598), so MCL — still disabled and blocklisted — is
+        the canonical disabled symbol.
+
+        MCL is in DO_NOT_TRADE_SYMBOLS, and that check runs first in
+        check_order()'s pipeline, so the rejection reason below is
+        DO_NOT_TRADE_SYMBOLS, not paper_config.enabled — a strictly stronger
+        guarantee (MCL is double-gated). The paper_config.enabled path itself
+        is still covered in isolation by test_check_paper_config_enabled_direct
+        and test_disabled_symbol_blocks_regardless_of_approval_path above."""
         mock_settings.LIVE_TRADING_ENABLED = True
         mock_settings.REQUIRE_HUMAN_APPROVAL = False
         safety = SafetyLayer(mock_settings)
@@ -289,7 +309,7 @@ class TestPaperConfigEnabled:
         safety._ib_gateway = gw
 
         result = await safety.submit_paper_order(
-            symbol="MGC",
+            symbol="MCL",
             action="BUY",
             quantity=1,
             price=2150.0,
@@ -297,7 +317,7 @@ class TestPaperConfigEnabled:
         )
 
         assert result["approved"] is False
-        assert "paper_config.enabled" in result["reason"]
+        assert "DO_NOT_TRADE_SYMBOLS" in result["reason"]
         assert result["routed_to_ib"] is False
         gw.place_paper_order.assert_not_called()
 
@@ -721,6 +741,85 @@ class TestFuturesContractLimit:
         result = safety.check_order(order, 100_000.0)
 
         # Assert
+        assert result.approved is True
+
+
+class TestCumulativePositionCap:
+    """CUMULATIVE_POSITION_CAP (2026-08-03 incident): several individually-
+    compliant orders stacked a live MES position to 5 contracts against a
+    configured cap of 2, because check_order() only ever validated each new
+    order's OWN quantity against the cap, never the resulting net position.
+    """
+
+    def _live_safety(self, mock_settings) -> SafetyLayer:
+        mock_settings.LIVE_TRADING_ENABLED = True
+        mock_settings.REQUIRE_HUMAN_APPROVAL = False
+        mock_settings.MAX_CONTRACTS_PER_INSTRUMENT = 2
+        mock_settings.MAX_OVERNIGHT_CONTRACTS = 5  # wall-clock independent
+        return SafetyLayer(mock_settings)
+
+    def test_second_order_rejected_when_cumulative_exceeds_cap(self, mock_settings):
+        """Two sequential 2-contract BUY orders on a symbol with cap=2 — the
+        second must be rejected even though each order's OWN quantity (2) is
+        individually within the per-order cap."""
+        safety = self._live_safety(mock_settings)
+        mock_gw = Mock()
+        mock_gw.get_cached_position = Mock(return_value=0.0)
+        safety._ib_gateway = mock_gw
+
+        order = OrderRequest(
+            symbol="MES", quantity=2, order_type="market", is_futures=True, estimated_value=2000.0
+        )
+        first = safety.check_order(order, 100_000.0)
+        assert first.approved is True
+
+        # Simulate the first order having filled — live position is now 2.
+        mock_gw.get_cached_position = Mock(return_value=2.0)
+        second = safety.check_order(order, 100_000.0)
+        assert second.approved is False
+        assert "CUMULATIVE_POSITION_CAP" in second.rejection_reason
+
+    def test_opposite_direction_order_reducing_position_allowed(self, mock_settings):
+        """A SELL that reduces an over-cap position back within the cap must
+        not be blocked by the cumulative check — it closes exposure rather
+        than adding to it. (The order's own size, 2, also individually
+        satisfies the pre-existing per-order cap check.)"""
+        safety = self._live_safety(mock_settings)
+        mock_gw = Mock()
+        mock_gw.get_cached_position = Mock(return_value=3.0)  # already over cap
+        safety._ib_gateway = mock_gw
+
+        order = OrderRequest(
+            symbol="MES", quantity=-2, order_type="market", is_futures=True, estimated_value=2000.0
+        )
+        result = safety.check_order(order, 100_000.0)
+        assert result.approved is True  # 3 - 2 = 1, within cap
+
+    def test_gateway_unavailable_fails_open_on_this_check_only(self, mock_settings):
+        """No gateway attached → the cumulative check can't verify a live
+        position and must not block on that basis (the per-order cap check
+        immediately above it in _check_contract_limits still applies
+        unconditionally)."""
+        safety = self._live_safety(mock_settings)
+        assert safety._ib_gateway is None
+        order = OrderRequest(
+            symbol="MES", quantity=2, order_type="market", is_futures=True, estimated_value=2000.0
+        )
+        result = safety.check_order(order, 100_000.0)
+        assert result.approved is True
+
+    def test_cache_read_failure_fails_open_on_this_check_only(self, mock_settings):
+        """get_cached_position() returning None (cache read failed) must not
+        block — it's the explicit 'cannot verify' signal, distinct from a
+        verified zero position."""
+        safety = self._live_safety(mock_settings)
+        mock_gw = Mock()
+        mock_gw.get_cached_position = Mock(return_value=None)
+        safety._ib_gateway = mock_gw
+        order = OrderRequest(
+            symbol="MES", quantity=2, order_type="market", is_futures=True, estimated_value=2000.0
+        )
+        result = safety.check_order(order, 100_000.0)
         assert result.approved is True
 
 
@@ -1465,6 +1564,99 @@ class TestSubmitPaperOrder:
         assert result["approved"] is True
 
     @pytest.mark.asyncio
+    async def test_lmt_order_garbage_price_rejected_before_ib(self, mock_settings):
+        """ENTRY_PRICE_SANITY (2026-08-03 incident): a client-supplied limit_price
+        wildly off market (a $1000 LMT order on ~$7,600 MES) must be rejected
+        before ever reaching IB Gateway, once a data manager is attached."""
+        safety = self._live_safety(mock_settings)
+        mock_gw = AsyncMock()
+        mock_gw.is_connected = Mock(return_value=True)
+        mock_gw.place_paper_order = AsyncMock(return_value="should_not_be_called")
+        mock_gw.get_cached_position = Mock(return_value=0.0)
+        safety._ib_gateway = mock_gw
+
+        import pandas as pd
+
+        mock_dm = MagicMock()
+        mock_dm.get_current_price = AsyncMock(
+            return_value={"last_price": 7609.75, "source": "ibkr"}
+        )
+        rows = 30
+        mock_dm.get_bars = AsyncMock(
+            return_value=pd.DataFrame(
+                {
+                    "high": [7620.0] * rows,
+                    "low": [7600.0] * rows,
+                    "close": [7610.0] * rows,
+                }
+            )
+        )
+        safety._data_manager = mock_dm
+
+        result = await safety.submit_paper_order(
+            "MES", "BUY", 1, 1000.0, order_type="LMT", limit_price=1000.0
+        )
+        assert result["approved"] is False
+        assert result["routed_to_ib"] is False
+        assert result["order_id"] is None
+        mock_gw.place_paper_order.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_lmt_order_sane_price_still_routes_with_data_manager_attached(
+        self, mock_settings
+    ):
+        """A plausible limit price near market still routes to IB once a data
+        manager is attached — the sanity check must not false-positive on a
+        normal, well-formed manual order."""
+        safety = self._live_safety(mock_settings)
+        mock_gw = AsyncMock()
+        mock_gw.is_connected = Mock(return_value=True)
+        mock_gw.place_paper_order = AsyncMock(return_value="lmt_order_ok")
+        mock_gw.get_cached_position = Mock(return_value=0.0)
+        safety._ib_gateway = mock_gw
+
+        import pandas as pd
+
+        mock_dm = MagicMock()
+        mock_dm.get_current_price = AsyncMock(
+            return_value={"last_price": 7609.75, "source": "ibkr"}
+        )
+        rows = 30
+        mock_dm.get_bars = AsyncMock(
+            return_value=pd.DataFrame(
+                {
+                    "high": [7620.0] * rows,
+                    "low": [7600.0] * rows,
+                    "close": [7610.0] * rows,
+                }
+            )
+        )
+        safety._data_manager = mock_dm
+
+        result = await safety.submit_paper_order(
+            "MES", "BUY", 1, 7609.75, order_type="LMT", limit_price=7608.0
+        )
+        assert result["approved"] is True
+        assert result["routed_to_ib"] is True
+
+    @pytest.mark.asyncio
+    async def test_lmt_order_no_data_manager_skips_sanity_check(self, mock_settings):
+        """No data manager attached (attach_data_manager() never called) →
+        the sanity check is silently skipped, preserving prior behavior for
+        any deployment/test that doesn't wire one in."""
+        safety = self._live_safety(mock_settings)
+        assert safety._data_manager is None
+        mock_gw = AsyncMock()
+        mock_gw.is_connected = Mock(return_value=True)
+        mock_gw.place_paper_order = AsyncMock(return_value="lmt_order_1")
+        mock_gw.get_cached_position = Mock(return_value=0.0)
+        safety._ib_gateway = mock_gw
+        result = await safety.submit_paper_order(
+            "MES", "BUY", 1, 5800.0, order_type="LMT", limit_price=5795.0
+        )
+        assert result["approved"] is True
+
+    @pytest.mark.asyncio
     async def test_non_futures_symbol_routes(self, mock_settings):
         """Non-futures symbol (SPY) is detected as equity and routed."""
         safety = self._live_safety(mock_settings)
@@ -1778,6 +1970,23 @@ class TestCheckCircuitBreakers:
         assert status["drawdown_breached"] is False
         assert status["kill_switch_active"] is False
         assert status["kill_switch_reason"] is None
+
+    def test_orders_per_minute_limit_reflects_config(self, mock_settings):
+        """orders_per_minute_limit mirrors config.MAX_ORDERS_PER_MINUTE (MR-5.2)."""
+        mock_settings.MAX_ORDERS_PER_MINUTE = 25
+        safety = SafetyLayer(mock_settings)
+        status = safety.check_circuit_breakers()
+        assert status["orders_per_minute_limit"] == 25
+
+    def test_orders_per_minute_limit_falls_back_when_config_lacks_field(self):
+        """A config object missing the field (e.g. a partial test mock) never
+        crashes /safety/status — falls back to the real config.py default."""
+        from types import SimpleNamespace
+
+        cfg = SimpleNamespace(MAX_DAILY_LOSS_PCT=0.02, MAX_DRAWDOWN_PCT=0.10)
+        safety = SafetyLayer(cfg)
+        status = safety.check_circuit_breakers()
+        assert status["orders_per_minute_limit"] == 10
 
     def test_daily_pnl_below_limit_breached(self, mock_settings):
         """Daily PnL exceeds configured loss limit → daily_limit_breached=True."""
@@ -2702,6 +2911,13 @@ class TestTrade287RegressionRiskGate:
         masking the TRADE_LOSS_LIMIT gate this test exists to prove. Force
         MGC enabled=True for the duration of this test so the trade-loss
         gate — not the unrelated paper_config gate — is what's exercised.
+
+        MGC also joined DO_NOT_TRADE_SYMBOLS 2026-07-31 (honest-data-drain DSR
+        correction), which runs even earlier in check_order()'s pipeline and
+        would mask TRADE_LOSS_LIMIT the same way. Patch it out for the
+        duration of this test too, for the same reason: this test isolates
+        the trade-loss gate specifically, not MGC's (separate, real) halted
+        status.
         """
         mock_settings.LIVE_TRADING_ENABLED = True
         mock_settings.REQUIRE_HUMAN_APPROVAL = False
@@ -2718,7 +2934,10 @@ class TestTrade287RegressionRiskGate:
 
         from backtest.paper_config import PAPER_CONFIGS
 
-        with patch.dict(PAPER_CONFIGS["MGC"], {"enabled": True}):
+        with (
+            patch.dict(PAPER_CONFIGS["MGC"], {"enabled": True}),
+            patch("backtest.signals.DO_NOT_TRADE_SYMBOLS", frozenset({"MCL", "MNQ", "M2K"})),
+        ):
             result = await safety.submit_paper_bracket_order(
                 "MGC", "BUY", 1, self.MGC_ENTRY, stop_loss=self.MGC_STOP, take_profit=None
             )
@@ -3582,3 +3801,120 @@ class TestSubmitPaperBracketOrder:
         assert result["approved"] is True
         assert result["routed_to_ib"] is False
         assert "broker placement failed" in result["reason"].lower()
+
+
+class TestContractLimitAggregation:
+    """Real-underlying-instrument exposure aggregation (2026-07-13 trade-frequency
+    plan, PR-A). Previously _check_contract_limits only checked an order's own
+    quantity against MAX_CONTRACTS_PER_INSTRUMENT -- it never summed existing
+    open positions, so combined exposure across strategies sharing one real
+    instrument could silently exceed the configured cap."""
+
+    def _mock_db_with_open_trades(self, trades: list[dict]):
+        db = Mock()
+        db.get_open_trades = Mock(return_value=trades)
+        return db
+
+    def test_no_db_manager_preserves_prior_single_order_behavior(self, mock_settings):
+        """Backward-compat: SafetyLayer(config) with no db_manager (how most
+        existing tests and callers construct it) must behave EXACTLY as
+        before -- existing_qty always 0, so only the order's own quantity
+        is checked."""
+        mock_settings.LIVE_TRADING_ENABLED = True
+        mock_settings.REQUIRE_HUMAN_APPROVAL = False
+        mock_settings.MAX_CONTRACTS_PER_INSTRUMENT = 2
+        mock_settings.MAX_OVERNIGHT_CONTRACTS = 5  # wall-clock-independent, matches sibling test
+        safety = SafetyLayer(mock_settings)  # no db_manager
+
+        order = OrderRequest(symbol="MES", quantity=2, order_type="market", is_futures=True)
+        result = safety.check_order(order, 100_000.0)
+        assert result.approved is True
+
+    def test_rejects_when_combined_with_existing_open_position_exceeds_cap(
+        self, mock_settings
+    ):
+        """The money case: a NEW order that is within the cap on its own gets
+        rejected because an EXISTING open position on the same real
+        instrument would push combined exposure over MAX_CONTRACTS_PER_INSTRUMENT.
+        This is exactly the gap that made it possible for two strategies
+        trading the same real instrument to silently exceed the cap."""
+        mock_settings.LIVE_TRADING_ENABLED = True
+        mock_settings.REQUIRE_HUMAN_APPROVAL = False
+        mock_settings.MAX_CONTRACTS_PER_INSTRUMENT = 2
+        db = self._mock_db_with_open_trades(
+            [{"symbol": "MES", "quantity": 1, "status": "open"}]
+        )
+        safety = SafetyLayer(mock_settings, db_manager=db)
+
+        # 1 existing + 2 new = 3 > cap of 2 -- must reject, even though 2
+        # alone would have been within the cap.
+        order = OrderRequest(symbol="MES", quantity=2, order_type="market", is_futures=True)
+        result = safety.check_order(order, 100_000.0)
+
+        assert result.approved is False
+        assert "contracts exceeds max" in result.rejection_reason
+        assert "combined with 1 already open" in result.rejection_reason
+
+    def test_allows_when_combined_with_existing_stays_within_cap(self, mock_settings):
+        """Non-regression: combined exposure at or under the cap still approves."""
+        mock_settings.LIVE_TRADING_ENABLED = True
+        mock_settings.REQUIRE_HUMAN_APPROVAL = False
+        mock_settings.MAX_CONTRACTS_PER_INSTRUMENT = 2
+        mock_settings.MAX_OVERNIGHT_CONTRACTS = 5  # wall-clock-independent, matches sibling test
+        db = self._mock_db_with_open_trades(
+            [{"symbol": "MES", "quantity": 1, "status": "open"}]
+        )
+        safety = SafetyLayer(mock_settings, db_manager=db)
+
+        order = OrderRequest(symbol="MES", quantity=1, order_type="market", is_futures=True)
+        result = safety.check_order(order, 100_000.0)
+
+        assert result.approved is True
+
+    def test_aggregates_across_pseudo_symbols_sharing_one_underlying(
+        self, mock_settings, monkeypatch
+    ):
+        """Two DIFFERENT PAPER_CONFIGS keys (e.g. a future "MES" trend strategy
+        and "MES_VA30" value-area re-entry) that both resolve to the same real
+        underlying instrument must aggregate together, not be tracked as
+        independent instruments. Simulated here via UNDERLYING_INSTRUMENT so
+        this test doesn't depend on PR-C's config actually existing yet."""
+        import backtest.paper_config as paper_config_module
+
+        monkeypatch.setitem(paper_config_module.UNDERLYING_INSTRUMENT, "MES_VA30", "MES")
+
+        mock_settings.LIVE_TRADING_ENABLED = True
+        mock_settings.REQUIRE_HUMAN_APPROVAL = False
+        mock_settings.MAX_CONTRACTS_PER_INSTRUMENT = 2
+        # Existing open position is under the OTHER pseudo-symbol key.
+        db = self._mock_db_with_open_trades(
+            [{"symbol": "MES_VA30", "quantity": 1, "status": "open"}]
+        )
+        safety = SafetyLayer(mock_settings, db_manager=db)
+
+        # New order under the real "MES" key -- must still see the
+        # MES_VA30 position as combined MES exposure.
+        order = OrderRequest(symbol="MES", quantity=2, order_type="market", is_futures=True)
+        result = safety.check_order(order, 100_000.0)
+
+        assert result.approved is False
+        assert "combined with 1 already open" in result.rejection_reason
+
+    def test_db_error_degrades_to_zero_existing_not_a_crash(self, mock_settings):
+        """A DB error while aggregating must not crash order checking --
+        degrades to existing_qty=0 (prior single-order-only behavior), logged
+        as a warning rather than raised."""
+        mock_settings.LIVE_TRADING_ENABLED = True
+        mock_settings.REQUIRE_HUMAN_APPROVAL = False
+        mock_settings.MAX_CONTRACTS_PER_INSTRUMENT = 2
+        mock_settings.MAX_OVERNIGHT_CONTRACTS = 5  # wall-clock-independent, matches sibling test
+        db = Mock()
+        db.get_open_trades = Mock(side_effect=RuntimeError("db unavailable"))
+        safety = SafetyLayer(mock_settings, db_manager=db)
+
+        order = OrderRequest(symbol="MES", quantity=2, order_type="market", is_futures=True)
+        result = safety.check_order(order, 100_000.0)
+
+        assert result.approved is True  # 0 existing + 2 new == cap of 2
+
+

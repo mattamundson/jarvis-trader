@@ -47,6 +47,12 @@ router = APIRouter(prefix="/approvals", tags=["approvals", "autonomous-queue"])
 
 _safety_layer = None
 _db_path: Optional[str] = None
+# PaperTradeTracker injected at startup so an approved candidate writes its
+# ledger row (paper_trades) alongside the broker submission. Without this the
+# queue-approve path routed orders to IB but the dashboard ledger never saw
+# them (386 approved queue rows with order_ids matched ZERO paper_trades rows,
+# 2026-08-16 audit). The scanner path already does this via add_paper_trade.
+_paper_tracker = None
 # Shared cross-path submission dedup: this queue and the systematic bridge
 # consult the SAME ledger so the same (symbol, action, trading_date) is never
 # submitted twice when both paths are armed. Lazily created; overridable for tests.
@@ -64,14 +70,15 @@ def _get_dedup() -> SubmissionDedup:
 
 
 def inject_approval_queue_deps(
-    safety_layer, db_path: str, dedup: Optional[SubmissionDedup] = None
+    safety_layer, db_path: str, dedup: Optional[SubmissionDedup] = None, paper_tracker=None
 ) -> None:
     """Called from main.py during lifespan startup."""
-    global _safety_layer, _db_path, _dedup
+    global _safety_layer, _db_path, _dedup, _paper_tracker
     _safety_layer = safety_layer
     _db_path = db_path
     if dedup is not None:
         _dedup = dedup
+    _paper_tracker = paper_tracker
     # Ensure the approval queue table exists when the router is first wired.
     _ensure_schema(db_path)
     logger.info("ApprovalQueueRouter: dependencies injected (db=%s)", db_path)
@@ -441,6 +448,35 @@ async def approve_candidate(
         )
 
     symbol = row["symbol"]
+
+    # Gate v2 verdict authorization (PRB-22 sibling gap, found 2026-08-01): this
+    # autonomous-scheduler approve path never called gate_v2_policy.is_strategy_authorized(),
+    # unlike the manual/messaging-bot path in approval.service.ensure_approval_allowed(). PRB-22
+    # (2026-07-29) closed the "enabled=False but still trades" half of this gap by adding an
+    # enabled-boolean check to safety_layer.check_order(), but that check only reads the
+    # PAPER_CONFIGS[symbol]["enabled"] flag -- it does not re-derive whether the specific
+    # strategy's gate v2 verdict is a fresh PASS. A symbol can have enabled=True (as MES's
+    # sma_trend config does, deliberately, per its own comment) while its verdict file is
+    # INSUFFICIENT_SAMPLE/FAIL/stale, and this path would submit the order anyway. Mirrors the
+    # exact check approval.service.ensure_approval_allowed() already runs for the manual path.
+    try:
+        from backtest.gate_v2_policy import is_strategy_authorized
+
+        _authorized, _reason = is_strategy_authorized(symbol)
+        if not _authorized:
+            _audit("approve_refused_gate_v2", candidate_id, {"symbol": symbol, "reason": _reason})
+            raise HTTPException(
+                409,
+                detail=f"{symbol} is not authorized for paper orders: {_reason}",
+            )
+    except HTTPException:
+        raise
+    except Exception as _gate_exc:
+        logger.warning(
+            "ApprovalQueue: gate_v2_policy.is_strategy_authorized check raised (non-blocking): %s",
+            _gate_exc,
+        )
+
     direction = row["direction"]
 
     # Derive entry price: caller override > pipeline snapshot > reject
@@ -505,6 +541,48 @@ async def approve_candidate(
 
     order_id = str(result.get("order_id") or result.get("fill_id") or "")
     _update_status(db, candidate_id, "approved", order_id=order_id)
+
+    # ── Ledger write: the queue-approve path previously routed the order to IB
+    # but never recorded the paper_trades row, so the dashboard/validation
+    # ledger never saw queue-approved trades (386 approved rows matched ZERO
+    # paper_trades, 2026-08-16 audit). Mirror the scanner path: write the ledger
+    # row with stop/target lifted from the pipeline snapshot. Best-effort — a
+    # ledger failure must not fail the already-submitted order (the queue row is
+    # the audit record of the broker submission).
+    if _paper_tracker is not None:
+        try:
+            _snap = row.get("verdict") or {}
+            _td = _snap.get("trade_decision") or {}
+            _stop = _td.get("stop_price") or _td.get("stop_loss") or None
+            _tgt = (
+                _td.get("target_1")
+                or _td.get("target_price")
+                or _td.get("take_profit")
+                or _td.get("target_2")
+                or None
+            )
+            _ledger_trade_id = _paper_tracker.add_paper_trade(
+                symbol=symbol,
+                side=action.lower(),
+                quantity=1.0,
+                entry_price=float(entry_price),
+                stop_loss=float(_stop) if _stop is not None else None,
+                take_profit=float(_tgt) if _tgt is not None else None,
+                strategy_params={
+                    "source": "approval_queue",
+                    "candidate_id": candidate_id,
+                    "direction": direction.upper(),
+                },
+            )
+            _audit("ledger_written", candidate_id, {"trade_id": _ledger_trade_id})
+        except Exception as _ledger_exc:
+            logger.warning(
+                "ApprovalQueue: ledger write failed for approved candidate %d "
+                "(order already submitted): %s",
+                candidate_id,
+                _ledger_exc,
+            )
+
     # Claim the shared cross-path slot only on an APPROVED submit, so a rejected
     # order never blocks the other path. Idempotent (no-op if already recorded).
     dedup.record(

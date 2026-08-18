@@ -611,7 +611,15 @@ async def _get_ib_gateway_health() -> dict:
         }
 
     if hasattr(ib_gw, "health_check"):
-        health = await ib_gw.health_check()
+        # Bounded: health_check() has no internal timeout of its own, so with IB
+        # Gateway down (wrong port, not logged in, dead process) this can block on
+        # the connector's internal connect timeout -- observed 30s+ hang 2026-08-03,
+        # which stalls /health, /health/full, and /ib/connection-test outright.
+        # A bounded, degraded read beats an unusable liveness signal.
+        try:
+            health = await asyncio.wait_for(ib_gw.health_check(), timeout=3.0)
+        except asyncio.TimeoutError:
+            health = {"status": "timeout", "error": "health_check exceeded 3s budget"}
     else:
         is_connected = execution_connected if ib_gw is execution_ib else data_connected
         health = {
@@ -624,8 +632,30 @@ async def _get_ib_gateway_health() -> dict:
     elif data_ib is not None and ib_gw is data_ib:
         health.setdefault("source", "market_data_connector")
 
+    # Data-leg round-trip verification, independent of which connector `ib_gw`
+    # resolved to above -- the shallow `_ib_is_connected()` flag stays True
+    # through a wedge (socket open, API dead), which is exactly what let
+    # `ibkr_data_connected` report true for hours during the 2026-08-15
+    # incident. `data_ib.health_check()` now does a bounded round-trip probe
+    # (`data/market_data.py`); consult it here instead of trusting the shallow
+    # flag alone. Bounded + best-effort: any failure here silently keeps the
+    # pre-existing shallow signal rather than 500ing /health. Only probes when
+    # the shallow flag is already True — no wedge to detect otherwise.
+    if data_connected and data_ib is not None and hasattr(data_ib, "health_check"):
+        try:
+            data_probe = await asyncio.wait_for(data_ib.health_check(), timeout=3.0)
+            if "connected" in data_probe:
+                data_connected = bool(data_probe["connected"])
+        except Exception:
+            pass
+
     health["execution_connected"] = execution_connected
     health["data_connected"] = data_connected
+    # A2: surface broker-probe honesty. health_check() sets these; the no-
+    # health_check fallback (and a fully-disconnected broker) defaults to safe
+    # values so a disconnected paper broker does NOT read as "degraded".
+    health.setdefault("broker_probe_ok", execution_connected or data_connected)
+    health.setdefault("degraded_reason", None)
 
     # Data-leg observability — which tier is actually serving data, and the
     # auto-reconnect watchdog state, so silent degrade is visible (north-star).
@@ -650,6 +680,25 @@ async def _get_ib_gateway_health() -> dict:
     return health
 
 
+
+# P3-1 (roadmap-drain): this was a bare `10` with no citation, wildly tighter
+# than the tolerance the system actually enforces -- a source 15-30s old (a
+# normal blip, well within bounds) read "stale" here while the real-money-
+# readiness gate (gates.py FEED_STALE_SEC) and every dashboard consumer of
+# this endpoint's `status` field treated 900s as the honest fresh/stale line.
+# Two disagreeing staleness lies for the same underlying data is the bug this
+# closes -- match the one place that threshold is actually decided, so the
+# badge Amo looks at and the gate that decides fundability agree.
+DATA_INTEGRITY_STALE_AFTER_S = 900.0
+
+# P3-1 (roadmap-drain, actual): /system/data-integrity above reports staleness
+# but never affected /health's own `status` -- a `market:latest:MES` entry
+# could go stale (or the whole Redis fabric could die) for days with /health
+# still reading "ok". Reuses the SAME 900s threshold as /system/data-integrity
+# (not a third, divergent number) so /health and the readiness gate agree.
+MARKET_DATA_STALE_AFTER_S = DATA_INTEGRITY_STALE_AFTER_S
+
+
 @router.get("/system/data-integrity")
 async def get_data_integrity():
     """
@@ -659,7 +708,12 @@ async def get_data_integrity():
     try:
         import redis.asyncio as redis
 
-        r = redis.from_url(settings.REDIS_URL or "redis://localhost:6379/0", decode_responses=True)
+        r = redis.from_url(
+            settings.REDIS_URL or "redis://localhost:6379/0",
+            decode_responses=True,
+            socket_connect_timeout=3.0,
+            socket_timeout=3.0,
+        )
 
         keys = await r.keys("datasource:*:last_update")
         results = []
@@ -675,7 +729,7 @@ async def get_data_integrity():
                         "source": key.replace("datasource:", "").replace(":last_update", ""),
                         "last_update": val,
                         "latency_sec": round(latency, 2),
-                        "status": "healthy" if latency < 10 else "stale",
+                        "status": "healthy" if latency < DATA_INTEGRITY_STALE_AFTER_S else "stale",
                     }
                 )
             except Exception:
@@ -823,7 +877,64 @@ async def _health_inner() -> dict:
     except Exception:
         pass
 
-    status = "ok" if (db_ok and llm_path_healthy) else "degraded"
+    # Batch jobs (Anthropic Message Batches). Non-blocking observability only —
+    # batches are async by design, so this never contributes to `status` below.
+    # get_batch_health_summary() does sync sqlite3 I/O, so offload it like the
+    # other DB-backed reads above.
+    batch_jobs_health: dict = {}
+    try:
+        from llm.batch_client import JarvisBatchClient
+
+        batch_jobs_health = await asyncio.to_thread(
+            JarvisBatchClient().get_batch_health_summary
+        )
+    except Exception:
+        pass
+
+    # Market-data freshness (P3-1): a `market:latest:{symbol}` Redis fabric
+    # entry that goes stale (or the whole fabric dying) previously had zero
+    # effect on /health -- this endpoint would read "ok" indefinitely while
+    # the badge fed from this same source silently served an old price.
+    # Checked only for the currently-authorized/tradeable symbol set (derives
+    # from the single canonical backtest.signals authority, never a hardcoded
+    # list here) so a halted instrument's dead feed can't page anyone.
+    market_data_fresh = True
+    market_data_stale_symbols: list[str] = []
+    try:
+        from backtest.signals import DO_NOT_TRADE_SYMBOLS, TREND_INSTRUMENTS
+
+        active_symbols = sorted(TREND_INSTRUMENTS - DO_NOT_TRADE_SYMBOLS)
+        if data_manager is not None and active_symbols:
+            freshness = await data_manager.check_redis_fabric_freshness(
+                active_symbols, stale_after_s=MARKET_DATA_STALE_AFTER_S
+            )
+            market_data_stale_symbols = sorted(
+                sym for sym, v in freshness.items() if v.get("stale")
+            )
+            market_data_fresh = not market_data_stale_symbols
+    except Exception:
+        # Can't prove it's stale -- and this signal is defense-in-depth on top
+        # of ibgateway_alive/tv_mcp_healthy/llm_path_healthy, not the only
+        # liveness signal /health has. Fail open here, not closed.
+        pass
+
+    # A2 (branch 1353bdb): a broker that reports connected but whose RPC probes
+    # failed is "degraded", not "ok" — it must not read green with
+    # latency=null/net_liq=0. A fully-disconnected broker (no `connected` key)
+    # is the known paper-hours state and does NOT degrade /health here.
+    broker_degraded = bool(ib_health.get("connected")) and not ib_health.get(
+        "broker_probe_ok", True
+    )
+    status = (
+        "ok"
+        if (
+            db_ok
+            and llm_path_healthy
+            and market_data_fresh
+            and not broker_degraded
+        )
+        else "degraded"
+    )
 
     # Defensive read: a config missing this flag must never report live trading
     # (default False = paper). Also keeps /health resilient to a settings object
@@ -850,6 +961,8 @@ async def _health_inner() -> dict:
         # dead (logged out) — a silent stop-enforcement hazard made observable.
         "ib_execution_stale": ib_execution_stale,
         "ibkr_data_connected": ib_health.get("data_connected", False),
+        "ibkr_broker_probe_ok": ib_health.get("broker_probe_ok", True),
+        "ibkr_degraded_reason": ib_health.get("degraded_reason"),
         "ibgateway_alive": ibgateway_alive,
         "ibgateway_port": ibgateway_port,
         "schwab_connected": bool(schwab_connector and schwab_connector.is_connected),
@@ -864,12 +977,117 @@ async def _health_inner() -> dict:
         "brier_30d_rolling": _compute_brier_30d_rolling(),
         "pending_approvals": pending_approvals,
         "futures_sentiment": futures_sentiment,
+        "batch_jobs_health": batch_jobs_health,
+        "market_data_fresh": market_data_fresh,
+        "market_data_stale_symbols": market_data_stale_symbols,
     }
     if llm_path_details:
         response["llm_path_details"] = llm_path_details
     if tv_mcp_details:
         response["tradingview_mcp_details"] = tv_mcp_details
     return response
+
+
+# MR-3.6 (roadmap-drain): a real subsystem probe backs every assertion below --
+# this derives from the same _health_cached() payload /health itself returns,
+# not a second set of re-probed values, so it can never disagree with /health
+# about the same underlying reality (see P3-1's fix, same failure class: two
+# signals for one truth drifting apart). A stuck-pending-approval hazard has
+# no documented threshold anywhere else in the codebase; 60 minutes is a
+# first-pass value chosen here, not derived from an existing constant --
+# revisit if it proves too tight/loose in practice.
+PENDING_APPROVAL_STUCK_AFTER_MIN = 60.0
+
+
+def _derive_health_assertions(health: dict) -> list[dict]:
+    """Reduce the rich /health payload to named pass/fail assertions.
+
+    Absence of evidence fails closed, not open -- mirrors gates.py's own
+    "UNKNOWN counts as NO-GO" philosophy (real-money-readiness loop) rather
+    than inventing a third truth value here.
+    """
+    pending = health.get("pending_approvals") or {}
+    oldest_age_min = pending.get("oldest_age_min")
+    sentiment = health.get("futures_sentiment") or {}
+    brier = health.get("brier_30d_rolling")
+
+    checks: list[tuple[str, bool, str]] = [
+        (
+            "database_connected",
+            health.get("database") == "connected",
+            f"database={health.get('database')}",
+        ),
+        (
+            "kill_switch_inactive",
+            not health.get("kill_switch_active", True),
+            f"kill_switch_active={health.get('kill_switch_active')}",
+        ),
+        (
+            "ib_gateway_alive",
+            bool(health.get("ibgateway_alive")),
+            f"ibgateway_alive={health.get('ibgateway_alive')}",
+        ),
+        (
+            "ib_execution_not_stale",
+            not health.get("ib_execution_stale", False),
+            "cached-connected but Gateway port is dead"
+            if health.get("ib_execution_stale")
+            else "verified or genuinely disconnected",
+        ),
+        (
+            "llm_path_healthy",
+            bool(health.get("llm_path_healthy")),
+            f"llm_path_healthy={health.get('llm_path_healthy')}",
+        ),
+        (
+            "tradingview_mcp_healthy",
+            bool(health.get("tradingview_mcp_healthy")),
+            f"tradingview_mcp_healthy={health.get('tradingview_mcp_healthy')}",
+        ),
+        (
+            "no_stuck_pending_approvals",
+            oldest_age_min is None or oldest_age_min < PENDING_APPROVAL_STUCK_AFTER_MIN,
+            f"oldest_age_min={oldest_age_min} (count={pending.get('count', 0)})",
+        ),
+        (
+            "forecasts_beat_coinflip",
+            brier is not None and brier < 0.25,
+            f"brier_30d_rolling={brier}" if brier is not None else "no rolling Brier data yet",
+        ),
+        (
+            "futures_sentiment_fresh",
+            sentiment.get("quality") == "fresh",
+            f"quality={sentiment.get('quality')} age_days={sentiment.get('age_days')}",
+        ),
+        (
+            "execution_path_verified",
+            bool(health.get("execution_connected_verified")),
+            f"execution_connected_verified={health.get('execution_connected_verified')}",
+        ),
+    ]
+    return [{"name": name, "passed": passed, "detail": detail} for name, passed, detail in checks]
+
+
+@router.get("/health/assertions")
+async def get_health_assertions():
+    """Single-pane-of-glass health: N named pass/fail assertions, one glance.
+
+    Aggregates the ~10 scattered /health* and /system/* routes this project
+    has accumulated (data-integrity, execution status, LLM path, TV MCP,
+    kill switch, pending approvals, Brier calibration, futures sentiment)
+    into one list a dashboard badge or Amo can read without cross-referencing
+    endpoints by hand. Every assertion maps to a real probe already computed
+    by /health -- this is a read-only reshape, not a new probe surface.
+    """
+    health = await _health_cached()
+    assertions = _derive_health_assertions(health)
+    failed = [a["name"] for a in assertions if not a["passed"]]
+    return {
+        "timestamp": health.get("timestamp"),
+        "all_passed": len(failed) == 0,
+        "failed": failed,
+        "assertions": assertions,
+    }
 
 
 @router.post(

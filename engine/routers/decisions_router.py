@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import ValidationError
 
 from schemas.decision_log import DecisionRecord, parse_decision_row
+from utils.data_provenance import build_data_provenance, stamp_signal_data
 
 logger = logging.getLogger(__name__)
 
@@ -20,11 +21,24 @@ _decision_log: list[dict] = []
 # SQLite DatabaseManager — injected at startup via set_db_manager()
 _db_manager = None
 
+# MarketDataManager — injected at startup via set_data_manager() (decision provenance)
+_data_manager = None
+
 
 def set_db_manager(db) -> None:
     """Inject the application-level SQLite DatabaseManager into this router."""
     global _db_manager
     _db_manager = db
+
+
+def set_data_manager(dm) -> None:
+    """Inject the application-level MarketDataManager into this router.
+
+    Used only to stamp {last_bar_source, serve_age_s} data-provenance onto
+    persisted decisions (matches main.py's _log_decision, PR #286).
+    """
+    global _data_manager
+    _data_manager = dm
 
 
 @router.get("/decisions/recent")
@@ -279,12 +293,18 @@ async def log_decision(decision: dict):
 
     if _db_manager is not None:
         try:
+            # Data-truth: stamp *what data* this decision was based on (tier +
+            # per-symbol serve-age), matching main.py's _log_decision (PR #286).
+            # Additive only — never changes a trade decision, never raises.
+            symbol = decision.get("symbol", "UNKNOWN")
+            provenance = build_data_provenance(_data_manager, symbol)
+            sig = stamp_signal_data(decision, provenance)
             _db_manager.insert_decision(
-                symbol=decision.get("symbol", "UNKNOWN"),
+                symbol=symbol,
                 action=decision.get("action", "hold"),
                 confidence=float(decision.get("confidence", 0.0)),
                 regime=decision.get("regime"),
-                signal_data=decision,
+                signal_data=sig,
                 reasoning=decision.get("reasoning") or decision.get("summary", ""),
                 timestamp=entry["timestamp"],
                 full_pipeline_data=decision.get("full_pipeline_data"),

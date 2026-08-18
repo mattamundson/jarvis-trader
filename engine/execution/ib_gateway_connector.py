@@ -42,6 +42,31 @@ logger = logging.getLogger(__name__)
 __all__ = ["IBGatewayConnector", "ConnectionState"]
 
 
+def _futures_multiplier(symbol: str) -> float:
+    """Return the futures contract multiplier for ``symbol`` (1.0 for
+    non-futures / unknown symbols), sourced from
+    ``portfolio.tracker.INSTRUMENT_MULTIPLIERS`` -- the same table
+    ``PortfolioTracker`` uses for realized P&L, so paper ``cash`` moves in
+    step with ``equity`` on every futures fill.
+
+    Imported lazily (inside this function, not at module level) on purpose:
+    several offline/contract test suites stub ``sys.modules["portfolio.tracker"]``
+    with a ``MagicMock`` before importing ``main`` (see e.g.
+    tests/test_session4_contract.py). A module-level import here would bind
+    to whatever ``portfolio.tracker`` happened to resolve to the FIRST time
+    this module was imported in the process -- if that happened to be during
+    one of those stub windows, the multiplier would stay a Mock for the rest
+    of the process. A lazy, per-call import re-resolves the real module
+    every time instead.
+    """
+    try:  # engine-root import (tests + runtime add engine/ to sys.path)
+        from portfolio.tracker import INSTRUMENT_MULTIPLIERS  # noqa: PLC0415
+    except Exception:  # pragma: no cover - packaged import fallback
+        from engine.portfolio.tracker import INSTRUMENT_MULTIPLIERS  # noqa: PLC0415
+
+    return float(INSTRUMENT_MULTIPLIERS.get(symbol.upper(), 1.0))
+
+
 class ConnectionState(Enum):
     """State transitions for IB Gateway connection."""
 
@@ -105,10 +130,17 @@ class IBGatewayConnector:
         self._ib_client = None  # Will hold ib_insync.IB() when live trading is implemented
         self._paper_trade_logger = None  # Lazy-loaded on first use
         self._market_data_manager = None  # Real-price source; attach_market_data()
+        # Starting paper balances derive from settings.INITIAL_CAPITAL -- the
+        # same source PortfolioTracker._get_starting_balance() already uses --
+        # rather than a standalone literal, so a configured capital change
+        # doesn't leave this connector's paper account out of sync with the
+        # rest of the P&L stack. buying_power preserves the existing 4x
+        # margin assumption (was previously a bare 40000.0 literal).
+        _initial_capital = float(getattr(settings, "INITIAL_CAPITAL", 10_000.0) or 10_000.0)
         self._account_summary = {
-            "equity": 10000.0,
-            "cash": 10000.0,
-            "buying_power": 40000.0,
+            "equity": _initial_capital,
+            "cash": _initial_capital,
+            "buying_power": _initial_capital * 4,
         }
         self._positions = {}
         self._open_orders = {}
@@ -387,8 +419,13 @@ class IBGatewayConnector:
             self._positions[symbol] = 0
         self._positions[symbol] += qty
 
-        # Update cash
-        self._account_summary["cash"] -= qty * price
+        # Update cash -- apply the same futures contract multiplier
+        # PortfolioTracker uses for realized P&L, so cash moves in step with
+        # equity on every futures fill. Non-futures symbols fall back to 1.0
+        # (unchanged prior behavior). See _futures_multiplier()'s docstring
+        # for why this is resolved lazily rather than imported at module level.
+        multiplier = _futures_multiplier(symbol)
+        self._account_summary["cash"] -= qty * price * multiplier
 
         logger.info("[SIM] Paper order %s FILLED @ %.2f (OCO-active)", order_id, price)
 
@@ -563,6 +600,24 @@ class IBGatewayConnector:
             for w in risk_result.warnings:
                 logger.warning("IBGatewayConnector order warning | %s", w)
 
+        # PRB-01: check_order() may return an adjusted_order with a reduced
+        # quantity (loss-tracker de-risking after consecutive losses). The
+        # order actually filled below MUST reflect that reduced size, not the
+        # caller's original `quantity` -- discarding adjusted_order here
+        # previously meant the safety layer believed it had de-risked while
+        # full-size paper fills still went out (2026-07-29 prod-readiness
+        # audit). This is the OrderRouter's live futures/equity paper path.
+        final_order = risk_result.adjusted_order or order_req
+        final_quantity = int(final_order.quantity)
+        if final_quantity != quantity:
+            logger.warning(
+                "IBGatewayConnector.submit_order: risk-adjusted size %d -> %d for symbol=%s",
+                quantity,
+                final_quantity,
+                symbol,
+            )
+            order = {**order, "quantity": final_quantity}
+
         # ── Paper trading: simulate fill with slippage ────────────────────────
         if self._settings.PAPER_TRADING:
             return await self._submit_paper_order(order, risk_result.warnings)
@@ -681,8 +736,13 @@ class IBGatewayConnector:
             self._positions[symbol] = 0
         self._positions[symbol] += quantity
 
-        # Update cash balance
-        trade_value = abs(quantity) * filled_price
+        # Update cash balance -- apply the same futures contract multiplier
+        # PortfolioTracker uses for realized P&L, so cash moves in step with
+        # equity on every futures fill. Non-futures symbols fall back to 1.0
+        # (unchanged prior behavior). See _futures_multiplier()'s docstring
+        # for why this is resolved lazily rather than imported at module level.
+        multiplier = _futures_multiplier(symbol)
+        trade_value = abs(quantity) * filled_price * multiplier
         if quantity > 0:
             self._account_summary["cash"] -= trade_value
         else:
@@ -1033,6 +1093,32 @@ class IBGatewayConnector:
             "Set PAPER_TRADING=True for paper trading mode."
         )
 
+    def _realized_pnl_total(self) -> float:
+        """Sum of realized P&L across all closed trades, via the attached
+        PortfolioTracker.
+
+        ``_account_summary["equity"]``/``["buying_power"]`` are set once at
+        __init__ time and are never otherwise mutated (only ``cash`` moves,
+        on each fill) -- so without this, get_account_balance() reports a
+        permanently frozen equity regardless of realized wins/losses, which
+        silently disables MarginMonitorAgent's drawdown detector (it reads
+        exactly this connector via main.py's `_margin_connector = ib_paper_
+        connector or data_manager.ibkr`). Returns 0.0 (no adjustment, prior
+        behavior preserved) when no tracker is attached or the read fails.
+        """
+        if self._portfolio_tracker is None:
+            return 0.0
+        try:
+            perf = self._portfolio_tracker.get_performance()
+            return float(perf.get("total_pnl", 0.0) or 0.0)
+        except Exception as exc:
+            logger.warning(
+                "get_account_balance: portfolio_tracker.get_performance() failed "
+                "(equity will not reflect realized P&L this call): %s",
+                exc,
+            )
+            return 0.0
+
     async def get_account_balance(self) -> dict:
         """
         Get current account balances.
@@ -1053,10 +1139,11 @@ class IBGatewayConnector:
             return {}
 
         if self._settings.PAPER_TRADING:
+            realized_pnl = self._realized_pnl_total()
             return {
-                "equity": self._account_summary["equity"],
+                "equity": self._account_summary["equity"] + realized_pnl,
                 "cash": self._account_summary["cash"],
-                "buying_power": self._account_summary["buying_power"],
+                "buying_power": self._account_summary["buying_power"] + realized_pnl,
                 "margin_used": 0.0,
                 "account_type": "paper",
             }
@@ -1171,12 +1258,30 @@ class IBGatewayConnector:
                     "source": "live",
                 }
 
-            # Tier 2: static mock table — degraded fallback for KNOWN symbols only.
-            # NOTE: these are frozen constants, NOT real-time. They exist so paper
-            # trading degrades gracefully when no data manager is attached (e.g.
-            # unit tests). An unlisted symbol gets NO fabricated price — we return
-            # an error so the fill path refuses to book a phantom (100.5-sentinel)
-            # trade rather than poisoning paper_trades. (2026-06-22 integrity fix.)
+            # Tier 2: static mock table — TEST FIXTURES ONLY, behind an explicit
+            # opt-in. These are frozen 2024-era constants, NOT real-time.
+            #
+            # The 2026-06-22 fix stopped fabricating a ~100.05 quote for UNLISTED
+            # symbols but deliberately kept this table as an unconditional fallback
+            # for listed ones ("backward-compat"). Because _real_last_price returns
+            # None whenever no manager is attached OR the feed is blind — and never
+            # raises — that made fabrication the DEFAULT: every MES paper fill
+            # booked at 5300.10 against a market near 7490. Measured 2026-07-21:
+            # 3,475 fills in paper_trades.json, every week from W19-W30 only 0-4%
+            # sane, which drove the G2 readiness gate to a meaningless 2.3% win
+            # rate (161 of 163 "losses" under $10, both legs off the same frozen
+            # constant). A paper system that declines to trade while blind is
+            # correct; one that invents a price manufactures a track record.
+            if not getattr(self._settings, "ALLOW_MOCK_QUOTES", False):
+                return {
+                    "symbol": symbol,
+                    "error": (
+                        "no live price basis (real-price lookup returned None); "
+                        "refusing to fabricate a quote. Set ALLOW_MOCK_QUOTES=True "
+                        "only in test fixtures."
+                    ),
+                }
+
             mock_quotes = {
                 "MES": {"bid": 5300.00, "ask": 5300.25, "last": 5300.10, "volume": 1000000},
                 "MNQ": {"bid": 17500.00, "ask": 17500.50, "last": 17500.25, "volume": 500000},

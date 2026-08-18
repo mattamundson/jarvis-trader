@@ -217,9 +217,17 @@ Write-Host "Using IBKR client ID: $clientId"
 
 Write-Host "Starting engine..."
 $env:PYTHONUTF8 = "1"
+$env:PYTHONNOUSERSITE = "1"
+# Hermes/Desktop shells can leak their own venv/PYTHONPATH into Start-Process.
+# If inherited, engine\.venv\python.exe may import Hermes-site packages against
+# a different stdlib and crash with `AssertionError: SRE module mismatch` before
+# uvicorn binds. Clear interpreter-selection vars before loading engine .env.
+Remove-Item Env:\PYTHONHOME -ErrorAction SilentlyContinue
+Remove-Item Env:\PYTHONPATH -ErrorAction SilentlyContinue
+Remove-Item Env:\VIRTUAL_ENV -ErrorAction SilentlyContinue
 
 # Load .env into current session so Start-Process inherits correct values.
-# This overrides any stale system env vars (e.g., POLYGON_API_KEY=test, API_KEY=test-key).
+
 if (Test-Path $envFile) {
     Get-Content $envFile | ForEach-Object {
         if ($_ -match '^([A-Z][A-Z0-9_]*)=(.*)$') {

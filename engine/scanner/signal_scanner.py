@@ -29,6 +29,8 @@ import time as _time_module
 from datetime import datetime, time, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
+from utils.data_provenance import build_data_provenance, stamp_signal_data
+
 logger = logging.getLogger("jarvis_trader.scanner")
 
 
@@ -88,6 +90,33 @@ def _market_hours_submission_guard_enabled() -> bool:
     return os.getenv("ENABLE_MARKET_HOURS_SUBMISSION_GUARD", "1").strip().lower() not in {
         "0", "false", "no", "off",
     }
+
+
+def _symbol_is_halted_for_scanner(symbol: str) -> bool:
+    """Fail-safe halt check for the scanner's paper-mode bypass (GT-52).
+
+    The bypass below writes straight to paper_trades without ever consulting
+    an authorization gate. This is deliberately narrower than full gate-v2
+    authorization (`gate_v2_policy.is_strategy_authorized`): it only blocks
+    symbols the repo has explicitly halted -- membership in
+    DO_NOT_TRADE_SYMBOLS, or a PAPER_CONFIGS entry disabled via
+    enabled=False. Symbols with no PAPER_CONFIGS entry at all (the equities
+    scanner population: SPY/QQQ/AAPL/TSLA) are deliberately NOT touched by
+    this check -- see the 2026-08-03 Amo decision recorded in
+    engine/CLAUDE.md "Active Instruments > Equities" to keep them trading
+    as-is pending a separate, explicit policy call on that broader gap.
+    """
+    try:
+        from engine.backtest.paper_config import PAPER_CONFIGS
+        from engine.backtest.signals import DO_NOT_TRADE_SYMBOLS
+    except ImportError:  # pragma: no cover
+        from backtest.paper_config import PAPER_CONFIGS
+        from backtest.signals import DO_NOT_TRADE_SYMBOLS
+
+    if symbol in DO_NOT_TRADE_SYMBOLS:
+        return True
+    cfg = PAPER_CONFIGS.get(symbol)
+    return cfg is not None and not cfg.get("enabled", True)
 
 
 class SignalScanner:
@@ -464,12 +493,17 @@ class SignalScanner:
                 _regime = (result.get("analyst_reports") or {}).get("technical", {}).get(
                     "regime"
                 ) or None
+                # Data-truth: stamp *what data* this decision was based on (tier +
+                # per-symbol serve-age), matching main.py's _log_decision (PR #286).
+                # Additive only — never changes a trade decision, never raises.
+                _provenance = build_data_provenance(self._data_manager, symbol)
+                _sig = stamp_signal_data({"source": "scanner", "summary": _summary}, _provenance)
                 self.db_manager.insert_decision(
                     symbol=symbol,
                     action=final_action,
                     confidence=_conf,
                     regime=_regime,
-                    signal_data={"source": "scanner", "summary": _summary},
+                    signal_data=_sig,
                     reasoning=_reasoning or _summary,
                     full_pipeline_data=result,
                 )
@@ -634,6 +668,18 @@ class SignalScanner:
                             final_action,
                             approval_id[:8],
                         )
+                    elif _symbol_is_halted_for_scanner(symbol):
+                        # GT-52: this bypass never consulted DO_NOT_TRADE_SYMBOLS /
+                        # paper_config.enabled before writing a paper trade. Blocks
+                        # only the explicit halt list -- equities with no
+                        # PAPER_CONFIGS entry are untouched (2026-08-03 decision).
+                        logger.critical(
+                            "[EXECUTION] symbol=%s action=%s executed=False "
+                            "reason=symbol_halted approval_id=%s",
+                            symbol,
+                            final_action,
+                            approval_id[:8],
+                        )
                     elif not (
                         _sanity := await self._entry_price_is_sane(
                             symbol, float(entry_price), _is_fut
@@ -652,8 +698,18 @@ class SignalScanner:
                             approval_id[:8],
                         )
                     else:
+                        # 2026-08-17: target extraction was reading
+                        # `target_price`/`take_profit`, but the LLM's
+                        # trade_decision emits `target_1`/`target_2` — so
+                        # take_profit never persisted from scanner-executed
+                        # trades (0/119). Mirror approval/service.py:350-353:
+                        # target_1 first (nearer profit target), then aliases.
                         target_price = (
-                            trade_dec.get("target_price") or trade_dec.get("take_profit") or None
+                            trade_dec.get("target_1")
+                            or trade_dec.get("target_price")
+                            or trade_dec.get("take_profit")
+                            or trade_dec.get("target_2")
+                            or None
                         )
                         conviction = fund_decision.get("final_conviction", 0.0) or trade_dec.get(
                             "confidence", 0.0
