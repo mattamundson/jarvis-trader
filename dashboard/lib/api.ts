@@ -127,6 +127,56 @@ export async function postEngine<T = any>(path: string, body?: unknown): Promise
 }
 
 /**
+ * DOM / order-flow service calls (port 8030).
+ *
+ * These proxy through the same-origin /api/domflow route (mirroring the
+ * /api/engine convention) so the browser never makes a cross-origin request
+ * and the DOMFLOW_INTERNAL_URL stays server-only. The domflow service is a
+ * read-only, 127.0.0.1-bound market-data consumer with no API key — see
+ * app/api/domflow/[...path]/route.ts.
+ */
+const DOMFLOW = "/api/domflow";
+
+export interface DomflowSnapshot {
+  symbol: string;
+  ts_utc: string;
+  best_bid: number | null;
+  best_ask: number | null;
+  mid_price: number | null;
+  spread: number | null;
+  bid_volume_top5: number;
+  ask_volume_top5: number;
+  imbalance_ratio: number;
+  raw_book_json: string;
+  depth_tier: "L2" | "L1_DELAYED";
+  stale: boolean;
+  age_seconds: number | null;
+  connected: boolean;
+}
+
+export interface DomflowHistoryResponse {
+  symbol: string;
+  minutes: number;
+  count: number;
+  snapshots: DomflowSnapshot[];
+}
+
+export async function fetchDomflow<T = any>(path: string, options?: RequestInit): Promise<T> {
+  return fetchWithRetry<T>(`${DOMFLOW}${path}`, {
+    cache: "no-store",
+    ...options,
+  });
+}
+
+export async function postDomflow<T = any>(path: string, body?: unknown): Promise<T> {
+  return fetchWithRetry<T>(`${DOMFLOW}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+}
+
+/**
  * Fetch a binary/non-JSON response from the engine (e.g. CSV downloads).
  * Returns the raw Response so the caller can call .blob(), .text(), etc.
  */

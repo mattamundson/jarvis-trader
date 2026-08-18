@@ -33,6 +33,7 @@ import { IbGatewayDetailCard } from "@/components/IbGatewayDetailCard";
 import { IBGatewayStatus } from "@/components/IBGatewayStatus";
 import { SystemLivenessCard } from "@/components/SystemLivenessCard";
 import { CacheStatsCard } from "@/components/CacheStatsCard";
+import { useWebSocket } from "@/hooks/useWebSocket";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -233,6 +234,36 @@ const SUBSYSTEMS: SubsystemConfig[] = [
     },
   },
 ];
+
+function StalenessBadge({ secondsSince }: { secondsSince: number }) {
+  const isStale = secondsSince > 60;
+  const isVeryStale = secondsSince > 300;
+
+  if (isVeryStale) {
+    return (
+      <span className="flex items-center gap-1 rounded-full border border-bear/40 bg-bear/10 px-2 py-1 text-[11px] font-mono text-bear">
+        <AlertTriangle className="h-3 w-3" />
+        {secondsSince}s
+      </span>
+    );
+  }
+
+  if (isStale) {
+    return (
+      <span className="flex items-center gap-1 rounded-full border border-warn/40 bg-warn/10 px-2 py-1 text-[11px] font-mono text-warn">
+        <Clock className="h-3 w-3" />
+        {secondsSince}s
+      </span>
+    );
+  }
+
+  return (
+    <span className="flex items-center gap-1 rounded-full border border-bull/30 bg-bull/10 px-2 py-1 text-[11px] font-mono text-bull">
+      <CheckCircle2 className="h-3 w-3" />
+      {secondsSince}s
+    </span>
+  );
+}
 
 function subsystemIsHealthy(key: string, s: SubsystemStatus | undefined): "healthy" | "warn" | "error" | "unknown" {
   if (!s) return "unknown";
@@ -463,6 +494,8 @@ function ProcessSupervisionCard({ data }: { data: ProcessSupervisionHealth | und
 
 export default function HealthPage() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const [isRetrying, setIsRetrying] = useState(false);
 
   const {
     data,
@@ -471,8 +504,33 @@ export default function HealthPage() {
     mutate,
   } = useSWR<FullHealthResponse>("/health/full", fetcher, {
     refreshInterval: 15_000,
-    onSuccess: () => setLastUpdated(new Date()),
+    shouldRetryOnError: false,
+    onSuccess: () => {
+      setLastUpdated(new Date());
+      setRetryCount(0);
+      setIsRetrying(false);
+    },
+    onError: () => {
+      setRetryCount((c) => c + 1);
+    },
   });
+
+  // Bounded retry/backoff after failures so transient engine hiccups do not
+  // hammer the proxy or silently stale out the page.
+  useEffect(() => {
+    if (!error || retryCount >= 3) {
+      if (retryCount >= 3) setIsRetrying(false);
+      return;
+    }
+
+    const backoffMs = Math.min(30_000, 2_000 * Math.pow(2, retryCount - 1));
+    setIsRetrying(true);
+    const timer = setTimeout(() => {
+      mutate();
+    }, backoffMs);
+
+    return () => clearTimeout(timer);
+  }, [error, retryCount, mutate]);
 
   // Track time since last update
   const [secondsSince, setSecondsSince] = useState(0);
@@ -485,7 +543,28 @@ export default function HealthPage() {
     return () => clearInterval(interval);
   }, [lastUpdated]);
 
+  const { isConnected: wsConnected, lastEvent: wsLastEvent } = useWebSocket();
+  const [wsLastEventAt, setWsLastEventAt] = useState<Date | null>(null);
+  const [wsSecondsSince, setWsSecondsSince] = useState(0);
+
+  useEffect(() => {
+    if (wsLastEvent) {
+      setWsLastEventAt(new Date());
+    }
+  }, [wsLastEvent]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (wsLastEventAt) {
+        setWsSecondsSince(Math.floor((Date.now() - wsLastEventAt.getTime()) / 1000));
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [wsLastEventAt]);
+
   const handleRefresh = useCallback(() => {
+    setRetryCount(0);
+    setIsRetrying(false);
     mutate();
   }, [mutate]);
 
@@ -547,6 +626,15 @@ export default function HealthPage() {
               <span className="text-xs text-muted-foreground">
                 Updated {secondsSince}s ago
               </span>
+            )}
+            {data?.timestamp && lastUpdated && (
+              <StalenessBadge secondsSince={secondsSince} />
+            )}
+            <span className="text-xs text-muted-foreground">
+              WS {wsConnected ? "live" : "down"}
+            </span>
+            {wsLastEventAt && (
+              <StalenessBadge secondsSince={wsSecondsSince} />
             )}
             <button
               onClick={handleRefresh}

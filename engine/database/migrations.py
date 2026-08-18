@@ -16,9 +16,10 @@ Adding a new migration
 
 from __future__ import annotations
 
+import json
 import logging
 import sqlite3
-from typing import Callable, List
+from typing import Any, Callable, List, Optional
 
 logger = logging.getLogger("jarvis_trader.database.migrations")
 
@@ -1844,6 +1845,75 @@ def migration_041(conn: sqlite3.Connection) -> None:
     )
 
 
+def migration_042(conn: sqlite3.Connection) -> None:
+    """
+    042 — strategy_id on paper_trades for per-strategy forward evidence.
+
+    Adds a nullable TEXT column ``strategy_id`` so forward-evidence accounting
+    (Mission Control paper-ledger adapter) can attribute closed trades to a
+    specific strategy without parsing free-form JSON every time. The column is
+    backfilled from the existing ``strategy_params`` JSON using the same
+    precedence the reader uses:
+
+        1. decision_identity.config_hash  -> known name if mapped, else config:<hash8>
+        2. stark_signal                   -> signal name
+        3. otherwise                      -> NULL
+
+    Passive metadata only — never gates an order or safety path. Idempotent:
+    try/except on "duplicate column name" (pattern from migration_040/041).
+    """
+    try:
+        conn.execute("ALTER TABLE paper_trades ADD COLUMN strategy_id TEXT")
+    except sqlite3.OperationalError as exc:
+        if "duplicate column name" not in str(exc).lower():
+            raise
+
+    rows = conn.execute(
+        "SELECT id, strategy_params FROM paper_trades WHERE strategy_id IS NULL"
+    ).fetchall()
+    for row_id, params_json in rows:
+        strategy_id = _backfill_strategy_id(params_json)
+        if strategy_id is not None:
+            conn.execute(
+                "UPDATE paper_trades SET strategy_id = ? WHERE id = ?",
+                (strategy_id, row_id),
+            )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_pt_strategy ON paper_trades(strategy_id)")
+    conn.commit()
+    logger.info("Migration 042 applied — strategy_id column on paper_trades.")
+
+
+_STRATEGY_ID_BY_CONFIG_HASH = {
+    "a5282c8c": "MGC_trend_rv_filter_rank1",
+    "9c692ffb": "MGC_trend_rank4",
+}
+
+
+def _backfill_strategy_id(params_json: Any) -> Optional[str]:
+    """Derive a strategy_id from a strategy_params JSON blob (reader-consistent)."""
+    if not params_json:
+        return None
+    if isinstance(params_json, str):
+        try:
+            payload = json.loads(params_json)
+        except (json.JSONDecodeError, TypeError):
+            return None
+    elif isinstance(params_json, dict):
+        payload = params_json
+    else:
+        return None
+    decision = payload.get("decision_identity") or {}
+    config_hash = decision.get("config_hash") or payload.get("config_hash")
+    if isinstance(config_hash, str) and config_hash:
+        prefix = config_hash[:8]
+        return _STRATEGY_ID_BY_CONFIG_HASH.get(prefix, f"config:{prefix}")
+    signal = payload.get("stark_signal")
+    if isinstance(signal, str) and signal:
+        return signal
+    return None
+
+
+
 # ── Migration registry ─────────────────────────────────────────────────────────
 # Add new migrations here in order.  The list index + 1 = migration version.
 
@@ -1889,6 +1959,7 @@ MIGRATIONS: List[Callable[[sqlite3.Connection], None]] = [
     migration_039,  # version 39
     migration_040,  # version 40
     migration_041,  # version 41
+    migration_042,  # version 42
 ]
 
 MIGRATION_DESCRIPTIONS: List[str] = [
@@ -1933,6 +2004,7 @@ MIGRATION_DESCRIPTIONS: List[str] = [
     "Bar quality observability: bar_quality_rejections table recording bars rejected by the write-time bar-quality gate (symbol, ts_utc, reason) for the Trust Pane observability surface.",
     "MAE/MFE excursion: mae_pct, mfe_pct, mae_usd, mfe_usd columns on paper_trades for post-trade excursion analytics.",
     "Decision-log audit chain: prev_hash, audit_hash columns on pending_trade_approvals for tamper-evident SHA-256 chaining of pipeline decision snapshots.",
+    "Strategy attribution: strategy_id column on paper_trades for per-strategy forward-evidence accounting; backfilled from strategy_params decision identity / signal.",
 ]
 
 

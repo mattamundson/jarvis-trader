@@ -275,17 +275,20 @@ def save_bars(
     if not rows:
         return 0
 
+    conn = None
     try:
         conn = _connect(db)
         cur = conn.executemany(_INSERT_SQL, rows)
         conn.commit()
         inserted = cur.rowcount
-        conn.close()
         logger.debug("[bars_repo] save_bars %s %s: %d rows offered, %d new", symbol, interval, len(rows), inserted)
         return max(inserted, 0)
     except Exception as exc:
         logger.warning("[bars_repo] save_bars failed for %s %s: %s", symbol, interval, exc)
         return 0
+    finally:
+        if conn is not None:
+            conn.close()
 
 
 def load_bars(
@@ -321,14 +324,17 @@ def load_bars(
         WHERE {where}
         ORDER BY ts_utc
     """
+    conn = None
     try:
         conn = _connect(db)
         df = pd.read_sql_query(sql, conn, params=params, parse_dates=["timestamp"])
-        conn.close()
         return df
     except Exception as exc:
         logger.warning("[bars_repo] load_bars failed for %s %s: %s", symbol, interval, exc)
         return pd.DataFrame()
+    finally:
+        if conn is not None:
+            conn.close()
 
 
 def latest_bar(
@@ -349,11 +355,14 @@ def latest_bar(
         ORDER BY ts_utc DESC
         LIMIT 1
     """
+    conn = None
     try:
         conn = _connect(db)
         row = conn.execute(sql, (symbol.upper(), interval)).fetchone()
-        conn.close()
         return dict(row) if row else None
     except Exception as exc:
         logger.warning("[bars_repo] latest_bar failed for %s %s: %s", symbol, interval, exc)
         return None
+    finally:
+        if conn is not None:
+            conn.close()

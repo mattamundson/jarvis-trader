@@ -95,17 +95,23 @@ MNQ_PAPER_CONFIG = {
 
 MGC_PAPER_CONFIG = {
     #  Instrument — SMA(50,120) trend-following, 1h bars
-    #  DISABLED 2026-06-26: config<->verdict desync. This block was authorized off
-    #  MGC_trend_rank4 "PASS via ALT (2026-05-06)", but rank4 was re-run 2026-06-24
-    #  and is now FAIL (p_edge=0.60, fixed_params_min_pf=1.179, mc_95th_dd=4.011% >
-    #  4.0% alt ceiling). Its dsr=1.0 was also the degenerate-variance fallback
-    #  (fixed af35329). Re-enable only when a fresh rank4 verdict PASSes honestly.
+    #  DISABLED 2026-08-16: fresh rank4 gate-v2 re-evaluation (created_at
+    #  2026-08-16T15:29Z, on the completeness-preferred cache
+    #  MGC_2024-03-04_2026-07-24_1h.csv — clean, 14,130 bars) FAILs gate v2:
+    #  pf_ci_lower=1.0681 (< 1.1 CORE floor), mc_95th_dd=4.4212% (> 4.0 ALT
+    #  ceiling), dsr=0.9733, p_edge=0.998, fixed_params_min_pf=1.2871,
+    #  94 OOS trades / 23 windows. The 2026-08-04 PASS (PR #597/#598) ran on
+    #  less data (67 OOS trades); the edge degraded on the refreshed window.
+    #  gate_v2_policy.is_strategy_authorized("MGC") now returns False, so
+    #  paper orders are refused at runtime regardless of this flag — the
+    #  flag is synced to the honest verdict state. Re-enable only on a fresh
+    #  honest gate-v2 CORE PASS (see signals.py DO_NOT_TRADE contract).
     #  Verdict file: engine/data/gate_v2_verdicts/MGC_trend_rank4.json
     #  WFO champion params: SMA(fast=50, slow=120, atr_trail_mult=2.0)
     "symbol": "MGC",
     "interval": "1h",
     "strategy": "sma_trend",  # Routes to generate_instrument_signals() → trend_signals path
-    "enabled": False,  # 2026-06-26: rank4 re-run FAILs gate v2; was enabled on a stale 2026-05-06 PASS
+    "enabled": False,  # 2026-08-16: fresh honest gate-v2 FAIL (see comment above)
     #  Capital & Sizing
     "initial_capital": 50_000.0,  # ALT routing requires $50K+ account for DD ceiling compliance
     "risk_per_trade": 0.0025,  # 0.25% risk per trade
@@ -219,20 +225,24 @@ MNQ_15M_CONFIG = {
 }
 
 MES_TREND_PAPER_CONFIG = {
-    #  Instrument — SMA(50,200)+RV9 trend-following, 1h bars
-    #  Gate v2 verdict: INSUFFICIENT_SAMPLE (2026-06-04) -- rank2 re-run with correct trade-level
-    #  metrics shows mc_95th_dd=2.65% (was 1.53% on window-level), alt gate PASSES on all 5 criteria
-    #  but GATE_V2_ENFORCE_SAMPLE_ADEQUACY=True in .env triggers INSUFFICIENT_SAMPLE (16 OOS < 30 floor).
-    #  Verdict file: engine/data/gate_v2_verdicts/MES_trend_rv_filter_rank2.json
-    #  To re-authorize: collect 30+ OOS trades OR set GATE_V2_ENFORCE_SAMPLE_ADEQUACY=False (Amo-gated).
-    #  rank11 verdict also INSUFFICIENT_SAMPLE (same 16 OOS < 30 floor).
-    #  WFO champion params: SMA(fast=50, slow=200, atr_trail_mult=2.0, min_rv_annualized=9.0)
-    #  rank2 grid [50,55,60]x[200]x[2.0] with RV>=9% filter: PF=[1.46,1.86,2.32] (22/22/16 trades)
-    #  RV filter: activated via MES_MIN_RV_ANNUALIZED=9.0 in engine/.env (env var path in signals.py)
+    #  Instrument — SMA(50,200) trend-following, 1h bars
+    #  Deep validation (2026-08-17, 7.3y MES_2015-01-01_2026-08-16_1h cache, 82 WFO windows):
+    #    - MES_trend_rank11 (NO RV filter, MIN_RV_ANNUALIZED=0.0): PASS via core —
+    #      p_edge=0.9924, pf_ci_lower=1.1402, DSR=0.9704, 69 OOS trades.
+    #    - MES_trend_rv_filter_rank1 (min_rv_annualized=9.0): FAIL —
+    #      p_edge=0.551, pf_ci_lower=1.99, DSR=0.73, 58 OOS trades.
+    #  The RV>=9% filter DEGRADES edge on deep data (0.992 -> 0.551); the live vehicle
+    #  previously ran the RV-filtered variant (min_rv_annualized=9.0 via paper_config +
+    #  MES_MIN_RV_ANNUALIZED=9.0 in engine/.env). This config now matches the
+    #  deep-validated champion (RV filter OFF).
+    #  Verdict files: engine/data/gate_v2_verdicts/MES_trend_rank11.json (PASS, deep)
+    #                 engine/data/gate_v2_verdicts/MES_trend_rv_filter_rank1.json (FAIL, deep)
+    #  NOTE: engine/.env MES_MIN_RV_ANNUALIZED must also be removed/0.0 for full alignment
+    #  (signals.py env default is 0.0; paper_runner kwargs override beats env anyway).
     "symbol": "MES",
     "interval": "1h",
     "strategy": "sma_trend",  # Routes to generate_instrument_signals() -> trend_signals path
-    "enabled": True,  # gate_v2_policy blocks trades (INSUFFICIENT_SAMPLE); runner still polls for data
+    "enabled": True,  # MES is exempt from gate v2 verdict check per Amo 2026-06-26 directive
     #  Capital & Sizing
     "initial_capital": 50_000.0,  # ALT routing requires $50K+ account for DD ceiling compliance
     "risk_per_trade": 0.0025,  # 0.25% risk per trade
@@ -247,7 +257,14 @@ MES_TREND_PAPER_CONFIG = {
         "fast": 50,
         "slow": 200,
         "atr_trail_mult": 2.0,
-        "min_rv_annualized": 9.0,  # active via MES_MIN_RV_ANNUALIZED env var; validated in rank2
+        "min_rv_annualized": 0.0,  # RV filter OFF — matches deep-validated rank11 champion (2026-08-17)
+        # VIX percentile-tier regime blocking — WIRED but DISABLED (2026-08-17).
+        # Certified gate v2 PASS-ALT (82-window deep, DSR 0.975, PF CI 2.26).
+        # Best per-trade variant: block HighVol → PF 1.74 / 99 trades vs baseline
+        # PF 1.71 / 122 trades. Leave unset (= trading through all VIX regimes)
+        # until a deliberate enablement decision; setting vix_regime_block to
+        # ("HighVol",) or ("Crisis", "HighVol") suppresses trend entries in
+        # those percentile tiers (trailing 252d VIX, point-in-time).
     },
     #  Kill Thresholds -- calibrated to ALT routing 7% MC DD ceiling
     "kill_threshold": {
@@ -313,6 +330,26 @@ PAPER_CONFIGS = {
     "MGC": MGC_PAPER_CONFIG,
     "MES": MES_TREND_PAPER_CONFIG,
 }
+
+#  Pseudo-symbol -> real underlying instrument, for risk-aggregation purposes
+#  only (contract-limit and correlation checks). PAPER_CONFIGS is keyed one
+#  entry per symbol; when a second strategy is later registered on an
+#  instrument that already has one (e.g. a synthetic "MES_VA30" key alongside
+#  the real "MES" trend strategy, both actually trading MES futures), that
+#  registration MUST be added here too so combined real-instrument exposure
+#  is correctly aggregated rather than tracked/capped independently per key.
+UNDERLYING_INSTRUMENT: dict[str, str] = {
+    "MES_VA30": "MES",
+}
+
+
+def resolve_underlying(symbol: str) -> str:
+    """Return the real underlying futures instrument for *symbol*, for risk
+    aggregation. Defaults to the symbol itself; only pseudo-symbols
+    registered in UNDERLYING_INSTRUMENT (multiple strategies sharing one
+    real instrument) resolve to something different."""
+    return UNDERLYING_INSTRUMENT.get(symbol.upper(), symbol.upper())
+
 
 #  15-minute configs (intraday scanner)
 FIFTEEN_MIN_CONFIGS = {

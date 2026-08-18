@@ -459,6 +459,238 @@ def test_is_strategy_authorized_stale_verdict_not_authorized(tmp_verdicts_dir):
 
 
 # ---------------------------------------------------------- #
+# is_strategy_authorized — strategy-family scoping           #
+#                                                              #
+# A paper config that routes through generate_sma_trend_signals #
+# (strategy="sma_trend") must only be authorized by a gate v2   #
+# PASS in the trend family (trend or trend_*). An unrelated     #
+# family PASS (e.g. mean_reversion) must NEVER green-light the  #
+# configured code path — policy-layer counterpart of PRB-02.    #
+# ---------------------------------------------------------- #
+
+_ENABLED_TREND_CONFIGS = {
+    "XYZ": {"enabled": True, "symbol": "XYZ", "strategy": "sma_trend"},
+}
+
+
+def test_strategy_authorized_unrelated_family_pass_does_not_authorize_trend(tmp_verdicts_dir):
+    """An unrelated-family PASS must not authorize a sma_trend config."""
+    from unittest.mock import patch
+
+    _write_verdict(
+        tmp_verdicts_dir,
+        symbol="XYZ",
+        family="mean_reversion",
+        rank=1,
+        verdict="PASS",
+        passed_via="core",
+        age_days=0.5,
+    )
+
+    with patch("agents.pipeline.VALIDATION_ONLY_INSTRUMENTS", frozenset()):
+        with patch("backtest.paper_config.PAPER_CONFIGS", _ENABLED_TREND_CONFIGS):
+            authorized, reason = is_strategy_authorized("XYZ")
+
+    assert authorized is False
+    assert "family" in reason
+
+
+def test_strategy_authorized_trend_family_pass_authorizes_trend(tmp_verdicts_dir):
+    """A trend-family PASS authorizes a sma_trend config."""
+    from unittest.mock import patch
+
+    _write_verdict(
+        tmp_verdicts_dir,
+        symbol="XYZ",
+        family="trend",
+        rank=1,
+        verdict="PASS",
+        passed_via="core",
+        age_days=0.5,
+    )
+
+    with patch("agents.pipeline.VALIDATION_ONLY_INSTRUMENTS", frozenset()):
+        with patch("backtest.paper_config.PAPER_CONFIGS", _ENABLED_TREND_CONFIGS):
+            authorized, reason = is_strategy_authorized("XYZ")
+
+    assert authorized is True
+    assert reason == "authorized"
+
+
+def test_strategy_authorized_trend_variant_pass_authorizes_trend(tmp_verdicts_dir):
+    """A trend_* variant PASS (same SMA code path, PRB-02 semantics) authorizes."""
+    from unittest.mock import patch
+
+    _write_verdict(
+        tmp_verdicts_dir,
+        symbol="XYZ",
+        family="trend_rv_filter",
+        rank=1,
+        verdict="PASS",
+        passed_via="core",
+        age_days=0.5,
+    )
+
+    with patch("agents.pipeline.VALIDATION_ONLY_INSTRUMENTS", frozenset()):
+        with patch("backtest.paper_config.PAPER_CONFIGS", _ENABLED_TREND_CONFIGS):
+            authorized, reason = is_strategy_authorized("XYZ")
+
+    assert authorized is True
+    assert reason == "authorized"
+
+
+def test_strategy_authorized_no_strategy_field_falls_back_to_all_families(tmp_verdicts_dir):
+    """Config without a strategy field keeps the historical any-family behavior."""
+    from unittest.mock import patch
+
+    _write_verdict(
+        tmp_verdicts_dir,
+        symbol="XYZ",
+        family="mean_reversion",
+        rank=1,
+        verdict="PASS",
+        passed_via="core",
+        age_days=0.5,
+    )
+
+    with patch("agents.pipeline.VALIDATION_ONLY_INSTRUMENTS", frozenset()):
+        with patch("backtest.paper_config.PAPER_CONFIGS", _ENABLED_PAPER_CONFIGS):
+            authorized, reason = is_strategy_authorized("XYZ")
+
+    assert authorized is True
+    assert reason == "authorized"
+
+
+# ---------------------------------------------------------- #
+# is_strategy_authorized — MES carve-out (PR #564)            #
+#                                                              #
+# Amo's standing directive (2026-06-26, emphatic): MES must   #
+# never be disabled/blocked from paper trading regardless of  #
+# gate v2 / re-validation outcome. The carve-out is scoped to #
+# check 3 (the gate-v2-verdict check) only — checks 1 and 2   #
+# (VALIDATION_ONLY_INSTRUMENTS, paper_config.enabled) must    #
+# still apply to MES exactly like any other symbol.           #
+# ---------------------------------------------------------- #
+
+_MES_ENABLED_PAPER_CONFIGS = {
+    "MES": {"enabled": True, "symbol": "MES"},
+}
+
+_MES_DISABLED_PAPER_CONFIGS = {
+    "MES": {"enabled": False, "symbol": "MES"},
+}
+
+
+def test_is_strategy_authorized_mes_carveout_bypasses_missing_verdict(tmp_verdicts_dir):
+    """MES with no gate v2 verdict on disk at all → still authorized."""
+    from unittest.mock import patch
+
+    with patch("agents.pipeline.VALIDATION_ONLY_INSTRUMENTS", frozenset()):
+        with patch("backtest.paper_config.PAPER_CONFIGS", _MES_ENABLED_PAPER_CONFIGS):
+            authorized, reason = is_strategy_authorized("MES")
+
+    assert authorized is True
+    assert reason == "authorized"
+
+
+def test_is_strategy_authorized_mes_carveout_bypasses_fail_verdict(tmp_verdicts_dir):
+    """MES with a current gate v2 FAIL verdict on disk → still authorized.
+
+    Mirrors MES's actual live state (FAIL/FAIL as of the 2026-07-31 regen):
+    this is the exact case the carve-out exists for.
+    """
+    from unittest.mock import patch
+
+    _write_verdict(
+        tmp_verdicts_dir,
+        symbol="MES",
+        family="trend",
+        rank=1,
+        verdict="FAIL",
+        passed_via=None,
+    )
+
+    with patch("agents.pipeline.VALIDATION_ONLY_INSTRUMENTS", frozenset()):
+        with patch("backtest.paper_config.PAPER_CONFIGS", _MES_ENABLED_PAPER_CONFIGS):
+            authorized, reason = is_strategy_authorized("MES")
+
+    assert authorized is True
+    assert reason == "authorized"
+
+
+def test_is_strategy_authorized_mes_carveout_bypasses_stale_verdict(tmp_verdicts_dir):
+    """MES with only a stale gate v2 PASS on disk → still authorized."""
+    from unittest.mock import patch
+
+    _write_verdict(
+        tmp_verdicts_dir,
+        symbol="MES",
+        family="trend",
+        rank=7,
+        verdict="PASS",
+        passed_via="alt",
+        age_days=MAX_VERDICT_AGE_DAYS + 1,
+    )
+
+    with patch("agents.pipeline.VALIDATION_ONLY_INSTRUMENTS", frozenset()):
+        with patch("backtest.paper_config.PAPER_CONFIGS", _MES_ENABLED_PAPER_CONFIGS):
+            authorized, reason = is_strategy_authorized("MES")
+
+    assert authorized is True
+    assert reason == "authorized"
+
+
+def test_is_strategy_authorized_mes_still_blocked_by_validation_only(tmp_verdicts_dir):
+    """Carve-out is scoped to check 3 only — MES in VALIDATION_ONLY_INSTRUMENTS
+    (check 1) must still be blocked like any other symbol."""
+    from unittest.mock import patch
+
+    with patch("agents.pipeline.VALIDATION_ONLY_INSTRUMENTS", frozenset({"MES"})):
+        with patch("backtest.paper_config.PAPER_CONFIGS", _MES_ENABLED_PAPER_CONFIGS):
+            authorized, reason = is_strategy_authorized("MES")
+
+    assert authorized is False
+    assert "VALIDATION_ONLY_INSTRUMENTS" in reason
+
+
+def test_is_strategy_authorized_mes_still_blocked_by_disabled_paper_config(tmp_verdicts_dir):
+    """Carve-out is scoped to check 3 only — MES with paper_config.enabled=False
+    (check 2, Amo's own manual control) must still be blocked."""
+    from unittest.mock import patch
+
+    with patch("agents.pipeline.VALIDATION_ONLY_INSTRUMENTS", frozenset()):
+        with patch("backtest.paper_config.PAPER_CONFIGS", _MES_DISABLED_PAPER_CONFIGS):
+            authorized, reason = is_strategy_authorized("MES")
+
+    assert authorized is False
+    assert "enabled=False" in reason
+
+
+def test_is_strategy_authorized_mes_carveout_case_insensitive(tmp_verdicts_dir):
+    """Carve-out matches MES regardless of input case."""
+    from unittest.mock import patch
+
+    with patch("agents.pipeline.VALIDATION_ONLY_INSTRUMENTS", frozenset()):
+        with patch("backtest.paper_config.PAPER_CONFIGS", _MES_ENABLED_PAPER_CONFIGS):
+            authorized, _ = is_strategy_authorized("mes")
+
+    assert authorized is True
+
+
+def test_is_strategy_authorized_non_mes_symbol_unaffected_by_carveout(tmp_verdicts_dir):
+    """Regression: the carve-out must not leak to other symbols — a
+    non-MES symbol with no verdict is still blocked exactly as before."""
+    from unittest.mock import patch
+
+    with patch("agents.pipeline.VALIDATION_ONLY_INSTRUMENTS", frozenset()):
+        with patch("backtest.paper_config.PAPER_CONFIGS", _ENABLED_PAPER_CONFIGS):
+            authorized, reason = is_strategy_authorized("XYZ")
+
+    assert authorized is False
+    assert "PASS verdict" in reason
+
+
+# ---------------------------------------------------------- #
 # VerdictSnapshot schema validation                          #
 # ---------------------------------------------------------- #
 

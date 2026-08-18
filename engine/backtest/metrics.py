@@ -24,11 +24,53 @@ import numpy as np
 
 from backtest.trade_manager import BacktestResult, Trade
 
-# Annualization factor for Sharpe/Sortino when computed over per-trade returns.
-# Approximates a full-time futures strategy taking ~1 trade per trading day. Using this
-# fixed factor keeps Sharpe comparable across intervals (1h, 1d, 15m) — the alternative
-# (sqrt(bars_per_year)) inflates Sharpe on high-frequency bars where most bars are flat.
-ANNUALIZATION_TRADES_PER_YEAR = 252
+# Fallback annualization factor for Sharpe/Sortino over per-trade returns, used ONLY when
+# the backtest window length cannot be determined (missing/unparseable start_date/end_date).
+#
+# 2026-08-17 CORRECTION: this constant used to be applied unconditionally, which silently
+# assumed EVERY strategy takes ~252 trades/year. Strategies trading less often were
+# overstated by sqrt(252 / actual_trades_per_year) — measured inflation on the MES campaign
+# was 3.78x (17.6 trades/yr), 4.64x (11.7 trades/yr) and 9.1x (3.0 trades/yr). The defect was
+# worst for the lowest-frequency strategies, i.e. exactly the ones whose Sharpe was least
+# trustworthy to begin with. Sharpe is now annualized by the strategy's OBSERVED trade
+# frequency (see `_annualization_factor`).
+DEFAULT_ANNUALIZATION_TRADES_PER_YEAR = 252
+
+# Back-compat alias. Deprecated: importers should not assume 252 is the applied factor.
+ANNUALIZATION_TRADES_PER_YEAR = DEFAULT_ANNUALIZATION_TRADES_PER_YEAR
+
+# Guard rails on the derived factor. A window shorter than this is too short to annualize
+# honestly (a 3-week backtest would otherwise scale by a huge extrapolated frequency).
+MIN_ANNUALIZATION_WINDOW_DAYS = 90.0
+# Cap the factor so a genuinely high-frequency strategy cannot produce an absurd multiplier.
+MAX_ANNUALIZATION_TRADES_PER_YEAR = 2520.0
+
+
+def _annualization_factor(result: BacktestResult, n_trades: int) -> float:
+    """Trades per year OBSERVED in this backtest, for annualizing per-trade returns.
+
+    Sharpe over per-trade returns must be scaled by sqrt(trades_per_year); using a fixed
+    252 assumes a trade every trading day and inflates every lower-frequency strategy.
+
+    Falls back to DEFAULT_ANNUALIZATION_TRADES_PER_YEAR when the window is unknown,
+    unparseable, or shorter than MIN_ANNUALIZATION_WINDOW_DAYS, so results built without
+    dates (unit-test fixtures, synthetic frames) keep their previous behaviour and stay
+    comparable to one another.
+    """
+    start, end = getattr(result, "start_date", ""), getattr(result, "end_date", "")
+    if not start or not end:
+        return float(DEFAULT_ANNUALIZATION_TRADES_PER_YEAR)
+    try:
+        span_days = (np.datetime64(end) - np.datetime64(start)) / np.timedelta64(1, "D")
+    except (ValueError, TypeError):
+        return float(DEFAULT_ANNUALIZATION_TRADES_PER_YEAR)
+    span_days = float(span_days)
+    if not np.isfinite(span_days) or span_days < MIN_ANNUALIZATION_WINDOW_DAYS:
+        return float(DEFAULT_ANNUALIZATION_TRADES_PER_YEAR)
+    trades_per_year = n_trades / (span_days / 365.25)
+    if trades_per_year <= 0:
+        return float(DEFAULT_ANNUALIZATION_TRADES_PER_YEAR)
+    return float(min(trades_per_year, MAX_ANNUALIZATION_TRADES_PER_YEAR))
 
 
 def _trade_returns(result: BacktestResult) -> np.ndarray:
@@ -68,6 +110,10 @@ def compute_sharpe_sortino(result: BacktestResult) -> None:
     slightly positive, inflating Sharpe. Using trade returns gives an honest risk-
     adjusted measure that cannot produce positive Sharpe when PF < 1.
 
+    Annualization uses the OBSERVED trades/year for this backtest window, not a fixed
+    252 (see `_annualization_factor`). A strategy taking 17 trades/year is annualized by
+    sqrt(17), not sqrt(252) — the old fixed factor overstated such a strategy by ~3.8x.
+
     Sign invariant: sign(sharpe) == sign(mean(trade_returns)) == sign(total_pnl).
     """
     returns = _trade_returns(result)
@@ -77,14 +123,14 @@ def compute_sharpe_sortino(result: BacktestResult) -> None:
     if std <= 0:
         return
     mean = returns.mean()
-    result.sharpe_ratio = float((mean / std) * np.sqrt(ANNUALIZATION_TRADES_PER_YEAR))
+    ann = _annualization_factor(result, len(returns))
+    result.annualization_trades_per_year = float(ann)
+    result.sharpe_ratio = float((mean / std) * np.sqrt(ann))
     downside = returns[returns < 0]
     if len(downside) > 1:
         downside_std = downside.std(ddof=1)
         if downside_std > 0:
-            result.sortino_ratio = float(
-                (mean / downside_std) * np.sqrt(ANNUALIZATION_TRADES_PER_YEAR)
-            )
+            result.sortino_ratio = float((mean / downside_std) * np.sqrt(ann))
 
 
 def compute_extended_metrics(result: BacktestResult) -> None:

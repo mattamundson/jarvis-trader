@@ -43,9 +43,11 @@ import {
 import { INSTRUMENTS, WFE_ROWS } from "./constants";
 import { SignalFeedWidget } from "@/components/SignalFeedWidget";
 import LiveTradeReasoningWidget from "@/components/LiveTradeReasoningWidget";
+import { DecisionLogWidget } from "@/components/DecisionLogWidget";
 import ApprovalPanel from "@/components/ApprovalPanel";
 import { PortfolioCorrelationWidget } from "@/components/PortfolioCorrelationWidget";
 import { SessionBriefPanel } from "@/components/SessionBriefPanel";
+import { ActionableBoardWidget } from "@/components/ActionableBoardWidget";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { useToast } from "@/lib/toast-context";
 import { useWebSocket, type WsEvent } from "@/hooks/useWebSocket";
@@ -95,6 +97,9 @@ interface SafetyData {
   orders_last_minute: number;
   consecutive_losses?: number;
   kill_switch_active?: boolean;
+  daily_limit_pct?: number;
+  drawdown_limit_pct?: number;
+  orders_per_minute_limit?: number;
 }
 
 interface Position {
@@ -357,6 +362,9 @@ export default function CommandCenterPage() {
   // session is also deferred to post-mount: getMarketSession() reads new Date()
   // which differs server (UTC) vs client (local tz) → hydration mismatch.
   const [session, setSession] = useState<SessionInfo>(SESSION_PLACEHOLDER);
+  const [retryCount, setRetryCount] = useState(0);
+  const [isRetrying, setIsRetrying] = useState(false);
+
   useEffect(() => {
     // Initialise both clock and session together so they are always in sync.
     const tick = () => {
@@ -384,26 +392,31 @@ export default function CommandCenterPage() {
     data: health,
     error: healthErr,
     mutate: mutateHealth,
-  } = useSWR<HealthData>("/health", fetcher, { refreshInterval });
-
-  const { data: safety, mutate: mutateSafety } = useSWR<SafetyData>("/safety/status", fetcher, {
+  } = useSWR<HealthData>("/health", fetcher, {
     refreshInterval,
+    shouldRetryOnError: false,
   });
 
-  const { data: portfolio, mutate: mutatePortfolio } = useSWR<PortfolioData>("/portfolio", fetcher, {
+  const { data: safety, mutate: mutateSafety, error: safetyErr } = useSWR<SafetyData>("/safety/status", fetcher, {
     refreshInterval,
+    shouldRetryOnError: false,
   });
 
-  const { data: decisions, mutate: mutateDecisions } = useSWR<Decision[]>(
+  const { data: portfolio, mutate: mutatePortfolio, error: portfolioErr } = useSWR<PortfolioData>("/portfolio", fetcher, {
+    refreshInterval,
+    shouldRetryOnError: false,
+  });
+
+  const { data: decisions, mutate: mutateDecisions, error: decisionsErr } = useSWR<Decision[]>(
     "/decisions/recent?limit=5",
     fetcher,
-    { refreshInterval }
+    { refreshInterval, shouldRetryOnError: false }
   );
 
-  const { data: scheduler, mutate: mutateScheduler } = useSWR<SchedulerData>(
+  const { data: scheduler, mutate: mutateScheduler, error: schedulerErr } = useSWR<SchedulerData>(
     "/scheduler/status",
     fetcher,
-    { refreshInterval }
+    { refreshInterval, shouldRetryOnError: false }
   );
 
   const { data: macro, mutate: mutateMacro } = useSWR<MacroData>("/macro/snapshot", fetcher, {
@@ -417,10 +430,10 @@ export default function CommandCenterPage() {
     { refreshInterval: 120_000, shouldRetryOnError: false }
   );
 
-  const { data: trades, mutate: mutateTrades } = useSWR<Trade[]>(
+  const { data: trades, mutate: mutateTrades, error: tradesErr } = useSWR<Trade[]>(
     "/portfolio/history/trades",
     fetcher,
-    { refreshInterval }
+    { refreshInterval, shouldRetryOnError: false }
   );
 
   const { data: journalStats, mutate: mutateJournalStats } = useSWR<JournalTradeStats>(
@@ -437,6 +450,37 @@ export default function CommandCenterPage() {
     fetchHonestTrades,
     { refreshInterval: 5 * 60_000, shouldRetryOnError: false }
   );
+
+  // Bounded retry/backoff for critical command-center data so transient engine
+  // hiccups do not hammer the proxy or silently stale out the flagship page.
+  useEffect(() => {
+    if (!healthErr && !safetyErr && !portfolioErr && !decisionsErr && !schedulerErr && !tradesErr) {
+      if (retryCount > 0) {
+        setRetryCount(0);
+        setIsRetrying(false);
+      }
+      return;
+    }
+
+    const hasError = healthErr || safetyErr || portfolioErr || decisionsErr || schedulerErr || tradesErr;
+    if (!hasError || retryCount >= 3) {
+      if (retryCount >= 3) setIsRetrying(false);
+      return;
+    }
+
+    const backoffMs = Math.min(30_000, 2_000 * Math.pow(2, retryCount - 1));
+    setIsRetrying(true);
+    const timer = setTimeout(() => {
+      mutateHealth();
+      mutateSafety();
+      mutatePortfolio();
+      mutateDecisions();
+      mutateScheduler();
+      mutateTrades();
+    }, backoffMs);
+
+    return () => clearTimeout(timer);
+  }, [healthErr, safetyErr, portfolioErr, decisionsErr, schedulerErr, tradesErr, retryCount, mutateHealth, mutateSafety, mutatePortfolio, mutateDecisions, mutateScheduler, mutateTrades]);
 
   useWebSocket(undefined, (event) => {
     if (!shouldRevalidateCommandCenter(event)) return;
@@ -495,16 +539,28 @@ export default function CommandCenterPage() {
     portfolio?.total_equity && portfolio.total_equity > 0
       ? (portfolio.daily_pnl / portfolio.total_equity) * 100
       : 0;
+  // Live limits from /safety/status (engine/config.py MAX_DAILY_LOSS_PCT /
+  // MAX_DRAWDOWN_PCT / MAX_ORDERS_PER_MINUTE). Fallbacks only cover a missing
+  // field (older engine build); the orders fallback matches the real config
+  // default (10), not the previously-hardcoded-wrong value (40).
+  const dailyLimitPctAbs =
+    safety?.daily_limit_pct != null ? Math.abs(safety.daily_limit_pct) * 100 : 2;
+  const drawdownLimitPctAbs =
+    safety?.drawdown_limit_pct != null ? Math.abs(safety.drawdown_limit_pct) * 100 : 10;
+  const ordersLimit = safety?.orders_per_minute_limit ?? 10;
   const dailyLossProgress = Math.min(
-    (Math.abs(Math.min(dailyPnlPct, 0)) / 2) * 100,
+    (Math.abs(Math.min(dailyPnlPct, 0)) / dailyLimitPctAbs) * 100,
     100
   );
   const drawdownPct = safety?.drawdown_pct ?? 0;
-  const drawdownProgress = Math.min((Math.abs(drawdownPct) / 10) * 100, 100);
+  const drawdownProgress = Math.min(
+    (Math.abs(drawdownPct) / drawdownLimitPctAbs) * 100,
+    100
+  );
   const consecutiveLosses = safety?.consecutive_losses ?? 0;
   const consecutiveLossProgress = Math.min((consecutiveLosses / 7) * 100, 100);
   const ordersPerMin = safety?.orders_last_minute ?? 0;
-  const ordersProgress = Math.min((ordersPerMin / 40) * 100, 100);
+  const ordersProgress = Math.min((ordersPerMin / ordersLimit) * 100, 100);
 
   const handleKillSwitch = useCallback(async () => {
     const activating = !killSwitchActive;
@@ -661,6 +717,17 @@ export default function CommandCenterPage() {
       </div>
 
       {/* ═══════════════════════════════════════════════════════
+          DECISION LOG — every pipeline verdict, including WAIT/HOLD/NO_ENTRY.
+          Pipeline Reasoning above covers trades that fired; this covers the
+          "why didn't we trade" case that had no dashboard home before.
+      ═══════════════════════════════════════════════════════ */}
+      <div className="mb-4">
+        <WidgetErrorBoundary name="Decision Log">
+          <DecisionLogWidget />
+        </WidgetErrorBoundary>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
           SESSION BRIEF — proactive advisor recommendations. Re-homed here from
           the dissolved kitchen-sink overview page (#274 feature preserved on the
           flagship HUD after the P2.1 redirect orphaned its old mount point).
@@ -668,6 +735,18 @@ export default function CommandCenterPage() {
       <div className="mb-4">
         <WidgetErrorBoundary name="Session Brief">
           <SessionBriefPanel />
+        </WidgetErrorBoundary>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          TRADE RECOMMENDATIONS — actionable board with entry/stop/T1
+          (amo-arbitrage style). Live candidates + recently-resolved rows
+          once the autonomous pipeline is armed. Mounted on the flagship HUD
+          (2026-08-16) so recommendations are visible where Amo actually looks.
+      ═══════════════════════════════════════════════════════ */}
+      <div className="mb-4">
+        <WidgetErrorBoundary name="Trade Recommendations">
+          <ActionableBoardWidget />
         </WidgetErrorBoundary>
       </div>
 
@@ -823,7 +902,7 @@ export default function CommandCenterPage() {
               <span
                 className={`font-mono text-xs ${dailyPnlPct < -1 ? "text-red-400" : "text-green-400"}`}
               >
-                {fmtPct(dailyPnlPct)} / -2%
+                {fmtPct(dailyPnlPct)} / -{dailyLimitPctAbs.toFixed(0)}%
               </span>
             </div>
             <div className="flex justify-between items-baseline">
@@ -831,7 +910,7 @@ export default function CommandCenterPage() {
               <span
                 className={`font-mono text-xs ${drawdownPct < -5 ? "text-red-400" : "text-yellow-400"}`}
               >
-                {fmtPct(drawdownPct)} / -10%
+                {fmtPct(drawdownPct)} / -{drawdownLimitPctAbs.toFixed(0)}%
               </span>
             </div>
             <div className="flex justify-between items-baseline">
@@ -934,7 +1013,7 @@ export default function CommandCenterPage() {
                 <span
                   className={dailyPnlPct < -1 ? "text-red-400" : "text-green-400"}
                 >
-                  {fmtPct(dailyPnlPct)} / -2.00%
+                  {fmtPct(dailyPnlPct)} / -{dailyLimitPctAbs.toFixed(2)}%
                 </span>
               </div>
               <Progress
@@ -953,7 +1032,7 @@ export default function CommandCenterPage() {
                 <span
                   className={drawdownPct < -5 ? "text-red-400" : "text-yellow-400"}
                 >
-                  {fmtPct(drawdownPct)} / -10.00%
+                  {fmtPct(drawdownPct)} / -{drawdownLimitPctAbs.toFixed(2)}%
                 </span>
               </div>
               <Progress value={drawdownProgress} className="h-2.5 bg-slate-800" />
@@ -986,7 +1065,7 @@ export default function CommandCenterPage() {
               <div className="flex justify-between text-xs font-mono mb-1.5">
                 <span className="text-slate-400">Orders / Minute</span>
                 <span className="text-slate-300">
-                  {ordersPerMin} / 40 limit
+                  {ordersPerMin} / {ordersLimit} limit
                 </span>
               </div>
               <Progress value={ordersProgress} className="h-2.5 bg-slate-800" />
