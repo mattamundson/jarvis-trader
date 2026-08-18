@@ -27,6 +27,7 @@
   - Claude: `claude-sonnet-4-6` (Anthropic SDK, the engine's historical default for decision agents)
   - DeepSeek: `deepseek-reasoner` (DeepSeek OpenAI-compatible endpoint, `https://api.deepseek.com/v1/chat/completions`)
 - **Both calls:** `max_tokens=800`, identical system + user messages.
+- **Run history (important for interpreting token counts):** Run 1 fired both models back-to-back and produced the headline cost/latency numbers. DeepSeek's run-1 response hit the `max_tokens=800` cap during the reasoning phase — `completion_tokens=800`, `content=""`, i.e. no usable output (the billing still applied: $0.00193). A second DeepSeek call with the same prompt was made to capture actual content: `completion_tokens=538` (incl. 240 reasoning), `finish_reason="stop"`, full valid JSON. All DeepSeek *content* samples below are from run 2; the cost/latency row reflects run 1 (the conservative, higher-billed figure).
 
 ---
 
@@ -37,13 +38,13 @@
 | **Cost per call** | $0.00990 | $0.00193 | **5.13x cheaper** |
 | **Latency** | 15.5 s | 10.4 s | **33% faster** |
 | Input tokens | 275 | 330 | +20% (same prompt; model tokenization differs) |
-| Output tokens | 605 | 800 (cap) / 538 actual incl. 240 reasoning | — |
+| Output tokens | 605 | 800 billed (run 1 cap) / 538 actual (run 2, incl. 240 reasoning) | — |
 | JSON validity | ✅ structurally valid | ✅ structurally valid | tie |
 | Trade math (entry/stop/target) | coherent, R:R ~3:1 | coherent, R:R ~2.9:1 | tie |
-| Confidence calibration | reasonable | 0.38 — appropriately hedged for mixed signal | tie/edge |
-| Risk enumeration | multiple, specific | 5 specific, well-reasoned | tie |
+| Confidence calibration | 0.38 — hedged, appropriate for mixed signal | 0.38 — hedged, appropriate for mixed signal | **tie (both 0.38)** |
+| Risk enumeration | 8 specific risks | 5 specific risks, well-reasoned | tie (Claude broader; DeepSeek sufficient) |
 | Reasoning content exposed | ❌ (Anthropic hides it) | ✅ 953-char `reasoning_content` (auditable chain) | **DeepSeek edge** |
-| Finish reason | stop | stop | tie |
+| Finish reason | stop | stop (run 2; run 1 hit max_tokens during reasoning) | tie (usable output) |
 
 **Cost math (per engine `COST_PER_MTOK`):**
 - Claude: `(275×$3.00 + 605×$15.00) / 1e6 = $0.00990`
@@ -61,11 +62,31 @@
 
 ## 4. Output samples
 
-### 4a. Claude (`claude-sonnet-4-6`) — thesis excerpt (start of output)
+### 4a. Claude (`claude-sonnet-4-6`) — full output (verbatim, saved payload)
 
-> "Extreme oversold conditions at key support create a high-probability mean-reversion long opportunity in MES. RSI at 15.1, Williams %R at -97, and Stochastic %K at 5.0 represent historically rare multi-indicator capitulation readings that statistically precede sharp counter-trend bounces, even within established downtrends. Price is sitting precisely at the $7741-7743 support zone — a level the market has already demonstrated awareness of. The minor OBV bullish divergence is critical: price is making lows but accumulation is quietly occurring, suggesting institutional absorption at this level. Volume at 0.06x average indicates seller exhaustion — a dry-up in sell-side participation at support is a classic spring setup. The risk/reward is asymmetric: the defined downside targets from the Hidden Pivots pattern ($7729/$7716/$7703) give us a tight, measurable stop placement, while any mean-reversion snap-back toward the nearest SMA cluster or prior consolidation offers a 3:1+ reward ratio. We are NOT calling a trend reversal — we are trading a counter-trend mean-reversion bounce from a statistically extreme oversold reading at a defined support level. The trade is…"
+Claude wrapped its output in a ```json fence (the engine's extractor already handles this). Full text below:
 
-Output was structurally valid JSON with the requested keys (verified in the test run).
+```json
+{
+  "thesis": "Extreme oversold conditions at key support create a high-probability mean-reversion long opportunity in MES. RSI at 15.1, Williams %R at -97, and Stochastic %K at 5.0 represent historically rare multi-indicator capitulation readings that statistically precede sharp counter-trend bounces, even within established downtrends. Price is sitting precisely at the $7741-7743 support zone — a level the market has already demonstrated awareness of. The minor OBV bullish divergence is critical: price is making lows but accumulation is quietly occurring, suggesting institutional absorption at this level. Volume at 0.06x average indicates seller exhaustion — a dry-up in sell-side participation at support is a classic spring setup. The risk/reward is asymmetric: the defined downside targets from the Hidden Pivots pattern ($7729/$7716/$7703) give us a tight, measurable stop placement, while any mean-reversion snap-back toward the nearest SMA cluster or prior consolidation offers a 3:1+ reward ratio. We are NOT calling a trend reversal — we are trading a counter-trend mean-reversion bounce from a statistically extreme oversold reading at a defined support level. The trade is managed tightly and we exit into strength, not held as a reversal thesis.",
+  "entry_price": 7743.50,
+  "stop_loss": 7700.00,
+  "take_profit": 7875.00,
+  "confidence": 0.38,
+  "key_risks": [
+    "Dominant downtrend confirmed by ADX 42.7 — counter-trend trades have high failure rates in strong trend environments",
+    "Hidden Pivots rounded-top pattern with 80% bearish confidence directly contradicts the long thesis and targets $7703 or lower",
+    "Price trading below all major SMAs (20/50/200) — no structural support from moving averages above",
+    "Extremely thin volume (0.06x average) can cause erratic, illiquid price action that triggers stops prematurely or prevents clean exits",
+    "OBV divergence is described as 'minor' — insufficient as a standalone reversal signal without price confirmation",
+    "No confirmed reversal candle, pattern, or momentum crossover — entry is anticipatory, not confirmed",
+    "Gap-down open or macro catalyst (Fed commentary, geopolitical shock, economic data miss) could accelerate selling and blow through stop",
+    "Oversold conditions can persist and extend in strong downtrends — 'oversold can get more oversold'"
+  ]
+}
+```
+
+**Claude usage:** `input_tokens=275`, `output_tokens=605`, `latency=15.5s`, `cost=$0.00990`, `finish_reason=stop`.
 
 ### 4b. DeepSeek (`deepseek-reasoner`) — full output (verbatim, saved payload)
 
@@ -93,15 +114,31 @@ Output was structurally valid JSON with the requested keys (verified in the test
 ### 4c. Quality comparison notes
 
 - Both models respected the JSON contract; no markdown-wrapped JSON in the DeepSeek content (Claude's was wrapped in a ```json fence in the raw response — the engine's extractor already handles this).
-- DeepSeek's R:R: (7780.50−7742.75)/(7742.75−7729.00) ≈ 37.75/13.75 ≈ **2.75:1**. Claude targeted a similar asymmetric setup. Both coherent.
-- DeepSeek's `confidence=0.38` for a genuinely mixed setup (strong downtrend vs extreme oversold) is appropriately conservative — arguably better calibrated than a blindly aggressive bull case.
+- Claude's R:R: (7875.00−7743.50)/(7743.50−7700.00) ≈ 131.50/43.50 ≈ **3.02:1**. DeepSeek's R:R: (7780.50−7742.75)/(7742.75−7729.00) ≈ 37.75/13.75 ≈ **2.75:1**. Both coherent; Claude's is more aggressive on target (and stop), DeepSeek's is tighter and closer to the support shelf.
+- **Both models returned `confidence=0.38`** for a genuinely mixed setup (strong downtrend vs extreme oversold). Identical and appropriately conservative — not an aggressive bull case from either. Calibration is a **tie**.
 - DeepSeek exposes `reasoning_content` (953 chars) — the engine can log the reasoning chain for auditability. Claude does not expose this.
+
+### 4d. JSON validity check (independent re-verification, 2026-08-18)
+
+Both saved payloads were re-parsed with `json.loads` against the strict output contract (`thesis: string, entry_price: number, stop_loss: number, take_profit: number, confidence: float 0-1, key_risks: array<string>`):
+
+| Check | `claude-sonnet-4-6` | `deepseek-reasoner` |
+|---|---|---|
+| Raw parse (after stripping ```json fence on Claude) | ✅ valid | ✅ valid |
+| Required keys present (6/6) | ✅ | ✅ |
+| Numeric types (entry/stop/target) | ✅ 7743.50 / 7700.00 / 7875.00 | ✅ 7742.75 / 7729.00 / 7780.50 |
+| confidence in [0,1] | ✅ 0.38 | ✅ 0.38 |
+| key_risks non-empty array of strings | ✅ 8 items | ✅ 5 items |
+| entry within prompt's price context | ✅ ($7741-7743 zone) | ✅ ($7741-7743 zone) |
+| Verdict | **usable** | **usable** |
+
+Result: both outputs are machine-usable as-is; no extraction repair needed for either.
 
 ---
 
 ## 5. Real operational cost evidence (engine tracking DB, 2026-08-04 → 2026-08-18)
 
-From `engine/data/llm_costs.db` (`llm_calls` table, 117,512 rows; successful calls only):
+From `engine/data/llm_costs.db` (`llm_calls` table, 117,512 total rows incl. failures; table below = successful calls in the 2026-08-04 → 2026-08-18 window, re-verified 2026-08-18):
 
 | Model | Calls | Total cost | Avg $/call | Avg latency |
 |---|---|---|---|---|
