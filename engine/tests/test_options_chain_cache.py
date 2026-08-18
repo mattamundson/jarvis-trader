@@ -225,3 +225,37 @@ def test_get_chain_none_when_no_bars(tmp_path):
         cache_dir=tmp_path, api_key="k", requests_per_minute=1000, http_get=NoBarsHTTP()
     )
     assert cache.get_chain("SPY", datetime(2024, 11, 1), 10) is None
+
+
+def test_get_chain_ignores_phantom_offgrid_strikes(tmp_path):
+    """Polygon reference data carries phantom off-grid strikes (QQQ x.78
+    artifacts alongside the real x.00 grid). The ladder must use ONLY clean
+    integer/half-dollar strikes or chains silently come back empty."""
+
+    class PhantomHTTP(FakeHTTP):
+        def __call__(self, url, api_key):
+            if "reference/options/contracts" in url:
+                strikes = [560.0, 564.78, 570.0, 574.78, 580.0, 584.78, 590.0, 594.78, 600.0]
+                results = []
+                for s in strikes:
+                    for ct in ("call", "put"):
+                        results.append({
+                            "ticker": option_ticker("SPY", self.expiry, ct, s),
+                            "strike_price": s,
+                            "contract_type": ct,
+                            "expiration_date": self.expiry.isoformat(),
+                        })
+                return {"results": results}
+            return super().__call__(url, api_key)
+
+    cache = PolygonChainCache(
+        cache_dir=tmp_path, api_key="k", requests_per_minute=1000,
+        http_get=PhantomHTTP(), relative_half_spread=0.02,
+    )
+    chain = cache.get_chain("SPY", datetime(2024, 11, 1, 15, 0), target_dte=10)
+    assert chain is not None
+    # Only clean strikes in the ladder: 560, 570, 580, 590, 600
+    assert sorted(c.strike for c in chain.calls) == [560.0, 570.0, 580.0, 590.0, 600.0]
+    # And the scaffold can still pick a spread from it
+    picks = select_vertical_spread(chain, direction="BULL", target_delta=0.30, width_strikes=1)
+    assert picks is not None

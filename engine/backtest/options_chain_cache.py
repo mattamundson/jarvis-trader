@@ -43,7 +43,6 @@ from __future__ import annotations
 
 import json
 import logging
-import math
 import time
 import urllib.error
 import urllib.request
@@ -370,8 +369,8 @@ class PolygonChainCache:
     def _underlying_cache_path(self, symbol: str) -> Path:
         return self.cache_dir / f"{symbol.upper()}_daily.parquet"
 
-    def _universe_cache_path(self, symbol: str, expiry: date) -> Path:
-        return self.cache_dir / f"{symbol.upper()}_{expiry:%Y-%m-%d}_universe.parquet"
+    def _universe_cache_path(self, symbol: str, expiry: date, as_of: date) -> Path:
+        return self.cache_dir / f"{symbol.upper()}_{expiry:%Y-%m-%d}_{as_of:%Y-%m-%d}_universe.parquet"
 
     def _contract_cache_path(self, ticker: str) -> Path:
         # ticker like O:SPY250620C00580000 -> O_SPY250620C00580000.parquet
@@ -419,11 +418,17 @@ class PolygonChainCache:
     def get_universe(
         self, symbol: str, expiry: date, as_of: date, strike_min: float, strike_max: float
     ) -> list[dict]:
-        """Reference contracts for (symbol, expiry) as of ``as_of``, cached."""
+        """Reference contracts for (symbol, expiry) as of ``as_of``, cached.
+
+        The cache key includes ``as_of`` AND the caller passes a WIDE strike
+        band (see ``get_chain``): a stale universe fetched for an earlier
+        signal's narrow band would otherwise silently drop the current
+        signal's strikes (observed with the 2025-03-13 vol-spike signal).
+        """
         import pandas as pd
 
         symbol = symbol.upper()
-        path = self._universe_cache_path(symbol, expiry)
+        path = self._universe_cache_path(symbol, expiry, as_of)
         if path.exists():
             try:
                 df = pd.read_parquet(path)
@@ -535,22 +540,42 @@ class PolygonChainCache:
         if spot <= 0:
             return None
 
-        # Strike ladder across the band, in ``strike_step`` increments ($1 default).
+        # Universe verification (one reference call per (symbol, expiry, as_of)
+        # on first use). Fetch a WIDE band — the theoretical 30-delta strike can
+        # sit far OTM during vol spikes (e.g. 2025-03-13 crash: ~15% OTM), so a
+        # narrow universe would silently drop the signal's rungs.
+        universe = self.get_universe(
+            symbol, expiry, spot_date, spot * 0.85, spot * 1.18
+        )
+        universe_map = {(u["strike"], u["contract_type"]): u["ticker"] for u in universe}
+
+        # Ladder = REAL listed strikes (from the reference universe) inside the
+        # focused band, spaced >= strike_step. Building the ladder from the
+        # universe instead of a synthetic integer grid is load-bearing: Polygon's
+        # reference data carries phantom off-grid strikes (e.g. QQQ x.78
+        # artifacts alongside the real x.00/x.50 grid) and per-symbol spacing
+        # differences, so a synthetic grid silently matches nothing.
+        def _clean_strike(s: float) -> bool:
+            cents = int(round(s * 1000)) % 1000
+            return cents in (0, 500)  # integer or half-dollar strikes only
+
+        real_strikes = sorted(
+            {float(u["strike"]) for u in universe if _clean_strike(float(u["strike"]))}
+        )
         if strike_band is not None:
             lo, hi = strike_band
         else:
             lo = spot * (1 - self.ladder_band_pct)
             hi = spot * (1 + self.ladder_band_pct)
         strikes: list[float] = []
-        k = math.ceil(lo)
-        while k <= hi:
-            strikes.append(float(k))
-            k += max(strike_step, 0.5)
-        strikes = list(dict.fromkeys(strikes))  # dedupe, keep order
-
-        # Universe verification (one reference call per (symbol, expiry) on first use).
-        universe = self.get_universe(symbol, expiry, spot_date, lo, hi)
-        universe_map = {(u["strike"], u["contract_type"]): u["ticker"] for u in universe}
+        last: Optional[float] = None
+        min_gap = max(strike_step, 0.5) - 1e-9
+        for s in real_strikes:
+            if s < lo or s > hi:
+                continue
+            if last is None or s - last >= min_gap:
+                strikes.append(s)
+                last = s
 
         calls: list[OptionsContract] = []
         puts: list[OptionsContract] = []
