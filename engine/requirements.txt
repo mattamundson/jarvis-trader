@@ -34,7 +34,7 @@ statsmodels>=0.14.0        # Ljung-Box + ADF tests. Used by engine/backtest/rigo
 
 # Backtesting
 vectorbt==0.26.2          # Fast vectorized backtesting
-nautilus_trader==1.211.0  # Production-grade event-driven backtesting
+nautilus_trader==1.231.0  # Production-grade event-driven backtesting (parity harness consumer; 1.211.0 has no installable wheel)
 
 # Databases
 psycopg2-binary==2.9.10   # PostgreSQL
