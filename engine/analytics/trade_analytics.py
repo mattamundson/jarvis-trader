@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 @dataclass
@@ -58,6 +58,14 @@ def _observed_annualization_trades_per_year(trades: list[dict]) -> float:
             dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
         except (ValueError, AttributeError, TypeError):
             continue
+        # Normalize to UTC-aware: the live record mixes naive and tz-aware
+        # timestamps (naive rows are treated as UTC); comparing mixed naive /
+        # aware datetimes raises TypeError, which crashed the honest-metrics
+        # path on the real paper-trade DB (2026-08-18, verify_honest_metrics.py).
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            dt = dt.astimezone(timezone.utc)
         parsed.append(dt)
     if len(parsed) < 2:
         return DEFAULT_ANNUALIZATION_TRADES_PER_YEAR
@@ -110,7 +118,13 @@ def calculate_analytics(trades: list[dict]) -> TradeAnalytics:
     # fixed 252. A strategy that closes trades on ~60 days a year was
     # previously overstated by sqrt(252/60) ≈ 2.05x.
     ann_tpy = _observed_annualization_trades_per_year(trades)
-    sharpe = calculate_sharpe_ratio(daily_returns, annualization_trades_per_year=ann_tpy)
+    # Sharpe over PER-TRADE returns (same convention as backtest/metrics.py
+    # and dashboard/lib/honestAnnualized.ts), annualized by sqrt(trades/yr).
+    # The old path fed daily-bucketed sums into a trades-per-year factor —
+    # mixed denominators that inflated the live record (88 trades on ~40
+    # distinct days): engine 2.59 vs honest 1.63 (2026-08-18 verification).
+    trade_returns = [t.get("pnl", 0) for t in trades]
+    sharpe = calculate_sharpe_ratio(trade_returns, annualization_trades_per_year=ann_tpy)
 
     # Honest CAGR over the actual elapsed calendar span of the trade record.
     # Compounding uses (1 + total_return)^(1/years) - 1 with years derived from
@@ -182,7 +196,10 @@ def calculate_sharpe_ratio(
         return 0.0
 
     mean_return = sum(daily_returns) / len(daily_returns)
-    variance = sum((r - mean_return) ** 2 for r in daily_returns) / len(daily_returns)
+    # Sample variance (ddof=1) — matches backtest/metrics.py (`std(ddof=1)`)
+    # and dashboard/lib/honestAnnualized.ts, so engine and display agree on
+    # the same trade series (C3 metric-honesty pass).
+    variance = sum((r - mean_return) ** 2 for r in daily_returns) / (len(daily_returns) - 1)
     std_dev = math.sqrt(variance)
 
     if std_dev == 0.0:

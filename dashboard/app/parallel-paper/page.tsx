@@ -344,6 +344,12 @@ export default function ParallelPaperPage() {
           30 days is barely above the noise floor for risk-param comparison. 90 days is the
           recommended minimum before concluding one config outperforms the other. Sample size
           matters more than short-term P&amp;L.
+          <span className="block mt-1">
+            <strong className="text-yellow-300">Annualization:</strong> Sharpe / Sortino are
+            annualized by each account&apos;s observed trade frequency (not a fixed 252);
+            sub-90-day windows fall back to the 252 convention and are not directly comparable
+            to a daily-trader Sharpe.
+          </span>
         </div>
 
         {/* Two-column account panels */}
