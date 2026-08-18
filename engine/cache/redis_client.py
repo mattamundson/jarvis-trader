@@ -9,6 +9,7 @@ Features:
 
 import asyncio
 import logging
+import time
 from typing import Any, Optional
 
 try:
@@ -111,9 +112,27 @@ async def get(key: str) -> Any | None:
             return value
         except Exception as e:
             logger.debug(f"Redis GET failed for {key}: {e} — trying fallback")
-            return _fallback_cache.get(key)
+            return _fallback_get(key)
     else:
-        return _fallback_cache.get(key)
+        return _fallback_get(key)
+
+
+def _fallback_get(key: str) -> Any | None:
+    """Fallback-cache read honoring TTL (2026-08-18 fix).
+
+    The old fallback ignored TTL entirely — with Redis down, a pipeline
+    signal cached at 08:04 (stale bars) was served forever, so every
+    /pipeline/run short-circuited on the cached HOLD with 0 LLM calls.
+    Entries now expire after their TTL, mirroring Redis setex semantics.
+    """
+    entry = _fallback_cache.get(key)
+    if entry is None:
+        return None
+    value, expires_at = entry
+    if expires_at is not None and time.time() > expires_at:
+        _fallback_cache.pop(key, None)
+        return None
+    return value
 
 
 async def set(key: str, value: str, ttl_seconds: Optional[int] = None) -> bool:
@@ -137,10 +156,16 @@ async def set(key: str, value: str, ttl_seconds: Optional[int] = None) -> bool:
             return True
         except Exception as e:
             logger.debug(f"Redis SET failed for {key}: {e} — using fallback")
-            _fallback_cache[key] = value
+            _fallback_cache[key] = (
+                value,
+                time.time() + ttl_seconds if ttl_seconds is not None else None,
+            )
             return True
     else:
-        _fallback_cache[key] = value
+        _fallback_cache[key] = (
+            value,
+            time.time() + ttl_seconds if ttl_seconds is not None else None,
+        )
         return True
 
 
