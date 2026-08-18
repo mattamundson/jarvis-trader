@@ -1762,7 +1762,14 @@ class MarketDataManager:
 
             import redis
 
-            r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+            r = redis.Redis(
+                host="localhost",
+                port=6379,
+                db=0,
+                decode_responses=True,
+                socket_timeout=0.5,
+                socket_connect_timeout=0.5,
+            )
             # Try symbol as-is and uppercase
             for sym_key in [symbol, symbol.upper()]:
                 val = r.get(f"market:latest:{sym_key}")
@@ -1833,7 +1840,16 @@ class MarketDataManager:
         # Tier 4: Polygon REST (stocks/ETFs only — futures blocklisted)
         if self.polygon and symbol.upper() not in POLYGON_FUTURES_BLOCKLIST:
             polygon_symbol = POLYGON_FUTURES_MAP.get(symbol.upper(), symbol)
-            result = self.polygon.get_last_price(polygon_symbol)
+            # 2026-08-17: get_last_price is a SYNC blocking call (requests).
+            # Running it inline inside this async method blocked the event
+            # loop — a cold Polygon fallback (weekend, IB down) measured 7-14s
+            # and NO asyncio.wait_for could interrupt it, freezing
+            # /portfolio/paper/positions ~11s. to_thread keeps the loop
+            # responsive so callers' timeouts actually fire and degrade to
+            # CSV-cache/entry marks instead of hanging.
+            result = await asyncio.to_thread(
+                self.polygon.get_last_price, polygon_symbol
+            )
             if result.get("last_price"):
                 return result
 

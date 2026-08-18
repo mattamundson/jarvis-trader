@@ -71,6 +71,14 @@ TARGET_TRADING_DAYS = 30
 # scenario stays ~20s regardless of open-position count).
 _PRICE_FANOUT_TIMEOUT_S = float(os.getenv("PORTFOLIO_PRICE_FANOUT_TIMEOUT_SECONDS", "20.0"))
 
+# 2026-08-17: per-position live-mark timeout for /paper/positions. On weekends
+# or IB-down the tick waterfall falls through to Polygon REST (measured 13.7s
+# SPY / 7.6s AAPL), freezing the page ~11s. Bound each mark to 2s and degrade
+# to entry-price marks instead of blocking.
+_POSITIONS_MARK_TIMEOUT_S = float(
+    os.getenv("PORTFOLIO_POSITIONS_MARK_TIMEOUT_SECONDS", "2.0")
+)
+
 # Global references (injected from main.py)
 paper_tracker = None
 db_manager = None
@@ -778,9 +786,17 @@ async def paper_positions():
     if positions and _data_manager is not None:
         try:
             symbols = [str(p.get("symbol", "")) for p in positions]
+            # 2026-08-17: bound the fan-out so a cold Polygon fallback (weekend,
+            # IB down) can't freeze the page. Measured: SPY 13.7s / AAPL 7.6s on
+            # Sunday fallback — /portfolio/paper/positions was an 11s page load.
+            # The waterfall still runs for fresh live marks on market days, but
+            # degrades to entry-price marks (unrealized 0) instead of blocking.
             results = await asyncio.gather(
                 *[
-                    asyncio.wait_for(_data_manager.get_tick_price(sym), timeout=_PRICE_FANOUT_TIMEOUT_S)
+                    asyncio.wait_for(
+                        _data_manager.get_tick_price(sym),
+                        timeout=_POSITIONS_MARK_TIMEOUT_S,
+                    )
                     for sym in symbols
                 ],
                 return_exceptions=True,
@@ -790,6 +806,12 @@ async def paper_positions():
             ]
             ibkr_connected = _ibkr_connected()
             for pos, (current_price, mark_source) in zip(positions, marks, strict=True):
+                if current_price is None:
+                    # Timeout/fallback: mark at entry so the page renders fast
+                    # with a STALE/STATIC provenance instead of hanging.
+                    entry_price = pos.get("entry_price")
+                    current_price = float(entry_price) if entry_price is not None else None
+                    mark_source = "entry_fallback" if current_price is not None else None
                 computed = _compute_unrealized(
                     pos,
                     current_price,
