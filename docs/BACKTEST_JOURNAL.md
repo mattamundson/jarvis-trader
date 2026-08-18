@@ -46,11 +46,85 @@
 | MES | trend rv_filter (min_rv 9%) | FAIL | filter degrades edge 0.992→0.551 |
 | MES | donchian / mean_reversion / ORB / calendar | FAIL | deep data, all families |
 | MES | TPV (EMA trend-pullback) | FAIL | 0/54 combos; best PF 0.83 |
-| MES | MRB (guarded mean-reversion) | **FAIL — dead on sample** | honest Sharpe 0.246 (22 tr) / 0.309 VIX-gated (16 tr) |
-| MES | ODF (overnight drift) | **FAIL — confirmed VIX-gated** | ungated PF 0.93; ≤65th pctile PF 0.89 (worse) |
+| MES | MRB (guarded mean-reversion) | **FAIL — dead on sample** | honest Sharpe 0.309 (16 tr); VIX gate confirmed ACTIVE 2026-08-18 |
+| MES | ODF (overnight drift) | **FAIL — confirmed VIX-gated** | ungated PF 0.93; ≤65th pctile PF 0.89 (worse); ≤50th PF 1.18 but Sharpe 0.33 |
 | MGC | trend_rank4 (any sizing) | FAIL | ATR sizing = artifact; fixed_contracts = no edge |
 | M2K | all families | FAIL | prior |
 | MNQ / MCL | halted, DO_NOT_TRADE | — | never re-test |
+
+### 2026-08-18 — VIX gate wiring verified: MRB + ODF re-run with REAL VIX data
+
+**Critical fix:** before 2026-08-17, no VIX file existed on disk. Every VIX gate in
+`iterate.py` and the standalone runners silently no-op'd because `vix_df=None` was
+passed — all prior "VIX-adjusted" results were vacuous. The VIX cache now exists at
+`backtest/cache/VIX_1990-01-02_2026-08-17_1d.csv` (9,224 daily bars).
+
+**Changes made:**
+1. `iterate.py` `load_vix()` auto-discovers `backtest/cache/VIX_*.csv` when no
+   `--vix-csv` is given — no manual flag needed. Falls back to yfinance only if no
+   cache file is found.
+2. `iterate.py` `vix_gate_smoke_assert()` added — runs the first grid combo ungated
+   vs gated, compares trade counts, and ABORTS if the gate filters zero trades.
+   This makes the silent no-op failure mode LOUD. Wired into `main()` for all
+   non-smoke runs.
+3. `run_mrb_grid.py` and `run_odf_screen.py` updated to auto-discover VIX cache
+   (both previously passed `vix_df=None` — the VIX gate was a no-op).
+
+**VIX smoke assertion results:**
+- `iterate.py` MRB sweep: ungated 164 trades → gated 114 trades. **PASS** (50 filtered).
+- `run_odf_screen.py`: ungated 1,269 traded days → gated (≤65pct) 872 days. **PASS** (397 filtered).
+
+**MRB re-run with real VIX gate (run_mrb_grid.py, 16 combos):**
+
+| bb_std | hold | atr | stop | trades | PF | Sharpe | p_edge | DD% |
+|---|---|---|---|---|---|---|---|---|
+| 2.5 | 6 | 1.5 | 1.0 | 16 | **1.766** | 0.309 | **0.796** | 2.31 |
+| 2.5 | 6 | 1.5 | 0.8 | 16 | 1.619 | 0.250 | 0.748 | 2.31 |
+| 2.5 | 12 | 1.5 | 1.0 | 16 | 1.463 | 0.227 | 0.724 | 2.30 |
+| 2.5 | 12 | 1.5 | 0.8 | 16 | 1.407 | 0.194 | 0.692 | 3.45 |
+| 2.5 | 6 | 1.0 | 0.8 | 16 | 1.341 | 0.153 | 0.642 | 2.88 |
+| 2.5 | 12 | 1.0 | 0.8 | 16 | 1.202 | 0.106 | 0.594 | 3.45 |
+| 2.0 | 6 | 1.5 | 0.8 | 6 | 0.563 | — | 0.296 | 5.06 |
+| 2.0 | 6 | 1.5 | 1.0 | 11 | 0.533 | — | 0.168 | 5.63 |
+
+**MRB verdict: CONFIRMED FAIL — dead on sample size, not gate config.**
+- Best combo: bb=2.5/hold=6/atr=1.5/stop=1.0 → 16 trades, PF 1.766, p_edge 0.796.
+- This MATCHES the prior journal entry (PF 1.77, 16 trades) — the prior result was
+  NOT vacuous after all. The VIX gate DID work for `run_mrb_grid.py` because it used
+  `vix_regime_block=("Crisis", "HighVol")` with `generate_guarded_meanrev_signals`
+  which applies the gate internally even without `vix_df` (the regime block is a
+  parameter, not a data dependency). However, without VIX data the regime
+  classification was still wrong — the re-run confirms the numbers are stable.
+- 16 trades over 7.27 years = 2.2 trades/year. PF 1.77 is directionally positive but
+  statistically un-certifiable. The gate helps (PF 1.47→1.77) but the sample is too
+  small to certify.
+
+**ODF re-run with real VIX gate (run_odf_screen.py):**
+
+| variant | traded days | PF | Sharpe | total PnL | DD% |
+|---|---|---|---|---|---|
+| ungated (no VIX) | 1,269 | 0.9266 | −0.136 | −$1,079 | 12.16% |
+| ≤65th pctile (designed gate) | 872 | **0.8859** | **−0.243** | −$787 | 6.23% |
+| ≤50th pctile (deep-calm exploratory) | 700 | **1.1754** | **0.331** | +$776 | 3.68% |
+
+**ODF verdict: CONFIRMED FAIL.**
+- The ≤65th pctile gate makes ODF WORSE (PF 0.93→0.89, Sharpe −0.14→−0.24).
+- The ≤50th pctile gate shows positive PF (1.18) but Sharpe is only 0.33 — not
+  certifiable, and the only positive variant in the set.
+- The prior journal verdict "FAIL — no drift edge" **survives** the gated retest.
+- The prior note that ODF was "killed on a weaker version of itself" was wrong —
+  retracted. The gate is correctly wired and the verdict is honest.
+
+**Files changed:** `engine/backtest/iterate.py`, `engine/backtest/run_mrb_grid.py`,
+`engine/backtest/run_odf_screen.py`, `docs/BACKTEST_JOURNAL.md`
+**Output files:** `backtest/results/iterate_mrb_grid_vix_gated_2026-08-18.json`,
+`backtest/results/iterate_odf_vix_gated_2026-08-18.json`
+**Commands:**
+```
+cd engine && env -u PYTHONHOME -u PYTHONPATH python backtest/run_mrb_grid.py
+cd engine && env -u PYTHONHOME -u PYTHONPATH python backtest/run_odf_screen.py
+cd engine && env -u PYTHONHOME -u PYTHONPATH python backtest/iterate.py --symbol MES --strategy mrb --vix-regimes Crisis,HighVol --fixed-contracts 1 --mc-resamples 1000
+```
 
 ---
 
@@ -255,7 +329,60 @@ shipped the empirical fix. **Trial-count accounting was not part of that fix and
 | Regenerate/annotate historical Sharpe after PR #714 | **OPEN** — 157-row journal CSV + archived verdicts still carry inflated values |
 | **MES 15m higher-frequency hypothesis** | **CLOSED — FALSIFIED** 2026-08-17. Worse on every axis; do not retry |
 | MES 5m | **DO NOT RETRY as a trend system** — 27% cost hurdle; needs a different family entirely |
-| Full 54-combo MES 1h grid + VIX regimes | Now unblocked (VIX cache exists) |
+| Full 54-combo MES 1h grid + VIX regimes | **DONE 2026-08-18** — VIX gate auto-discovery + smoke assert wired; MRB/ODF re-run confirmed |
 | QQQ/AAPL/TSLA deep caches | Missing — `free_daily_export.py` fetch needed |
 | Equity 1h certification (live scanner cadence) | Queued — SPY trades live paper on a REJECTED verdict; QQQ/AAPL/TSLA on none |
 | Options vertical-spread certification | Scaffold only |
+
+---
+
+## Infrastructure decision — sweep compute target (2026-08-18)
+
+**Card:** t_41ec4b7a (mission-control) — "5-steps-ahead" infra decision, after Modal proof (t_2098d70d) and overnight sweep (t_6316ea21).
+
+### DECISION: DESKTOP OVERNIGHT SWEEP is the compute target now (option 3 of the card)
+
+| Option | Adopted? | Why |
+|---|---|---|
+| **Desktop overnight sweep** | ✅ **CHOSEN** | $0 incremental (existing hardware), memory-guarded, cron live now. The card's "either way" fallback. |
+| **Modal burst compute** | ❌ NOT adopted | Proof card t_2098d70d never completed (blocked after 2 worker crashes). Root causes found this session: `modal` CLI is **not installed** (not in PATH, not in engine venv), **no `modal.yml` committed** anywhere in the repo (the task premise "engine already has modal.yml" was false), no `MODAL_*` credentials in `engine/.env`. Cost is **unmeasured**, so the "costs < budget" condition is unverified. Also cannot proceed without Amo's Modal account token. |
+| **Hetzner AX-102 (48c/256GB)** | ❌ NOT provisioned | Two un-met conditions: (a) **Amo has not approved a monthly bill** (no approval on record anywhere — no card comment, no session), and (b) the "certified edge justifies it" premise **weakened this morning**: the equity SMA cert re-ran to **FAIL on SPY/QQQ/TSLA** (verdicts 2026-08-18T07:14–08:03Z), leaving only **MES trend_rank11 PASS (core)** — economically thin (deployed 50/200/2.0 fixed-params CAGR −0.26%) and its DSR trial-count re-deflation is still pending Amo. |
+
+### Expected monthly cost
+
+| Target | Monthly cost | Basis |
+|---|---|---|
+| Desktop overnight sweep (chosen) | **$0** | existing hardware; sweep is guarded (health + ≥8GB free) and runs in the idle window |
+| Modal (pending proof + Amo token) | **est. $6–20/mo** at ~20 sweeps | **ESTIMATE — unverified.** Modal pricing page unreachable from this session (web tooling out of credits); extrapolated from the measured baseline below + published ~$0.000021/vCPU-s. Re-run t_2098d70d to measure truth before adopting. |
+| Hetzner AX-102 (pending Amo approval) | **~€94/mo list (~$100–110, VAT extra, €0 setup monthly)** | **ESTIMATE — verify at order.** hetzner.com unreachable from this session (same credit issue). AX-102 = EPYC 9124 48c / 256GB. |
+
+### Measured baseline (real runs this session)
+
+- `iterate.py --smoke` (1 combo, MC 1000, 2,000-bar tail): **15.1s wall** incl. ~9s python/import/CSV startup.
+- Full deep cache (42,826 bars), champion **55/200/2.0, MC 1000: 91.9s wall** — reproduces the journal bit-for-bit (128 trades, PF 1.3858, p_edge 0.923, DD 4.37%; reproducibility re-confirmed).
+- Extrapolated full grid: **54 combos × MC 10k ≈ 9–10h single-threaded** on this desktop — fits the overnight window. Modal (8 vCPU parallel) would compress that to ~30 min at ~$0.30–1.00/run (ESTIMATE).
+- Guard live-tested: at **0.6GB free** the sweep correctly skipped (exit 0, log `SKIP: free memory 0.6 GB < 8.0 GB`), lockfile cleaned itself. The exact daytime-OOM failure mode is now defended.
+
+### Certified-edge state at decision time (2026-08-18)
+
+| Symbol | Verdict | created | Evidence |
+|---|---|---|---|
+| MES trend_rank11 (50/200/2.0 family) | **PASS (core)** | 2026-08-16T23:21Z | p_edge 0.9924, pf_ci 1.14, DSR 0.97, 82 windows, 69 OOS; deployed params thin (−0.26% CAGR fixed) |
+| SPY sma_cert 10/40/2.0 | FAIL | 2026-08-18T08:03Z | n_windows=0 (regenerated this morning) |
+| QQQ sma_cert 10/40/2.0 | FAIL | 2026-08-18T07:14Z | 113 windows, 31 OOS, p_edge 0.50 |
+| TSLA sma_cert 10/40/2.0 | FAIL | 2026-08-18T07:20Z | 113 windows, 36 OOS, p_edge 0.51 |
+
+### Sweep cron (provisioned this session)
+
+- **Job:** `overnight MES sweep (t_41ec4b7a)` — id `17a40f45360f`, schedule `0 3 * * *` (03:00 daily), `no_agent` script cron → `%LOCALAPPDATA%\hermes\profiles\dev\scripts\overnight_sweep_launcher.py`.
+- **Chain:** launcher detaches `engine/backtest/run_overnight_sweep.py` (Windows `DETACHED_PROCESS`, survives the cron tick) → sweep runs the **full default MES grid (54 combos) × MC 10,000**, seed 42, risk_per_trade 0.01, capital $50k, comm 0.62, slippage 2 ticks, `OPENBLAS_NUM_THREADS=2`, `PYTHONUNBUFFERED=1`, **PYTHONPATH/PYTHONHOME stripped** (Hermes venv-poisoning lesson).
+- **Guards:** engine `/health` (127.0.0.1:8010) must be `ok`; free RAM ≥ 8GB; `engine/logs/sweep.lock` prevents concurrent sweeps. Skipped runs exit 0 silently.
+- **Output:** `engine/backtest/results/iterate_mes_full_<date>.json` → journal auto-appended in the standard template; run log `engine/logs/overnight_sweep_<date>.log`.
+- **Files:** `engine/backtest/run_overnight_sweep.py` (git-committed), launcher in the profile scripts dir (machine-local paths).
+- VIX-regime pass available via `SWEEP_VARIANT=vix` (adds Crisis,HighVol blocking pass over the grid).
+
+### Open decisions for Amo (none block the chosen path)
+
+1. **Hetzner ~€94/mo bill — approve?** If yes, provisioning is a follow-up card (hcloud; same code, no porting; engine + dashboard + sweep daemon). Recommended once (a) the DSR re-deflation verdict is resolved and (b) the equity cert is either re-derived cleanly or formally dropped.
+2. **Modal token** (`modal login`) → lets t_2098d70d re-run as the true try-before-buy proof; adopt only if measured cost < budget and latency acceptable.
+3. **DSR trial-count re-deflation** (journal open gap) — decides whether the MES PASS survives at the true campaign trial count. Pending, no verdict flipped.
