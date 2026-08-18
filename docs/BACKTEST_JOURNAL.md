@@ -49,6 +49,7 @@
 | MES | MRB (guarded mean-reversion) | **FAIL — dead on sample** | honest Sharpe 0.246 (22 tr) / 0.309 VIX-gated (16 tr) |
 | MES | ODF (overnight drift) | **FAIL — confirmed VIX-gated** | ungated PF 0.93; ≤65th pctile PF 0.89 (worse) |
 | MGC | trend_rank4 (any sizing) | FAIL | ATR sizing = artifact; fixed_contracts = no edge |
+| SPY/QQQ | options vertical on SMA-trend (10/40/2.0, 8/40/2.5) | FAIL | deep 2026-08-18: overlay does NOT rescue shares edge (26/27 OOS, pf_ci 1.06/0.56, 38.9% WR, ~$0 PnL) |
 | M2K | all families | FAIL | prior |
 | MNQ / MCL | halted, DO_NOT_TRADE | — | never re-test |
 
@@ -320,6 +321,57 @@ shipped the empirical fix. **Trial-count accounting was not part of that fix and
   Structured cards written to `docs/research/edge-roadmap-candidates-2026-08-18.cards.jsonl`
   (funnel-schema compatible with `bookmark-edge-scan-2026-07-02.cards.jsonl`).
 
+### 2026-08-18 — E7-FOLLOWUP: SPY/QQQ equity options deep validation (candidate 1 FAIL; candidates 2-3 gated)
+- **Harness/runner:** `backtest/run_spy_qqq_options_vertical.py` (new gate-v2-wired driver,
+  ALT battery) + `backtest/run_spy_options_baseline.py` (B6 Black-Scholes helpers).
+- **Symbol / family:** SPY + QQQ `options_vertical_sma_trend` — debit bull-call verticals on the
+  CERTIFIED SMA-trend entries (SPY fast=10/slow=40/atr=2.0, QQQ fast=8/slow=40/atr=2.5 — the same
+  ENTRY_NOW events the shares strategy trades).
+- **Data (deep-data standard — verified FIRST, before any compute):**
+  `backtest/cache/SPY_2015-01-01_2026-08-17_1d.csv` + `QQQ_..._1d.csv` — 2,922 bars each,
+  2015-01-02 → 2026-08-17. `backtest.cache_completeness.inspect_cache_file` →
+  `trustworthy=True`, `suspicious_gaps=0` for BOTH. Independent NYSE cross-check (every missing
+  weekday in each cache vs the closure calendar): all 110 missing weekdays per symbol are
+  whitelist-covered holidays/early closes — **zero genuine holes**. `US_MARKET_HOLIDAYS` extended
+  back to 2015 (verified 1:1 vs the NYSE reference calendar incl. 2018-12-05 Day of Mourning);
+  evidence script `engine/e7f_verify_caches.py`. VIX: `engine/data/vix_daily.csv` (2,923 closes,
+  2015-01-02 → 2026-08-17) for the IV proxy.
+- **Parameters tested:** 30-delta long leg, 5-strike width, 30 DTE tenor, 1 spread/signal,
+  IV proxy = max(20d realized vol, VIX/100 [SPY], 1.10×VIX/100 [QQQ]) — no historical IV surface
+  exists, VIX is the documented point-in-time proxy; slippage half-spread (max $0.05, 1% of mid)
+  + 5bps per leg entry-only; hold-to-expiry intrinsic settlement; $50K capital.
+- **Weights/sizing:** 1 contract per signal, capital $50K, no leverage.
+- **MC:** seeded (`_MC_SEED`) — deterministic; full re-runs reproduce bit-identical metrics.
+- **Results (WFO 24mo train / 3mo test / 1mo step, 113 windows, unique OOS attribution):**
+
+  | Symbol | params | trades | OOS | pf_ci_lower | p_edge | DSR | MC DD% | win_rate | total PnL | verdict |
+  |---|---|---|---|---|---|---|---|---|---|---|
+  | SPY | 10/40/2.0 | 36 | 26 | 1.0604 | 0.8972 | 0.884 | 0.02 | 38.9% | $7.73 | **FAIL** |
+  | QQQ | 8/40/2.5 | 36 | 27 | 0.5554 | 0.7240 | 0.724 | 0.02 | 38.9% | $8.05 | **FAIL** |
+
+  FAIL reasons: OOS trades 26/27 < 30 (both); pf_ci_lower 1.0604 / 0.5554 < 1.2 (both).
+  WFO consistency WEAK both; QQQ stationarity inconsistent. Per-window median PF 0.0, mean PF
+  0.53 (SPY) / 0.44 (QQQ).
+- **Verdict file(s) written:** `engine/data/gate_v2_verdicts/SPY_options_vertical_sma_10_40_2.0.json`,
+  `engine/data/gate_v2_verdicts/QQQ_options_vertical_sma_8_40_2.5.json` (gitignored runtime state,
+  standard schema incl. `data_quality.cache_completeness`); trades CSVs in
+  `engine/data/options_backtests/`; `_journal.csv` rows appended.
+- **Command used:** `OPT_SYMBOL=SPY|QQQ env -u PYTHONPATH .venv/Scripts/python
+  backtest/run_spy_qqq_options_vertical.py` (from engine/).
+- **Notes / polarity finding:** the CERTIFIED shares edge does **NOT** survive the debit-vertical
+  options overlay on deep data. Only ~36 entries in 11.6y (~3/yr) → 26-27 OOS trades, below the
+  30-trade minimum even at best. Win rate 38.9% sits far below the ~55-60% breakeven a
+  30-delta/5-wide debit spread needs to overcome theta bleed + half-spread slippage; total PnL
+  $7.73 / $8.05 over 11.6y on $50K ≈ zero (frictions ~fully consume the signal). DSR (0.88/0.72)
+  is misleadingly high — tiny PnL variance vs capital inflates it; PF + trade count are the binding
+  gates. **Candidate 1 verdict: FAIL both symbols — NOT promoted, no paper/live routing
+  (research-only).**
+- **Candidate 2 (`spy_qqq_vrp_premium_harvest`): NOT RUN** — gated on candidate 1 PASS per task
+  spec ("if candidate 1 passes, run candidate 2"); additionally still needs a real IV-history
+  surface beyond the VIX proxy to be meaningfully testable. Status: `not_run`, Tier B.
+- **Candidate 3 (`spy_qqq_dealer_gamma_regime`): DATA-GATED** — GEX feed decision pending; not
+  started, per spec (record-only).
+
 ---
 
 ## Open gaps / queued work
@@ -331,8 +383,8 @@ shipped the empirical fix. **Trial-count accounting was not part of that fix and
 | **MES 15m higher-frequency hypothesis** | **CLOSED — FALSIFIED** 2026-08-17. Worse on every axis; do not retry |
 | MES 5m | **DO NOT RETRY as a trend system** — 27% cost hurdle; needs a different family entirely |
 | Full 54-combo MES 1h grid + VIX regimes | Now unblocked (VIX cache exists) |
-| QQQ/AAPL/TSLA deep caches | Missing — `free_daily_export.py` fetch needed |
+| QQQ/AAPL/TSLA deep caches | QQQ 1d exists (2015-01-01_2026-08-17); AAPL/TSLA still missing — `free_daily_export.py` fetch needed |
 | Equity 1h certification (live scanner cadence) | Queued — SPY trades live paper on a REJECTED verdict; QQQ/AAPL/TSLA on none |
-| Options vertical-spread certification | Scaffold only — see `run_spy_options_baseline.py` (B6) |
+| Options vertical-spread certification | **DONE 2026-08-18 — FAIL (both SPY & QQQ)** — deep gate-v2; overlay does not rescue the shares edge. See E7-FOLLOWUP entry + `run_spy_qqq_options_vertical.py` |
 | **MGC deep cache rebuild (Databento 1h re-pull)** | **REQUIRED before any future MGC revalidation** — `MGC_2015-01-01_2026-08-16_1h.csv` fails the completeness gate (1,711 suspicious gaps; multi-day holes 2015-2023). See E7 2026-08-18 entry + kanban follow-up card |
-| **Equity options SPY/QQQ edge scans** | **QUEUED — equal priority with futures per operating rules** (2026-07-31 plan). Cards in `docs/research/edge-roadmap-candidates-2026-08-18.cards.jsonl`; deep validation via kanban follow-up card |
+| **Equity options SPY/QQQ edge scans** | **DONE 2026-08-18** — cand 1 `spy_qqq_vertical_spread_sma_trend` FAIL (deep gate-v2, both symbols); cand 2 VRP not_run (gated on cand 1 PASS + needs IV history); cand 3 dealer-gamma DATA-GATED on GEX feed. Cards updated in `docs/research/edge-roadmap-candidates-2026-08-18.cards.jsonl` |

@@ -54,3 +54,10 @@ date,symbol,family,rank,verdict,passed_via,pf_ci_lower,p_edge,mc_dd_pct,dsr,wfo,
 2026-08-18,SPY,trend,0,PASS,alt,inf,0.7,0.0537,0.7,MODERATE,,SPY_sma_cert_10_40_2.0.json
 2026-08-18,SPY,trend,0,PASS,alt,inf,0.7333,0.0,0.7333,MODERATE,,SPY_sma_cert_10_40_2.5.json
 2026-08-18,MGC,trend,4,FAIL,,0.9263,0.9478,3.8855,0.6314,WEAK,0.5104,MGC_trend_rank4.json
+2026-08-18,SPY,trend,0,PASS,alt,3.5,0.7,0.0537,0.7,MODERATE,,SPY_sma_cert_10_40_2.0.json
+2026-08-18,SPY,trend,0,PASS,alt,3.6667,0.7333,0.0,0.7333,MODERATE,,SPY_sma_cert_10_40_2.5.json
+2026-08-18,SPY,options_vertical_sma_trend,0,FAIL,,1.0002,0.9832,0.03,0.9763,WEAK,,SPY_options_vertical_sma_10_40_2.0.json
+2026-08-18,SPY,options_vertical_sma_trend,0,FAIL,,1.0604,0.8972,0.02,0.884,WEAK,,SPY_options_vertical_sma_10_40_2.0.json
+2026-08-18,QQQ,options_vertical_sma_trend,0,FAIL,,0.5554,0.724,0.02,0.7239,WEAK,,QQQ_options_vertical_sma_8_40_2.5.json
+2026-08-18,SPY,options_vertical_sma_trend,0,FAIL,,1.0604,0.8972,0.02,0.884,WEAK,,SPY_options_vertical_sma_10_40_2.0.json
+2026-08-18,QQQ,options_vertical_sma_trend,0,FAIL,,0.5554,0.724,0.02,0.7239,WEAK,,QQQ_options_vertical_sma_8_40_2.5.json
