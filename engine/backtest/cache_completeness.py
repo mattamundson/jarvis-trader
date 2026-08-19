@@ -91,9 +91,55 @@ _WEEKEND = (5, 6)  # Saturday, Sunday (datetime.weekday)
 #: veto the 7.3y deep cache in favor of a 2.3y shallow cache, producing the
 #: 2026-08-17 fake-'deep' verdicts (n_windows=20 instead of 82). Calendar now
 #: covers the full deep span. Extend as years roll.
+#:
+#: 2026-08-18 correction (E7-FOLLOWUP): extended back to 2015 so the deep
+#: equity 1d caches (SPY_/QQQ_2015-01-01_2026-08-17_1d.csv) are not flagged on
+#: 2015-2018 holiday closures. Independent verification (cross-check of every
+#: missing weekday in those caches against the NYSE closure calendar, incl.
+#: Juneteenth 2022+ and the Days of Mourning 2018-12-05 / 2025-01-09) showed
+#: ZERO missing non-holiday trading days -- all 36 flagged gaps per symbol were
+#: 2015-2018 holidays missing from this whitelist. This extension can only
+#: explain away genuine closures; a real hole on a non-holiday still flags.
 US_MARKET_HOLIDAYS = frozenset(
     date(*ymd)
     for ymd in [
+        (2015, 1, 1),
+        (2015, 1, 19),
+        (2015, 2, 16),
+        (2015, 4, 3),
+        (2015, 5, 25),
+        (2015, 7, 3),
+        (2015, 9, 7),
+        (2015, 11, 26),
+        (2015, 12, 25),
+        (2016, 1, 1),
+        (2016, 1, 18),
+        (2016, 2, 15),
+        (2016, 3, 25),
+        (2016, 5, 30),
+        (2016, 7, 4),
+        (2016, 9, 5),
+        (2016, 11, 24),
+        (2016, 12, 26),
+        (2017, 1, 2),
+        (2017, 1, 16),
+        (2017, 2, 20),
+        (2017, 4, 14),
+        (2017, 5, 29),
+        (2017, 7, 4),
+        (2017, 9, 4),
+        (2017, 11, 23),
+        (2017, 12, 25),
+        (2018, 1, 1),
+        (2018, 1, 15),
+        (2018, 2, 19),
+        (2018, 3, 30),
+        (2018, 5, 28),
+        (2018, 7, 4),
+        (2018, 9, 3),
+        (2018, 11, 22),
+        (2018, 12, 5),
+        (2018, 12, 25),
         (2019, 1, 1),
         (2019, 1, 21),
         (2019, 2, 18),

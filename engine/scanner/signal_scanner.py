@@ -646,17 +646,55 @@ class SignalScanner:
                             trade_dec,
                         )
                     elif _open_for_symbol:
-                        logger.info(
-                            "[EXECUTION] symbol=%s action=%s confidence=%.2f threshold=%.2f "
-                            "executed=False reason=paper_position_already_open "
-                            "open_trade_id=%s approval_id=%s",
-                            symbol,
-                            final_action,
-                            _confidence,
-                            0.0,
-                            str(_open_for_symbol[0].get("trade_id") or "")[:8],
-                            approval_id[:8],
+                        # 2026-08-18 fix: an OPPOSITE-direction signal against an
+                        # open position is an EXIT, not a duplicate entry. The old
+                        # guard skipped it entirely, so positions could never close
+                        # on signal (2x MES SELL signals today left the open BUY
+                        # untouched). Same-direction signals remain deduped.
+                        _open_pos = _open_for_symbol[0]
+                        _open_side = str(_open_pos.get("side") or "").lower()
+                        _sig_side = str(final_action).lower()
+                        _is_opposite = (
+                            _open_side in ("buy", "sell")
+                            and _sig_side in ("buy", "sell")
+                            and _open_side != _sig_side
                         )
+                        if _is_opposite:
+                            _close_tid = _open_pos.get("trade_id")
+                            try:
+                                self._paper_tracker.close_trade(
+                                    _close_tid, float(entry_price)
+                                )
+                                logger.info(
+                                    "[EXECUTION] symbol=%s action=%s executed=True "
+                                    "reason=exit_on_opposite_signal closed_trade_id=%s "
+                                    "exit_price=%.4f approval_id=%s",
+                                    symbol,
+                                    final_action,
+                                    str(_close_tid or "")[:8],
+                                    float(entry_price),
+                                    approval_id[:8],
+                                )
+                            except Exception as _close_exc:
+                                logger.error(
+                                    "[EXECUTION] exit_on_opposite_signal FAILED for "
+                                    "%s trade_id=%s: %s",
+                                    symbol,
+                                    str(_close_tid or "")[:8],
+                                    _close_exc,
+                                )
+                        else:
+                            logger.info(
+                                "[EXECUTION] symbol=%s action=%s confidence=%.2f threshold=%.2f "
+                                "executed=False reason=paper_position_already_open "
+                                "open_trade_id=%s approval_id=%s",
+                                symbol,
+                                final_action,
+                                _confidence,
+                                0.0,
+                                str(_open_pos.get("trade_id") or "")[:8],
+                                approval_id[:8],
+                            )
                     elif self._kill_switch_active():
                         # Autonomy hardening: the live opener now honors the kill
                         # switch. Previously only the APScheduler jobs gated on it;
