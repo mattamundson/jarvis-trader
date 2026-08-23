@@ -271,7 +271,7 @@ class Backtester:
 
     def _round_trip_cost(self, contracts: int, commission_per_contract: float) -> float:
         """Full round-trip commission (entry + exit combined)."""
-        return contracts * commission_per_contract
+        return 2.0 * contracts * commission_per_contract
 
     def _transaction_cost(self, contracts: int, tick_size: float = 0.25) -> float:
         """Round-trip commission cost per contract.
