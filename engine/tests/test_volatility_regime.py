@@ -89,5 +89,5 @@ def test_build_regime_frame_and_summary_with_vix_context() -> None:
     assert "iv_rv_spread" in frame.columns
     assert "term_state" in frame.columns
     summary = summarize_by_regime(frame)
-    assert set(["regime", "n_days"]).issubset(summary.columns)
+    assert {"regime", "n_days"}.issubset(summary.columns)
     assert int(summary["n_days"].sum()) == len(frame)

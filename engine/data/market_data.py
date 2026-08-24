@@ -1926,8 +1926,9 @@ class MarketDataManager:
             # Use the free fredgraph.csv endpoint directly — no API key, returns
             # the real series. Avoids fredapi (key-gated) and the hardcoded
             # FRED_SNAPSHOT_DEFAULTS fallback that silently returns a stale constant.
-            import pandas as pd
             from urllib.request import urlopen
+
+            import pandas as pd
 
             url = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=VIXCLS"
             with urlopen(url, timeout=30) as resp:
