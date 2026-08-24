@@ -36,11 +36,11 @@ ENGINE_ROOT = Path(__file__).resolve().parent.parent
 if str(ENGINE_ROOT) not in sys.path:
     sys.path.insert(0, str(ENGINE_ROOT))
 
-from analysis.volatility_regime import (
+from analysis.volatility_regime import (  # noqa: E402
     RegimeThresholds,
     build_regime_frame,
-    summarize_by_regime,
     latest_regime_snapshot,
+    summarize_by_regime,
 )
 
 

@@ -125,8 +125,9 @@ def add_vix_context(
     return out
 
 
-def classify_term_state(slope: float | None, thresholds: RegimeThresholds = RegimeThresholds()) -> str:
+def classify_term_state(slope: float | None, thresholds: RegimeThresholds | None = None) -> str:
     """Classify VIX3M - VIX slope, using decimal-vol units."""
+    thresholds = thresholds or RegimeThresholds()
 
     if slope is None or pd.isna(slope):
         return "unknown"
@@ -137,8 +138,9 @@ def classify_term_state(slope: float | None, thresholds: RegimeThresholds = Regi
     return "flat"
 
 
-def classify_premium_state(row: pd.Series, thresholds: RegimeThresholds = RegimeThresholds()) -> str:
+def classify_premium_state(row: pd.Series, thresholds: RegimeThresholds | None = None) -> str:
     """Label premium richness from IV proxy minus realized volatility."""
+    thresholds = thresholds or RegimeThresholds()
 
     spread = row.get("iv_rv_spread")
     if spread is None or pd.isna(spread):
@@ -191,13 +193,14 @@ def _classify_one_row(row: pd.Series, thresholds: RegimeThresholds) -> str:
 
 def classify_regime(
     frame: pd.Series | pd.DataFrame,
-    thresholds: RegimeThresholds = RegimeThresholds(),
+    thresholds: RegimeThresholds | None = None,
 ) -> str | pd.DataFrame:
     """Classify rows into a coarse volatility/options regime.
 
     Accepts a single Series (returns the regime label string) or a DataFrame
     (returns a copy with a new ``regime`` column).
     """
+    thresholds = thresholds or RegimeThresholds()
 
     if isinstance(frame, pd.Series):
         return _classify_one_row(frame, thresholds)
@@ -207,8 +210,9 @@ def classify_regime(
     return out
 
 
-def add_regime_labels(frame: pd.DataFrame, thresholds: RegimeThresholds = RegimeThresholds()) -> pd.DataFrame:
+def add_regime_labels(frame: pd.DataFrame, thresholds: RegimeThresholds | None = None) -> pd.DataFrame:
     """Add `premium_state` and `regime` labels."""
+    thresholds = thresholds or RegimeThresholds()
 
     out = frame.copy()
     out["premium_state"] = out.apply(lambda row: classify_premium_state(row, thresholds), axis=1)
@@ -240,9 +244,10 @@ def build_regime_frame(
     symbol: str,
     vix: pd.DataFrame | None = None,
     vix3m: pd.DataFrame | None = None,
-    thresholds: RegimeThresholds = RegimeThresholds(),
+    thresholds: RegimeThresholds | None = None,
 ) -> pd.DataFrame:
     """Full daily regime frame for one underlying."""
+    thresholds = thresholds or RegimeThresholds()
 
     frame = prepare_price_frame(underlying, symbol=symbol)
     frame = add_realized_vol(frame)

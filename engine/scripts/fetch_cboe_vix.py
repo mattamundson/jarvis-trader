@@ -65,8 +65,8 @@ def _from_yahoo(symbol: str, timeout: float) -> pd.DataFrame:
 
 def _from_fred(symbol: str, timeout: float) -> pd.DataFrame:
     """Fetch a FRED series via the free fredgraph.csv endpoint (no API key)."""
-    from urllib.request import urlopen
     from urllib.error import HTTPError, URLError
+    from urllib.request import urlopen
 
     series = FRED_SERIES[symbol]
     url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series}"
