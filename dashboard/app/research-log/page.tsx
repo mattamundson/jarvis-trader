@@ -14,6 +14,7 @@ import {
 import { MarketSessionStatusCard } from "@/components/MarketSessionStatusCard";
 import { RecentTradesTableWidget } from "@/components/RecentTradesTableWidget";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
+import { ExploratoryBanner } from "@/components/ExploratoryBanner";
 
 // ── Category badge colors ────────────────────────────────────────────────────
 
@@ -348,6 +349,7 @@ export default function ResearchLogPage() {
       </header>
 
       <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-6 space-y-6">
+        <ExploratoryBanner what="The research journal records work in progress" />
         {/* ── Market Session Status ──────────────────────────────────────────── */}
         <MarketSessionStatusCard />
 

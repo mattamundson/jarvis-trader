@@ -17,14 +17,42 @@ import { defineConfig } from "@playwright/test";
 //
 //       pnpm run test:e2e:fresh        (playwright.fresh.config.ts, port 3013)
 
+// PROJECT SPLIT -- read before changing `workers`.
+//
+//   smoke       - the table-driven suite over every manifest route (91 cases at
+//                 50 routes). Parallel, because serial it dominates the wall
+//                 clock of `Dashboard Build (Next.js)` -- a REQUIRED status
+//                 check on master. This is not an ergonomics preference; at
+//                 workers:1 the required check becomes the slowest thing in CI.
+//   golden-path - the hand-written domain specs. These predate the split and
+//                 were authored under workers:1.
+//
+// Playwright has no per-project worker count, so `workers` is global. Tests
+// within a golden-path file still run in declaration order (fullyParallel:false),
+// but separate golden-path FILES can now run concurrently. They are read-only
+// page loads against a mocked engine, so that should be safe -- if it turns out
+// not to be, the interference is a real finding about shared state, not a reason
+// to quietly go back to workers:1.
 export default defineConfig({
   testDir: "./tests/e2e",
   timeout: 60_000,
   fullyParallel: false,
-  workers: 1,
+  workers: 4,
   // Kept at 0 deliberately: a flaky test on a trading dashboard is real signal,
   // not noise to be retried away.
   retries: 0,
+  projects: [
+    {
+      name: "smoke",
+      testMatch: /smoke\.spec\.ts$/,
+      fullyParallel: true,
+    },
+    {
+      name: "golden-path",
+      testIgnore: /smoke\.spec\.ts$/,
+      fullyParallel: false,
+    },
+  ],
   use: {
     baseURL: "http://localhost:3010",
     launchOptions: {

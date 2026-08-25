@@ -248,6 +248,15 @@ def _find_latest_cache(
     falls back to the latest-end file (the historical behavior) and logs a
     warning. Pass ``prefer_complete=False`` to force pure latest-end.
 
+ Deep-data standard (2026-08-17): only the deep cache certifies edge. Shallow
+ (~2.3y) caches do NOT certify — they were moved out of the certification path
+ during the deep revalidation to
+ ``wt-deep-reval-20260817/engine/backtest/cache/_shallow_isolated/`` (that
+ worktree has since been removed by peer cleanup; the policy stands). Runners
+ must not select shallow caches for certification runs — the MES deep cache is
+ ``MES_2015-01-01_2026-08-16_1h.csv`` (actual span 2019-05-05 → 2026-08-14,
+ 7.27y; filenames can lie — verify from data, not filename).
+
     2026-07-06 correction: this docstring previously claimed the plain 1h futures
     caches (no ``_cont`` suffix) are RTH-only and therefore always fall back to
     latest-end unchanged. That was wrong — they are near-continuous (~23h Globex

@@ -55,6 +55,7 @@ if str(engine_root) not in sys.path:
     sys.path.insert(0, str(engine_root))
 
 from backtest.backtester import Backtester  # noqa: E402
+from backtest.screen_cert_pipeline import append_journal  # noqa: E402
 from backtest.screen_cert_pipeline import append_journal, cap_pf  # noqa: E402
 from backtest.trend_signals import generate_sma_trend_signals  # noqa: E402
 
@@ -241,6 +242,7 @@ def main() -> int:
 
     VERDICTS_DIR.mkdir(parents=True, exist_ok=True)
     out = VERDICTS_DIR / f"{SYMBOL}_sma_cert_{FAST}_{SLOW}_{ATR_TRAIL_MULT}.json"
+    out.write_text(json.dumps(metrics, indent=2))
     # allow_nan=False: any missed NaN/Infinity raises instead of writing
     # invalid strict JSON that downstream consumers may reject.
     out.write_text(json.dumps(metrics, indent=2, allow_nan=False))

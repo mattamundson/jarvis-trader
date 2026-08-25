@@ -127,6 +127,9 @@ def get_trades_journal(
 ) -> List[TradeJournalEntry]:
     import time as _time
 
+    # Narrow column list: only the fields the response model exposes. SELECT *
+    # pulled all 36 paper_trades columns including large TEXT blobs
+    # (strategy_params, notes) — the dominant cost once a connection is open.
     # Narrow column list: only the fields the response model exposes that also
     # EXIST in paper_trades. SELECT * pulled all 36 columns including large
     # TEXT blobs (strategy_params, notes) — the dominant cost once a connection
@@ -138,6 +141,8 @@ def get_trades_journal(
         "exit_price", "entry_time", "exit_time", "pnl", "status",
         "strategy_params", "notes", "regime", "structure_position", "bias",
         "composite_score", "stc_contrib", "orb_contrib", "vwap_contrib",
+        "regime_tier", "deciding_stage", "bull_score", "bear_score",
+        "debate_confidence", "timeframe",
     )
     cache_key = (symbol, regime, limit)
     now = _time.monotonic()

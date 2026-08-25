@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { ConfidenceGauge } from "@/components/ConfidenceGauge";
 import { ResultLabel } from "@/components/ResultLabel";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
+import { MesForwardExperimentPanel } from "@/components/MesForwardExperimentPanel";
 
 const REFRESH_MS = 120_000;
 
@@ -234,6 +235,11 @@ export default function SignalOutcomesPage() {
           <QualityCard />
         </WidgetErrorBoundary>
       </div>
+
+      {/* MES forward experiment -- daily session-hypothesis recorder, coverage-first */}
+      <WidgetErrorBoundary name="MES Forward Experiment">
+        <MesForwardExperimentPanel />
+      </WidgetErrorBoundary>
 
       {/* Outcomes table */}
       <div className="rounded-xl border border-border bg-card p-4 space-y-3">

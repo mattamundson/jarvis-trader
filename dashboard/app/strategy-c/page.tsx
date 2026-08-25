@@ -20,6 +20,7 @@ import {
 import { fetchEngine, postEngine } from "@/lib/api";
 import { buildAdditionalMetricsTiles } from "@/lib/strategyCTiles";
 import { Badge } from "@/components/ui/badge";
+import { ExploratoryBanner } from "@/components/ExploratoryBanner";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -290,10 +291,18 @@ export default function StrategyCPage() {
     !signal.layers.macro_filter
   ) {
     return (
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 m-4 text-sm text-slate-400">
-        Strategy-C signal payload is incomplete — the engine returned a partial
-        response (missing layer or holdings data). Showing nothing rather than
-        crashing; retry after the next refresh.
+      <div className="m-4 space-y-3">
+        {/* The provenance banner belongs here too, not only on the happy path.
+            A partial payload is precisely when a reader is most at risk of
+            over-reading whatever IS on screen, so dropping the "exploratory,
+            not validated" disclosure in the degraded state gets the honesty
+            guarantee exactly backwards. */}
+        <ExploratoryBanner what="Strategy C+ is an in-development signal" />
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 text-sm text-slate-400">
+          Strategy-C signal payload is incomplete — the engine returned a partial
+          response (missing layer or holdings data). Showing nothing rather than
+          crashing; retry after the next refresh.
+        </div>
       </div>
     );
   }
@@ -319,6 +328,10 @@ export default function StrategyCPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans">
+      <div className="px-6 pt-4">
+        <ExploratoryBanner what="Strategy C+ is an in-development signal" />
+      </div>
+
       {/* ── Header ───────────────────────────────────────────────────────── */}
       <div className="border-b border-slate-800 px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
@@ -633,28 +646,28 @@ export default function StrategyCPage() {
                 {
                   label: "CAGR",
                   live: metrics.full_period?.cagr != null,
-                  value: metrics.full_period?.cagr != null ? fmtPct(metrics.full_period.cagr) : "17.09%",
+                  value: fmtPct(metrics.full_period?.cagr),
                   target: "17.4%",
                   good: true,
                 },
                 {
                   label: "Sharpe",
                   live: metrics.full_period?.sharpe != null,
-                  value: metrics.full_period?.sharpe != null ? fmtNum(metrics.full_period.sharpe) : "2.12",
+                  value: fmtNum(metrics.full_period?.sharpe),
                   target: "2.13",
                   good: true,
                 },
                 {
                   label: "Max DD",
                   live: metrics.full_period?.max_drawdown != null,
-                  value: metrics.full_period?.max_drawdown != null ? fmtPct(metrics.full_period.max_drawdown) : "-8.16%",
+                  value: fmtPct(metrics.full_period?.max_drawdown),
                   target: "-7.7%",
                   good: false,
                 },
                 {
                   label: "Volatility",
                   live: metrics.full_period?.volatility != null,
-                  value: metrics.full_period?.volatility != null ? fmtPct(metrics.full_period.volatility) : "7.57%",
+                  value: fmtPct(metrics.full_period?.volatility),
                   target: "7.7%",
                   good: true,
                 },

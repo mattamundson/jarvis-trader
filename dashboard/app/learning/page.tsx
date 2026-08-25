@@ -6,6 +6,7 @@ import { PatternCard } from "@/components/learning/PatternCard";
 import { TradeGradeTable } from "@/components/learning/TradeGradeTable";
 import { SuggestionPanel } from "@/components/learning/SuggestionPanel";
 import { MemoryPanel } from "@/components/learning/MemoryPanel";
+import { ExploratoryBanner } from "@/components/ExploratoryBanner";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -74,6 +75,7 @@ export default function LearningPage() {
       </header>
 
       <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-6 space-y-6">
+        <ExploratoryBanner what="The learning system surfaces patterns it is still forming" />
 
         {/* Page title */}
         <div className="flex items-center justify-between gap-4 flex-wrap">

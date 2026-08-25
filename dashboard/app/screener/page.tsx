@@ -22,6 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ExploratoryBanner } from "@/components/ExploratoryBanner";
 
 // Scan codes the engine's /ib-scanner/screen accepts as a universe source.
 // FUT_* codes scan CME futures (GLOBEX) — the active instruments (MES, MGC) live here,
@@ -152,6 +153,7 @@ export default function ScreenerPage() {
       </header>
 
       <main className="mx-auto max-w-6xl space-y-4 px-4 py-6 lg:px-6">
+        <ExploratoryBanner what="Screener output is an unfiltered candidate list" />
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-semibold">Filters</CardTitle>
