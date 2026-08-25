@@ -36,6 +36,25 @@ deep cache:
 | `MES_turn_of_month.json` | ❌ FAIL | |
 | `MGC_trend_rank4.json` | ❌ FAIL | MGC's last nominal ALT-path champion collapsed under deep data. |
 
+## 2026-08-18 — Equity options deep validation (E7-FOLLOWUP) — 0 PASS, 2 FAIL
+
+Debit bull-call verticals on the CERTIFIED SPY/QQQ SMA-trend signals (same ENTRY_NOW events the
+shares strategy trades), gate-v2 ALT battery, deep 1d caches. Data verified FIRST with
+`backtest.cache_completeness.inspect_cache_file` (both `trustworthy=True`, 0 suspicious gaps;
+`US_MARKET_HOLIDAYS` extended back to 2015 — independent NYSE cross-check, zero genuine holes;
+evidence script `engine/e7f_verify_caches.py`). Seeded/deterministic — re-runs reproduce
+bit-identical metrics. RESEARCH-ONLY: no paper/live routing.
+
+| File | Verdict | Notes |
+|------|---------|-------|
+| `SPY_options_vertical_sma_10_40_2.0.json` | ❌ FAIL | 36 tr / 26 OOS (<30), pf_ci_lower 1.0604 (<1.2), p_edge 0.8972, DSR 0.884 (inflated by tiny PnL variance), WR 38.9%, total PnL $7.73/11.6y, WFO WEAK. 30-delta/5-wide/30-DTE debit vertical does not rescue the shares edge. |
+| `QQQ_options_vertical_sma_8_40_2.5.json` | ❌ FAIL | 36 tr / 27 OOS (<30), pf_ci_lower 0.5554 (<1.2), p_edge 0.724, DSR 0.724, WR 38.9%, total PnL $8.05/11.6y, WFO WEAK, non-stationary. |
+
+Runner: `engine/backtest/run_spy_qqq_options_vertical.py`; trades CSVs under
+`engine/data/options_backtests/`; journal row in `docs/BACKTEST_JOURNAL.md` (2026-08-18
+E7-FOLLOWUP entry). Candidate 2 (VRP harvest) NOT run — gated on candidate 1 PASS; candidate 3
+(dealer gamma) data-gated on GEX feed.
+
 ## Metric defects — do NOT quote raw engine numbers
 
 1. **Sharpe inflated** (`backtest/metrics.py:31`): 252 annualization applied to

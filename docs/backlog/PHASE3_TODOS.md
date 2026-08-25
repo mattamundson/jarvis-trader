@@ -1,8 +1,9 @@
 # JARVIS TRADER — Phase 3 Backlog
 
 > Strategic technical debt items and Phase 3 feature blockers
-> Last updated: 2026-04-02
-> Total items: 7
+> Last updated: 2026-08-01 — Sprint 11 section closed (verified implemented; see note below).
+> Originally created: 2026-04-02
+> Total items: 7 (4 Phase 3 + 4 Sprint 11, of which Sprint 11 is now fully closed)
 
 ## Schwab Connector Completion
 
@@ -168,9 +169,14 @@ Currently, paper trade tracking is in-memory only (PaperTradeTracker).
 
 ---
 
-## IB Gateway Reconnection Logic (Sprint 11)
+## IB Gateway Reconnection Logic (Sprint 11) — CLOSED 2026-08-01
 
-**Status**: NEW feature (not in Phase 2)
+**Status**: DONE — verified implemented in `engine/execution/ib_gateway_connector.py`
+(exponential backoff at 2/4/8s via `_reconnect()`, `RECONNECTING` connection state,
+`_heartbeat()` task, `logger.critical` on exhausted retries) with coverage in
+`engine/tests/test_ib_reconnect.py`. This item sat open on-disk since 2026-04-02
+even though the work landed; closing it now per P12-2 doc-destaling pass.
+~~NEW feature (not in Phase 2)~~
 **Owner**: Matt (trader)
 **Priority**: HIGH (reliability blocker for 30-day validation)
 **Dependency**: None
@@ -198,9 +204,12 @@ ib_gateway_connector.py has connection management but NO auto-reconnect logic. I
 
 ---
 
-## Automated Database Backup (Sprint 11)
+## Automated Database Backup (Sprint 11) — CLOSED 2026-08-01
 
-**Status**: NEW feature (not in Phase 2)
+**Status**: DONE — verified implemented in `engine/backup/db_backup.py`
+(`DatabaseBackup` class, crash-safe SQLite backup API) with a `backup-status`
+surface wired in `engine/routers/health_router.py`. Closing per P12-2 doc-destaling pass.
+~~NEW feature (not in Phase 2)~~
 **Owner**: Matt (trader) + DevOps
 **Priority**: HIGH (data loss prevention during 30-day validation)
 **Dependency**: APScheduler (already vendored)
@@ -230,9 +239,13 @@ paper_trades.db has 98 trades and growing. Zero automated backup exists. One har
 
 ---
 
-## OpenAPI Documentation (Sprint 11)
+## OpenAPI Documentation (Sprint 11) — CLOSED 2026-08-01
 
-**Status**: NEW feature (not in Phase 2)
+**Status**: DONE and exceeded — verified 403 `description=`/`response_model=`
+occurrences across 42 router files (target was 30 endpoints), including
+`analytics_router.py` (47), `health_router.py` (16), `paper_validation_router.py`
+(24). Closing per P12-2 doc-destaling pass.
+~~NEW feature (not in Phase 2)~~
 **Owner**: Engineering
 **Priority**: MEDIUM (developer experience)
 **Dependency**: None
@@ -256,9 +269,11 @@ paper_trades.db has 98 trades and growing. Zero automated backup exists. One har
 
 ---
 
-## Dashboard Build Verification (Sprint 11)
+## Dashboard Build Verification (Sprint 11) — CLOSED 2026-08-01
 
-**Status**: NEW feature (not in Phase 2)
+**Status**: DONE — verified `scripts/verify_dashboard_build.sh` exists at repo root.
+Closing per P12-2 doc-destaling pass.
+~~NEW feature (not in Phase 2)~~
 **Owner**: Engineering
 **Priority**: MEDIUM (CI/CD hygiene)
 **Dependency**: None
@@ -293,22 +308,22 @@ Dashboard build is currently healthy but needs verification script and TypeScrip
 | IB Disconnect Cleanup | Matt | LOW | 3 | 1.5h | Live trading only |
 | RL Validation Gate | Matt + ML | MEDIUM | 3 | 3-5d | Post-validation data |
 | DB Paper Trade Persistence | Matt + DBA | MEDIUM | 3 | 5-8h | Learning system |
-| IB Reconnection (US-1101) | Matt | HIGH | 11 | 5-7h | 30-day validation |
-| DB Backup Automation (US-1102) | Matt + DevOps | HIGH | 11 | 3-5h | Data loss prevention |
-| OpenAPI Docs (US-1103) | Engineering | MEDIUM | 11 | 5-7h | Developer UX |
-| Dashboard Build (US-1104) | Engineering | MEDIUM | 11 | 3-4h | CI/CD hygiene |
+| IB Reconnection (US-1101) | Matt | HIGH | 11 | 5-7h | CLOSED 2026-08-01 |
+| DB Backup Automation (US-1102) | Matt + DevOps | HIGH | 11 | 3-5h | CLOSED 2026-08-01 |
+| OpenAPI Docs (US-1103) | Engineering | MEDIUM | 11 | 5-7h | CLOSED 2026-08-01 |
+| Dashboard Build (US-1104) | Engineering | MEDIUM | 11 | 3-4h | CLOSED 2026-08-01 |
 
-**Total Effort**: ~2-3 weeks (Phase 3 items) + ~1 week (Sprint 11 items)
+**Total Effort**: ~2-3 weeks (Phase 3 items, still open) + Sprint 11 items (all closed 2026-08-01)
 
 ---
 
 ## Dependencies & Ordering
 
-**Sprint 11 (hard deadline before 30-day validation)**:
-1. IB Reconnection (US-1101) — blocks reliability
-2. DB Backup (US-1102) — blocks data safety
-3. OpenAPI Docs (US-1103) — documentation debt
-4. Dashboard Build (US-1104) — CI/CD debt
+**Sprint 11 (hard deadline before 30-day validation) — ALL CLOSED 2026-08-01**:
+1. ~~IB Reconnection (US-1101) — blocks reliability~~ DONE
+2. ~~DB Backup (US-1102) — blocks data safety~~ DONE
+3. ~~OpenAPI Docs (US-1103) — documentation debt~~ DONE
+4. ~~Dashboard Build (US-1104) — CI/CD debt~~ DONE
 
 **Phase 3 (post-validation)**:
 1. Schwab Completion — unlocks equities/options

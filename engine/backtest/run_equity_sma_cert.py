@@ -1,20 +1,43 @@
 #!/usr/bin/env python
 """
-Equity SMA-trend gate-v2 certification runner (daily bars).
+SMA-trend gate-v2 certification runner (env-parameterized).
 
-Certifies a daily-bar SMA crossover + ATR-trail equity strategy through the
-real gate-v2 battery (WFO windows, DSR multiple-testing correction, MC DD,
-cost tiers) — the same referee as the futures runners. Env-parameterized so
-the iterate.py screen winners can be certified without a new runner.
+Certifies an SMA crossover + ATR-trail strategy through the real gate-v2
+battery (WFO windows, p_edge, MC DD, cost tiers) — the same referee as the
+futures runners. Env-parameterized so the iterate.py screen winners can be
+certified without a new runner (S4A pipeline: scripts/screen_and_certify.sh).
 
 USAGE (from engine/):
-    EQ_CERT_SYMBOL=SPY EQ_CERT_FAST=10 EQ_CERT_SLOW=40 EQ_CERT_ATR=2.0 \
+    # Equity (defaults: multiplier 1.0, $0 commission, no slippage):
+    EQ_CERT_SYMBOL=SPY EQ_CERT_FAST=10 EQ_CERT_SLOW=40 EQ_CERT_ATR=2.0 \\
         .venv/Scripts/python backtest/run_equity_sma_cert.py
+    # Futures class (contract-aware costs via CERT_* env):
+    CERT_SYMBOL=MES CERT_FAST=50 CERT_SLOW=200 CERT_ATR=2.0 \\
+        CERT_MULT=5.0 CERT_COMMISSION=0.62 CERT_SLIPPAGE_TICKS=2.0 \\
+        CERT_CACHE=backtest/cache/MES_2015-01-01_2026-08-16_1h.csv \\
+        .venv/Scripts/python backtest/run_equity_sma_cert.py
+    # Wiring smoke (last 30 months, max 3 windows):
+    EQ_CERT_SYMBOL=SPY CERT_SMOKE=1 .venv/Scripts/python backtest/run_equity_sma_cert.py
 
 Grid: the env params are the ONLY combo (certifying a specific candidate);
 TIER_BLOCK grid is disabled (equities have no VIX-regime hypothesis yet).
 
-Writes: engine/data/gate_v2_verdicts/<SYMBOL>_sma_cert_<fast>_<slow>_<atr>.json
+Env keys (EQ_CERT_* legacy aliases still work):
+  CERT_SYMBOL | EQ_CERT_SYMBOL   symbol (default SPY)
+  CERT_FAST   | EQ_CERT_FAST     fast SMA (default 10)
+  CERT_SLOW   | EQ_CERT_SLOW     slow SMA (default 40)
+  CERT_ATR    | EQ_CERT_ATR      ATR trail multiplier (default 2.0)
+  CERT_MULT                       contract/share multiplier (default 1.0)
+  CERT_COMMISSION                 per-contract commission (default 0.0)
+  CERT_SLIPPAGE_TICKS             slippage in ticks (default 0.0)
+  CERT_CACHE                      cache CSV path override (default:
+                                  backtest/cache/<SYM>_2015-01-01_2026-08-17_1d.csv)
+  CERT_SMOKE                      "1" = last-30-month slice, max 3 windows
+  GATE_V2_VERDICTS_DIR            verdict + journal output dir (default:
+                                  engine/data/gate_v2_verdicts/)
+
+Writes: <GATE_V2_VERDICTS_DIR>/<SYMBOL>_sma_cert_<fast>_<slow>_<atr>.json
+and appends one row to <GATE_V2_VERDICTS_DIR>/_journal.csv.
 """
 from __future__ import annotations
 
@@ -32,20 +55,29 @@ if str(engine_root) not in sys.path:
     sys.path.insert(0, str(engine_root))
 
 from backtest.backtester import Backtester  # noqa: E402
+from backtest.screen_cert_pipeline import append_journal  # noqa: E402
+from backtest.screen_cert_pipeline import append_journal, cap_pf  # noqa: E402
 from backtest.trend_signals import generate_sma_trend_signals  # noqa: E402
 
 # ---------------------------------------------------------------------------
-# Config from env
+# Config from env (EQ_CERT_* aliases preserved for backward compatibility)
 # ---------------------------------------------------------------------------
-SYMBOL = os.environ.get("EQ_CERT_SYMBOL", "SPY").upper()
-FAST = int(os.environ.get("EQ_CERT_FAST", "10"))
-SLOW = int(os.environ.get("EQ_CERT_SLOW", "40"))
-ATR_TRAIL_MULT = float(os.environ.get("EQ_CERT_ATR", "2.0"))
-FIXED_CONTRACTS = None  # equity sizing: risk-based (multiplier=1 shares)
+SYMBOL = (os.environ.get("CERT_SYMBOL") or os.environ.get("EQ_CERT_SYMBOL", "SPY")).upper()
+FAST = int(os.environ.get("CERT_FAST") or os.environ.get("EQ_CERT_FAST", "10"))
+SLOW = int(os.environ.get("CERT_SLOW") or os.environ.get("EQ_CERT_SLOW", "40"))
+ATR_TRAIL_MULT = float(os.environ.get("CERT_ATR") or os.environ.get("EQ_CERT_ATR", "2.0"))
+MULTIPLIER = float(os.environ.get("CERT_MULT", "1.0"))
+COMMISSION = float(os.environ.get("CERT_COMMISSION", "0.0"))
+SLIPPAGE_TICKS = float(os.environ.get("CERT_SLIPPAGE_TICKS", "0.0"))
+CACHE_OVERRIDE = os.environ.get("CERT_CACHE")
+SMOKE = os.environ.get("CERT_SMOKE", "0") == "1"
+VERDICTS_DIR = Path(
+    os.environ.get("GATE_V2_VERDICTS_DIR")
+    or (engine_root / "data" / "gate_v2_verdicts")
+)
+FIXED_CONTRACTS = None  # sizing: risk-based (multiplier = shares/contracts)
 
 CAPITAL = 50_000.0
-COMMISSION = 0.0  # equity: $0 commission in this screen (yfinance adjusted)
-SLIPPAGE_TICKS = 0.0
 
 TRAIN_MONTHS = 24
 TEST_MONTHS = 3
@@ -59,7 +91,10 @@ MIN_OOS_TRADES = 10
 
 
 def load_data(symbol: str) -> pd.DataFrame:
-    cand = Path(f"backtest/cache/{symbol}_2015-01-01_2026-08-17_1d.csv")
+    if CACHE_OVERRIDE:
+        cand = Path(CACHE_OVERRIDE)
+    else:
+        cand = Path(f"backtest/cache/{symbol}_2015-01-01_2026-08-17_1d.csv")
     if not cand.exists():
         raise FileNotFoundError(f"cache not found: {cand}")
     df = pd.read_csv(cand)
@@ -110,7 +145,7 @@ def run_window(df: pd.DataFrame, w: tuple) -> dict:
         slippage_ticks=SLIPPAGE_TICKS,
     )
     # IS result (train) — count trades; OOS uses same params on test window
-    _ = bt.run(df_sig, symbol=SYMBOL, multiplier=1.0)
+    _ = bt.run(df_sig, symbol=SYMBOL, multiplier=MULTIPLIER)
 
     test_sig = generate_sma_trend_signals(
         test, fast=FAST, slow=SLOW, atr_trail_mult=ATR_TRAIL_MULT
@@ -125,7 +160,7 @@ def run_window(df: pd.DataFrame, w: tuple) -> dict:
         commission_per_contract=COMMISSION,
         slippage_ticks=SLIPPAGE_TICKS,
     )
-    res = bt2.run(test_sig, symbol=SYMBOL, multiplier=1.0)
+    res = bt2.run(test_sig, symbol=SYMBOL, multiplier=MULTIPLIER)
     oos_pf = res.profit_factor if res.total_trades else None
     return {
         "oos_pf": float(oos_pf) if oos_pf is not None else None,
@@ -136,11 +171,21 @@ def run_window(df: pd.DataFrame, w: tuple) -> dict:
 
 def main() -> int:
     df = load_data(SYMBOL)
+    if SMOKE:
+        # Wiring proof: last 30 months of data, capped at 3 windows.
+        start = df.index.max() - pd.DateOffset(months=30)
+        df = df.loc[start:]
+        print(f"[SMOKE] sliced to last 30 months -> {len(df)} bars")
     windows = make_windows(df)
+    if SMOKE:
+        windows = windows[:3]
     print(f"Windows: {len(windows)} | train {TRAIN_MONTHS}mo test {TEST_MONTHS}mo step {STEP_MONTHS}mo")
 
     results = [run_window(df, w) for w in windows]
-    pfs = [r["oos_pf"] for r in results if r["oos_pf"] is not None]
+    # Cap non-finite PFs (all-profitable windows yield +inf) so the verdict
+    # JSON stays strict-JSON (no Infinity/NaN literals) and journal cells stay
+    # clean. Cap matches bootstrap_pf_ci_lower's ceiling (PF_CAP=5.0).
+    pfs = [cap_pf(r["oos_pf"]) for r in results if r["oos_pf"] is not None]
     trades = [r["oos_trades"] for r in results]
     dds = [r["oos_dd"] for r in results]
     total_oos = sum(trades)
@@ -162,16 +207,25 @@ def main() -> int:
 
     metrics = {
         "symbol": SYMBOL,
+        "family": "trend",  # SMA-trend family: policy-compatible with sma_trend routing
+        "rank": 0,  # param-specific cert, not a rank grid
         "params": {"fast": FAST, "slow": SLOW, "atr_trail_mult": ATR_TRAIL_MULT},
         "verdict": verdict,
         "passed_via": "alt" if verdict == "PASS" else None,
+        "core_verdict": "FAIL",  # ALT-path cert: CORE battery not scored
+        "alt_verdict": verdict,
+        "n_core_passed": 0,
+        "n_alt_passed": 1 if verdict == "PASS" else 0,
         "wfo_config": {
             "n_windows": len(windows),
             "train_months": TRAIN_MONTHS,
             "test_months": TEST_MONTHS,
             "step_months": STEP_MONTHS,
         },
+        "aux_freshness": {},
+        "gate_v2": {},
         "gate_v2_metrics": {
+            "oos_pfs": [round(float(p), 4) for p in pfs],
             "p_edge": round(p_edge, 4),
             "pf_ci_lower": round(mean_pf, 4),
             "dsr": round(dsr, 4),
@@ -186,13 +240,19 @@ def main() -> int:
         "lineage": "iterate.py screen -> run_equity_sma_cert.py WFO cert",
     }
 
-    out = engine_root / "data" / "gate_v2_verdicts" / f"{SYMBOL}_sma_cert_{FAST}_{SLOW}_{ATR_TRAIL_MULT}.json"
+    VERDICTS_DIR.mkdir(parents=True, exist_ok=True)
+    out = VERDICTS_DIR / f"{SYMBOL}_sma_cert_{FAST}_{SLOW}_{ATR_TRAIL_MULT}.json"
     out.write_text(json.dumps(metrics, indent=2))
+    # allow_nan=False: any missed NaN/Infinity raises instead of writing
+    # invalid strict JSON that downstream consumers may reject.
+    out.write_text(json.dumps(metrics, indent=2, allow_nan=False))
+    journal = append_journal(VERDICTS_DIR, metrics, source_file=out.name)
     print(f"\n=== {SYMBOL} ({FAST},{SLOW},{ATR_TRAIL_MULT}) ===")
     print(f"  windows={len(windows)} with_trades={windows_with_trades} total_oos={total_oos}")
     print(f"  mean_pf={mean_pf:.4f} median_pf={median_pf:.4f} p_edge={p_edge:.4f}")
     print(f"  p95_dd={p95_dd*100:.2f}%  verdict={verdict}")
     print(f"  Wrote -> {out}")
+    print(f"  Journal -> {journal}")
     return 0
 
 
