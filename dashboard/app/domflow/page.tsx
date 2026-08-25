@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import useSWR from "swr";
 import { Badge } from "@/components/ui/badge";
 import { fetchDomflow, type DomflowHistoryResponse, type DomflowSnapshot } from "@/lib/api";
+import { ServerOff } from "lucide-react";
 
 const POLL_MS = 10_000; // spec: live gauge polls every 5-10s
 
@@ -114,7 +115,21 @@ export default function DomflowPage() {
       </p>
 
       {latestLoading && !latest && <div className="text-sm text-slate-500">Loading…</div>}
-      {latestError && (
+      {latestError && !latest && (
+        <div className="rounded-xl border border-warn/30 bg-warn/5 p-6 text-center space-y-2">
+          <ServerOff className="h-8 w-8 text-warn mx-auto" />
+          <p className="text-sm font-semibold text-warn">DOM flow module not provisioned</p>
+          <p className="text-xs text-muted-foreground max-w-2xl mx-auto">
+            The DOM flow service is not running — the proxy could not reach it
+            ({latestError instanceof Error ? latestError.message : "unknown error"}). This is a
+            disabled module, not a data gap: no order-flow snapshots are being collected, so there
+            is nothing to show. Start the isolated domflow service (or provision its feed key) to
+            enable this page.
+          </p>
+        </div>
+      )}
+
+      {latestError && latest && (
         <div className="text-sm text-bear">
           domflow proxy error: {latestError instanceof Error ? latestError.message : "unknown"}
         </div>
