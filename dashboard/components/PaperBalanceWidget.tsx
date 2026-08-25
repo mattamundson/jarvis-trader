@@ -91,7 +91,11 @@ export function PaperBalanceWidget() {
 
   // Derived values
   const balance = data.current_balance ?? 0;
-  const startingBalance = data.starting_balance > 0 ? data.starting_balance : 10000.0;
+  const startingBalanceIsLive = data.starting_balance > 0;
+  // Fallback only — real figure is the engine's starting_balance. Shown with a
+  // Static badge below when the API doesn't report it, per the dashboard's
+  // data-provenance convention (never a fabricated number presented as live).
+  const startingBalance = startingBalanceIsLive ? data.starting_balance : 10000.0;
   const returnPct = data.total_return_pct ?? 0;
   // Total P&L = paper-ledger balance delta (current − starting). The raw
   // `total_pnl` field is re-summed from the trade record and could over-count
@@ -132,8 +136,17 @@ export function PaperBalanceWidget() {
               maximumFractionDigits: 2,
             })}
           </p>
-          <p className="text-sm text-muted-foreground mt-1">
-            Started: ${startingBalance.toLocaleString()}
+          <p className="text-sm text-muted-foreground mt-1 flex items-center justify-center gap-1.5">
+            <span>Started: ${startingBalance.toLocaleString()}</span>
+            {!startingBalanceIsLive && (
+              <Badge
+                variant="static"
+                className="text-[9px] px-1.5 py-0 leading-4"
+                title="API did not report starting_balance — showing the $10,000 fallback, not the configured account size."
+              >
+                Static
+              </Badge>
+            )}
           </p>
         </div>
 

@@ -1,5 +1,11 @@
 # Dashboard Autonomy Hardening Implementation Plan
 
+> **SUPERSEDED 2026-08-01:** This plan is superseded by
+> `C:\Users\mattm\.claude\plans\squishy-discovering-sunrise.md`, which is now the
+> current finish-line plan for the dashboard completion work (Phases 4/6/9/10/12
+> drain and beyond). Kept on disk per the never-delete rule; do not use this doc
+> to pick up new work.
+
 > **For Hermes:** Use this as the current finish-line plan for the JARVIS dashboard hardening/autonomy foundation work. Do not continue open-ended optimization without checking the phase exit criteria below.
 
 **Goal:** Make JARVIS a fast, reliable, test-protected trading operating system dashboard that is ready for safe real-time/autonomy work.
