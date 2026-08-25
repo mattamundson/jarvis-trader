@@ -180,6 +180,35 @@ def test_verdict_journal_row_wfo_thresholds():
 
 
 # ---------------------------------------------------------------------------
+# cap_pf (non-finite JSON/journal guard)
+# ---------------------------------------------------------------------------
+
+
+def test_cap_pf_finite_and_none():
+    assert scp.cap_pf(None) is None
+    assert scp.cap_pf(0.0) == 0.0
+    assert scp.cap_pf(1.234) == 1.234
+    assert scp.cap_pf(9.0) == scp.PF_CAP  # capped at 5.0
+    assert scp.cap_pf(-3.0) == 0.0  # clamped at 0.0
+
+
+def test_cap_pf_non_finite():
+    assert scp.cap_pf(float("inf")) == scp.PF_CAP
+    assert scp.cap_pf(float("-inf")) == 0.0
+    assert scp.cap_pf(float("nan")) == 0.0
+
+
+def test_journal_row_non_finite_cells_are_empty():
+    v = _verdict()
+    v["gate_v2_metrics"]["pf_ci_lower"] = float("inf")
+    v["gate_v2_metrics"]["p_edge"] = float("nan")
+    row = scp.verdict_journal_row(v, "x.json")
+    assert row["pf_ci_lower"] == ""
+    assert row["p_edge"] == ""
+    assert row["wfo"] != ""  # classification still derived from finite data
+
+
+# ---------------------------------------------------------------------------
 # end-to-end: cert runner smoke on synthetic cache
 # ---------------------------------------------------------------------------
 

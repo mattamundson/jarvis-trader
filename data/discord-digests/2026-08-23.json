@@ -1,0 +1,245 @@
+{
+  "date": "2026-08-23",
+  "session_bias": null,
+  "sentiment_score": null,
+  "sentiment_label": null,
+  "top_signals": [
+    {
+      "symbol": "GC",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 4679.5,
+      "target2": 4682.2,
+      "stop1": null,
+      "win_rate": 82.48,
+      "rr": 0.59,
+      "timestamp": "2026-08-23T17:21:00.892-05:00"
+    },
+    {
+      "symbol": "GC",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 4676.3,
+      "target2": 4679.0,
+      "stop1": null,
+      "win_rate": 82.45,
+      "rr": 0.59,
+      "timestamp": "2026-08-23T17:10:01.41-05:00"
+    },
+    {
+      "symbol": "GC",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 4673.2,
+      "target2": 4675.9,
+      "stop1": null,
+      "win_rate": 82.4,
+      "rr": 0.59,
+      "timestamp": "2026-08-23T18:50:01.831-05:00"
+    },
+    {
+      "symbol": "GC",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 4669.4,
+      "target2": 4672.1,
+      "stop1": null,
+      "win_rate": 82.37,
+      "rr": 0.59,
+      "timestamp": "2026-08-23T18:22:02.515-05:00"
+    },
+    {
+      "symbol": "GC",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 4665.9,
+      "target2": 4668.6,
+      "stop1": null,
+      "win_rate": 82.34,
+      "rr": 0.59,
+      "timestamp": "2026-08-23T18:10:06.024-05:00"
+    }
+  ],
+  "corey_quote": null,
+  "commentary_health": [
+    {
+      "date": "2026-08-25",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    },
+    {
+      "date": "2026-08-18",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 4
+    },
+    {
+      "date": "2026-08-17",
+      "data_quality": "stale",
+      "directional_bias": "bullish",
+      "conviction": 0.85,
+      "message_count": 10
+    },
+    {
+      "date": "2026-08-16",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.9,
+      "message_count": 10
+    }
+  ],
+  "calibration_integrity": {
+    "total_outcomes": 14,
+    "rows_excluded_corrupt": 0,
+    "rows_excluded_duplicate": 0,
+    "alert": false,
+    "window_days": 30
+  },
+  "llm_provider_health": {
+    "engine_reachable": false,
+    "active_provider": null,
+    "primary_provider": null,
+    "primary_healthy": null,
+    "providers_available": null,
+    "google_fallback_count": null,
+    "vertex_failover_count": null,
+    "llm_path_healthy": null,
+    "alert": false
+  },
+  "task_health": {
+    "present": true,
+    "stale": false,
+    "age_hours": 0.5,
+    "scanned": 108,
+    "failing_enabled": 7,
+    "failing_disabled": 1,
+    "failing_tasks": [
+      {
+        "name": "Jarvis-DataIntegritySentinel",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-FinanceSync",
+        "result": "0x1"
+      },
+      {
+        "name": "jarvis-morning-framing-brief",
+        "result": "0x3"
+      },
+      {
+        "name": "Jarvis-PM2RestartWatch-15min",
+        "result": "0x1"
+      },
+      {
+        "name": "jarvis-preclose-framing-brief",
+        "result": "0x3"
+      },
+      {
+        "name": "Jarvis-Sentinel",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Jarvis-VerdictRefresh-Weekly",
+        "result": "0x1"
+      }
+    ],
+    "alert": true
+  },
+  "gate_verdict_freshness": {
+    "active_symbols": [
+      "MES",
+      "MGC"
+    ],
+    "max_age_days": 7.0,
+    "symbols": {
+      "AAPL": {
+        "age_days": 6.2,
+        "newest": "2026-08-18T10:11:50.980568+00:00",
+        "files": 3,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "M2K": {
+        "age_days": 28.4,
+        "newest": "2026-07-27T04:22:26.852950+00:00",
+        "files": 5,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "MCL": {
+        "age_days": 2.3,
+        "newest": "2026-08-22T06:00:05.351575+00:00",
+        "files": 4,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "MES": {
+        "age_days": 0.7,
+        "newest": "2026-08-23T21:24:32.662307+00:00",
+        "files": 42,
+        "latest_verdict": "FAIL",
+        "active": true
+      },
+      "MGC": {
+        "age_days": 0.9,
+        "newest": "2026-08-23T15:32:06.106813+00:00",
+        "files": 23,
+        "latest_verdict": "FAIL",
+        "active": true
+      },
+      "MNQ": {
+        "age_days": 2.3,
+        "newest": "2026-08-22T06:00:07.196071+00:00",
+        "files": 13,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "QQQ": {
+        "age_days": 5.7,
+        "newest": "2026-08-18T20:37:30.818561+00:00",
+        "files": 5,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "SPY": {
+        "age_days": 5.7,
+        "newest": "2026-08-18T20:37:23.164689+00:00",
+        "files": 5,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "TSLA": {
+        "age_days": 6.2,
+        "newest": "2026-08-18T09:38:18.712883+00:00",
+        "files": 4,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "ZB": {
+        "age_days": 67.4,
+        "newest": "2026-06-18T04:00:05.645209+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "ZN": {
+        "age_days": 67.4,
+        "newest": "2026-06-18T03:59:30.450756+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      }
+    },
+    "stale_active": [],
+    "missing_active": [],
+    "alert": false
+  }
+}

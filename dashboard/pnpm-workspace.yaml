@@ -1,6 +1,9 @@
+allowBuilds:
+  sharp: true
+  unrs-resolver: true
 # pnpm 10.16+ moved per-project settings here (the package.json "pnpm" field
-# is no longer read). Approve native build scripts so `pnpm install` does not
-# fail with ERR_PNPM_IGNORED_BUILDS in CI.
+# is no longer read). Allow native build scripts (sharp image pipeline +
+# unrs-resolver) so `pnpm install` does not fail with ERR_PNPM_IGNORED_BUILDS.
 onlyBuiltDependencies:
   - sharp
   - unrs-resolver

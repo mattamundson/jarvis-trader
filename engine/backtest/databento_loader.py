@@ -84,6 +84,7 @@ def _api_key() -> str:
 def _db_available() -> bool:
     try:
         import databento  # noqa: F401
+
         return True
     except ImportError:
         return False
@@ -237,17 +238,22 @@ def _cache_path(symbol: str, start: str, end: str, interval: str) -> Path:
 
 
 def _find_cache(symbol: str, start: str, end: str, interval: str) -> Optional[Path]:
-    start_dt = pd.Timestamp(start)
-    end_dt = pd.Timestamp(end)
+    # Caches are written from a UTC DatetimeIndex (see _write_cache), so CSV
+    # timestamps round-trip as tz-aware (+00:00). Compare in tz-aware UTC —
+    # a naive pd.Timestamp(start) used to raise TypeError against tz-aware
+    # data, which the except-continue swallowed silently, so deep 2015-*
+    # caches NEVER matched and every deep fetch re-downloaded from Databento.
+    start_dt = pd.Timestamp(start, tz="UTC")
+    end_dt = pd.Timestamp(end, tz="UTC") - pd.Timedelta(days=3)
     for pat in (f"{symbol}_{interval}_*.csv", f"{symbol}_*_{interval}.csv"):
         for path in CACHE_DIR.glob(pat):
             try:
                 tmp = pd.read_csv(path, usecols=["timestamp"], parse_dates=["timestamp"])
-                ts = pd.to_datetime(tmp["timestamp"])
-                if ts.min() <= start_dt and ts.max() >= end_dt - pd.Timedelta(days=3):
+                ts = pd.to_datetime(tmp["timestamp"], utc=True)
+                if ts.min() <= start_dt and ts.max() >= end_dt:
                     return path
-            except Exception:
-                continue
+            except Exception as exc:  # unreadable/partial cache: skip, never crash
+                logger.debug("cache skip %s: %s", path.name, exc)
     return None
 
 

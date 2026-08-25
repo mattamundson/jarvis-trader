@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from execution.ib_gateway_connector import IBGatewayConnector
+    from execution.robinhood_connector import RobinhoodConnector
     from execution.schwab_connector import SchwabConnector
     from markets.crypto.module import CryptoMarketModule
 
@@ -68,10 +69,17 @@ class OrderRouter:
         ibkr: Optional["IBGatewayConnector"] = None,
         schwab: Optional["SchwabConnector"] = None,
         crypto_module: Optional["CryptoMarketModule"] = None,
+        robinhood: Optional["RobinhoodConnector"] = None,
     ):
         self.ibkr = ibkr
         self.schwab = schwab
         self.crypto_module = crypto_module
+        # Scaffold only — RobinhoodConnector's network methods are not yet
+        # implemented (see execution/robinhood_connector.py) and it is never
+        # ready-gated on by default, so it is not wired into route_order()'s
+        # equity dispatch. Attach it for status reporting / tests only until
+        # that connector is actually implemented and reviewed.
+        self.robinhood = robinhood
 
     def attach_ibkr(self, connector: "IBGatewayConnector") -> None:
         self.ibkr = connector
@@ -81,6 +89,9 @@ class OrderRouter:
 
     def attach_crypto(self, module: "CryptoMarketModule") -> None:
         self.crypto_module = module
+
+    def attach_robinhood(self, connector: "RobinhoodConnector") -> None:
+        self.robinhood = connector
 
     def is_futures(self, symbol: str) -> bool:
         return symbol.upper() in FUTURES_SYMBOLS
@@ -261,6 +272,7 @@ class OrderRouter:
         return {
             "ibkr_connected": bool(self.ibkr and self.ibkr.is_connected()),
             "schwab_connected": bool(self.schwab and self.schwab.is_connected),
+            "robinhood_connected": bool(self.robinhood and self.robinhood.is_connected),
             "futures_broker": ("ibkr" if self.ibkr and self.ibkr.is_connected() else "unavailable"),
             "equity_broker": (
                 "schwab" if self.schwab and self.schwab.is_connected else "unavailable"

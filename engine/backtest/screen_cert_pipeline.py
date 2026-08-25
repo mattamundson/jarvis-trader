@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -45,6 +46,30 @@ FUTURES_CERT_ENV = {
 #: Default screen filters (mirror iterate.py's shortlist print).
 DEFAULT_MIN_TRADES = 10
 DEFAULT_MIN_P_EDGE = 0.6
+
+#: PF cap for window results. A window whose every trade is profitable yields
+#: ``profit_factor=inf`` from the Backtester; JSON cannot represent infinity,
+#: so we cap at 5.0 — the same ceiling ``bootstrap_pf_ci_lower`` uses — keeping
+#: the profitable-window signal intact while emitting strict JSON + clean
+#: journal cells.
+PF_CAP = 5.0
+
+
+def cap_pf(value: float | None) -> float | None:
+    """Clamp a window profit factor into [0.0, PF_CAP], mapping non-finite to a
+    finite surrogate: +inf -> PF_CAP, -inf/NaN -> 0.0. None passes through."""
+    if value is None:
+        return None
+    try:
+        if math.isnan(value):
+            return 0.0
+        if value == float("inf"):
+            return PF_CAP
+        if value == float("-inf"):
+            return 0.0
+        return min(max(float(value), 0.0), PF_CAP)
+    except (TypeError, ValueError):
+        return 0.0
 
 #: _journal.csv schema (tracked file, historical rows since 2026-04).
 JOURNAL_COLUMNS = [
@@ -152,6 +177,13 @@ def cert_env(
 def _fmt(value: Any) -> str:
     """Journal cell formatting: empty string for None, else str()."""
     return "" if value is None else str(value)
+    """Journal cell formatting: empty string for None or non-finite numbers,
+    else str(). Non-finite guard keeps 'inf'/'nan' out of the tracked CSV."""
+    if value is None:
+        return ""
+    if isinstance(value, float) and not math.isfinite(value):
+        return ""
+    return str(value)
 
 
 def verdict_journal_row(verdict: dict, source_file: str) -> dict[str, str]:
