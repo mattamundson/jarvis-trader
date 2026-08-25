@@ -131,6 +131,12 @@ def _find_data_file() -> Path | None:
     local_cache = engine_root / "backtest" / "cache"
     pattern = f"{SYMBOL}_*_1h.csv"
 
+    # 2026-08-19 forced DEEP cache (12y, verified clean). The completeness
+    # checker demotes to shallow because the 08-18 file is truncated.
+    _deep = [p for p in local_cache.glob("MGC_2015-01-01_2026-08-16_1h.csv")]
+    if _deep:
+        return _deep[0]
+
     if local_cache.exists() and list(local_cache.glob(pattern)):
         return _find_latest_cache(local_cache, SYMBOL)
 
