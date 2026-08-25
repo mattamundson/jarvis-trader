@@ -1,6 +1,7 @@
 "use client";
 
 import useSWR from "swr";
+import dynamic from "next/dynamic";
 import {
   Activity,
   AlertTriangle,
@@ -19,9 +20,15 @@ import {
 } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
 import { executionStatus, type ExecutionPathProbe } from "@/lib/executionPath";
-import { MarketChart } from "@/components/charts/MarketChart";
 import { MarketContextStrip } from "@/components/charts/MarketContextStrip";
 import { getBannerVariant, type BannerVariant } from "@/lib/todayBanner";
+
+// lightweight-charts backed live chart, second-screen content below the status banner
+// and metric cards — defer the chunk instead of paying for it in the initial route JS.
+const MarketChart = dynamic(
+  () => import("@/components/charts/MarketChart").then((m) => ({ default: m.MarketChart })),
+  { ssr: false, loading: () => <div className="h-[320px] animate-pulse rounded-lg bg-muted/20" /> }
+);
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 

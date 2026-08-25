@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState } from "react";
@@ -1789,8 +1790,12 @@ export default function ValidationPage() {
       </header>
 
       <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-6 space-y-6">
-        <ValidationChecklist />
-        <TradingDaysCountdownCard />
+        <WidgetErrorBoundary name="Validation Checklist">
+          <ValidationChecklist />
+        </WidgetErrorBoundary>
+        <WidgetErrorBoundary name="Trading Days Countdown">
+          <TradingDaysCountdownCard />
+        </WidgetErrorBoundary>
         <WidgetErrorBoundary name="Backtest vs Paper">
           <BacktestVsPaperWidget />
         </WidgetErrorBoundary>
@@ -1838,56 +1843,74 @@ export default function ValidationPage() {
         {/* Section 1: Strategy Validation Scorecard */}
         <section>
           <SectionLabel>1 — Strategy Validation Scorecard</SectionLabel>
-          <ValidationScorecardCard />
+          <WidgetErrorBoundary name="Validation Scorecard">
+            <ValidationScorecardCard />
+          </WidgetErrorBoundary>
         </section>
 
         {/* Section 1B: Instrument Approval Gates (live, PRB-36) */}
         <section>
           <SectionLabel>1B — Instrument Approval Gates</SectionLabel>
-          <InstrumentEligibilityGatesCard />
+          <WidgetErrorBoundary name="Instrument Eligibility Gates">
+            <InstrumentEligibilityGatesCard />
+          </WidgetErrorBoundary>
         </section>
 
         {/* Section 1C: MES Re-Validation Progress */}
         <section>
           <SectionLabel>1C — MES Re-Validation Progress</SectionLabel>
-          <MESRevalidationTracker />
+          <WidgetErrorBoundary name="MES Re-Validation">
+            <MESRevalidationTracker />
+          </WidgetErrorBoundary>
         </section>
 
         {/* Section 1D: MES Forward-Recorder (observational experiment) */}
         <section>
           <SectionLabel>1D — MES Forward-Recorder (observational)</SectionLabel>
-          <MESForwardRecorderPanel />
+          <WidgetErrorBoundary name="MES Forward-Recorder">
+            <MESForwardRecorderPanel />
+          </WidgetErrorBoundary>
         </section>
 
         {/* Section 2: Monte Carlo Confidence Intervals */}
         <section>
           <SectionLabel>2 — Monte Carlo Confidence Intervals</SectionLabel>
-          <MonteCarloCard />
+          <WidgetErrorBoundary name="Monte Carlo">
+            <MonteCarloCard />
+          </WidgetErrorBoundary>
         </section>
 
         {/* Section 3: Parameter Sensitivity */}
         <section>
           <SectionLabel>3 — Parameter Sensitivity Analysis</SectionLabel>
-          <ParameterSensitivityCard />
+          <WidgetErrorBoundary name="Parameter Sensitivity">
+            <ParameterSensitivityCard />
+          </WidgetErrorBoundary>
         </section>
 
         {/* Section 4: Statistical Significance */}
         <section>
           <SectionLabel>4 — Statistical Significance</SectionLabel>
-          <StatisticalSignificanceCard />
+          <WidgetErrorBoundary name="Statistical Significance">
+            <StatisticalSignificanceCard />
+          </WidgetErrorBoundary>
         </section>
 
         {/* Section A: Backtest Reference */}
         <section>
           <SectionLabel>A — Backtest Reference Targets</SectionLabel>
-          <BacktestReferenceCard baseline={scorecardBaseline} />
+          <WidgetErrorBoundary name="Backtest Reference">
+            <BacktestReferenceCard baseline={scorecardBaseline} />
+          </WidgetErrorBoundary>
         </section>
 
         {/* Section B: Live Paper Performance (only when data available) */}
         {!reportLoading && !reportError && report && (
           <section>
             <SectionLabel>B — Live Paper Trading Performance</SectionLabel>
-            <LivePerformanceCard report={report} />
+            <WidgetErrorBoundary name="Live Paper Performance">
+              <LivePerformanceCard report={report} />
+            </WidgetErrorBoundary>
           </section>
         )}
 
@@ -1901,32 +1924,42 @@ export default function ValidationPage() {
                 /analytics/performance/compare unavailable — using local metrics for comparison.
               </p>
             )}
-            <ComparisonTable report={report} compare={compare ?? null} baseline={scorecardBaseline} />
+            <WidgetErrorBoundary name="Comparison Table">
+              <ComparisonTable report={report} compare={compare ?? null} baseline={scorecardBaseline} />
+            </WidgetErrorBoundary>
           </section>
         )}
 
         {/* Section D: Phase Status */}
         <section>
           <SectionLabel>D — Trading Phase Status</SectionLabel>
-          <PhaseStatusCard report={report ?? null} baseline={scorecardBaseline} />
+          <WidgetErrorBoundary name="Phase Status">
+            <PhaseStatusCard report={report ?? null} baseline={scorecardBaseline} />
+          </WidgetErrorBoundary>
         </section>
 
         {/* Section E: Simulate Trade */}
         <section>
           <SectionLabel>E — Simulate Trade</SectionLabel>
-          <SimulateTradePanel />
+          <WidgetErrorBoundary name="Simulate Trade">
+            <SimulateTradePanel />
+          </WidgetErrorBoundary>
         </section>
 
         {/* Section F: Pipeline Run History */}
         <section>
           <SectionLabel>F — Pipeline Run History</SectionLabel>
-          <PipelineRunHistory />
+          <WidgetErrorBoundary name="Pipeline Run History">
+            <PipelineRunHistory />
+          </WidgetErrorBoundary>
         </section>
 
         {/* Section G: Position Sizing Calculator */}
         <section>
           <SectionLabel>G — Position Sizing Calculator</SectionLabel>
-          <PositionSizingCalculator />
+          <WidgetErrorBoundary name="Position Sizing Calculator">
+            <PositionSizingCalculator />
+          </WidgetErrorBoundary>
         </section>
 
         {/* Section H: Export Data */}
@@ -1948,7 +1981,9 @@ export default function ValidationPage() {
         {/* Section J: Go-Live Roadmap */}
         <section>
           <SectionLabel>J — Go-Live Roadmap</SectionLabel>
-          <GoLivePlanCard />
+          <WidgetErrorBoundary name="Go-Live Plan">
+            <GoLivePlanCard />
+          </WidgetErrorBoundary>
         </section>
 
         {/* Section K: WFE Live Monitor */}
@@ -1962,9 +1997,12 @@ export default function ValidationPage() {
         {/* Section L: Portfolio P&L Chart */}
         <section>
           <SectionLabel>L — Portfolio Cumulative P&L</SectionLabel>
-          <PortfolioPLChart />
+          <WidgetErrorBoundary name="Portfolio P&L Chart">
+            <PortfolioPLChart />
+          </WidgetErrorBoundary>
         </section>
       </main>
     </div>
   );
 }
+
