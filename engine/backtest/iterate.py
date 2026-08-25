@@ -160,7 +160,13 @@ def load_deep_cache(symbol: str, smoke: bool = False, cache_override: str | None
 
 
 def load_vix(csv_path: str | None) -> pd.DataFrame | None:
-    """Load VIX daily close. Accepts CSV with 'close' + date index, or yfinance."""
+    """Load VIX daily close. Accepts CSV with 'close' + date index, or yfinance.
+
+    Auto-discovery (2026-08-17): when csv_path is None, look for the on-disk
+    cache `backtest/cache/VIX_*.csv` (verified: VIX_1990-01-02_2026-08-17_1d.csv,
+    9,224 bars) BEFORE falling back to yfinance. Prior to this, every VIX gate
+    silently no-op'd when no CSV was given, making 'VIX-adjusted' runs vacuous.
+    """
     if csv_path:
         path = Path(csv_path)
         if not path.exists():
@@ -171,12 +177,22 @@ def load_vix(csv_path: str | None) -> pd.DataFrame | None:
             raise ValueError(f"VIX CSV must have a 'close' column; got {list(vix.columns)}")
         print(f"[VIX] {len(vix)} bars from CSV {path} | {vix.index.min().date()} -> {vix.index.max().date()}")
         return vix[["close"]]
+    # Auto-discovery: on-disk cache first (avoids silent no-op and network).
+    cache_dir = Path(__file__).resolve().parent / "cache"
+    candidates = sorted(cache_dir.glob("VIX_*.csv"))
+    if candidates:
+        vix = pd.read_csv(candidates[-1], index_col=0, parse_dates=True)
+        vix.index = pd.to_datetime(vix.index).normalize()
+        if "close" in vix.columns:
+            print(f"[VIX] auto-discovered {len(vix)} bars from {candidates[-1].name} "
+                  f"| {vix.index.min().date()} -> {vix.index.max().date()}")
+            return vix[["close"]]
     # Fallback: yfinance (same path as run_mes_trend_vix_rank1.py)
     try:
         import yfinance as yf
     except ImportError:
         raise SystemExit(
-            "[VIX] no --vix-csv given and yfinance not installed. "
+            "[VIX] no --vix-csv given, no VIX_*.csv cache found, and yfinance not installed. "
             "Provide --vix-csv or install yfinance."
         )
     print("[VIX] Downloading ^VIX daily via yfinance ...")
@@ -192,6 +208,66 @@ def load_vix(csv_path: str | None) -> pd.DataFrame | None:
     vix.index = pd.to_datetime(vix.index).normalize()
     print(f"[VIX] {len(vix)} bars | {vix.index.min().date()} -> {vix.index.max().date()}")
     return vix[["close"]]
+
+
+def vix_gate_smoke_assert(
+    df: pd.DataFrame,
+    symbol: str,
+    vix_df: pd.DataFrame | None,
+    vix_min: float,
+    vix_max: float,
+    vix_regime_block: tuple[str, ...] | None,
+) -> None:
+    """Assert that VIX gating actually filters — i.e. the gated run has fewer
+    trades than the ungated run. If the gate is a no-op (trade counts identical),
+    it means VIX data is missing or the gate is not wired, and every 'VIX-adjusted'
+    result is vacuous.
+
+    2026-08-18: this assertion exists because before the VIX cache existed on disk,
+    every VIX-gated run silently no-op'd — all prior 'VIX-adjusted' results were
+    meaningless. This guard makes that failure mode LOUD.
+    """
+    if vix_df is None:
+        if vix_min > 0.0 or vix_max < 999.0 or vix_regime_block:
+            raise SystemExit(
+                "[VIX SMOKE] VIX gate requested (vix-min/vix-max/vix-regimes) but "
+                "vix_df is None — gate is a NO-OP. All 'VIX-adjusted' results would "
+                "be vacuous. Aborting. Check that load_vix() found the cache."
+            )
+        return  # No gate requested, no assertion needed.
+
+    # Run the SAME combo (first grid point) ungated vs gated, compare trade counts.
+    grid = DEFAULT_GRID[symbol]
+    fast, slow, atr_trail_mult = grid["fast"][0], grid["slow"][0], grid["atr_trail_mult"][0]
+    # Ungated baseline
+    ungated = run_combo(
+        df, symbol, fast, slow, atr_trail_mult,
+        vix_df=None, vix_min=0.0, vix_max=999.0,
+        vix_regime_block=None, fixed_contracts=1,
+    )
+    gated = run_combo(
+        df, symbol, fast, slow, atr_trail_mult,
+        vix_df=vix_df, vix_min=vix_min, vix_max=vix_max,
+        vix_regime_block=vix_regime_block, fixed_contracts=1,
+    )
+    ungated_trades = ungated["total_trades"]
+    gated_trades = gated["total_trades"]
+    print(
+        f"[VIX SMOKE] ungated trades={ungated_trades} vs gated trades={gated_trades} "
+        f"(vix_min={vix_min}, vix_max={vix_max}, block={vix_regime_block})"
+    )
+    if ungated_trades > 0 and gated_trades == ungated_trades:
+        raise SystemExit(
+            f"[VIX SMOKE] FAIL: VIX gate did not filter any trades "
+            f"(ungated={ungated_trades} == gated={gated_trades}). "
+            f"The gate is a no-op — VIX data may not be aligned to the price series. "
+            f"Aborting to prevent vacuous 'VIX-adjusted' results."
+        )
+    if ungated_trades == 0 and gated_trades == 0:
+        print("[VIX SMOKE] WARNING: both ungated and gated produced 0 trades — "
+              "cannot verify gate filtering (combo has no trades to filter).")
+        return
+    print(f"[VIX SMOKE] PASS: gate filtered {ungated_trades - gated_trades} trades.")
 
 
 def run_combo(
@@ -308,6 +384,18 @@ def run_combo_with_pnls(
     )
     res = bt.run(df_sig, symbol=symbol, multiplier=SYMBOL_MULTIPLIER[symbol])
     pnls = [t.pnl for t in res.trades]
+    # Honest CAGR from the actual equity span (PF/Sharpe alone hide economic triviality).
+    cagr = 0.0
+    if len(pnls) > 0 and res.start_date and res.end_date:
+        try:
+            span_days = (pd.Timestamp(res.end_date) - pd.Timestamp(res.start_date)).days
+            years = span_days / 365.25
+            if years > 0:
+                final = float(res.initial_capital) + float(res.total_pnl)
+                if final > 0:
+                    cagr = (final / float(res.initial_capital)) ** (1.0 / years) - 1.0
+        except (ValueError, TypeError, ZeroDivisionError):
+            cagr = 0.0
     row = {
         "symbol": symbol,
         "strategy": strategy,
@@ -323,7 +411,11 @@ def run_combo_with_pnls(
         "profit_factor": round(res.profit_factor, 4),
         "total_pnl": round(res.total_pnl, 2),
         "max_drawdown_pct": round(res.max_drawdown_pct, 4),
+        # NOTE 2026-08-17: res.sharpe_ratio is now HONEST (observed trades/yr
+        # annualization, metrics.py correction). No MES config has true Sharpe > 1.
         "sharpe_ratio": round(res.sharpe_ratio, 4),
+        "annualization_trades_per_year": round(float(getattr(res, "annualization_trades_per_year", 0.0)), 2),
+        "cagr_pct": round(cagr * 100.0, 4),
         "n_pnl_samples": len(pnls),
     }
     if len(pnls) >= 3:
@@ -378,6 +470,12 @@ def main() -> int:
         vix_regime_sets = [tiers]
 
     vix_df = load_vix(args.vix_csv) if (args.vix_min > 0.0 or args.vix_max < 999.0 or args.vix_regimes) else None
+
+    # VIX gate smoke assertion: prove the gate actually filters before running the
+    # full grid. Prevents vacuous "VIX-adjusted" results (the 2026-08-17 bug).
+    if not args.smoke:
+        vix_gate_smoke_assert(df, args.symbol, vix_df, args.vix_min, args.vix_max,
+                              vix_regime_sets[0] if vix_regime_sets else None)
 
     # Smoke: force single combo so the wiring proof is fast.
     combos = list(itertools.product(grid["fast"], grid["slow"], grid["atr_trail_mult"]))
