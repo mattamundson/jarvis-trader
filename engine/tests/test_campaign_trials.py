@@ -63,7 +63,7 @@ class TestDsrCampaignDiagnostic:
                                     n_trials_used_by_gate=3, n_permutations=400)
         counts = sorted(int(k) for k in d["sweep"])
         vals = [d["sweep"][str(c)] for c in counts]
-        for earlier, later in zip(vals, vals[1:], strict=True):
+        for earlier, later in zip(vals[:-1], vals[1:], strict=True):
             assert later <= earlier + 1e-9, f"DSR rose with more trials: {vals}"
 
     def test_reports_gate_trial_count_and_breakpoints(self):
