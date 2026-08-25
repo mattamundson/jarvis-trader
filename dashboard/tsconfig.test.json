@@ -1,12 +1,8 @@
 {
+  "extends": "./tsconfig.json",
   "compilerOptions": {
-    "target": "ES2020",
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
-    "jsx": "react-jsx",
-    "module": "ESNext",
-    "skipLibCheck": true,
-    "esModuleInterop": true,
-    "strict": false
+    "jsx": "react-jsx"
   },
-  "include": ["components/CumulativeTradingDaysWidget.tsx"]
+  "include": ["tests/component/**/*.ts", "tests/component/**/*.tsx"],
+  "exclude": ["node_modules"]
 }
