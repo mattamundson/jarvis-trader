@@ -3329,6 +3329,52 @@ export async function fetchAuctionBias(symbol: string): Promise<AuctionBiasRespo
   return fetchEngine<AuctionBiasResponse>(`/auction/bias/${symbol}`);
 }
 
+// Pipeline Funnel Analytics
+export interface PipelineFunnelResponse {
+  period: string;
+  days: number;
+  timestamp: string;
+  funnel: {
+    runs: number;
+    signals: number;
+    approved: number;
+    executed: number;
+    filled: number;
+  };
+  conversion_rates: {
+    runs_to_signals: number;
+    signals_to_approved: number;
+    approved_to_executed: number;
+    executed_to_filled: number;
+    overall_conversion: number;
+  };
+  details: {
+    window_days: number;
+    cutoff: string;
+    runs: number;
+    signals: number;
+    approved: number;
+    executed: number;
+    filled: number;
+    human_approved: number;
+    human_rejected: number;
+    runs_to_signals_pct: number;
+    signals_to_approved_pct: number;
+    approved_to_executed_pct: number;
+    executed_to_filled_pct: number;
+    overall_conversion_pct: number;
+    cache_hit?: boolean;
+  };
+}
+
+export async function fetchPipelineFunnel(
+  days: number = 30
+): Promise<PipelineFunnelResponse> {
+  return fetchEngine<PipelineFunnelResponse>(
+    `/analytics/pipeline-funnel?days=${days}`
+  );
+}
+
 // ── ThinkScript registry + generation (engine/routers/thinkscript_router.py) ──
 // Registry is a read-only catalog of the JARVIS-authored .ts studies backed by
 // thinkorswim-scripts/registry.yaml (engine/utils/thinkscript_registry_loader.py).
