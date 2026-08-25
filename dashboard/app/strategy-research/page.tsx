@@ -1,5 +1,5 @@
 import { StrategyResearchPanel } from "@/components/StrategyResearchPanel";
-import { StrategyLabPanel } from "@/components/StrategyLabPanel";
+import { EquityResearchPanel } from "@/components/EquityResearchPanel";
 import { ExploratoryBanner } from "@/components/ExploratoryBanner";
 
 export const metadata = {
@@ -24,7 +24,6 @@ export default function StrategyResearchPage() {
         </p>
       </div>
       <StrategyResearchPanel />
-      <StrategyLabPanel />
       <EquityResearchPanel />
     </div>
   );
