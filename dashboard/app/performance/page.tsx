@@ -292,7 +292,10 @@ function BacktestMatrix() {
       >
         <span style={{ fontWeight: 700 }}>Historical backtest</span>
         <span style={{ color: "#9a8030" }}>
-          frozen in-sample research benchmark as of 2026-03-30 — not live trading results
+          frozen in-sample research benchmark as of 2026-03-30 — not live trading results.
+          Sharpe values are annualized at the as-run 252 convention of this snapshot; the live
+          dashboard annualizes by observed trade frequency, so these are not directly comparable
+          to live annualized Sharpe.
         </span>
       </div>
       <div className="overflow-x-auto">
