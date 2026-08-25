@@ -111,8 +111,18 @@ interface Metrics {
   };
   optimal_params?: Record<string, unknown>;
   deflated_sharpe?: {
-    p_value: number;
-    verdict: string;
+    // C3 metric-honesty pass: DSR computed on the NATIVE weekly Sharpe (raw
+    // frequency) — never an annualized input (2026-07-10 incident rule).
+    dsr?: number; // p-value 0..1; >= 0.10 passes the selection-bias penalty
+    p_value?: number; // alias for older payloads
+    verdict?: string;
+    raw_sharpe?: number;
+    expected_max_sharpe?: number;
+    sharpe_std_error?: number;
+    passes_at_10pct?: boolean;
+    dsr_degenerate?: boolean;
+    n_trials?: number;
+    n_obs?: number;
   };
 }
 
@@ -716,6 +726,75 @@ export default function StrategyCPage() {
                 </div>
               ))}
             </div>
+
+            {/* Deflated Sharpe (re-deflated) — C3 metric-honesty pass */}
+            {metrics.deflated_sharpe && (
+              <div className="mt-4 border-t border-slate-800 pt-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Shield className="w-4 h-4 text-violet-400" />
+                    <p className="text-sm font-semibold text-white">
+                      Deflated Sharpe Ratio (re-deflated)
+                    </p>
+                  </div>
+                  {(() => {
+                    const dsrVal = metrics.deflated_sharpe?.dsr ?? metrics.deflated_sharpe?.p_value;
+                    const degenerate = metrics.deflated_sharpe?.dsr_degenerate ?? false;
+                    const passes = metrics.deflated_sharpe?.passes_at_10pct ?? (dsrVal != null ? dsrVal >= 0.1 : false);
+                    if (dsrVal == null || degenerate) {
+                      return (
+                        <Badge variant="static" className="text-xs">
+                          UNAVAILABLE
+                        </Badge>
+                      );
+                    }
+                    return (
+                      <Badge variant={passes ? "bull" : "bear"} className="text-xs">
+                        {passes ? "PASSES at 10%" : "FAILS at 10%"}
+                      </Badge>
+                    );
+                  })()}
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                  <div className="bg-slate-800/50 rounded-lg p-3">
+                    <p className="text-slate-500 mb-1">DSR p-value</p>
+                    <p className="text-white font-semibold font-mono">
+                      {(() => {
+                        const v = metrics.deflated_sharpe?.dsr ?? metrics.deflated_sharpe?.p_value;
+                        return v != null ? v.toFixed(4) : "—";
+                      })()}
+                    </p>
+                  </div>
+                  <div className="bg-slate-800/50 rounded-lg p-3">
+                    <p className="text-slate-500 mb-1">Raw Sharpe (weekly)</p>
+                    <p className="text-white font-semibold font-mono">
+                      {metrics.deflated_sharpe?.raw_sharpe != null
+                        ? metrics.deflated_sharpe.raw_sharpe.toFixed(4)
+                        : "—"}
+                    </p>
+                  </div>
+                  <div className="bg-slate-800/50 rounded-lg p-3">
+                    <p className="text-slate-500 mb-1">E[max SR | trials]</p>
+                    <p className="text-white font-semibold font-mono">
+                      {metrics.deflated_sharpe?.expected_max_sharpe != null
+                        ? `${metrics.deflated_sharpe.expected_max_sharpe.toFixed(4)} (n=${metrics.deflated_sharpe.n_trials ?? "?"})`
+                        : "—"}
+                    </p>
+                  </div>
+                  <div className="bg-slate-800/50 rounded-lg p-3">
+                    <p className="text-slate-500 mb-1">Sample</p>
+                    <p className="text-white font-semibold font-mono">
+                      {metrics.deflated_sharpe?.n_obs != null ? `${metrics.deflated_sharpe.n_obs} weeks` : "—"}
+                    </p>
+                  </div>
+                </div>
+                <p className="text-[11px] text-slate-600 mt-2 leading-snug">
+                  Bailey–López de Prado DSR computed on the native weekly Sharpe (raw frequency) with
+                  the grid-search trial count — never an annualized input. A degenerate estimate is
+                  treated as a failure, not a pass.
+                </p>
+              </div>
+            )}
           </div>
         )}
 

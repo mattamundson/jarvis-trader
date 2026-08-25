@@ -99,6 +99,11 @@ class PerformanceMetricsResponse(BaseModel):
     expectancy: float
     timestamp: str
     days: Optional[int] = None  # rolling window length when applicable
+    # C3 metric-honesty pass (2026-08-18): annualization transparency. The
+    # sharpe_ratio above is annualized by this observed factor (252 fallback),
+    # and cagr is the honest CAGR over the actual window.
+    annualization_trades_per_year: Optional[float] = None
+    cagr: Optional[float] = None
 
 
 class TradeAnalyticsResponse(BaseModel):
@@ -117,6 +122,9 @@ class TradeAnalyticsResponse(BaseModel):
     avg_loss: float
     best_trade: float
     worst_trade: float
+    # C3 metric-honesty pass (2026-08-18): annualization transparency.
+    annualization_trades_per_year: Optional[float] = None
+    cagr: Optional[float] = None
 
 
 class SignalMetricsResponse(BaseModel):
@@ -268,6 +276,8 @@ async def get_trade_analytics(request: Request) -> TradeAnalyticsResponse:
             avg_loss=analytics.avg_loss,
             best_trade=analytics.best_trade,
             worst_trade=analytics.worst_trade,
+            annualization_trades_per_year=analytics.annualization_trades_per_year,
+            cagr=analytics.cagr,
         )
     except Exception as exc:
         logger.error(f"Trade analytics error: {exc}")
