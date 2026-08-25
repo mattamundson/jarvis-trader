@@ -56,6 +56,7 @@ if str(engine_root) not in sys.path:
 
 from backtest.backtester import Backtester  # noqa: E402
 from backtest.screen_cert_pipeline import append_journal  # noqa: E402
+from backtest.screen_cert_pipeline import append_journal, cap_pf  # noqa: E402
 from backtest.trend_signals import generate_sma_trend_signals  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -181,7 +182,10 @@ def main() -> int:
     print(f"Windows: {len(windows)} | train {TRAIN_MONTHS}mo test {TEST_MONTHS}mo step {STEP_MONTHS}mo")
 
     results = [run_window(df, w) for w in windows]
-    pfs = [r["oos_pf"] for r in results if r["oos_pf"] is not None]
+    # Cap non-finite PFs (all-profitable windows yield +inf) so the verdict
+    # JSON stays strict-JSON (no Infinity/NaN literals) and journal cells stay
+    # clean. Cap matches bootstrap_pf_ci_lower's ceiling (PF_CAP=5.0).
+    pfs = [cap_pf(r["oos_pf"]) for r in results if r["oos_pf"] is not None]
     trades = [r["oos_trades"] for r in results]
     dds = [r["oos_dd"] for r in results]
     total_oos = sum(trades)
@@ -239,6 +243,9 @@ def main() -> int:
     VERDICTS_DIR.mkdir(parents=True, exist_ok=True)
     out = VERDICTS_DIR / f"{SYMBOL}_sma_cert_{FAST}_{SLOW}_{ATR_TRAIL_MULT}.json"
     out.write_text(json.dumps(metrics, indent=2))
+    # allow_nan=False: any missed NaN/Infinity raises instead of writing
+    # invalid strict JSON that downstream consumers may reject.
+    out.write_text(json.dumps(metrics, indent=2, allow_nan=False))
     journal = append_journal(VERDICTS_DIR, metrics, source_file=out.name)
     print(f"\n=== {SYMBOL} ({FAST},{SLOW},{ATR_TRAIL_MULT}) ===")
     print(f"  windows={len(windows)} with_trades={windows_with_trades} total_oos={total_oos}")

@@ -1,0 +1,246 @@
+{
+  "window": {
+    "start": "2026-08-16",
+    "end": "2026-08-18",
+    "days": 3,
+    "generated_ct": "2026-08-18 14:22"
+  },
+  "engine_probe": {
+    "status": "DOWN",
+    "latency_ms": null
+  },
+  "monitoring": {
+    "n_samples": 18,
+    "engine_down_samples": 7,
+    "alerts": {
+      "DATA LEG DOWN (ibkr_data_connected=false)": 8,
+      "ENGINE DOWN (no /health response)": 7
+    },
+    "latest": {
+      "ts": "2026-08-18T19:19:40.042006+00:00",
+      "health": null,
+      "prices": {},
+      "db": {
+        "queue": {
+          "pending": 2,
+          "approved": 387,
+          "rejected": 0,
+          "expired": 507
+        },
+        "last_run_id": "16130",
+        "last_trade_id": "344",
+        "open_positions": [
+          [
+            "AAPL",
+            "buy",
+            302.87,
+            "open",
+            300.5887,
+            null
+          ],
+          [
+            "SPY",
+            "buy",
+            758.0,
+            "open",
+            756.6005,
+            null
+          ],
+          [
+            "MES",
+            "buy",
+            7731.75,
+            "open",
+            null,
+            null
+          ]
+        ],
+        "trade_counts": {
+          "total": 120,
+          "open": 3
+        }
+      },
+      "recent_errors": [],
+      "alerts": [
+        "ENGINE DOWN (no /health response)"
+      ]
+    }
+  },
+  "backtest": {
+    "source": "deep_verdict",
+    "sweep_file": null,
+    "n_rows": null,
+    "n_bars": null,
+    "span_years": null,
+    "champion": null,
+    "best_shortlist": null,
+    "verdict_fallback": {
+      "verdict": "PASS",
+      "core_verdict": "PASS",
+      "alt_verdict": "FAIL",
+      "gate_v2_metrics": {
+        "pf_ci_lower": 1.2714,
+        "p_edge": 0.9968,
+        "mc_95th_dd": 0.043880999999999996,
+        "mc_95th_dd_pct": 4.3881,
+        "mc_95th_dd_window_legacy": 0.009559267188401558,
+        "dsr": 0.8781,
+        "dsr_runner_grid": 0.9861,
+        "dsr_honest_n_trials": 27,
+        "dsr_runner_grid_n_trials": 3,
+        "dsr_campaign_diagnostic": {
+          "note": "DIAGNOSTIC ONLY -- does not affect the verdict. The gate deflates for this runner's own grid size; a research campaign against one cache typically spans far more trials. See campaign_trials.py.",
+          "n_trials_used_by_gate": 3,
+          "journaled_trials_lower_bound": 0,
+          "n_permutations": 2000,
+          "sweep": {
+            "3": 0.9835,
+            "9": 0.954,
+            "27": 0.8715,
+            "54": 0.772,
+            "82": 0.67,
+            "150": 0.486
+          },
+          "core_fails_at_or_above_trials": null,
+          "alt_fails_at_or_above_trials": null
+        },
+        "wfo_consistency": "MODERATE",
+        "fixed_params_min_pf": 0.9306056898858063,
+        "cost_survives_through": "catastrophic",
+        "total_oos_trades": 69,
+        "min_oos_trades_total": 30,
+        "sample_adequate": true,
+        "win_rate_ci_lower": 0.4783
+      },
+      "champion_params": {
+        "fast": 60,
+        "slow": 200,
+        "atr_trail_mult": 2.0,
+        "min_rv_annualized": 0.0
+      }
+    }
+  },
+  "forward_evidence": {
+    "rows": [
+      {
+        "strategy_id": "LONG_MOMENTUM",
+        "n": 2,
+        "pnl": -16.23,
+        "win_rate": 0.0
+      },
+      {
+        "strategy_id": "unattributed",
+        "n": 1,
+        "pnl": -406.0,
+        "win_rate": 0.0
+      }
+    ],
+    "total_pnl": -422.23,
+    "n_trades": 3,
+    "open_positions": [
+      {
+        "symbol": "AAPL",
+        "side": "buy",
+        "entry_price": 302.87,
+        "qty": 2.0
+      },
+      {
+        "symbol": "SPY",
+        "side": "buy",
+        "entry_price": 758.0,
+        "qty": 1.0
+      },
+      {
+        "symbol": "MES",
+        "side": "buy",
+        "entry_price": 7731.75,
+        "qty": 1.0
+      }
+    ],
+    "avg_risk_pct_used": 0.0,
+    "max_risk_pct_used": 0.0
+  },
+  "attribution": {
+    "days_with_trades": 2,
+    "total_pnl": -422.23,
+    "n_trades": 3,
+    "top_contributor_by_abs": "news",
+    "per_analyst": {
+      "technical": {
+        "total": -2.9242,
+        "mean": -1.4621,
+        "std": 2.0677,
+        "max_loss": -2.9242,
+        "win_rate_top": 0.0
+      },
+      "news": {
+        "total": -6.8022,
+        "mean": -3.4011,
+        "std": 4.8099,
+        "max_loss": -6.8022,
+        "win_rate_top": 0.0
+      },
+      "social": {
+        "total": -0.7738,
+        "mean": -0.3869,
+        "std": 0.5471,
+        "max_loss": -0.7738,
+        "win_rate_top": 0.0
+      },
+      "fundamental": {
+        "total": -2.3439,
+        "mean": -1.1719,
+        "std": 1.6574,
+        "max_loss": -2.3439,
+        "win_rate_top": 0.0
+      },
+      "other": {
+        "total": -3.3831,
+        "mean": -1.6916,
+        "std": 2.3922,
+        "max_loss": -3.3831,
+        "win_rate_top": 0.0
+      }
+    }
+  },
+  "risk": {
+    "max_drawdown_limit_pct": 20.0,
+    "backtest_max_dd_pct": 4.3881,
+    "drawdown_status": "OK",
+    "realized_pnl_dd_proxy_pct": {
+      "peak_cum_pnl": 5714.51,
+      "trough_cum_pnl": -1881.7,
+      "decline_usd": 1981.7,
+      "note": "peak-to-trough decline on cumulative realized PnL (no capital base in ledger)"
+    },
+    "week_pnl": -422.23,
+    "week_trades": 3,
+    "worst_day": {
+      "day": "2026-08-16",
+      "pnl": -406.0
+    },
+    "open_positions": [
+      {
+        "symbol": "AAPL",
+        "side": "buy",
+        "entry_price": 302.87,
+        "qty": 2.0
+      },
+      {
+        "symbol": "SPY",
+        "side": "buy",
+        "entry_price": 758.0,
+        "qty": 1.0
+      },
+      {
+        "symbol": "MES",
+        "side": "buy",
+        "entry_price": 7731.75,
+        "qty": 1.0
+      }
+    ],
+    "avg_risk_pct_used": 0.0,
+    "max_risk_pct_used": 0.0,
+    "engine_down_ratio_pct": 38.9
+  }
+}

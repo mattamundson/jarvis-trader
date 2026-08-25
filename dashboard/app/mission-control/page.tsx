@@ -7,6 +7,8 @@ import { SignalsPipelinePanel } from "./components/SignalsPipelinePanel";
 import { ValidationGatesPanel } from "./components/ValidationGatesPanel";
 import { EngineDataPanel } from "./components/EngineDataPanel";
 import { EnvironmentFleetPanel } from "./components/EnvironmentFleetPanel";
+import { TradingStatusReconciliation } from "@/components/TradingStatusReconciliation";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 
 /**
  * MISSION CONTROL — single command-center view fusing trading state
@@ -36,24 +38,43 @@ export default function MissionControlPage() {
 
       <main className="mx-auto max-w-[1600px] 2xl:max-w-[2000px] px-6 py-6 space-y-6">
         {/* Panel 1 — Risk & Safety (full-width, most prominent) */}
-        <RiskSafetyPanel />
+        <WidgetErrorBoundary name="Risk & Safety">
+          <RiskSafetyPanel />
+        </WidgetErrorBoundary>
+
+        {/* Panel 1b — Trading-status split-brain reconciliation (full-width,
+            equally prominent: an unnoticed config disagreement here is how
+            a symbol trades when it shouldn't, or fails to when it should). */}
+        <WidgetErrorBoundary name="Trading Status Reconciliation">
+          <TradingStatusReconciliation />
+        </WidgetErrorBoundary>
 
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           {/* Panel 2 — Positions & Paper Performance */}
-          <PositionsPerformancePanel />
+          <WidgetErrorBoundary name="Positions & Performance">
+            <PositionsPerformancePanel />
+          </WidgetErrorBoundary>
 
           {/* Panel 3 — Signals & Pipeline */}
-          <SignalsPipelinePanel />
+          <WidgetErrorBoundary name="Signals & Pipeline">
+            <SignalsPipelinePanel />
+          </WidgetErrorBoundary>
 
           {/* Panel 4 — Validation & Gates */}
-          <ValidationGatesPanel />
+          <WidgetErrorBoundary name="Validation & Gates">
+            <ValidationGatesPanel />
+          </WidgetErrorBoundary>
 
           {/* Panel 5 — Engine & Data */}
-          <EngineDataPanel />
+          <WidgetErrorBoundary name="Engine & Data">
+            <EngineDataPanel />
+          </WidgetErrorBoundary>
         </div>
 
         {/* Panel 6 — Environment Fleet (local fs via /api/fleet) */}
-        <EnvironmentFleetPanel />
+        <WidgetErrorBoundary name="Environment Fleet">
+          <EnvironmentFleetPanel />
+        </WidgetErrorBoundary>
       </main>
     </div>
   );
