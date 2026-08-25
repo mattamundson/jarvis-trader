@@ -2222,14 +2222,24 @@ async def get_paper_account_stats(
             if max_dd is None or dd < max_dd:
                 max_dd = dd
 
-    # Sortino (downside deviation; annualised assuming daily returns)
+    # C3 metric-honesty pass (2026-08-18): annualize by the OBSERVED
+    # trades-per-year over the window's actual span (n_trades / elapsed
+    # years), not a fixed 252 — a low-frequency account was previously
+    # overstated by sqrt(252/actual). Falls back to 252 when the window is
+    # shorter than 90 days (cannot be honestly annualized).
+    ann_tpy = 252.0
+    if days >= 90:
+        ann_tpy = min(n_trades / (days / 365.25), 2520.0)
+
+    # Sortino (downside deviation; annualised using the observed frequency)
     mean_pnl = sum(pnls) / n_trades
     neg_sq = [(p - mean_pnl) ** 2 for p in pnls if p < mean_pnl]
     downside_dev = math.sqrt(sum(neg_sq) / len(neg_sq)) if neg_sq else None
-    sortino: float | None = (mean_pnl / downside_dev * math.sqrt(252)) if downside_dev else None
+    sortino: float | None = (mean_pnl / downside_dev * math.sqrt(ann_tpy)) if downside_dev else None
 
-    # Sharpe (std dev of all returns) — canonical module (near-zero std-dev guard -> None)
-    sharpe: float | None = metrics.sharpe(pnls)
+    # Sharpe (std dev of all returns) — canonical module (near-zero std-dev guard -> None),
+    # annualized by the observed trades-per-year, not the 252 default.
+    sharpe: float | None = metrics.sharpe(pnls, periods_per_year=int(round(ann_tpy)))
 
     # Calmar (annualised return / abs max drawdown). abs(max_dd) is floored at
     # CALMAR_MIN_DD_FLOOR (0.5%) before dividing -- an account that's mostly
@@ -2244,7 +2254,7 @@ async def get_paper_account_stats(
     CALMAR_MIN_DD_FLOOR = 0.005
     calmar: float | None = None
     if max_dd is not None and max_dd < 0 and abs(max_dd) >= CALMAR_MIN_DD_FLOOR:
-        ann_return = mean_pnl * 252
+        ann_return = mean_pnl * ann_tpy
         calmar = ann_return / abs(max_dd)
 
     return AccountStatsResponse(

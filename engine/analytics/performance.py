@@ -47,7 +47,7 @@ class PerformanceMetrics:
     """
 
     profit_factor: float  # sum(wins) / abs(sum(losses)); inf if no losses
-    sharpe_ratio: float  # annualized: sqrt(252) * mean_return / std_return
+    sharpe_ratio: float  # annualized: sqrt(observed tpy) * mean_return / std_return
     win_rate: float  # winning_trades / total_closed_trades (0–1)
     avg_win: float  # average P&L of winning trades (positive)
     avg_loss: float  # average P&L of losing trades (negative)
@@ -56,6 +56,12 @@ class PerformanceMetrics:
     total_pnl: float  # sum of all closed trade P&L values
     meets_paper_threshold: bool  # True if PF > 2.0 AND Sharpe > 1.5
     period_days: int  # calendar days spanned by the data window
+    # C3 metric-honesty pass (2026-08-18): annualization transparency. Sharpe
+    # is annualized by the OBSERVED trading-days-per-year (not a fixed 252)
+    # when the daily-P&L window supports it; these fields record the factor
+    # used and the honest CAGR over the same span.
+    annualization_trades_per_year: float = 252.0
+    cagr: Optional[float] = None
 
     def as_dict(self) -> Dict[str, Any]:
         """Return all fields as a plain dict, safe for JSON serialisation."""
@@ -131,7 +137,17 @@ class PerformanceCalculator:
         total_pnl = sum(t.get("pnl", 0.0) or 0.0 for t in raw_trades)
 
         profit_factor = self.calculate_profit_factor(raw_trades)
-        sharpe = self.calculate_sharpe(daily_pnl_list)
+        # C3 metric-honesty pass (2026-08-18): annualize by the OBSERVED
+        # trading-days-per-year (n daily P&L rows / elapsed calendar span),
+        # not a fixed 252. A low-frequency account (trading ~60 days/yr) was
+        # previously overstated by sqrt(252/60) ≈ 2.05x. Falls back to 252
+        # when the window is missing or shorter than 90 days (the engine
+        # annualization convention).
+        ann_tpy = self._observed_annualization_trades_per_year(daily_rows)
+        sharpe = self.calculate_sharpe(
+            daily_pnl_list, annualization_trades_per_year=ann_tpy
+        )
+        cagr = self._calculate_cagr(total_pnl, daily_rows)
         max_dd = self.calculate_max_drawdown(daily_pnl_list)
 
         wins = [t for t in raw_trades if (t.get("pnl") or 0.0) > 0.0]
@@ -166,9 +182,90 @@ class PerformanceCalculator:
             total_pnl=round(total_pnl, 4),
             meets_paper_threshold=meets,
             period_days=period_days,
+            annualization_trades_per_year=round(ann_tpy, 4),
+            cagr=round(cagr, 6) if cagr is not None else None,
         )
 
     # ── Metric helpers ────────────────────────────────────────────────────
+
+    @staticmethod
+    def _observed_annualization_trades_per_year(daily_rows: List[Dict]) -> float:
+        """Observed trading-days-per-year from daily-P&L row dates, or 252.
+
+        n rows / elapsed calendar years of the row span. Falls back to 252
+        (DEFAULT_ANNUALIZATION_TRADES_PER_YEAR) when the rows carry no usable
+        dates or the span is shorter than MIN_ANNUALIZATION_WINDOW_DAYS — a
+        sub-90-day window cannot be honestly annualized. Mirrors
+        engine/backtest/metrics.py `_annualization_factor`.
+        """
+        dates = []
+        for row in daily_rows:
+            raw = row.get("date") or row.get("day")
+            if not raw:
+                continue
+            try:
+                dates.append(str(raw)[:10])
+            except Exception:
+                continue
+        if len(dates) < 2:
+            return 252.0
+        from datetime import date as _date
+
+        parsed = []
+        for d in dates:
+            try:
+                parsed.append(_date.fromisoformat(d))
+            except ValueError:
+                continue
+        if len(parsed) < 2:
+            return 252.0
+        span_days = (max(parsed) - min(parsed)).days + 1
+        if span_days < 90:
+            return 252.0
+        tpy = len(parsed) / (span_days / 365.25)
+        if tpy <= 0:
+            return 252.0
+        return float(min(tpy, 2520.0))
+
+    @staticmethod
+    def _calculate_cagr(total_pnl: float, daily_rows: List[Dict]) -> Optional[float]:
+        """Honest CAGR from total P&L over the actual daily-P&L span.
+
+        Uses the same notional convention as compare_to_backtest
+        (total_pnl / 10_000) and the calendar span of the daily rows
+        (years = span_days / 365.25). Returns None when the span cannot be
+        derived, is shorter than 90 days, or the return is <= -100%.
+        """
+        dates = []
+        for row in daily_rows:
+            raw = row.get("date") or row.get("day")
+            if not raw:
+                continue
+            try:
+                dates.append(str(raw)[:10])
+            except Exception:
+                continue
+        if len(dates) < 2:
+            return None
+        from datetime import date as _date
+
+        parsed = []
+        for d in dates:
+            try:
+                parsed.append(_date.fromisoformat(d))
+            except ValueError:
+                continue
+        if len(parsed) < 2:
+            return None
+        span_days = (max(parsed) - min(parsed)).days + 1
+        if span_days < 90:
+            return None
+        years = span_days / 365.25
+        total_return = total_pnl / 10_000.0
+        if total_return <= -1.0:
+            return None
+        cagr = (1.0 + total_return) ** (1.0 / years) - 1.0
+        return float(cagr) if math.isfinite(cagr) else None
 
     @staticmethod
     def calculate_profit_factor(trades: List[Dict]) -> float:
@@ -195,11 +292,21 @@ class PerformanceCalculator:
         return gross_profit / gross_loss
 
     @staticmethod
-    def calculate_sharpe(daily_pnl_list: List[float]) -> float:
+    def calculate_sharpe(
+        daily_pnl_list: List[float],
+        annualization_trades_per_year: float = 252.0,
+    ) -> float:
         """
         Annualized Sharpe ratio using daily P&L values.
 
-        Formula: sqrt(252) * mean(daily_pnl) / std(daily_pnl)
+        Formula: sqrt(annualization_trades_per_year) * mean(daily_pnl) / std(daily_pnl)
+
+        The annualization factor is the OBSERVED trading-days-per-year, not a
+        fixed 252 (C3 metric-honesty pass, 2026-08-18): annualizing a
+        low-frequency P&L series by 252 overstated Sharpe by
+        sqrt(252 / actual_trading_days_per_year). Callers that cannot derive
+        the observed frequency (missing dates, sub-90-day window) pass the
+        252 default, which is the documented fallback.
 
         Returns ``0.0`` when there are fewer than 2 data points or when the
         standard deviation is zero (flat equity curve).
@@ -208,6 +315,9 @@ class PerformanceCalculator:
         ----------
         daily_pnl_list:
             Ordered list of daily realized P&L values (floats).
+        annualization_trades_per_year:
+            Observed periods-per-year used for annualization (default 252 =
+            the documented fallback when the observed frequency is unknown).
         """
         n = len(daily_pnl_list)
         if n < 2:
@@ -225,7 +335,8 @@ class PerformanceCalculator:
         if std < 1e-9:
             return 0.0
 
-        return math.sqrt(252) * mean / std
+        periods = annualization_trades_per_year if annualization_trades_per_year > 0 else 252.0
+        return math.sqrt(periods) * mean / std
 
     @staticmethod
     def calculate_max_drawdown(daily_pnl_list: List[float]) -> float:
@@ -263,7 +374,8 @@ class PerformanceCalculator:
         """Calculate performance metrics for the last N calendar days."""
         from datetime import datetime, timedelta, timezone
 
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        cutoff_dt = datetime.now(timezone.utc) - timedelta(days=days)
+        cutoff = cutoff_dt.isoformat()
 
         try:
             trades = self._db.get_trade_history(limit=500)
@@ -301,12 +413,23 @@ class PerformanceCalculator:
             gross_losses = abs(sum(losses))
             profit_factor = (gross_wins / gross_losses) if gross_losses > 0 else None
 
-            # Simple Sharpe (annualized from daily returns if we have enough data)
+            # Simple Sharpe (annualized from daily returns if we have enough data).
+            # C3 metric-honesty pass (2026-08-18): annualize by the OBSERVED
+            # trade frequency over the window's actual span (n_trades / years),
+            # not a fixed 252. Falls back to 252 for windows shorter than 90
+            # days (cannot be honestly annualized) — the engine convention.
             import statistics
 
             avg_pnl = statistics.mean(pnls) if pnls else 0
             std_pnl = statistics.stdev(pnls) if len(pnls) >= 2 else None
-            sharpe = (avg_pnl / std_pnl * (252**0.5)) if std_pnl and std_pnl > 0 else None
+            if std_pnl and std_pnl > 0:
+                span_days = (datetime.now(timezone.utc) - cutoff_dt).days
+                ann_tpy = 252.0
+                if span_days >= 90:
+                    ann_tpy = min(len(pnls) / (span_days / 365.25), 2520.0)
+                sharpe = avg_pnl / std_pnl * (ann_tpy**0.5)
+            else:
+                sharpe = None
 
             # Max drawdown within the window
             running = 0.0
@@ -439,6 +562,12 @@ class PerformanceCalculator:
             "total_return_pct": total_return_live,
             "trade_count": metrics.total_trades,
             "trading_days": trading_days,
+            # C3 metric-honesty pass: annualization transparency for the
+            # dashboard — the Sharpe above is annualized by this factor
+            # (observed trading-days-per-year, 252 fallback), and cagr is the
+            # honest CAGR over the actual window.
+            "annualization_trades_per_year": metrics.annualization_trades_per_year,
+            "cagr": metrics.cagr,
         }
 
         # ── Validation thresholds ──────────────────────────────────────────
