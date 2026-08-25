@@ -15,7 +15,9 @@ trading decision (testing.md point-in-time discipline).
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -31,8 +33,16 @@ router = APIRouter(prefix="/analytics", tags=["analytics", "signal-outcomes"])
 # we evaluate plus the expiry window.
 BARS_LOOKBACK_DAYS = 120
 
+# Daily bars are static within a trading day; a short TTL lets repeated
+# dashboard polls hit the in-memory cache instead of re-walking the
+# TV → IBKR → SQLite → Polygon → CSV waterfall per symbol per request.
+BARS_CACHE_TTL_SECONDS = 300.0
+
 _db_manager = None
 _data_manager = None
+
+# {symbol: (monotonic_ts, bars)}
+_bars_cache: dict[str, tuple[float, list[dict]]] = {}
 
 
 def inject_dependencies(db_manager, data_manager=None) -> None:
@@ -45,13 +55,19 @@ async def _daily_bars(symbol: str) -> list[dict]:
     """Daily OHLC dicts for symbol; empty list on any failure (fail open)."""
     if _data_manager is None:
         return []
+    now = time.monotonic()
+    cached = _bars_cache.get(symbol)
+    if cached is not None and (now - cached[0]) < BARS_CACHE_TTL_SECONDS:
+        return cached[1]
     try:
         df = await _data_manager.get_bars(
             symbol, lookback_days=BARS_LOOKBACK_DAYS, timeframe="1d", is_futures=True
         )
         if df is None or df.empty:
             return []
-        return df.to_dict("records")
+        bars = df.to_dict("records")
+        _bars_cache[symbol] = (time.monotonic(), bars)
+        return bars
     except Exception as exc:
         logger.warning("[SignalOutcomes] bars fetch failed for %s: %s", symbol, exc)
         return []
@@ -85,9 +101,10 @@ async def get_signal_outcomes(
     now = datetime.now(tz=timezone.utc).date()
 
     bars_by_symbol: dict[str, list[dict]] = {}
-    for symbol in sorted({(r.get("symbol") or "").upper() for r in directional}):
-        if symbol:
-            bars_by_symbol[symbol] = await _daily_bars(symbol)
+    symbols = sorted({(r.get("symbol") or "").upper() for r in directional if r.get("symbol")})
+    if symbols:
+        fetched = await asyncio.gather(*(_daily_bars(s) for s in symbols))
+        bars_by_symbol = dict(zip(symbols, fetched, strict=True))
 
     outcomes = [
         evaluate_signal(r, bars_by_symbol.get((r.get("symbol") or "").upper(), []), now=now)
