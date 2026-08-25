@@ -1,0 +1,19 @@
+# Optional vectorbt parameter-sweep toolchain (NOT in requirements-core.txt)
+#
+# vectorbt is intentionally excluded from the engine runtime requirements
+# (heavy numba/plotly stack; engine modules guard the import). Use it only for
+# offline parameter sweeps via a dedicated venv. Verified combo (2026-08-18,
+# Python 3.12):
+#
+#   python -m venv .venv-vbt
+#   .venv-vbt/Scripts/python -m pip install -r requirements-vbt.txt
+#   .venv-vbt/Scripts/python backtest/vbt_mes_sweep.py
+#
+# numpy is pinned <2 because vectorbt 0.27.3 predates numpy 2.0; numba 0.59.1
+# matches. Python 3.12 is the project's canonical engine runtime.
+
+numpy==1.26.4
+numba==0.59.1
+pandas==2.2.3
+scipy
+vectorbt==0.27.3

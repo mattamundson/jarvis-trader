@@ -1662,6 +1662,7 @@ class SafetyLayer:
         order_type: str = "MKT",
         limit_price: float | None = None,
         stop_price: float | None = None,
+        take_profit: float | None = None,
     ) -> dict:
         """
         Run all safety checks then, if they pass, route the order to IB
@@ -1881,6 +1882,8 @@ class SafetyLayer:
                 quantity=final_quantity,
                 order_type=order_type.upper(),
                 limit_price=limit_price,
+                aux_price=stop_price,
+                take_profit=take_profit,
             )
 
             # HB-1: Broker-side Stop Orders atomically linked

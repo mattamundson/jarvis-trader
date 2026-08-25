@@ -191,12 +191,15 @@ function MetricCard({
   label,
   value,
   sub,
+  subTitle,
   valueColor,
 }: {
   icon: React.ReactNode;
   label: string;
   value: React.ReactNode;
   sub?: string;
+  /** Hover/title disclosure for the sub line (e.g. metric-honesty notes). */
+  subTitle?: string;
   valueColor?: string;
 }) {
   return (
@@ -214,7 +217,12 @@ function MetricCard({
         {value}
       </p>
       {sub && (
-        <p className="font-mono text-[10px] text-muted-foreground truncate">{sub}</p>
+        <p
+          className="font-mono text-[10px] text-muted-foreground truncate"
+          title={subTitle}
+        >
+          {sub}
+        </p>
       )}
     </div>
   );
@@ -411,6 +419,7 @@ export default function TodayPage() {
               sub={eod
                 ? `PF ${eod.validation_gates.pf?.toFixed(2) ?? "?"} · Sharpe ${eod.validation_gates.sharpe?.toFixed(2) ?? "?"} · ${eod.validation_gates.trades_count} trades`
                 : undefined}
+              subTitle="Sharpe annualized by observed trading-days-per-year (not fixed 252)"
               valueColor={statusColor}
             />
           )}

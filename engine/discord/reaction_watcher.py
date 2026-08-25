@@ -597,6 +597,19 @@ async def _gateway_session(
             should_resume = True
             break
 
+    else:
+        # 2026-08-15 incident: the async-for ended by exhausting the iterator
+        # (connection dropped with no CLOSE/CLOSING/ERROR frame at all) --
+        # previously silent, so an extended run of these looked identical in
+        # the log to a healthy idle session. `for...else` skips this when a
+        # `break` fired one of the branches above, which already log their
+        # own reason.
+        logger.warning(
+            "reaction_watcher: gateway stream ended with no close frame "
+            "(session_id=%s, ready_this_cycle=%s)",
+            session_id, session_id is not None,
+        )
+
     if heartbeat_task is not None and not heartbeat_task.done():
         heartbeat_task.cancel()
         try:
@@ -648,11 +661,17 @@ async def watch_approval_reactions() -> None:
                     timeout=30,
                     compress=0,
                 ) as ws:
-                    backoff = _INITIAL_BACKOFF_SECONDS  # reset on successful connect
                     logger.info("reaction_watcher: WebSocket connected")
                     resume_session_id, resume_seq, should_resume = await _gateway_session(
                         ws, http_session, resume_session_id, resume_seq
                     )
+                    if resume_session_id is not None:
+                        # Only reset backoff once the gateway actually authenticated
+                        # (READY/RESUMED set session_id). A raw TCP/TLS connect that
+                        # gets IDENTIFY-rejected and closed immediately must NOT reset
+                        # backoff, or a bad token/intents config spins the reconnect
+                        # loop at the 2s floor forever instead of backing off.
+                        backoff = _INITIAL_BACKOFF_SECONDS
                     if not should_resume:
                         # Non-resumable close code — clear resume state and re-identify
                         resume_session_id = None
