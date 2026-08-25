@@ -198,14 +198,66 @@ async def get_llm_stats(days_back: int = 0):
         per_agent: Dict[agent_name] -> {calls, cost_usd}
         per_provider: Dict[provider] -> {calls, input_tokens, output_tokens, cost_usd}
             where provider is direct|vertex|google|vertex-gemini|ollama|external
+        all_time_usd: Historical all-time spend (T4 persistence)
+        all_time_calls: Historical all-time call count (T4 persistence)
+        alerts: recent fired threshold alerts + threshold config (T4)
     """
     if not cost_tracker:
         raise HTTPException(500, "Cost tracker not initialized")
     try:
-        return await cost_tracker.get_daily_summary(days_back=days_back)
+        summary = await cost_tracker.get_daily_summary(days_back=days_back)
+        # T4: attach historical totals + alert state so /llm/stats reflects the
+        # persistent ledger, not just the single requested day.
+        try:
+            totals = await cost_tracker.get_all_time_totals()
+            summary["all_time_usd"] = totals["cost_usd"]
+            summary["all_time_calls"] = totals["calls"]
+        except Exception as _tot_err:
+            logger.warning("[LLM-STATS] all-time totals failed (non-fatal): %s", _tot_err)
+            summary["all_time_usd"] = 0.0
+            summary["all_time_calls"] = 0
+        try:
+            summary["alerts"] = await cost_tracker.get_alert_state()
+        except Exception as _al_err:
+            logger.warning("[LLM-STATS] alert state failed (non-fatal): %s", _al_err)
+            summary["alerts"] = {"daily_alert_usd": 0.0, "monthly_alert_usd": 0.0, "recent_fired": []}
+        return summary
     except Exception as e:
         logger.error(f"[LLM-STATS] Daily summary failed: {e}")
         raise HTTPException(500, f"Failed to get LLM stats: {e}") from e
+
+
+@router.get("/llm/stats/rollup")
+async def get_llm_stats_rollup(days: int = 30, months: int = 12):
+    """
+    Daily + monthly spend rollup (T4 persistent LLM spend tracking).
+
+    Query Parameters:
+        days: number of daily buckets to return (default 30, max 365)
+        months: number of monthly buckets to return (default 12, max 60)
+
+    Returns:
+        daily: [{date, calls, cost_usd, input_tokens, output_tokens}, ...]
+        monthly: [{year_month, calls, cost_usd}, ...]
+        all_time: {calls, cost_usd, input_tokens, output_tokens}
+        alerts: {daily_alert_usd, monthly_alert_usd, recent_fired}
+    """
+    if not cost_tracker:
+        raise HTTPException(500, "Cost tracker not initialized")
+    try:
+        daily = await cost_tracker.get_daily_rollup(days=days)
+        monthly = await cost_tracker.get_monthly_rollup(months=months)
+        all_time = await cost_tracker.get_all_time_totals()
+        alerts = await cost_tracker.get_alert_state()
+        return {
+            "daily": daily,
+            "monthly": monthly,
+            "all_time": all_time,
+            "alerts": alerts,
+        }
+    except Exception as e:
+        logger.error(f"[LLM-STATS] Rollup failed: {e}")
+        raise HTTPException(500, f"Failed to get LLM stats rollup: {e}") from e
 
 
 @router.get("/sentiment/reddit", response_model=RedditSentimentResponse)

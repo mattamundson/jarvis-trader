@@ -46,8 +46,10 @@ export function fmtUsdTile(v: number | null | undefined): string {
 /**
  * Builds the five "Additional metrics" tiles shown under the Strategy C+
  * IS/OOS panel. Each tile carries `live: false` (and a "Static" badge in the
- * UI) whenever the engine metrics endpoint didn't return that field, in which
- * case a plausible placeholder value is shown instead of live backtest output.
+ * UI) whenever the engine metrics endpoint didn't return that field. A
+ * missing metric renders as "—" (absent), never a fabricated/invented
+ * number — a plausible-looking placeholder would be indistinguishable from
+ * real backtest output at a glance, badge or no badge.
  */
 export function buildAdditionalMetricsTiles(
   fullPeriod: StrategyCFullPeriod | null | undefined
@@ -56,25 +58,22 @@ export function buildAdditionalMetricsTiles(
     {
       label: "Sortino",
       live: fullPeriod?.sortino != null,
-      value: fullPeriod?.sortino != null ? fmtNumTile(fullPeriod.sortino) : "3.75",
+      value: fmtNumTile(fullPeriod?.sortino),
     },
     {
       label: "Calmar",
       live: fullPeriod?.calmar != null,
-      value: fullPeriod?.calmar != null ? fmtNumTile(fullPeriod.calmar) : "2.09",
+      value: fmtNumTile(fullPeriod?.calmar),
     },
     {
       label: "Win Rate",
       live: fullPeriod?.win_rate != null,
-      value: fullPeriod?.win_rate != null ? fmtPctTile(fullPeriod.win_rate) : "57.6%",
+      value: fmtPctTile(fullPeriod?.win_rate),
     },
     {
       label: "Final Equity",
       live: fullPeriod?.final_equity != null,
-      value:
-        fullPeriod?.final_equity != null
-          ? fmtUsdTile(fullPeriod.final_equity)
-          : "$412,306.24",
+      value: fmtUsdTile(fullPeriod?.final_equity),
     },
     {
       label: "Final Multiple",
@@ -82,7 +81,7 @@ export function buildAdditionalMetricsTiles(
       value:
         fullPeriod?.final_multiple_x != null
           ? `${fmtNumTile(fullPeriod.final_multiple_x)}×`
-          : "4.12×",
+          : "—",
     },
   ];
 }

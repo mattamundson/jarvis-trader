@@ -167,6 +167,72 @@ COST_SWEEP_TIERS: dict[str, dict[str, float]] = {
 COST_TIER_ORDER: list[str] = ["optimistic", "realistic", "pessimistic", "catastrophic"]
 
 
+def _span_label(path: Path) -> str:
+    """Human-readable span label from a cache filename (e.g. '7.3y')."""
+    years = _span_years(path)
+    return f"{years:.1f}y" if years else "unknown-span"
+
+
+def _span_years(path: Path) -> float:
+    """Approx. calendar span (years) from the filename's two ISO date segments.
+
+    Contract: ``<PREFIX>_<START>_<END><SUFFIX>``. Off-contract names return 0.
+    This is a FILENAME-level estimate (cheap, no CSV read) used only by the
+    deep->shallow demotion guard to detect a span collapse like
+    ``MES_2015-01-01_2026-08-16`` (deep) vs ``MES_2024-04-26_2026-08-14``
+    (shallow). The authoritative span check is
+    ``cache_completeness.inspect_completeness`` on the actual timestamps; this
+    only needs the *relative* magnitude to catch a material demotion.
+    """
+    parts = Path(path).stem.split("_")
+    if len(parts) < 3:
+        return 0.0
+    try:
+        from datetime import date
+
+        start = date.fromisoformat(parts[1])
+        end = date.fromisoformat(parts[2])
+        return max((end - start).days, 0) / 365.25
+    except ValueError:
+        return 0.0
+
+
+def _is_material_shallow_demotion(chosen: Path, deep: Path) -> bool:
+    """True when ``chosen`` is materially shallower than ``deep``.
+
+    The 2026-08-17 contamination pair was 7.3y (deep) vs 2.3y (shallow): a
+    3.2x span collapse. We treat anything >= 1.5x shorter (or unknown) as
+    material so a demotion can never be *silent*, while not flagging the
+    benign refreshed-pull case where the latest-end file simply has a later
+    end date at a similar span (e.g. 2026-05-07 vs 2026-03-28 pulls of the
+    same 2y window).
+    """
+    deep_years = _span_years(deep)
+    chosen_years = _span_years(chosen)
+    if deep_years <= 0:
+        return False  # nothing to demote from
+    if chosen_years <= 0:
+        return True  # off-contract chosen: cannot prove it is deep -> flag
+    return chosen_years < deep_years / 1.5
+
+
+def _deep_cache_enforced() -> bool:
+    """Fail-fast switch for the deep->shallow demotion guard (2026-08-17 fix).
+
+    Default OFF: the demotion still logs a WARNING but returns the chosen
+    cache (historical behavior). Set ``GATE_V2_ENFORCE_DEEP_CACHE=1`` to make
+    ``_find_latest_cache`` raise ``RuntimeError`` instead of silently letting
+    shallow data stand in for a deep cache. Matches the house
+    ``GATE_V2_ENFORCE_*`` convention (evaluated at call time, no re-import).
+    """
+    return os.getenv("GATE_V2_ENFORCE_DEEP_CACHE", "0").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
 def _find_latest_cache(
     data_dir: Path, prefix: str, suffix: str = "_1h.csv", *, prefer_complete: bool = True
 ) -> Path:
@@ -287,26 +353,6 @@ def _find_latest_cache(
                 suffix,
                 holiday_dates=US_MARKET_HOLIDAYS | US_MARKET_EARLY_CLOSES,
             )
-            chosen = Path(pick["path"])
-            log = logging.getLogger(__name__)
-            if not pick["chose_latest_end"]:
-                log.warning(
-                    "Cache completeness: latest-end %s is holed; using "
-                    "completeness-preferred %s (%s)",
-                    latest.name,
-                    chosen.name,
-                    pick["reason"],
-                )
-            elif pick["fallback"]:
-                log.warning(
-                    "Cache completeness: no fully-trustworthy %s%s cache; using "
-                    "latest-end %s which has %s suspicious gap(s)",
-                    prefix,
-                    suffix,
-                    latest.name,
-                    pick["n_suspicious_gaps"],
-                )
-            return chosen
         except Exception as exc:  # never let the completeness check break loading
             logging.getLogger(__name__).warning(
                 "Cache completeness check failed (%s); using latest-end %s",
@@ -314,6 +360,59 @@ def _find_latest_cache(
                 latest.name,
             )
             return latest
+
+        chosen = Path(pick["path"])
+        log = logging.getLogger(__name__)
+        if not pick["chose_latest_end"]:
+            log.warning(
+                "Cache completeness: latest-end %s is holed; using "
+                "completeness-preferred %s (%s)",
+                latest.name,
+                chosen.name,
+                pick["reason"],
+            )
+        elif pick["fallback"]:
+            log.warning(
+                "Cache completeness: no fully-trustworthy %s%s cache; using "
+                "latest-end %s which has %s suspicious gap(s)",
+                prefix,
+                suffix,
+                latest.name,
+                pick["n_suspicious_gaps"],
+            )
+
+        # DEEP->SHALLOW demotion guard (2026-08-17 contamination fix, E2).
+        # `find_trustworthy_cache` can return a cache whose END date is later
+        # but whose SPAN is far shorter than the latest-end deep cache (e.g.
+        # the 7.3y MES_2015-01-01_2026-08-16 deep cache vetoed as "holed" in
+        # favor of the 2.3y MES_2024-04-26_2026-08-14 shallow cache, which
+        # produced fake 'deep' verdicts at n_windows=20). Shallow data must
+        # NEVER silently certify a deep verdict: log a WARNING naming the
+        # exact cache chosen + reason, and fail fast when
+        # GATE_V2_ENFORCE_DEEP_CACHE=1. Runs OUTSIDE the try above so the
+        # enforcement raise is not swallowed by the load-tolerance fallback.
+        if (
+            pick["fallback"]
+            or not pick["chose_latest_end"]
+            or chosen != latest
+        ) and _is_material_shallow_demotion(chosen, latest):
+            if _deep_cache_enforced():
+                raise RuntimeError(
+                    f"GATE_V2_ENFORCE_DEEP_CACHE: refusing shallow fallback "
+                    f"{chosen.name} when deep cache {latest.name} exists "
+                    f"(completeness reason: {pick['reason']})"
+                )
+            log.warning(
+                "Cache completeness DEEP->SHALLOW demotion: deep cache %s "
+                "(%s) vetoed; using shallow %s (%s). Shallow caches do NOT "
+                "certify deep gate-v2 verdicts. Reason: %s",
+                latest.name,
+                _span_label(latest),
+                chosen.name,
+                _span_label(chosen),
+                pick["reason"],
+            )
+        return chosen
 
     return latest
 

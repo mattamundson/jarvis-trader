@@ -1635,12 +1635,56 @@ async def api_health():
     }
 
 
+def classify_pm2_one_shot(pm2_env: dict) -> bool:
+    """True iff this pm2 app is a one-shot cron job, not a long-lived daemon.
+
+    (Phase 4.4 / P4-4) A pm2 app configured with `cron_restart` + `autorestart:
+    false` is DESIGNED to sit `status: "stopped"` between cron fires — that is
+    its correct idle state, not a failure. `jarvis-health-check`,
+    `jarvis-morning-brief`, `jarvis-eod-summary`, `jarvis-rolling-wfe`,
+    `jarvis-weekly-tearsheet`, `jarvis-discord-export`, the `jarvis-vault-*`
+    jobs, and `down-alert` are all this shape (see engine/ecosystem.config.js).
+    Naively reading raw pm2 `status` for these produces a false "X is dead"
+    report — confirmed 2026-08-01 for `down-alert` (it was healthy the whole
+    time; its log showed `OK (HTTP 200)` every minute while pm2 correctly
+    reported `stopped` between cron fires). Any consumer of pm2 status for a
+    one-shot app must check log recency instead of `status == "online"`.
+    """
+    return bool(pm2_env.get("cron_restart")) and pm2_env.get("autorestart") is False
+
+
+def _log_age_seconds(log_path: str | None) -> float | None:
+    """Seconds since `log_path` was last written, or None if missing/unreadable.
+
+    Pure/cheap (single stat call) so it's safe to call per-request without a
+    cache — mirrors the mtime-staleness check down-alert-watchdog/run.ps1
+    already uses for down-alert.mjs specifically; this generalizes the same
+    pattern to any pm2 app so future watchdogs don't have to reinvent it.
+    """
+    if not log_path:
+        return None
+    try:
+        return max(0.0, time.time() - os.path.getmtime(log_path))
+    except OSError:
+        return None
+
+
 @router.get(
     "/health/pm2",
-    description="pm2 process status for jarvis-engine — restart count, uptime, memory.",
+    description="pm2 process status for a named app (default jarvis-engine) — "
+    "restart count, uptime, memory, and one-shot/log-recency classification "
+    "for cron_restart apps so callers don't misread a correctly-idle "
+    "one-shot job's pm2 `status:stopped` as dead (Phase 4.4).",
 )
-async def pm2_status():
-    """Query pm2 for jarvis-engine process stats. Returns empty on non-pm2 deployments."""
+async def pm2_status(name: str = "jarvis-engine"):
+    """Query pm2 for `name`'s process stats. Returns empty on non-pm2 deployments.
+
+    For a one-shot app (`cron_restart` set + `autorestart:false`), `status`
+    alone does NOT indicate health — `stopped` is its correct resting state
+    between cron fires. Callers must use `is_one_shot` + `log_age_seconds`
+    (how long since its log file last got a write) rather than
+    `status == "online"` to judge whether it's actually dead vs. just idle.
+    """
     import asyncio
     import json as _json
 
@@ -1653,9 +1697,11 @@ async def pm2_status():
         stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
         processes = _json.loads(stdout.decode())
         for p in processes:
-            if p.get("name") == "jarvis-engine":
+            if p.get("name") == name:
                 monit = p.get("monit", {})
                 pm2_env = p.get("pm2_env", {})
+                is_one_shot = classify_pm2_one_shot(pm2_env)
+                log_path = pm2_env.get("pm_out_log_path")
                 return {
                     "found": True,
                     "status": pm2_env.get("status"),
@@ -1665,8 +1711,17 @@ async def pm2_status():
                     "memory_mb": round(monit.get("memory", 0) / 1_048_576, 1),
                     "cpu_pct": monit.get("cpu", 0),
                     "pid": p.get("pid"),
+                    # One-shot classification (Phase 4.4) — a one-shot app sitting
+                    # "stopped" is HEALTHY, not dead. Consumers must gate any
+                    # "is this dead" verdict on is_one_shot before trusting
+                    # status == "online"; for one-shot apps, check log recency
+                    # (log_age_seconds) against that app's own cron cadence instead.
+                    "is_one_shot": is_one_shot,
+                    "cron_restart": pm2_env.get("cron_restart"),
+                    "log_path": log_path,
+                    "log_age_seconds": _log_age_seconds(log_path),
                 }
-        return {"found": False, "note": "jarvis-engine not found in pm2 list"}
+        return {"found": False, "note": f"{name} not found in pm2 list"}
     except Exception as exc:
         return {"found": False, "error": str(exc)}
 
