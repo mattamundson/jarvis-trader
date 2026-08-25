@@ -331,6 +331,18 @@ class ApproveBody(BaseModel):
         default=None,
         description="Override entry price (uses pipeline snapshot price if absent)",
     )
+    quantity: Optional[int] = Field(
+        default=None,
+        description="Override quantity (uses pipeline final_quantity if absent)",
+    )
+    stop_price: Optional[float] = Field(
+        default=None,
+        description="Override stop price (uses pipeline trade_decision.stop_price if absent)",
+    )
+    take_profit: Optional[float] = Field(
+        default=None,
+        description="Override profit target (uses pipeline trade_decision.target_1 if absent)",
+    )
 
 
 class RejectBody(BaseModel):
@@ -517,15 +529,43 @@ async def approve_candidate(
             ),
         )
 
-    # Submit via the existing safety_layer.submit_paper_order path
+    # Submit via the existing safety_layer.submit_paper_order path.
+    # 2026-08-18 fix: the queue-approve path hardcoded quantity=1 and dropped
+    # stop_price — the verdict's final_quantity (2) and stop (7715.44) never
+    # reached the ledger, so approved trades opened with no stop/target and
+    # half the intended size. Thread both through now.
+    _verdict = row.get("verdict") or {}
+    _trade_dec = _verdict.get("trade_decision") or {}
+    _fund_dec = _verdict.get("fund_decision") or {}
+    _final_qty = int(
+        _fund_dec.get("final_quantity")
+        or _trade_dec.get("quantity")
+        or body.quantity
+        or 1
+    )
+    _stop_price = (
+        _trade_dec.get("stop_price")
+        or _trade_dec.get("stop_loss")
+        or body.stop_price
+        or None
+    )
+    _take_profit = (
+        _trade_dec.get("target_1")
+        or _trade_dec.get("target_price")
+        or _trade_dec.get("take_profit")
+        or body.take_profit
+        or None
+    )
     try:
         result = await _safety_layer.submit_paper_order(
             symbol=symbol,
             action=action,
-            quantity=1,
+            quantity=_final_qty,
             price=entry_price,
             order_type="MKT",
             limit_price=None,
+            stop_price=float(_stop_price) if _stop_price is not None else None,
+            take_profit=float(_take_profit) if _take_profit is not None else None,
         )
     except Exception as exc:
         _audit("approve_submit_error", candidate_id, {"error": str(exc)})
@@ -564,7 +604,7 @@ async def approve_candidate(
             _ledger_trade_id = _paper_tracker.add_paper_trade(
                 symbol=symbol,
                 side=action.lower(),
-                quantity=1.0,
+                quantity=float(_final_qty),
                 entry_price=float(entry_price),
                 stop_loss=float(_stop) if _stop is not None else None,
                 take_profit=float(_tgt) if _tgt is not None else None,

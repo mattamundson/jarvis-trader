@@ -480,6 +480,13 @@ export interface ActionableBoardResponse {
   count: number;
   available: boolean;
   note?: string;
+  // Diagnostics for the empty state: raw_count = rows fetched from the queue
+  // before filters (buy/sell only, rejected/error dropped, deduped to newest
+  // per symbol+side); shown = items actually displayed. raw_count > 0 with
+  // shown == 0 means the queue has decisions but all were filtered out (e.g.
+  // every recent one was rejected) — a different "why" than "no decisions".
+  raw_count?: number;
+  shown?: number;
 }
 
 export async function fetchActionableBoard(): Promise<ActionableBoardResponse> {
@@ -1386,6 +1393,60 @@ export interface ResearchCandidatesResponse {
 /** GET /strategy/research-candidates — X-bookmark edge-scan research candidates. */
 export async function fetchResearchCandidates(): Promise<ResearchCandidatesResponse> {
   return fetchEngine<ResearchCandidatesResponse>("/strategy/research-candidates");
+}
+
+// ── Equity SMA-trend certification + forward evidence (GET /strategy/equity-research) ────
+// Daily SMA-trend WFO certs (SPY/QQQ/AAPL/TSLA) and forward evidence from closed-trades ledger.
+// Non-authorizing: these never route capital.
+
+export interface EquityCertRow {
+  symbol: string | null;
+  fast: number | null;
+  slow: number | null;
+  atr_mult: number | null;
+  verdict: string | null; // PASS | FAIL
+  passed_via: string | null;
+  n_windows: number | null;
+  pf_ci_lower: number | null;
+  p_edge: number | null;
+  dsr: number | null;
+  mc_95th_dd_pct: number | null;
+  total_oos_trades: number | null;
+  created_at: string | null;
+  source_file: string | null;
+  note: string | null;
+}
+
+export interface ForwardCandidateRow {
+  id: string | null;
+  symbol: string | null;
+  graduated: boolean | null;
+  forward_n_windows: number | null;
+  forward_p_edge: number | null;
+  forward_pf_ci_lower: number | null;
+  forward_total_trades: number | null;
+  forward_total_pnl: number | null;
+  shuffle_p_value: number | null;
+  shuffle_passes: boolean | null;
+  dsr: number | null;
+  stat_gate: any; // dict {enforced, ab..., passes, reasons}
+  survives_family_fdr: boolean | null;
+  reason: string | null;
+}
+
+export interface EquityResearchResponse {
+  equity_certs: EquityCertRow[];
+  forward_evidence: ForwardCandidateRow[];
+  forward_generated_at: string | null;
+  forward_window_days: number | null;
+  forward_graduation_rule: any;
+  total: number;
+  generated_at: string;
+}
+
+/** GET /strategy/equity-research — Equity SMA-trend WFO certs + forward evidence. */
+export async function fetchEquityResearch(): Promise<EquityResearchResponse> {
+  return fetchEngine<EquityResearchResponse>("/strategy/equity-research");
 }
 
 // ── Macro trend regime (GET /macro/regime) — X-bookmark trend edges on SPX ────

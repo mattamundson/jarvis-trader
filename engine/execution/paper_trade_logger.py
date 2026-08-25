@@ -203,6 +203,16 @@ class PaperTradeLogger:
                 signed_qty=float(trade_data.get("quantity", 0)),
                 filled_price=float(filled_price),
                 order_id=str(trade_record["order_id"] or ""),
+                stop_loss=(
+                    float(trade_data["stop_price"])
+                    if trade_data.get("stop_price") is not None
+                    else None
+                ),
+                take_profit=(
+                    float(trade_data["take_profit"])
+                    if trade_data.get("take_profit") is not None
+                    else None
+                ),
             )
 
         except Exception as exc:
@@ -214,6 +224,8 @@ class PaperTradeLogger:
         signed_qty: float,
         filled_price: float,
         order_id: str,
+        stop_loss: float | None = None,
+        take_profit: float | None = None,
     ) -> None:
         """Mirror full 0→position→0 nets onto PortfolioTracker; partials stay JSON-only."""
         if not self._mirror_to_tracker or self._portfolio_tracker is None:
@@ -267,6 +279,8 @@ class PaperTradeLogger:
                     notes=notes,
                     candidate_id=candidate_id,
                     decision_identity=decision_identity,
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
                 )
                 self._open_trade_id_by_symbol[sym] = tid
             elif prev != 0.0 and new == 0.0:

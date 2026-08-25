@@ -726,6 +726,8 @@ class IBGatewayConnector:
                     "slippage_ticks": slippage_ticks,
                     "fill_time": fill_time,
                     "is_futures": is_futures,
+                    "stop_price": order.get("stop_price"),
+                    "take_profit": order.get("take_profit"),
                 }
             )
         except Exception as exc:
@@ -855,6 +857,7 @@ class IBGatewayConnector:
         limit_price: Optional[float] = None,
         aux_price: Optional[float] = None,
         parent_order_id: Optional[str] = None,
+        take_profit: Optional[float] = None,
     ) -> Optional[str]:
         """
         Record a paper fill after ``SafetyLayer`` has already validated the order.
@@ -922,6 +925,8 @@ class IBGatewayConnector:
             "order_type": internal_ot,
             "limit_price": limit_price,
             "is_futures": is_futures,
+            "stop_price": aux_price,
+            "take_profit": take_profit,
         }
 
         res = await self._submit_paper_order(order, [])
