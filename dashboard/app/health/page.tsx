@@ -30,7 +30,6 @@ import { ConnectionHealthCard } from "@/components/ConnectionHealthCard";
 import { DatabaseStatsCard } from "@/components/DatabaseStatsCard";
 import { EngineUptimeCard } from "@/components/EngineUptimeCard";
 import { IbGatewayDetailCard } from "@/components/IbGatewayDetailCard";
-import { IBGatewayStatus } from "@/components/IBGatewayStatus";
 import { SystemLivenessCard } from "@/components/SystemLivenessCard";
 import { CacheStatsCard } from "@/components/CacheStatsCard";
 import { useWebSocket } from "@/hooks/useWebSocket";
@@ -667,21 +666,6 @@ export default function HealthPage() {
         {/* IB Gateway detail — connection status, account, mode, latency */}
         <WidgetErrorBoundary name="IB Gateway Detail">
           <IbGatewayDetailCard />
-        </WidgetErrorBoundary>
-
-        {/*
-          IB Gateway status (Phase 6.5, D3) — was built, never mounted anywhere.
-          Distinct from IbGatewayDetailCard above: that one is read-only detail,
-          this one adds a "Connect" action button. Boundary (D3): the button
-          only hits POST /data/reconnect, the engine's idempotent IBKR data-leg
-          reconnect (see GT-38 comment in the component) — it does NOT and
-          cannot start the IB Gateway OS process itself. A FastAPI handler has
-          no way to launch a desktop app on Amo's machine; that step stays
-          manual (see docs/runbooks/IB_RECONNECT_AND_HEALTH.md). No
-          /ib/connect engine endpoint exists or should be built for this.
-        */}
-        <WidgetErrorBoundary name="IB Gateway Status">
-          <IBGatewayStatus />
         </WidgetErrorBoundary>
 
         {/* Page title + overall status */}
