@@ -1,0 +1,12 @@
+{
+  "bars": 42826,
+  "span_years": 7.277,
+  "combos": 54,
+  "timings_s": {
+    "load": 0.67,
+    "signals": 4.251,
+    "portfolio_build": 25.688,
+    "metrics": 9.55,
+    "total": 40.219
+  }
+}

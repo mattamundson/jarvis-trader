@@ -108,6 +108,22 @@ def test_daily_bars_fail_open_keeps_previous_cache() -> None:
 
 # ── trades_router: get_trades_journal narrow columns + TTL cache ──────────────
 
+# Live paper_trades schema (PRAGMA table_info, engine/data/jarvis_trader.db).
+# Keep in sync with the table: this set is the regression guard that catches a
+# router selecting a phantom column (e.g. regime_tier) which would 500 live.
+REAL_PAPER_TRADES_COLUMNS = frozenset(
+    {
+        "id", "trade_id", "symbol", "side", "quantity", "entry_price",
+        "exit_price", "entry_time", "exit_time", "pnl", "status",
+        "strategy_params", "notes", "regime", "structure_position", "bias",
+        "composite_score", "stc_contrib", "orb_contrib", "vwap_contrib",
+        "risk_pct_used", "stop_loss", "take_profit", "account_id",
+        "idempotency_key", "stop_order_id", "target_order_id",
+        "bracket_status", "slippage_ticks", "mae_pct", "mfe_pct", "mae_usd",
+        "mfe_usd", "epoch", "quote_source", "strategy_id",
+    }
+)
+
 
 class _FakeDb:
     """Fake DatabaseManager with a scripted connection/query."""
@@ -137,6 +153,12 @@ class _FakeConn:
         # Mirror the fixed column list; count them from the last query.
         cols = self._query.split("SELECT ", 1)[1].split(" FROM ", 1)[0]
         names = [c.strip() for c in cols.split(",")]
+        cols = self._query.split("SELECT ", 1)[1].split(" FROM ", 1)[0]
+        names = [c.strip() for c in cols.split(",")]
+        # Regression guard: any column not in the real table would 500 live
+        # ("no such column"). Fail the test instead of mirroring the bug.
+        missing = [n for n in names if n not in REAL_PAPER_TRADES_COLUMNS]
+        assert not missing, f"router SELECTs columns missing from paper_trades: {missing}"
         return [(n, None, None, None, None, None, None) for n in names]
 
     def fetchall(self):
@@ -150,6 +172,7 @@ def test_journal_narrow_columns_and_cache() -> None:
     import database
 
     # 26 model columns, 2 synthetic rows.
+    # 20 real model columns, 2 synthetic rows.
     cols = (
         "id", "trade_id", "symbol", "side", "quantity", "entry_price",
         "exit_price", "entry_time", "exit_time", "pnl", "status",
@@ -162,6 +185,7 @@ def test_journal_narrow_columns_and_cache() -> None:
         1, "t1", "MES", "buy", 2.0, 5000.0, 5010.0, "2026-07-01T15:00:00+00:00",
         "2026-07-01T16:00:00+00:00", 20.0, "closed", None, "note", "trend",
         None, None, 0.75, 1, 0, 0, 2, "trader", 0.8, 0.1, 0.7, "1h",
+        None, None, 0.75, 1, 0, 0,
     )
     fake = _FakeDb([row, row])
     T._journal_cache.clear()
@@ -199,6 +223,10 @@ def test_journal_cache_respects_limit_key() -> None:
     row = (1, "t1", "MES", "buy", 1.0, 5000.0, None, "2026-07-01T15:00:00+00:00",
            None, None, "open", None, None, "trend", None, None, None,
            None, None, None, None, None, None, None, None, "1h")
+            "composite_score", "stc_contrib", "orb_contrib", "vwap_contrib")
+    row = (1, "t1", "MES", "buy", 1.0, 5000.0, None, "2026-07-01T15:00:00+00:00",
+           None, None, "open", None, None, "trend", None, None, None,
+           None, None, None)
     fake = _FakeDb([row])
     T._journal_cache.clear()
 

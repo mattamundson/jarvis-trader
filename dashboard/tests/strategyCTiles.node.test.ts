@@ -49,17 +49,52 @@ test("Final Multiple gets its own separate, correctly-labeled tile", () => {
   assert.notEqual(finalEquity!.value, finalMultiple!.value);
 });
 
-test("Final Equity falls back to a Static dollar placeholder, not a multiple, when offline", () => {
+test("missing metrics render as — (em dash), never a fabricated number, when offline", () => {
+  // P6-3: a missing metric must render as visibly absent, not as a
+  // plausible-looking invented figure (the old fallbacks were hardcoded
+  // numbers like "3.75" / "$412,306.24" / "4.12×" that were
+  // indistinguishable from real backtest output at a glance).
   const tiles = buildAdditionalMetricsTiles(undefined);
 
-  const finalEquity = tiles.find((t) => t.label === "Final Equity");
-  assert.ok(finalEquity);
-  assert.equal(finalEquity!.live, false);
-  assert.ok(finalEquity!.value.startsWith("$"));
-  assert.ok(!finalEquity!.value.includes("×"));
+  assert.equal(tiles.length, 5);
+  for (const tile of tiles) {
+    assert.equal(tile.live, false, `${tile.label} should be marked non-live`);
+    assert.equal(tile.value, "—", `${tile.label} should render —, got "${tile.value}"`);
+  }
+});
 
-  const finalMultiple = tiles.find((t) => t.label === "Final Multiple");
-  assert.ok(finalMultiple);
-  assert.equal(finalMultiple!.live, false);
-  assert.ok(finalMultiple!.value.includes("×"));
+test("missing metrics render as — even when fullPeriod exists but individual fields are null", () => {
+  const tiles = buildAdditionalMetricsTiles({
+    sortino: null,
+    calmar: null,
+    win_rate: null,
+    final_equity: null,
+    final_multiple_x: null,
+  });
+
+  for (const tile of tiles) {
+    assert.equal(tile.live, false);
+    assert.equal(tile.value, "—");
+  }
+});
+
+test("a partially-populated fullPeriod shows live values where present and — only where missing", () => {
+  const tiles = buildAdditionalMetricsTiles({
+    sortino: 2.5,
+    calmar: null,
+    win_rate: 0.55,
+    final_equity: null,
+    final_multiple_x: 4.123,
+  });
+
+  const byLabel = Object.fromEntries(tiles.map((t) => [t.label, t]));
+  assert.equal(byLabel["Sortino"].live, true);
+  assert.equal(byLabel["Sortino"].value, "2.50");
+  assert.equal(byLabel["Calmar"].live, false);
+  assert.equal(byLabel["Calmar"].value, "—");
+  assert.equal(byLabel["Win Rate"].live, true);
+  assert.equal(byLabel["Final Equity"].live, false);
+  assert.equal(byLabel["Final Equity"].value, "—");
+  assert.equal(byLabel["Final Multiple"].live, true);
+  assert.equal(byLabel["Final Multiple"].value, "4.12×");
 });
