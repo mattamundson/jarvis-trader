@@ -1895,33 +1895,80 @@ class MarketDataManager:
 
     async def get_vix(self) -> dict:
         """
-        Get VIX index value. Returns {value, source}.
-        Waterfall: FRED → IBKR → Polygon.
-        """
-        # Tier 1: FRED (VIXCLS series — most reliable, free)
-        try:
-            from data.fred_data import FREDDataService
+        Get VIX index value. Returns {value, source, ts}.
 
-            fred = FREDDataService(getattr(self._config, "FRED_API_KEY", None))
-            vix_val = await fred.get_latest_value("VIXCLS")
-            if vix_val is not None:
-                return {"value": float(vix_val), "source": "fred"}
+        Waterfall (freshest first): IBKR live → FRED EOD → Yahoo intraday → Polygon.
+
+        - IBKR: real-time CBOE index quote via the connected gateway (1-3s latency,
+          requires the US Index market-data subscription on the account).
+        - FRED: authoritative EOD close (VIXCLS), used when the gateway feed is
+          down or stale (nights/weekends).
+        - Yahoo: free ~15-min-delayed intraday snapshot as a no-cost fallback.
+        - Polygon: last resort; the configured key is currently dead (403).
+        """
+        now = datetime.now(timezone.utc).isoformat()
+
+        # Tier 1: IBKR real-time index quote
+        if self.ibkr and self.ibkr.is_connected:
+            try:
+                result = await self.ibkr.get_snapshot_price("VIX", is_futures=False)
+                if result.get("last_price"):
+                    return {
+                        "value": float(result["last_price"]),
+                        "source": "ibkr",
+                        "ts": now,
+                    }
+            except Exception:
+                pass
+
+        # Tier 2: FRED VIXCLS (authoritative EOD close)
+        try:
+            # Use the free fredgraph.csv endpoint directly — no API key, returns
+            # the real series. Avoids fredapi (key-gated) and the hardcoded
+            # FRED_SNAPSHOT_DEFAULTS fallback that silently returns a stale constant.
+            from urllib.request import urlopen
+
+            import pandas as pd
+
+            url = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=VIXCLS"
+            with urlopen(url, timeout=30) as resp:
+                text = resp.read().decode("utf-8")
+            df = pd.read_csv(pd.io.common.StringIO(text))
+            if not df.empty and len(df.columns) >= 2:
+                vals = pd.to_numeric(df[df.columns[1]], errors="coerce").dropna()
+                if not vals.empty:
+                    return {
+                        "value": float(vals.iloc[-1]),
+                        "source": "fred",
+                        "ts": str(df[df.columns[0]].iloc[-1]),
+                    }
         except Exception:
             pass
 
-        # Tier 2: IBKR Index("VIX")
-        if self.ibkr and self.ibkr.is_connected:
-            result = await self.ibkr.get_snapshot_price("VIX", is_futures=False)
-            if result.get("last_price"):
-                return {"value": result["last_price"], "source": "ibkr"}
+        # Tier 3: Yahoo intraday (free, ~15-min delayed)
+        try:
+            import yfinance as yf
 
-        # Tier 3: Polygon I:VIX
+            hist = yf.Ticker("^VIX").history(period="1d", interval="1m")
+            if hist is not None and not hist.empty:
+                val = float(hist["Close"].iloc[-1])
+                if val > 0:
+                    return {
+                        "value": val,
+                        "source": "yahoo",
+                        "ts": hist.index[-1].isoformat(),
+                    }
+        except Exception:
+            pass
+
+        # Tier 4: Polygon I:VIX (deprecated/403 — last resort)
         if self.polygon:
             result = self.polygon.get_vix_value()
             if result.get("value"):
+                result["ts"] = now
                 return result
 
-        return {"value": None, "source": "unavailable"}
+        return {"value": None, "source": "unavailable", "ts": now}
 
     async def get_options_greeks(self, symbol: str) -> dict:
         """

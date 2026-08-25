@@ -130,6 +130,12 @@ def get_trades_journal(
     # Narrow column list: only the fields the response model exposes. SELECT *
     # pulled all 36 paper_trades columns including large TEXT blobs
     # (strategy_params, notes) — the dominant cost once a connection is open.
+    # Narrow column list: only the fields the response model exposes that also
+    # EXIST in paper_trades. SELECT * pulled all 36 columns including large
+    # TEXT blobs (strategy_params, notes) — the dominant cost once a connection
+    # is open. Model fields with no backing column (regime_tier, deciding_stage,
+    # bull/bear_score, debate_confidence, timeframe) are intentionally omitted —
+    # they were never populated under SELECT * either, so they stay None.
     _JOURNAL_COLUMNS = (
         "id", "trade_id", "symbol", "side", "quantity", "entry_price",
         "exit_price", "entry_time", "exit_time", "pnl", "status",

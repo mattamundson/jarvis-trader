@@ -19,9 +19,11 @@ Usage (drop-in):
     from backtest.cache_loader_polars import load_cache_fast
     df = load_cache_fast(data_file)   # same shape as pd.read_csv path
 
-ArcticDB note: polars is the zero-install first step (already present in the
-engine env). The loader seam is designed so ArcticDB can replace the CSV
-source later without touching runner code.
+ArcticDB note: polars is an optional dependency — the module falls back to
+pandas automatically when it is not installed, so it is NOT required in the
+engine env (verified 2026-08-18: engine/.venv lacks polars; pip install
+polars to enable the fast path). The loader seam is designed so ArcticDB can
+replace the CSV source later without touching runner code.
 """
 
 from __future__ import annotations
@@ -76,9 +78,7 @@ def load_cache_fast(path: Path | str, verbose: bool = False) -> pd.DataFrame:
             return _load_pandas(path, verbose=verbose)
         lf = lf.rename({actual: ts_col})
 
-    lf = lf.with_columns(
-        pl.col(ts_col).str.to_datetime(time_unit="us", strict=False).alias(ts_col)
-    )
+    lf = lf.with_columns(pl.col(ts_col).str.to_datetime(time_unit="us", strict=False).alias(ts_col))
     df = lf.to_pandas()
     df[ts_col] = pd.to_datetime(df[ts_col])
     df = df.set_index(ts_col).sort_index()
@@ -116,9 +116,7 @@ def benchmark_loads(path: Path | str, repeats: int = 3) -> dict:
         "pandas_mean_s": float(np.mean(pandas_times)),
         "polars_mean_s": float(np.mean(polars_times)) if polars_times else None,
         "speedup_x": (
-            float(np.mean(pandas_times) / np.mean(polars_times))
-            if polars_times
-            else None
+            float(np.mean(pandas_times) / np.mean(polars_times)) if polars_times else None
         ),
     }
     print(
