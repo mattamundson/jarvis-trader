@@ -1,9 +1,14 @@
 """
-JARVIS TRADER — Pipeline Funnel Tests
-=====================================
-Unit tests for /analytics/pipeline-funnel: the funnel stage math (runs →
-signals → approved → executed → filled), the 30/90d window parameter, and
-the TTL cache.
+JARVIS TRADER — Pipeline Funnel Tests (T9, v2 windows-shaped endpoint)
+======================================================================
+Unit tests for /analytics/pipeline-funnel (v2): both 30d/90d windows in one
+payload, per-stage counts (runs -> signals -> approved -> executed -> filled),
+the monotone approval cap, ledger-drift notes, and the 300s TTL cache.
+
+The endpoint reads through DatabaseManager._connect() and issues raw COUNT(*)
+queries in a fixed order per window (7 queries: runs, signals, auto_signals,
+paq approved, pta approved, executed, filled), so the fake DB pops canned
+counts in that order and records the SQL text for cache-hit assertions.
 
 Run with:
     cd engine
@@ -14,7 +19,7 @@ from __future__ import annotations
 
 import os
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from fastapi import FastAPI
@@ -47,24 +52,53 @@ if _ENGINE_ROOT not in sys.path:
 
 from routers import analytics_router  # noqa: E402
 
+# 7 COUNT queries per funnel window, in the exact order the endpoint issues them.
+_QUERIES_PER_WINDOW = 7
+
+
+class _FakeCursor:
+    """conn.execute() result: fetchone() returns the canned row."""
+
+    def __init__(self, row):
+        self._row = row
+
+    def fetchone(self):
+        return self._row
+
+
+class _FakeConn:
+    """Minimal sqlite3.Connection stand-in consumed by _funnel_window."""
+
+    def __init__(self, fake_db):
+        self._db = fake_db
+
+    def execute(self, sql, params=()):
+        self._db.calls.append(sql)
+        n = self._db._counts.pop(0) if self._db._counts else 0
+        return _FakeCursor((n,))
+
+    def close(self):
+        pass
+
+
+class _NullLock:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
 
 class _FakeDb:
-    """Minimal fake DatabaseManager: fetch_one returns configured counts.
+    """Minimal DatabaseManager stand-in exposing the _lock/_connect surface."""
 
-    The funnel endpoint only uses fetch_one with COUNT(*) queries; the exact
-    SQL text is irrelevant for the math, so we return a canned row per call
-    by cycling through a list in the order the endpoint issues queries.
-    """
-
-    def __init__(self, counts: list[int]):
+    def __init__(self, counts):
         self._counts = list(counts)
         self.calls: list[str] = []
+        self._lock = _NullLock()
 
-    def fetch_one(self, sql: str, params: tuple = ()) -> dict:
-        self.calls.append(sql)
-        if not self._counts:
-            return {"n": 0}
-        return {"n": self._counts.pop(0)}
+    def _connect(self):
+        return _FakeConn(self)
 
 
 @pytest.fixture
@@ -83,124 +117,118 @@ def _clear_funnel_cache():
     analytics_router._funnel_cache.clear()
 
 
-def _set_db(fake: _FakeDb):
+def _set_db(fake):
     analytics_router.set_db_manager(fake)  # type: ignore[arg-type]
 
 
-# ── _compute_pipeline_funnel: stage math ────────────────────────────────────
+# ── _funnel_window: stage math ──────────────────────────────────────────────
 
 
 def test_funnel_math_happy_path():
-    fake = _FakeDb([1000, 200, 150, 40, 38, 5, 2, 3])  # runs, signals, approved,
-    # executed, filled, human_approved(paq), human_approved(pta), human_rejected
-    result = analytics_router._compute_pipeline_funnel(fake, days=30)
+    # runs, signals, auto, paq, pta, executed, filled
+    fake = _FakeDb([1000, 200, 150, 40, 5, 40, 38])
+    result = analytics_router._funnel_window(fake._connect(), 30)
 
-    assert result["period"] == "30d"
     assert result["days"] == 30
-    assert result["funnel"] == {
-        "runs": 1000,
-        "signals": 200,
-        "approved": 150,
-        "executed": 40,
-        "filled": 38,
+    assert result["runs"] == 1000
+    assert result["signals"] == 200
+    assert result["auto_signals"] == 150
+    assert result["human_signals"] == 50
+    assert result["queue_approved_raw"] == 45
+    assert result["approved"] == 195  # 150 + min(50, 45)
+    assert result["executed"] == 40
+    assert result["filled"] == 38
+    assert result["conversion"] == {
+        "signal_rate_pct": 20.0,
+        "approval_rate_pct": 97.5,
+        "execution_rate_pct": 20.51,  # 40/195 = 20.5128 -> 20.51
+        "fill_rate_pct": 95.0,
+        "overall_fill_rate_pct": 3.8,
     }
-    assert result["conversion_rates"] == {
-        "runs_to_signals": 20.0,  # 200/1000
-        "signals_to_approved": 75.0,  # 150/200
-        "approved_to_executed": 26.7,  # 40/150
-        "executed_to_filled": 95.0,  # 38/40
-        "overall_conversion": 3.8,  # 38/1000
-    }
-    # Human-review lanes land in details, not the monotone chain.
-    assert result["details"]["human_approved"] == 7
-    assert result["details"]["human_rejected"] == 3
+    assert result["notes"] == []
 
 
-def test_funnel_math_zero_denominators_do_not_crash():
-    fake = _FakeDb([0, 0, 0, 0, 0, 0, 0, 0])
-    result = analytics_router._compute_pipeline_funnel(fake, days=90)
-    assert result["funnel"] == {
-        "runs": 0,
-        "signals": 0,
-        "approved": 0,
-        "executed": 0,
-        "filled": 0,
-    }
-    assert result["conversion_rates"] == {
-        "runs_to_signals": 0.0,
-        "signals_to_approved": 0.0,
-        "approved_to_executed": 0.0,
-        "executed_to_filled": 0.0,
-        "overall_conversion": 0.0,
-    }
+def test_funnel_caps_approved_at_signals():
+    # Approval ledger exceeds human-required signals -> approved capped at
+    # signals so the funnel stays monotone, and the drift is surfaced via notes.
+    fake = _FakeDb([1000, 200, 150, 1000, 0, 40, 38])
+    result = analytics_router._funnel_window(fake._connect(), 30)
+
+    assert result["queue_approved_raw"] == 1000
+    assert result["approved"] == 200  # 150 + min(50, 1000) -> capped at signals
+    assert any("approval ledger" in n for n in result["notes"])
+
+
+def test_funnel_executions_exceed_approvals_note():
+    # Orders placed outside the approval ledger must surface as a note.
+    fake = _FakeDb([1000, 200, 150, 0, 0, 250, 100])
+    result = analytics_router._funnel_window(fake._connect(), 30)
+
+    assert result["approved"] == 150
+    assert result["executed"] == 250
+    assert any("executions" in n for n in result["notes"])
+
+
+def test_funnel_zero_denominators_do_not_crash():
+    fake = _FakeDb([0] * _QUERIES_PER_WINDOW)
+    result = analytics_router._funnel_window(fake._connect(), 90)
+
+    assert result["days"] == 90
+    assert result["runs"] == 0
+    assert result["approved"] == 0
+    assert result["conversion"]["signal_rate_pct"] is None
+    assert result["conversion"]["overall_fill_rate_pct"] is None
+    assert result["notes"] == []
 
 
 def test_funnel_cutoff_format():
-    cutoff = analytics_router._funnel_cutoff(30)
-    # Naive UTC "YYYY-MM-DDTHH:MM:SS" — must lexicographically compare against
-    # both naive pipeline_runs timestamps and tz-aware "+00:00" paper rows.
+    result = analytics_router._funnel_window(_FakeDb([0] * _QUERIES_PER_WINDOW)._connect(), 30)
+    cutoff = result["cutoff_utc"]
+    # Naive UTC "YYYY-MM-DDTHH:MM:SS" — lexicographically comparable against
+    # both naive pipeline_runs timestamps and tz-aware paper_trades rows.
     assert len(cutoff) == 19
     assert cutoff[10] == "T"
     assert "+" not in cutoff and "Z" not in cutoff
 
 
-# ── Endpoint: query param + cache ───────────────────────────────────────────
+# ── Endpoint: both windows + cache ──────────────────────────────────────────
 
 
-def test_endpoint_defaults_to_30d(client):
-    fake = _FakeDb([100, 20, 15, 5, 5, 1, 0, 0])
+def test_endpoint_returns_both_windows(client):
+    counts = [
+        1000, 200, 150, 40, 5, 40, 38,  # 30d
+        3000, 500, 400, 300, 100, 120, 90,  # 90d
+    ]
+    fake = _FakeDb(counts)
     _set_db(fake)
+
     resp = client.get("/analytics/pipeline-funnel")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["period"] == "30d"
-    assert data["days"] == 30
-    assert data["funnel"]["runs"] == 100
-
-
-def test_endpoint_accepts_90d(client):
-    fake = _FakeDb([1000, 300, 250, 80, 75, 10, 0, 5])
-    _set_db(fake)
-    resp = client.get("/analytics/pipeline-funnel?days=90")
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["period"] == "90d"
-    assert data["days"] == 90
-    assert data["conversion_rates"]["runs_to_signals"] == 30.0
-
-
-def test_endpoint_rejects_out_of_range_days(client):
-    _set_db(_FakeDb([0] * 8))
-    resp = client.get("/analytics/pipeline-funnel?days=180")
-    assert resp.status_code == 422
+    assert set(data["windows"].keys()) == {"30", "90"}
+    assert data["windows"]["30"]["runs"] == 1000
+    assert data["windows"]["90"]["runs"] == 3000
+    assert data["windows"]["90"]["conversion"]["fill_rate_pct"] == 75.0  # 90/120
+    assert data["windows"]["30"]["conversion"]["overall_fill_rate_pct"] == 3.8
+    assert data["cache_ttl_seconds"] == 300
+    assert "generated_at" in data
+    assert len(fake.calls) == _QUERIES_PER_WINDOW * 2
 
 
 def test_endpoint_caches_second_call(client):
-    fake = _FakeDb([100, 20, 15, 5, 5, 1, 0, 0])
+    fake = _FakeDb([1000, 200, 150, 40, 5, 40, 38] * 2)
     _set_db(fake)
 
-    resp1 = client.get("/analytics/pipeline-funnel?days=30")
-    assert resp1.status_code == 200
-    assert resp1.json()["details"]["cache_hit"] is False
-    first_calls = list(fake.calls)
-    assert len(first_calls) == 8  # 5 funnel + 3 human-lane queries
+    r1 = client.get("/analytics/pipeline-funnel")
+    assert r1.status_code == 200
+    first_calls = len(fake.calls)
+    assert first_calls == _QUERIES_PER_WINDOW * 2
 
-    resp2 = client.get("/analytics/pipeline-funnel?days=30")
-    assert resp2.status_code == 200
-    assert resp2.json()["details"]["cache_hit"] is True
-    # No additional DB queries issued on cache hit.
-    assert fake.calls == first_calls
-
-
-def test_endpoint_distinct_windows_do_not_share_cache(client):
-    fake = _FakeDb([100, 20, 15, 5, 5, 1, 0, 0] * 2)
-    _set_db(fake)
-
-    r30 = client.get("/analytics/pipeline-funnel?days=30")
-    r90 = client.get("/analytics/pipeline-funnel?days=90")
-    assert r30.json()["details"]["cache_hit"] is False
-    assert r90.json()["details"]["cache_hit"] is False
-    assert len(fake.calls) == 16  # both windows hit the DB exactly once each
+    r2 = client.get("/analytics/pipeline-funnel")
+    assert r2.status_code == 200
+    assert r2.json() == r1.json()
+    # Cache hit: no additional DB queries issued.
+    assert len(fake.calls) == first_calls
 
 
 def test_endpoint_missing_db_returns_503(client):
