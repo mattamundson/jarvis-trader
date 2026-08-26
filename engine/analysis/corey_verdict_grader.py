@@ -219,6 +219,14 @@ def mechanical_from_correct(corey_correct: Optional[float]) -> str:
 
     1.0 -> HIT, 0.0 -> MISS, 0.5 -> FLAT, None -> NONE. Bridges the existing
     outcome grade so this module never recomputes direction off a proxy.
+
+    SCOPE CAVEAT (claim granularity): ``corey_compare``'s score is a session
+    open->close DIRECTION grade -- it answers "was his bias right", NOT "did 7460
+    hold". Use this bridge ONLY to grade a DIRECTIONAL self-claim. Grading a
+    LEVEL-specific self-claim ("held perfectly") against this direction score is a
+    granularity mismatch that can manufacture a false OVERSTATE (a level can hold
+    while the directional call misses, and vice versa). Level-specific claims need
+    a level-specific outcome, which requires the intraday feed.
     """
     if corey_correct is None:
         return NONE
