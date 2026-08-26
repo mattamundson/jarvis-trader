@@ -48,6 +48,7 @@ import ApprovalPanel from "@/components/ApprovalPanel";
 import { PortfolioCorrelationWidget } from "@/components/PortfolioCorrelationWidget";
 import { SessionBriefPanel } from "@/components/SessionBriefPanel";
 import { ActionableBoardWidget } from "@/components/ActionableBoardWidget";
+import PipelineFunnelCard from "@/components/command-center/PipelineFunnelCard";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { useToast } from "@/lib/toast-context";
 import { useWebSocket, type WsEvent } from "@/hooks/useWebSocket";
@@ -747,6 +748,17 @@ export default function CommandCenterPage() {
       <div className="mb-4">
         <WidgetErrorBoundary name="Trade Recommendations">
           <ActionableBoardWidget />
+        </WidgetErrorBoundary>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          PIPELINE FUNNEL — runs -> signals -> approved -> executed -> filled
+          conversion (last 30/90d). Turns "not enough trades" into an
+          inspectable funnel and surfaces regressions at each stage (T9).
+      ═══════════════════════════════════════════════════════ */}
+      <div className="mb-4">
+        <WidgetErrorBoundary name="Pipeline Funnel">
+          <PipelineFunnelCard />
         </WidgetErrorBoundary>
       </div>
 

@@ -8,6 +8,7 @@ Endpoints:
 
 import logging
 import os
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
@@ -2399,3 +2400,137 @@ def get_trade_pnl_breakdown(trade_id: str) -> dict:
     out = pnl_waterfall(dict(row), _post_trade_spec_lookup)
     out["timestamp"] = datetime.now(timezone.utc).isoformat()
     return out
+
+
+# ---------------------------------------------------------------------------
+# Pipeline funnel — trade-conversion visibility (T9)
+# ---------------------------------------------------------------------------
+# The funnel stages are derived from four independent ledgers (no single join):
+#   runs     = every pipeline_runs row in the window (all symbols/timeframes)
+#   signals  = pipeline_runs rows with a directional final_action (buy/sell)
+#   approved = directional signals that cleared the gate:
+#              auto_signals (requires_human=0, auto-logged) PLUS
+#              min(human_signals, queue_approved) — a human-required signal
+#              only counts as approved when an approval-queue row (paq/pta,
+#              status='approved') exists in the window. The cap keeps the
+#              funnel monotone even when the two ledgers drift (queue rows
+#              without a matching decision row); the raw queue count is still
+#              exposed so that drift stays visible via `notes`.
+#   executed = paper_trades rows with entry_time in the window (any status —
+#              an order was placed even if later cancelled/flagged phantom)
+#   filled   = paper_trades rows with status open/closed (real fills)
+# Timestamps are UTC ISO strings; all engine writers use UTC (naive or +00:00)
+# so string comparison against a %Y-%m-%dT%H:%M:%S cutoff is correct (probes
+# on the live DB confirmed window counts match naive-datetime comparisons).
+FUNNEL_CACHE_TTL_SECONDS = 300.0
+_funnel_cache: dict[str, tuple[float, dict]] = {}
+
+
+def _funnel_window(conn, days: int) -> dict:
+    """Compute one funnel window from an open sqlite connection (pure, testable)."""
+    now = datetime.now(timezone.utc)
+    cutoff = (now - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%S")
+
+    runs = conn.execute(
+        "SELECT COUNT(*) FROM pipeline_runs WHERE created_at >= ?", (cutoff,)
+    ).fetchone()[0]
+    signals = conn.execute(
+        "SELECT COUNT(*) FROM pipeline_runs WHERE created_at >= ? AND final_action IN ('buy','sell')",
+        (cutoff,),
+    ).fetchone()[0]
+    auto_signals = conn.execute(
+        "SELECT COUNT(*) FROM pipeline_runs WHERE created_at >= ? AND final_action IN ('buy','sell') AND requires_human=0",
+        (cutoff,),
+    ).fetchone()[0]
+    human_signals = signals - auto_signals
+    queue_approved = (
+        conn.execute(
+            "SELECT COUNT(*) FROM pipeline_approval_queue WHERE status='approved' AND created_at >= ?",
+            (cutoff,),
+        ).fetchone()[0]
+        + conn.execute(
+            "SELECT COUNT(*) FROM pending_trade_approvals WHERE status='approved' AND created_at >= ?",
+            (cutoff,),
+        ).fetchone()[0]
+    )
+    approved = auto_signals + min(human_signals, queue_approved)
+
+    executed = conn.execute(
+        "SELECT COUNT(*) FROM paper_trades WHERE entry_time IS NOT NULL AND entry_time != '' AND entry_time >= ?",
+        (cutoff,),
+    ).fetchone()[0]
+    filled = conn.execute(
+        "SELECT COUNT(*) FROM paper_trades WHERE status IN ('open','closed') AND entry_time >= ?",
+        (cutoff,),
+    ).fetchone()[0]
+
+    def pct(num: int, den: int) -> Optional[float]:
+        return round(100.0 * num / den, 2) if den else None
+
+    notes: list[str] = []
+    if queue_approved > human_signals:
+        notes.append(
+            f"approval ledger ({queue_approved}) exceeds human-required signals ({human_signals}) "
+            "— queue rows without matching decision rows; approved is capped at signals."
+        )
+    if executed > approved:
+        notes.append(
+            f"executions ({executed}) exceed recorded approvals ({approved}) — "
+            "orders are being placed outside the approval ledger."
+        )
+
+    return {
+        "days": days,
+        "cutoff_utc": cutoff,
+        "runs": runs,
+        "signals": signals,
+        "auto_signals": auto_signals,
+        "human_signals": human_signals,
+        "queue_approved_raw": queue_approved,
+        "approved": approved,
+        "executed": executed,
+        "filled": filled,
+        "conversion": {
+            "signal_rate_pct": pct(signals, runs),
+            "approval_rate_pct": pct(approved, signals),
+            "execution_rate_pct": pct(executed, approved),
+            "fill_rate_pct": pct(filled, executed),
+            "overall_fill_rate_pct": pct(filled, runs),
+        },
+        "notes": notes,
+    }
+
+
+@router.get(
+    "/pipeline-funnel",
+    summary="Trade-conversion funnel: runs -> signals -> approved -> executed -> filled (last 30/90d)",
+    description=(
+        "Counts each pipeline stage from its source ledger for the last 30 and 90 days. "
+        "Read-only; results are cached for 300s because the query walks four tables."
+    ),
+)
+@limiter.limit("60/minute")
+async def get_pipeline_funnel(request: Request) -> dict:
+    now = time.monotonic()
+    cached = _funnel_cache.get("both")
+    if cached is not None and (now - cached[0]) < FUNNEL_CACHE_TTL_SECONDS:
+        return cached[1]
+
+    db = _get_db()
+    with db._lock:  # type: ignore[attr-defined]
+        conn = db._connect()  # type: ignore[attr-defined]
+        try:
+            windows = {
+                "30": _funnel_window(conn, 30),
+                "90": _funnel_window(conn, 90),
+            }
+        finally:
+            conn.close()
+
+    payload = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "cache_ttl_seconds": FUNNEL_CACHE_TTL_SECONDS,
+        "windows": windows,
+    }
+    _funnel_cache["both"] = (time.monotonic(), payload)
+    return payload
