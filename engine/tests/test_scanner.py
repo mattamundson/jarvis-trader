@@ -16,7 +16,8 @@ logger = logging.getLogger(__name__)
 # A fixed, deterministic instant: Tuesday 2026-06-16 17:00 UTC == 12:00 ET.
 # Chosen so the scanner's wall-clock gates all resolve to "scan allowed":
 #   - not in the 9:30-9:35 / 15:45-16:00 ET banned session windows,
-#   - not Wednesday (so the MCL 10:15-11:00 ET EIA blackout never triggers),
+#   - not Wednesday (so the MCL 10:15-11:00 ET EIA blackout never triggers — tests use MES,
+#     which has no EIA blackout),
 #   - inside equity Regular Trading Hours.
 # Without this, _scan_symbol() reads datetime.now() and intermittently returns
 # early depending on the wall-clock time CI happens to run at (the flaky class).
@@ -93,13 +94,13 @@ class TestSignalScanner:
         return SignalScanner(
             trading_pipeline=mock_pipeline,
             db_manager=mock_db,
-            symbols=["MCL", "MNQ"],
+            symbols=["MES"],
             scan_interval_minutes=60,
         )
 
     def test_scanner_initialization(self, scanner):
         """Test scanner initializes with correct parameters."""
-        assert scanner.symbols == ["MCL", "MNQ"]
+        assert scanner.symbols == ["MES"]
         assert scanner.scan_interval_minutes == 60
         assert scanner._active is False
         assert scanner._total_scans == 0
@@ -109,7 +110,7 @@ class TestSignalScanner:
         """Test status method returns correct state."""
         status = scanner.status()
         assert status["active"] is False
-        assert status["symbols"] == ["MCL", "MNQ"]
+        assert status["symbols"] == ["MES"]
         assert status["total_scans"] == 0
         assert status["approvals_created"] == 0
 
@@ -140,49 +141,59 @@ class TestSignalScanner:
     async def test_scan_symbol_hold_signal(self, scanner, mock_pipeline, mock_db):
         """Test scanning symbol that returns HOLD signal."""
         mock_pipeline.analyze_and_decide.return_value = {
-            "symbol": "MCL",
+            "symbol": "MES",
             "final_action": "hold",
             "final_quantity": 0,
         }
 
-        await scanner._scan_symbol("MCL")
+        await scanner._scan_symbol("MES")
 
         # No approval should be created for HOLD
         mock_db.insert_pending_approval.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_scan_symbol_buy_signal(self, scanner, mock_pipeline, mock_db):
+    async def test_scan_symbol_buy_signal(self, scanner, mock_pipeline, mock_db, monkeypatch):
         """Test scanning symbol that returns BUY signal."""
+        # Pin the human-approval gate ON: this test verifies the approval-row
+        # contract. Under autonomous paper mode (REQUIRE_HUMAN_APPROVAL=False,
+        # the live .env), the scanner deliberately skips approval rows.
+        import config as _config_mod
+
+        monkeypatch.setattr(_config_mod.settings, "REQUIRE_HUMAN_APPROVAL", True)
         mock_pipeline.analyze_and_decide.return_value = {
-            "symbol": "MCL",
+            "symbol": "MES",
             "final_action": "buy",
             "final_quantity": 1,
             "trade_decision": {"entry_price": 75.50},
         }
         mock_db.insert_pending_approval.return_value = "approval-123"
 
-        await scanner._scan_symbol("MCL")
+        await scanner._scan_symbol("MES")
 
         # Approval should be created
         mock_db.insert_pending_approval.assert_called_once()
         call_kwargs = mock_db.insert_pending_approval.call_args.kwargs
-        assert call_kwargs["symbol"] == "MCL"
+        assert call_kwargs["symbol"] == "MES"
         assert call_kwargs["action"] == "buy"
         assert call_kwargs["quantity"] == 1
         assert scanner._approval_count == 1
 
     @pytest.mark.asyncio
-    async def test_scan_symbol_sell_signal(self, scanner, mock_pipeline, mock_db):
+    async def test_scan_symbol_sell_signal(self, scanner, mock_pipeline, mock_db, monkeypatch):
         """Test scanning symbol that returns SELL signal."""
+        # Pin the human-approval gate ON (approval-row contract; see buy test).
+        import config as _config_mod
+
+        monkeypatch.setattr(_config_mod.settings, "REQUIRE_HUMAN_APPROVAL", True)
         mock_pipeline.analyze_and_decide.return_value = {
-            "symbol": "MNQ",
+            "symbol": "MES",
             "final_action": "sell",
             "final_quantity": 2,
             "trade_decision": {"entry_price": 5500.00},
         }
         mock_db.insert_pending_approval.return_value = "approval-456"
 
-        await scanner._scan_symbol("MNQ")
+        await scanner._scan_symbol("MES")
 
         # Approval should be created for sell
         mock_db.insert_pending_approval.assert_called_once()
@@ -195,7 +206,7 @@ class TestSignalScanner:
         """Test scanner handles pipeline errors gracefully."""
         mock_pipeline.analyze_and_decide.side_effect = Exception("Pipeline error")
 
-        await scanner._scan_symbol("MCL")
+        await scanner._scan_symbol("MES")
 
         # No approval should be created on error
         mock_db.insert_pending_approval.assert_not_called()

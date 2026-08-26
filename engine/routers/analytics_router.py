@@ -531,6 +531,7 @@ async def get_performance_compare(request: Request) -> dict:
         raise HTTPException(500, f"Analytics error: {exc}") from exc
 
 
+
 @router.get(
     "/forward-test",
     response_model=None,

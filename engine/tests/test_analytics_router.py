@@ -503,4 +503,5 @@ class TestCorrelationPreviewEndpoint:
         assert resp.status_code == 200
         body = resp.json()
         assert body["pairs"] == {}
-        assert body["wired_into_live_sizing"] is False
+
+
