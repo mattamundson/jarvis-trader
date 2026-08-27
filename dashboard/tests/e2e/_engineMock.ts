@@ -126,6 +126,39 @@ const SHAPES: Array<[RegExp, unknown]> = [
   ],
   [/\/analytics\/signal-outcomes/, { outcomes: [], total: 0 }],
 
+  // --- pipeline funnel (T9) --------------------------------------------------
+  // PipelineFunnelCard reads data.windows["30"]/["90"] unconditionally once the
+  // fetch resolves. A `{}` catch-all trips `undefined.windows` and the card
+  // crashes into its widget boundary; the honest degraded shape is zeroed
+  // windows with null conversion (the card renders dashes, not fabricated %).
+  [
+    /\/analytics\/pipeline-funnel/,
+    {
+      generated_at: "",
+      cache_ttl_seconds: 300,
+      windows: {
+        "30": {
+          days: 30, cutoff_utc: "", runs: 0, signals: 0, auto_signals: 0,
+          human_signals: 0, queue_approved_raw: 0, approved: 0, executed: 0, filled: 0,
+          conversion: {
+            signal_rate_pct: null, approval_rate_pct: null, execution_rate_pct: null,
+            fill_rate_pct: null, overall_fill_rate_pct: null,
+          },
+          notes: [],
+        },
+        "90": {
+          days: 90, cutoff_utc: "", runs: 0, signals: 0, auto_signals: 0,
+          human_signals: 0, queue_approved_raw: 0, approved: 0, executed: 0, filled: 0,
+          conversion: {
+            signal_rate_pct: null, approval_rate_pct: null, execution_rate_pct: null,
+            fill_rate_pct: null, overall_fill_rate_pct: null,
+          },
+          notes: [],
+        },
+      },
+    },
+  ],
+
   // Object-wrapping-a-list, same trap as scheduler/status and pipeline/status
   // above: the LAST path segment ("regime-stats") ends in "s" so the plural
   // heuristic below fires and returns a bare `[]` -- but the real shape is
