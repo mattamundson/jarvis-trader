@@ -211,21 +211,31 @@ export default function PaperTradingPage() {
         {/* Top row: Signal + Performance */}
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12 lg:col-span-6">
-            <LiveSignalPanel />
+            <WidgetErrorBoundary name="Live Signal">
+              <LiveSignalPanel />
+            </WidgetErrorBoundary>
           </div>
           <div className="col-span-12 lg:col-span-6">
-            <PerformanceMetricsPanel />
+            <WidgetErrorBoundary name="Performance Metrics">
+              <PerformanceMetricsPanel />
+            </WidgetErrorBoundary>
           </div>
         </div>
 
         {/* Kill Switch + Reset Controls */}
-        <KillSwitchPanel />
+        <WidgetErrorBoundary name="Kill Switch">
+          <KillSwitchPanel />
+        </WidgetErrorBoundary>
 
         {/* Middle: Pending Signals Queue with History Tab */}
-        <SignalQueuePanel />
+        <WidgetErrorBoundary name="Pending Signals Queue">
+          <SignalQueuePanel />
+        </WidgetErrorBoundary>
 
         {/* Bottom: Trade Logger */}
-        <TradeLoggerPanel />
+        <WidgetErrorBoundary name="Trade Logger">
+          <TradeLoggerPanel />
+        </WidgetErrorBoundary>
 
         {/* Recent AI Decisions */}
         <WidgetErrorBoundary name="Recent Decisions">

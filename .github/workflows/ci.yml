@@ -406,7 +406,14 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
         working-directory: dashboard
 
-      - name: Golden-path e2e (overview must not white-screen on degraded data)
+      # No --project filter: this runs BOTH playwright.config.ts projects --
+      # `smoke` (table-driven, all 50 manifest routes x degraded/offline/slow)
+      # and `golden-path` (the hand-written domain specs, incl. the API-key-leak
+      # security check). reuseExistingServer is false in CI (see
+      # playwright.config.ts), so this always exercises the build just produced
+      # above, never a stale server. Step name predates the smoke suite --
+      # kept the misnomer fixed here so CI logs describe what actually runs.
+      - name: E2E -- smoke (50 routes) + golden-path
         run: pnpm exec playwright test
         working-directory: dashboard
 

@@ -12,17 +12,25 @@ import {
   type JarvisQuickAnalysisPeriod,
   type JarvisQuickAnalysisResponse,
 } from "@/lib/api";
-import { PriceChartPanel } from "@/components/charts/PriceChartPanel";
 import { MarketContextStrip } from "@/components/charts/MarketContextStrip";
 import { AuctionBiasCard } from "@/components/AuctionBiasCard";
 import { SymbolTimeframeSelector } from "@/components/command-center/charts/SymbolTimeframeSelector";
 import type { ChartSymbol, ChartTimeframe } from "@/hooks/useChartData";
+import { ExploratoryBanner } from "@/components/ExploratoryBanner";
 
 // Heavy 3D chart (three.js + @react-three/fiber) — only rendered on the non-default
 // "terrain3d" tab, so load it on demand to keep three.js out of the initial /analysis bundle.
 const PriceTerrain3D = dynamic(
   () => import("@/components/charts/PriceTerrain3D").then((m) => ({ default: m.PriceTerrain3D })),
   { ssr: false, loading: () => <div className="h-[400px] animate-pulse rounded bg-card" /> }
+);
+
+// lightweight-charts backed panel — keep it out of the initial /analysis bundle the
+// same way PriceTerrain3D is deferred; the "jarvis" tab still shows a loading skeleton
+// until the chunk arrives, but the JS itself only loads once the tab actually mounts.
+const PriceChartPanel = dynamic(
+  () => import("@/components/charts/PriceChartPanel").then((m) => ({ default: m.PriceChartPanel })),
+  { ssr: false, loading: () => <div className="h-[460px] animate-pulse rounded-xl border border-border bg-card" /> }
 );
 
 type ChartView = "jarvis" | "terrain3d";
@@ -137,6 +145,7 @@ export default function AnalysisPage() {
       </header>
 
       <main className="mx-auto max-w-5xl px-6 py-6 space-y-6">
+        <ExploratoryBanner what="The analysis pipeline shows AI-generated market reads" />
         {/* Market view — JARVIS real-time candles (our bars) or 3D terrain.
             Futures are charted from our own data; TradingView's delayed CME embed
             is intentionally NOT offered here (see the Market Context strip below

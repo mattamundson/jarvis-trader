@@ -48,6 +48,7 @@ import ApprovalPanel from "@/components/ApprovalPanel";
 import { PortfolioCorrelationWidget } from "@/components/PortfolioCorrelationWidget";
 import { SessionBriefPanel } from "@/components/SessionBriefPanel";
 import { ActionableBoardWidget } from "@/components/ActionableBoardWidget";
+import { PipelineFunnel } from "@/components/pipeline-funnel";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { useToast } from "@/lib/toast-context";
 import { useWebSocket, type WsEvent } from "@/hooks/useWebSocket";
@@ -700,7 +701,9 @@ export default function CommandCenterPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-3">
-            <ApprovalPanel />
+            <WidgetErrorBoundary name="Trade Approvals">
+              <ApprovalPanel />
+            </WidgetErrorBoundary>
           </CardContent>
         </Card>
       </div>
@@ -985,14 +988,16 @@ export default function CommandCenterPage() {
       ═══════════════════════════════════════════════════════ */}
       <div className="grid grid-cols-3 gap-3 mb-4">
         {liveInstruments.map((inst) => (
-          <SignalCard key={inst.symbol} inst={inst} />
+          <WidgetErrorBoundary key={inst.symbol} name={`Signal Card: ${inst.symbol}`}>
+            <SignalCard inst={inst} />
+          </WidgetErrorBoundary>
         ))}
       </div>
 
       {/* ═══════════════════════════════════════════════════════
-          ROW 3 — RISK GAUGES + RECENT SIGNALS (2 columns)
+          ROW 3 — RISK GAUGES + PIPELINE FUNNEL + RECENT SIGNALS (3 columns)
       ═══════════════════════════════════════════════════════ */}
-      <div className="grid grid-cols-2 gap-3 mb-4">
+      <div className="grid grid-cols-3 gap-3 mb-4">
         {/* Risk Gauges */}
         <Card className="bg-slate-900/60 border border-cyan-900/50">
           <CardHeader className="pb-2 pt-3 px-4">
@@ -1071,6 +1076,11 @@ export default function CommandCenterPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Pipeline Funnel — runs → signals → approved → executed → filled */}
+        <WidgetErrorBoundary name="Pipeline Funnel">
+          <PipelineFunnel />
+        </WidgetErrorBoundary>
 
         {/* Recent Signals + Pipeline Status */}
         <Card className="bg-slate-900/60 border border-cyan-900/50">

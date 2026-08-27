@@ -275,6 +275,11 @@ class JarvisLLMClient:
         # the response, so the conservative cache-miss rate is used here —
         # this will overstate cost on cache hits, never understate it.
         "kimi-k3": {"input": 3.0, "output": 15.0},
+        # OrcaRouter (2026-08-24): Qwen3.8-27B paid + free tiers.
+        # qwen/qwen3.8-27b: $0.33/MTok in, $2.40/MTok out (262K ctx)
+        # qwen/qwen3.8-27b-free: $0 (65K ctx, rate-limited)
+        "qwen/qwen3.8-27b": {"input": 0.33, "output": 2.40},
+        "qwen/qwen3.8-27b-free": {"input": 0.0, "output": 0.0},
     }
 
     # Model fallback chain when overloaded
@@ -379,6 +384,8 @@ class JarvisLLMClient:
         "deepseek-reasoner": 64_000,
         "hermes3:latest": 4_096,
         "kimi-k3": 1_048_576,
+        "qwen/qwen3.8-27b": 262_000,
+        "qwen/qwen3.8-27b-free": 65_536,
     }
 
     # Class-level default — read at line 445/650 etc. Subclasses or callers that
@@ -644,6 +651,34 @@ class JarvisLLMClient:
         self._kimi_max_concurrency = _kimi_concurrency
         self._kimi_call_semaphore = asyncio.Semaphore(_kimi_concurrency)
 
+        # 2026-08-24: OrcaRouter — additive OpenAI-compatible provider leg.
+        # Adaptive LLM router (Qwen3.8-27B free/paid tiers). SILENTLY DISABLED
+        # with no key, exactly like the openai/kimi legs — nothing routes to it
+        # unless ORCAROUTER_AGENTS names an agent, so the live Anthropic chain
+        # is untouched. Per-agent routing lets a strategy-analysis agent run on
+        # Qwen while trade-decision agents stay on the reviewed chain.
+        self.orcarouter_api_key = os.getenv("ORCAROUTER_API_KEY", "").strip()
+        self.orcarouter_endpoint = os.getenv(
+            "ORCAROUTER_ENDPOINT",
+            "https://api.orcarouter.ai/v1/chat/completions",
+        ).strip()
+        self.orcarouter_model = os.getenv(
+            "ORCAROUTER_MODEL", "qwen/qwen3.8-27b-free"
+        ).strip()
+        self.orcarouter_enabled = self.orcarouter_api_key != "" and os.getenv(
+            "JARVIS_LLM_ORCAROUTER", "1"
+        ).strip().lower() not in {"0", "false", "no", "off"}
+        self.orcarouter_fallback_count = 0
+        # Agents routed to OrcaRouter. Format: comma-separated agent names.
+        # Empty = never routes (default). Mirrors OLLAMA_MODEL_PER_AGENT's
+        # agent-keyed override pattern without replacing the global model.
+        self.orcarouter_agents: set[str] = set()
+        _orca_raw = os.getenv("ORCAROUTER_AGENTS", "").strip()
+        if _orca_raw:
+            self.orcarouter_agents = {
+                a.strip() for a in _orca_raw.split(",") if a.strip()
+            }
+
         google_status = (
             "enabled"
             if self.google_fallback_enabled
@@ -660,6 +695,11 @@ class JarvisLLMClient:
             if self.kimi_fallback_enabled
             else ("disabled (no key)" if not self.kimi_api_key else "disabled (env flag)")
         )
+        orca_status = (
+            "enabled"
+            if self.orcarouter_enabled
+            else ("disabled (no key)" if not self.orcarouter_api_key else "disabled (env flag)")
+        )
         decision_primary_status = (
             self.decision_primary_model
             if (
@@ -673,7 +713,8 @@ class JarvisLLMClient:
             f"✅ JarvisLLMClient initialized with cost tracking at {db_path} "
             f"(provider={self.provider}, decision_primary={decision_primary_status}, "
             f"google_fallback={google_status}, "
-            f"openai_fallback={openai_status}, deepseek={deepseek_status}, kimi={kimi_status})"
+            f"openai_fallback={openai_status}, deepseek={deepseek_status}, kimi={kimi_status}, "
+            f"orca={orca_status})"
         )
 
         # Snapshot the wired legs for /health provider-redundancy reporting.
@@ -722,6 +763,11 @@ class JarvisLLMClient:
             # here when Kimi is already listed as the primary above (avoids
             # double-listing it), mirroring the Gemini guard.
             configured.append("kimi")
+        if self.orcarouter_enabled:
+            # OrcaRouter is a per-agent override leg (default OFF). Listed so
+            # /health provider-redundancy reporting reflects that it's wired
+            # for the named agents.
+            configured.append("orcarouter")
         _LLM_PATH_STATE["primary_provider"] = primary_provider
         _LLM_PATH_STATE["providers_configured"] = configured
 
@@ -1415,6 +1461,44 @@ class JarvisLLMClient:
         if self.provider == "ollama":
             current_model = self.ollama_model_per_agent.get(agent_name, self.ollama_model)
 
+        # 2026-08-24: OrcaRouter per-agent routing — a named agent (e.g. a
+        # strategy-analysis agent) runs on Qwen3.8-27B via OrcaRouter while the
+        # reviewed trade-decision chain stays untouched. Default OFF (empty
+        # ORCAROUTER_AGENTS = never routes). Skips the Anthropic failover chain
+        # by design — this leg is a deliberate per-agent override. On failure it
+        # falls through to the normal chain (graceful degradation).
+        if self.orcarouter_enabled and agent_name in self.orcarouter_agents:
+            try:
+                orca_model = self.orcarouter_model
+                orca_start = time.time()
+                orca_resp = await self._call_orcarouter(
+                    system=system,
+                    messages=working_messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    model=orca_model,
+                )
+                latency = int((time.time() - orca_start) * 1000)
+                return LLMCallResult(
+                    success=True,
+                    model=orca_model,
+                    input_tokens=orca_resp.usage.input_tokens,
+                    output_tokens=orca_resp.usage.output_tokens,
+                    cost_usd=0.0,
+                    latency_ms=latency,
+                    retries=0,
+                    content=orca_resp.content[0].text,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "[%s] OrcaRouter call failed for agent %s: %s",
+                    self.orcarouter_model,
+                    agent_name,
+                    exc,
+                )
+                self.orcarouter_fallback_count += 1
+                # fall through to the normal chain on failure
+
         if compact:
             try:
                 working_messages = await self._maybe_compact_messages(
@@ -1973,6 +2057,76 @@ class JarvisLLMClient:
         choices = data.get("choices") or []
         if not choices:
             raise RuntimeError(f"OpenAI response missing choices: {str(data)[:300]}")
+        text = (choices[0].get("message") or {}).get("content", "")
+        usage = data.get("usage") or {}
+        input_tokens = int(usage.get("prompt_tokens") or self._estimate_tokens(system, messages))
+        output_tokens = int(usage.get("completion_tokens") or max(1, len(text) // 4))
+        return SimpleNamespace(
+            usage=SimpleNamespace(input_tokens=input_tokens, output_tokens=output_tokens),
+            content=[SimpleNamespace(text=text)],
+        )
+
+    async def _call_orcarouter(
+        self,
+        system: str,
+        messages: list[dict],
+        max_tokens: int,
+        temperature: float,
+        model: str,
+    ):
+        """Single call to OrcaRouter (OpenAI-compatible chat completions).
+
+        Returns a SimpleNamespace shaped like an Anthropic response so the
+        rest of the success/cost-tracking path is provider-agnostic. Modeled
+        on _call_openai() — OrcaRouter exposes the OpenAI messages/choices
+        shape. Raises RuntimeError if not configured.
+        """
+        if not self.orcarouter_api_key:
+            raise RuntimeError("orcarouter_api_key not configured")
+
+        orca_messages: list[dict] = []
+        if system:
+            orca_messages.append({"role": "system", "content": system})
+        for m in messages:
+            role = m.get("role", "user")
+            content = m.get("content", "")
+            if not isinstance(content, str):
+                content = str(content)
+            orca_messages.append({"role": role, "content": content})
+
+        payload: dict = {
+            "model": model,
+            "messages": orca_messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+
+        timeout = float(os.getenv("ORCAROUTER_TIMEOUT_SECONDS", "60"))
+        headers = {
+            "Authorization": f"Bearer {self.orcarouter_api_key}",
+            "Content-Type": "application/json",
+        }
+        async with httpx.AsyncClient(timeout=_granular_httpx_timeout(timeout)) as http_client:
+            response = await http_client.post(
+                self.orcarouter_endpoint, json=payload, headers=headers
+            )
+            if response.status_code >= 400:
+                try:
+                    body = response.text[:500]
+                except Exception:  # pragma: no cover - defensive
+                    body = "<unreadable>"
+                logger.warning(
+                    "[%s] OrcaRouter endpoint returned HTTP %d: %s",
+                    model,
+                    response.status_code,
+                    body,
+                )
+            response.raise_for_status()
+            data = response.json()
+
+        choices = data.get("choices") or []
+        if not choices:
+            raise RuntimeError(f"OrcaRouter response missing choices: {str(data)[:300]}")
         text = (choices[0].get("message") or {}).get("content", "")
         usage = data.get("usage") or {}
         input_tokens = int(usage.get("prompt_tokens") or self._estimate_tokens(system, messages))

@@ -84,6 +84,8 @@ export const ROUTES: RouteSpec[] = [
   { path: "/strategy-ledger", name: "strategy ledger", kind: "page", criticality: "standard", landmark: /Strategy Ledger/i },
   { path: "/parallel-paper", name: "parallel paper", kind: "page", criticality: "standard", landmark: /Parallel Paper A\/B Comparison/i },
   { path: "/strategy-c-command", name: "strategy c command", kind: "page", criticality: "standard", landmark: null },
+  { path: "/pipeline-board", name: "pipeline board", kind: "page", criticality: "standard", landmark: /Pipeline Board/i },
+  { path: "/vault", name: "vault", kind: "page", criticality: "standard", landmark: /Vault/i },
 
   // ---- research: must carry an exploratory provenance banner ---------------
   { path: "/analysis", name: "analysis", kind: "page", criticality: "research", landmark: /JARVIS TRADER . Analysis/i },
@@ -99,6 +101,7 @@ export const ROUTES: RouteSpec[] = [
   // The first <h1> here is literally "Signal Unavailable" -- a fallback state, not
   // a page title. Asserting on it would lock in the empty state as expected.
   { path: "/strategy-c", name: "strategy c", kind: "page", criticality: "research", landmark: null },
+  { path: "/thinkscript", name: "thinkscript", kind: "page", criticality: "research", landmark: /ThinkScript/i },
 
   { path: "/domflow", name: "domflow", kind: "page", criticality: "research", landmark: /MES DOM \/ Order-Flow/i },
 

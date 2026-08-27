@@ -8,6 +8,7 @@ Endpoints:
 
 import logging
 import os
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
@@ -99,6 +100,11 @@ class PerformanceMetricsResponse(BaseModel):
     expectancy: float
     timestamp: str
     days: Optional[int] = None  # rolling window length when applicable
+    # C3 metric-honesty pass (2026-08-18): annualization transparency. The
+    # sharpe_ratio above is annualized by this observed factor (252 fallback),
+    # and cagr is the honest CAGR over the actual window.
+    annualization_trades_per_year: Optional[float] = None
+    cagr: Optional[float] = None
 
 
 class TradeAnalyticsResponse(BaseModel):
@@ -117,6 +123,9 @@ class TradeAnalyticsResponse(BaseModel):
     avg_loss: float
     best_trade: float
     worst_trade: float
+    # C3 metric-honesty pass (2026-08-18): annualization transparency.
+    annualization_trades_per_year: Optional[float] = None
+    cagr: Optional[float] = None
 
 
 class SignalMetricsResponse(BaseModel):
@@ -268,6 +277,8 @@ async def get_trade_analytics(request: Request) -> TradeAnalyticsResponse:
             avg_loss=analytics.avg_loss,
             best_trade=analytics.best_trade,
             worst_trade=analytics.worst_trade,
+            annualization_trades_per_year=analytics.annualization_trades_per_year,
+            cagr=analytics.cagr,
         )
     except Exception as exc:
         logger.error(f"Trade analytics error: {exc}")
@@ -517,6 +528,188 @@ async def get_performance_compare(request: Request) -> dict:
         raise
     except Exception as exc:
         logger.error(f"[Analytics] compare_to_backtest failed: {exc}")
+        raise HTTPException(500, f"Analytics error: {exc}") from exc
+
+
+# ---------------------------------------------------------------------------
+# Pipeline funnel — runs → signals → approved → executed → filled
+# ---------------------------------------------------------------------------
+
+# Short-TTL cache for the heavy COUNT(*) queries. The funnel is only meaningful
+# over 30/90d windows and the dashboard refreshes every 5 minutes; a 60s TTL
+# keeps repeat requests (and the two dashboard windows) from re-scanning the
+# full pipeline_runs/decisions tables on every poll.
+_funnel_cache: dict[str, dict] = {}
+_FUNNEL_CACHE_TTL_SECONDS = 60
+
+
+def _funnel_cutoff(days: int) -> str:
+    """UTC cutoff string in the ISO-T format used by the DB (no tz, no micros).
+
+    pipeline_runs/decisions store naive UTC "YYYY-MM-DDTHH:MM:SS"; the approval
+    and paper_trades tables store "YYYY-MM-DDTHH:MM:SS.ffffff+00:00". A
+    lexicographic >= against the naive cutoff works for both because the
+    prefixes are identical and "+00:00" sorts after any same-second naive row.
+    """
+    return (datetime.now(timezone.utc) - timedelta(days=days)).strftime(
+        "%Y-%m-%dT%H:%M:%S"
+    )
+
+
+def _compute_pipeline_funnel(db: DatabaseManager, days: int) -> dict:
+    """Compute funnel stage counts for the last ``days`` calendar days.
+
+    Stage definitions (single-source, monotone):
+      runs     — pipeline_runs rows in window (every engine execution)
+      signals  — runs whose final_action is buy/sell (directional decisions)
+      approved — directional runs cleared by the risk gate (requires_human=0),
+                 i.e. the engine approved execution without a human review
+      executed — paper_trades with entry_time in window, excluding the
+                 phantom/cancelled_duplicate/cancelled_contaminated artifacts
+                 that inflate the raw ledger (they are not real fills)
+      filled   — executed rows whose status is open/closed (real fills)
+
+    Human-review lanes (pending_trade_approvals / pipeline_approval_queue) are
+    reported separately in ``details`` so the funnel chain itself stays
+    monotone while the rejection/approval counts — the "why so few trades"
+    story — remain visible.
+    """
+    cutoff = _funnel_cutoff(days)
+
+    runs = db.fetch_one(
+        "SELECT COUNT(*) AS n FROM pipeline_runs WHERE created_at >= ?",
+        (cutoff,),
+    ) or {"n": 0}
+    signals = db.fetch_one(
+        "SELECT COUNT(*) AS n FROM pipeline_runs "
+        "WHERE created_at >= ? AND final_action IN ('buy','sell')",
+        (cutoff,),
+    ) or {"n": 0}
+    approved = db.fetch_one(
+        "SELECT COUNT(*) AS n FROM pipeline_runs "
+        "WHERE created_at >= ? AND final_action IN ('buy','sell') "
+        "AND requires_human = 0",
+        (cutoff,),
+    ) or {"n": 0}
+    executed = db.fetch_one(
+        "SELECT COUNT(*) AS n FROM paper_trades "
+        "WHERE entry_time IS NOT NULL AND entry_time != '' AND entry_time >= ? "
+        "AND status NOT IN ('phantom','cancelled_duplicate','cancelled_contaminated')",
+        (cutoff,),
+    ) or {"n": 0}
+    filled = db.fetch_one(
+        "SELECT COUNT(*) AS n FROM paper_trades "
+        "WHERE entry_time IS NOT NULL AND entry_time != '' AND entry_time >= ? "
+        "AND status IN ('open','closed')",
+        (cutoff,),
+    ) or {"n": 0}
+
+    # Human-review lanes (informational; not part of the monotone chain).
+    human_approved = db.fetch_one(
+        "SELECT COUNT(*) AS n FROM pipeline_approval_queue "
+        "WHERE status='approved' AND created_at >= ?",
+        (cutoff,),
+    ) or {"n": 0}
+    human_approved2 = db.fetch_one(
+        "SELECT COUNT(*) AS n FROM pending_trade_approvals "
+        "WHERE status='approved' AND created_at >= ?",
+        (cutoff,),
+    ) or {"n": 0}
+    human_rejected = db.fetch_one(
+        "SELECT COUNT(*) AS n FROM pending_trade_approvals "
+        "WHERE status='rejected' AND created_at >= ?",
+        (cutoff,),
+    ) or {"n": 0}
+
+    r = runs["n"]
+    s = signals["n"]
+    a = approved["n"]
+    e = executed["n"]
+    f = filled["n"]
+
+    def rate(numer: int, denom: int) -> float:
+        return round((numer / denom * 100), 1) if denom > 0 else 0.0
+
+    return {
+        "period": f"{days}d",
+        "days": days,
+        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "funnel": {
+            "runs": r,
+            "signals": s,
+            "approved": a,
+            "executed": e,
+            "filled": f,
+        },
+        "conversion_rates": {
+            "runs_to_signals": rate(s, r),
+            "signals_to_approved": rate(a, s),
+            "approved_to_executed": rate(e, a),
+            "executed_to_filled": rate(f, e),
+            "overall_conversion": rate(f, r),
+        },
+        "details": {
+            "window_days": days,
+            "cutoff": cutoff,
+            "runs": r,
+            "signals": s,
+            "approved": a,
+            "executed": e,
+            "filled": f,
+            "human_approved": human_approved["n"] + human_approved2["n"],
+            "human_rejected": human_rejected["n"],
+            "runs_to_signals_pct": rate(s, r),
+            "signals_to_approved_pct": rate(a, s),
+            "approved_to_executed_pct": rate(e, a),
+            "executed_to_filled_pct": rate(f, e),
+            "overall_conversion_pct": rate(f, r),
+        },
+    }
+
+
+@router.get(
+    "/pipeline-funnel",
+    response_model=None,
+    description="Pipeline conversion funnel: runs → signals → approved → executed → filled (last 30/90d).",
+)
+@limiter.limit("120/minute")
+async def get_pipeline_funnel(
+    request: Request,
+    days: int = Query(30, ge=7, le=90),
+) -> dict:
+    """Calculate pipeline conversion funnel metrics for the last N days.
+
+    The funnel turns 'the dashboard says few trades' into an understandable
+    system state: every run either produces a directional signal or not, every
+    signal either clears the risk gate or is held/reviewed, and every approved
+    signal either becomes a real fill or is lost (missing entry price, guard
+    skip, broker rejection, or ledger artifacts). Comparing the 30d and 90d
+    windows surfaces regressions in any stage.
+    """
+    try:
+        cache_key = str(days)
+        cached = _funnel_cache.get(cache_key)
+        now = time.time()
+        if cached and (now - cached["computed_at"]) < _FUNNEL_CACHE_TTL_SECONDS:
+            cached["payload"]["details"]["cache_hit"] = True
+            return cached["payload"]
+
+        db = _get_db()
+        payload = _compute_pipeline_funnel(db, days)
+        payload["details"]["cache_hit"] = False
+        _funnel_cache[cache_key] = {
+            "computed_at": now,
+            "payload": payload,
+        }
+        # Cap the cache at the handful of windows we serve.
+        if len(_funnel_cache) > 8:
+            oldest = min(_funnel_cache, key=lambda k: _funnel_cache[k]["computed_at"])
+            _funnel_cache.pop(oldest, None)
+        return payload
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("[Analytics] pipeline funnel calculation failed: %s", exc)
         raise HTTPException(500, f"Analytics error: {exc}") from exc
 
 
