@@ -93,12 +93,13 @@ test("command-center renders the Pipeline Funnel card with 30/90d conversion", a
 
   await page.goto("/command-center", { waitUntil: "domcontentloaded" });
 
-  const card = page.getByTestId("pipeline-funnel-card");
-  await expect(card).toBeVisible({ timeout: 15000 });
+  const card = page.locator('[data-testid="pipeline-funnel-card"]:visible');
+  await expect(card).toHaveCount(1, { timeout: 15000 });
+  await expect(card).toBeVisible();
 
   // Both windows render with counts.
-  await expect(page.getByTestId("pipeline-funnel-30d")).toContainText("4,778");
-  await expect(page.getByTestId("pipeline-funnel-90d")).toContainText("11,163");
+  await expect(card.getByTestId("pipeline-funnel-30d")).toContainText("4,778");
+  await expect(card.getByTestId("pipeline-funnel-90d")).toContainText("11,163");
 
   // Stage labels + overall conversion headline (used by the live checker).
   await expect(card).toContainText("OVERALL CONVERSION");
