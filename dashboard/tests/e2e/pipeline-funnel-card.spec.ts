@@ -1,4 +1,24 @@
 import { test, expect } from "@playwright/test";
+import * as fs from "fs";
+import * as path from "path";
+import { installEngineMock } from "./_engineMock";
+
+// The dashboard enforces Basic Auth locally (DASHBOARD_AUTH_USER/PASS in
+// .env.local via middleware.ts). Read the creds ourselves so the fresh-port
+// run (port 3013, which loads .env.local) can authenticate; never print them.
+function loadCreds(): { user: string; pass: string } | null {
+  const p = path.resolve(__dirname, "../../.env.local");
+  if (!fs.existsSync(p)) return null;
+
+  let user = "", pass = "";
+  for (const line of fs.readFileSync(p, "utf8").split("\n")) {
+    const m = line.match(/^DASHBOARD_AUTH_USER=(.*)$/);
+    if (m) user = m[1].trim();
+    const m2 = line.match(/^DASHBOARD_AUTH_PASS=(.*)$/);
+    if (m2) pass = m2[1].trim();
+  }
+  return user && pass ? { user, pass } : null;
+}
 
 const FUNNEL_30 = {
   days: 30,
@@ -44,7 +64,22 @@ const FUNNEL_90 = {
   ],
 };
 
-test("command-center renders the Pipeline Funnel card with 30/90d conversion", async ({ page }) => {
+test("command-center renders the Pipeline Funnel card with 30/90d conversion", async ({ browser }) => {
+  const creds = loadCreds();
+  const context = await browser.newContext(
+    creds ? { httpCredentials: { username: creds.user, password: creds.pass } } : {},
+  );
+  const page = await context.newPage();
+
+  // Shape-aware degraded mock for every engine endpoint ([] for list
+  // endpoints, declared contracts for known shapes -- a blanket `{}` makes
+  // unrelated widgets crash on .slice()/.map() and masks the assertion this
+  // spec exists to make; see _engineMock.ts).
+  await installEngineMock(page, "degraded");
+
+  // Route ordering matters: Playwright evaluates handlers in REVERSE
+  // registration order (last registered wins), so the funnel-specific mock
+  // must be registered AFTER installEngineMock's catch-all.
   await page.route("**/api/engine/analytics/pipeline-funnel*", (route) =>
     route.fulfill({
       status: 200,
@@ -55,19 +90,6 @@ test("command-center renders the Pipeline Funnel card with 30/90d conversion", a
       },
     })
   );
-  // Let every other engine call resolve empty so the page mounts cleanly.
-  await page.route("**/api/engine/**", (route) => {
-    const u = route.request().url();
-    if (u.includes("/prices/snapshot")) {
-      return route.fulfill({
-        json: {
-          MES: { last_price: null, prev_close: null, change_pct: null, error: "No data available" },
-          MGC: { last_price: null, prev_close: null, change_pct: null, error: "No data available" },
-        },
-      });
-    }
-    return route.fulfill({ status: 200, json: {} });
-  });
 
   await page.goto("/command-center", { waitUntil: "domcontentloaded" });
 
@@ -87,4 +109,6 @@ test("command-center renders the Pipeline Funnel card with 30/90d conversion", a
 
   // Ledger-drift note is surfaced, not hidden.
   await expect(card).toContainText("approval ledger (387)");
+
+  await context.close();
 });
