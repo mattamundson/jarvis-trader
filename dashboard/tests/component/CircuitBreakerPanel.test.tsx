@@ -1,87 +1,73 @@
 // Tier-2 safety-action component test — Phase 9.2, P9-3.
 //
-// CircuitBreakerPanel is the at-a-glance safety-rail readout (daily-loss and
-// drawdown gauges + kill-switch pill). This suite proves it renders correctly
-// for both a tripped/halted engine state and a normal/all-clear one, so a
-// stale or miscoded status banner can't silently under-represent real risk.
-import { describe, expect, it, vi, beforeEach } from "vitest";
+// CircuitBreakerSummary is the live Settings safety-rail readout. This suite
+// proves it renders correctly for tripped/halted, normal/all-clear, and
+// unavailable states so the dashboard does not silently under-represent risk.
+import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { CircuitBreakerPanel } from "@/components/CircuitBreakerPanel";
-import useSWR from "swr";
-import type { CircuitBreakerState } from "@/lib/api";
+import { CircuitBreakerSummary } from "@/components/safety/SafetyPanels";
+import type { CircuitBreakerFull } from "@/lib/settings-api";
 
-vi.mock("swr", () => ({
-  default: vi.fn(),
-}));
-
-vi.mock("@/lib/api", () => ({
-  // CircuitBreakerPanel's fetcher wraps fetchEngine, but useSWR itself is
-  // mocked below so this real call site is never invoked — stub kept only so
-  // the module import resolves.
-  fetchEngine: vi.fn(),
-}));
-
-const mockedUseSWR = vi.mocked(useSWR);
-
-function mockSwrState(data?: CircuitBreakerState, extra?: { error?: unknown; isLoading?: boolean }) {
-  mockedUseSWR.mockReturnValue({
-    data,
-    error: extra?.error,
-    isLoading: extra?.isLoading ?? false,
-    mutate: vi.fn(),
-    isValidating: false,
-  } as unknown as ReturnType<typeof useSWR>);
+function circuitBreaker(data: Partial<CircuitBreakerFull>): CircuitBreakerFull {
+  return {
+    daily_pnl: 0,
+    daily_limit: -500,
+    daily_pnl_pct: 0,
+    daily_limit_pct: -0.05,
+    daily_limit_breached: false,
+    drawdown_pct: 0,
+    drawdown_limit_pct: -0.2,
+    drawdown_breached: false,
+    kill_switch_active: false,
+    kill_switch_reason: null,
+    pnl_source: "memory",
+    current_balance: 10000,
+    starting_balance: 10000,
+    orders_last_minute: 0,
+    all_clear: true,
+    ...data,
+  };
 }
 
-describe("CircuitBreakerPanel — tripped vs untripped rendering", () => {
-  beforeEach(() => {
-    mockedUseSWR.mockReset();
-  });
-
-  it("renders the untripped/all-clear state with NORMAL gauges", () => {
-    mockSwrState({
-      daily_pnl: -50,
-      daily_limit: -500,
-      drawdown_pct: -0.01,
-      drawdown_limit_pct: -0.2,
-      kill_switch_active: false,
-      all_clear: true,
-    });
-
-    render(<CircuitBreakerPanel />);
+describe("CircuitBreakerSummary - tripped vs untripped rendering", () => {
+  it("renders the untripped/all-clear state", () => {
+    render(
+      <CircuitBreakerSummary
+        data={circuitBreaker({
+          daily_pnl: -50,
+          drawdown_pct: -0.01,
+        })}
+      />
+    );
 
     expect(screen.getByText("All Clear")).toBeInTheDocument();
-    expect(screen.getByText("Kill Switch: Inactive")).toBeInTheDocument();
-    const normals = screen.getAllByText("NORMAL");
-    expect(normals).toHaveLength(2);
-    expect(screen.queryByText("TRIPPED")).not.toBeInTheDocument();
+    expect(screen.getByText("-$50.00")).toBeInTheDocument();
+    expect(screen.getByText("1.00%")).toBeInTheDocument();
+    expect(screen.queryByText("HALTED")).not.toBeInTheDocument();
   });
 
-  it("renders the tripped/halted state with TRIPPED gauges and the HALTED banner", () => {
-    mockSwrState({
-      daily_pnl: -520,
-      daily_limit: -500,
-      drawdown_pct: -0.25,
-      drawdown_limit_pct: -0.2,
-      kill_switch_active: true,
-      all_clear: false,
-    });
-
-    render(<CircuitBreakerPanel />);
+  it("renders the tripped/halted state with the HALTED banner", () => {
+    render(
+      <CircuitBreakerSummary
+        data={circuitBreaker({
+          daily_pnl: -50,
+          daily_limit_breached: true,
+          drawdown_pct: -0.25,
+          drawdown_breached: true,
+          kill_switch_active: true,
+          kill_switch_reason: "manual_dashboard",
+          all_clear: false,
+        })}
+      />
+    );
 
     expect(screen.getByText("HALTED")).toBeInTheDocument();
-    expect(screen.getByText("Kill Switch: Active")).toBeInTheDocument();
-    const tripped = screen.getAllByText("TRIPPED");
-    // Both the daily-P&L gauge (520/500) and drawdown gauge (0.25/0.20) are
-    // over their limit in this fixture.
-    expect(tripped).toHaveLength(2);
-    expect(screen.queryByText("NORMAL")).not.toBeInTheDocument();
+    expect(screen.getByText("25.00%")).toBeInTheDocument();
+    expect(screen.queryByText("All Clear")).not.toBeInTheDocument();
   });
 
-  it("renders an explicit unavailable state rather than a blank/zeroed panel when the engine has no data", () => {
-    mockSwrState(undefined, { error: new Error("fetch failed") });
-
-    render(<CircuitBreakerPanel />);
+  it("renders an explicit unavailable state rather than a blank panel when the engine has no data", () => {
+    render(<CircuitBreakerSummary data={undefined} />);
 
     expect(screen.getByText("Circuit breaker data unavailable")).toBeInTheDocument();
   });
