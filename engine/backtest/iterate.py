@@ -48,7 +48,6 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 engine_root = Path(__file__).parent.parent
@@ -190,11 +189,11 @@ def load_vix(csv_path: str | None) -> pd.DataFrame | None:
     # Fallback: yfinance (same path as run_mes_trend_vix_rank1.py)
     try:
         import yfinance as yf
-    except ImportError:
+    except ImportError as exc:
         raise SystemExit(
             "[VIX] no --vix-csv given, no VIX_*.csv cache found, and yfinance not installed. "
             "Provide --vix-csv or install yfinance."
-        )
+        ) from exc
     print("[VIX] Downloading ^VIX daily via yfinance ...")
     vix = yf.download("^VIX", start="2015-01-01", progress=False, auto_adjust=True)
     if vix.empty:

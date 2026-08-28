@@ -153,8 +153,6 @@ class _FakeConn:
         # Mirror the fixed column list; count them from the last query.
         cols = self._query.split("SELECT ", 1)[1].split(" FROM ", 1)[0]
         names = [c.strip() for c in cols.split(",")]
-        cols = self._query.split("SELECT ", 1)[1].split(" FROM ", 1)[0]
-        names = [c.strip() for c in cols.split(",")]
         # Regression guard: any column not in the real table would 500 live
         # ("no such column"). Fail the test instead of mirroring the bug.
         missing = [n for n in names if n not in REAL_PAPER_TRADES_COLUMNS]
@@ -178,13 +176,10 @@ def test_journal_narrow_columns_and_cache() -> None:
         "exit_price", "entry_time", "exit_time", "pnl", "status",
         "strategy_params", "notes", "regime", "structure_position", "bias",
         "composite_score", "stc_contrib", "orb_contrib", "vwap_contrib",
-        "regime_tier", "deciding_stage", "bull_score", "bear_score",
-        "debate_confidence", "timeframe",
     )
     row = (
         1, "t1", "MES", "buy", 2.0, 5000.0, 5010.0, "2026-07-01T15:00:00+00:00",
         "2026-07-01T16:00:00+00:00", 20.0, "closed", None, "note", "trend",
-        None, None, 0.75, 1, 0, 0, 2, "trader", 0.8, 0.1, 0.7, "1h",
         None, None, 0.75, 1, 0, 0,
     )
     fake = _FakeDb([row, row])
@@ -217,12 +212,6 @@ def test_journal_cache_respects_limit_key() -> None:
     cols = ("id", "trade_id", "symbol", "side", "quantity", "entry_price",
             "exit_price", "entry_time", "exit_time", "pnl", "status",
             "strategy_params", "notes", "regime", "structure_position", "bias",
-            "composite_score", "stc_contrib", "orb_contrib", "vwap_contrib",
-            "regime_tier", "deciding_stage", "bull_score", "bear_score",
-            "debate_confidence", "timeframe")
-    row = (1, "t1", "MES", "buy", 1.0, 5000.0, None, "2026-07-01T15:00:00+00:00",
-           None, None, "open", None, None, "trend", None, None, None,
-           None, None, None, None, None, None, None, None, "1h")
             "composite_score", "stc_contrib", "orb_contrib", "vwap_contrib")
     row = (1, "t1", "MES", "buy", 1.0, 5000.0, None, "2026-07-01T15:00:00+00:00",
            None, None, "open", None, None, "trend", None, None, None,

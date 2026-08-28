@@ -6,7 +6,7 @@
  * share a literal source, so this is the dashboard-side twin) — update both
  * together if the active pair ever changes again.
  */
-export const DEFAULT_BRIEFING_SYMBOLS = ["MES", "MGC"] as const;
+export const DEFAULT_BRIEFING_SYMBOLS = ["MES"] as const;
 
 /**
  * Symbols currently blocked from trading, mirroring the engine's live

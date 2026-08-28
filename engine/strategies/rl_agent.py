@@ -23,6 +23,15 @@ from typing import Optional
 
 import numpy as np
 
+from strategies.rl_config import (
+    ACTION_NAMES,
+    PPO_CONFIG,
+    RL_MODELS_DIR,
+    VALIDATION_GATES,
+    Action,
+)
+from strategies.rl_environment import TradingEnvironment
+
 # ── Lazy SB3/torch import ─────────────────────────────────────────────────────
 # stable-baselines3 pulls in torch, whose first import compiles bytecode for
 # minutes and holds the GIL. Importing it eagerly at module load (this module is
@@ -49,7 +58,9 @@ def _ensure_sb3() -> bool:
         return True
     try:
         from stable_baselines3 import PPO as _PPO  # type: ignore[import]
-        from stable_baselines3.common.callbacks import BaseCallback as _BaseCallback  # type: ignore[import]
+        from stable_baselines3.common.callbacks import (
+            BaseCallback as _BaseCallback,  # type: ignore[import]
+        )
 
         PPO = _PPO
         BaseCallback = _BaseCallback
@@ -111,15 +122,6 @@ class TrainingProgressCallback:  # noqa
 
     def __init__(self, *args, **kwargs):
         pass
-
-from strategies.rl_config import (
-    ACTION_NAMES,
-    PPO_CONFIG,
-    RL_MODELS_DIR,
-    VALIDATION_GATES,
-    Action,
-)
-from strategies.rl_environment import TradingEnvironment
 
 logger = logging.getLogger(__name__)
 
