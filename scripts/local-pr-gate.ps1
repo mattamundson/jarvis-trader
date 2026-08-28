@@ -254,8 +254,14 @@ function Invoke-ToolchainPreflight {
     Write-Host ""
     Write-Host "[local-pr-gate] START Toolchain preflight"
 
-    $pythonVersion = (& $Python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')").Trim()
-    $pythonOk = $pythonVersion -like "3.12.*"
+    $pythonProbe = (& $Python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}|{sys.prefix}')").Trim()
+    $pythonParts = $pythonProbe -split '\|', 2
+    $pythonVersion = $pythonParts[0]
+    $pythonPrefix = if ($pythonParts.Count -gt 1) { $pythonParts[1] } else { "" }
+    $pythonVersionOk = $pythonVersion -like "3.12.*"
+    $localVenv = Join-Path $RepoRoot "engine\.venv"
+    $pythonVenvOk = $pythonPrefix -like "$localVenv*"
+    $pythonOk = $pythonVersionOk -and $pythonVenvOk
     $nodeVersion = $null
     $pnpmVersion = $null
 
@@ -277,7 +283,8 @@ function Invoke-ToolchainPreflight {
     $lines.Add("")
     $lines.Add("python: $Python")
     $lines.Add("python_version: $pythonVersion")
-    $lines.Add("python_expected: 3.12.x")
+    $lines.Add("python_prefix: $pythonPrefix")
+    $lines.Add("python_expected: repo engine/.venv on Python 3.12.x")
     $lines.Add("node_version: $nodeVersion")
     $lines.Add("pnpm: $Pnpm")
     $lines.Add("pnpm_version: $pnpmVersion")
@@ -286,7 +293,7 @@ function Invoke-ToolchainPreflight {
     $status = if ($exitCode -eq 0) { "PASS" } else { "FAIL" }
     Write-Host "[local-pr-gate] $status Toolchain preflight ($duration sec)"
     if (-not $pythonOk) {
-        Write-Host "[local-pr-gate]   expected Python 3.12.x, got $pythonVersion"
+        Write-Host "[local-pr-gate]   expected repo engine/.venv on Python 3.12.x, got $pythonVersion at $pythonPrefix"
     }
 
     return [pscustomobject]@{

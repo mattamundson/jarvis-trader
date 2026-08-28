@@ -19,6 +19,11 @@ The script writes a timestamped report under `docs/ci-reports/` and exits
 nonzero on failures. It does not restart the engine, edit `.env` files, place
 orders, or merge PRs.
 
+Worktree note: most JARVIS feature worktrees do not contain their own
+`engine/.venv`. The gate first checks the worktree venv, then falls back to the
+canonical engine venv at `C:\Users\mattm\ThinkorSwim\jarvis-trader\engine`.
+Override that fallback with `JARVIS_CANONICAL_ENGINE_ROOT` when needed.
+
 Notes:
 
 - Default `auto` scope chooses engine/dashboard checks from the diff vs
