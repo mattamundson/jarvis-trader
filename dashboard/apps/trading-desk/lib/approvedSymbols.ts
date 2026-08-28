@@ -4,9 +4,9 @@
  * see jarvis-trader/CLAUDE.md "Active Instruments". Mirrors
  * `engine/backtest/signals.py::DEFAULT_BRIEFING_SYMBOLS` (TS/Python can't
  * share a literal source, so this is the dashboard-side twin) — update both
- * together if the active pair ever changes again.
+ * together if the active set ever changes again.
  */
-export const DEFAULT_BRIEFING_SYMBOLS = ["MES", "MGC"] as const;
+export const DEFAULT_BRIEFING_SYMBOLS = ["MES"] as const;
 
 /**
  * Symbols currently blocked from trading, mirroring the engine's live
