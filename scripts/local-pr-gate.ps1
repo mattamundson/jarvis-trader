@@ -18,6 +18,7 @@
 
   This script does not restart the engine, touch .env files, place orders, or
   merge PRs. It uses engine/.venv and dashboard/node_modules when present.
+  Pass -EngineVenv or JARVIS_ENGINE_VENV to pin a known Python 3.12 engine venv.
 
 .EXAMPLE
   pwsh -NoProfile -File scripts\local-pr-gate.ps1
@@ -29,6 +30,8 @@
 [CmdletBinding()]
 param(
     [string] $RepoRoot = (Resolve-Path "$PSScriptRoot\..").Path,
+    [string] $EnginePython = $env:JARVIS_ENGINE_PYTHON,
+    [string] $EngineVenv = $env:JARVIS_ENGINE_VENV,
     [string] $BaseRef = "origin/master",
     [ValidateSet("auto", "all", "engine", "dashboard", "safety", "security")]
     [string] $Scope = "auto",
@@ -74,13 +77,62 @@ function Resolve-Tool {
     return $null
 }
 
+function Get-VenvRootFromPythonPath {
+    param([string] $PythonPath)
+
+    if ([string]::IsNullOrWhiteSpace($PythonPath)) {
+        return $null
+    }
+
+    $pythonLeaf = Split-Path -Leaf $PythonPath
+    $scriptsRoot = Split-Path -Parent $PythonPath
+    if ([string]::IsNullOrWhiteSpace($scriptsRoot)) {
+        return $null
+    }
+
+    $scriptsLeaf = Split-Path -Leaf $scriptsRoot
+    if ($pythonLeaf -in @("python.exe", "python") -and $scriptsLeaf -eq "Scripts") {
+        return (Split-Path -Parent $scriptsRoot)
+    }
+
+    return $null
+}
+
 function Resolve-EngineTool {
     param(
         [Parameter(Mandatory)][string] $EngineRoot,
         [Parameter(Mandatory)][string] $CanonicalEngineRoot,
         [Parameter(Mandatory)][string] $RelativeToolPath,
-        [Parameter(Mandatory)][string] $FallbackName
+        [Parameter(Mandatory)][string] $FallbackName,
+        [string] $ExplicitEnginePython,
+        [string] $ExplicitEngineVenv
     )
+
+    $toolLeaf = Split-Path -Leaf $RelativeToolPath
+
+    if ($FallbackName -eq "python" -and -not [string]::IsNullOrWhiteSpace($ExplicitEnginePython)) {
+        if (Test-Path $ExplicitEnginePython) {
+            return (Resolve-Path $ExplicitEnginePython).Path
+        }
+        throw "EnginePython path not found: $ExplicitEnginePython"
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($ExplicitEngineVenv)) {
+        $explicitVenvPath = Join-Path $ExplicitEngineVenv ("Scripts\" + $toolLeaf)
+        if (Test-Path $explicitVenvPath) {
+            return (Resolve-Path $explicitVenvPath).Path
+        }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($ExplicitEnginePython)) {
+        $pythonToolRoot = Split-Path -Parent $ExplicitEnginePython
+        if (-not [string]::IsNullOrWhiteSpace($pythonToolRoot)) {
+            $siblingToolPath = Join-Path $pythonToolRoot $toolLeaf
+            if (Test-Path $siblingToolPath) {
+                return (Resolve-Path $siblingToolPath).Path
+            }
+        }
+    }
 
     $localPath = Join-Path $EngineRoot $RelativeToolPath
     if (Test-Path $localPath) {
@@ -272,6 +324,7 @@ function Invoke-ToolchainPreflight {
         [Parameter(Mandatory)][string] $RepoRoot,
         [Parameter(Mandatory)][string] $CanonicalEngineRoot,
         [Parameter(Mandatory)][string] $Python,
+        [string] $ExplicitEngineVenv,
         [string] $Pnpm,
         [Parameter(Mandatory)][string] $LogPath
     )
@@ -284,10 +337,20 @@ function Invoke-ToolchainPreflight {
     $pythonParts = $pythonProbe -split '\|', 2
     $pythonVersion = $pythonParts[0]
     $pythonPrefix = if ($pythonParts.Count -gt 1) { $pythonParts[1] } else { "" }
-    $pythonVersionOk = $pythonVersion -like "3.12.*" -or $pythonVersion -like "3.13.*"
+    $pythonVersionOk = $pythonVersion -like "3.12.*"
     $localVenv = Join-Path $RepoRoot "engine\.venv"
     $canonicalVenv = Join-Path $CanonicalEngineRoot ".venv"
-    $pythonVenvOk = $pythonPrefix -like "$localVenv*" -or $pythonPrefix -like "$canonicalVenv*"
+    $allowedVenvs = @($localVenv, $canonicalVenv)
+    if (-not [string]::IsNullOrWhiteSpace($ExplicitEngineVenv)) {
+        $allowedVenvs += $ExplicitEngineVenv
+    }
+    $pythonVenvOk = $false
+    foreach ($venvRoot in $allowedVenvs) {
+        if ($pythonPrefix -like "$venvRoot*") {
+            $pythonVenvOk = $true
+            break
+        }
+    }
     $pythonOk = $pythonVersionOk -and $pythonVenvOk
     $nodeVersion = $null
     $pnpmVersion = $null
@@ -311,7 +374,10 @@ function Invoke-ToolchainPreflight {
     $lines.Add("python: $Python")
     $lines.Add("python_version: $pythonVersion")
     $lines.Add("python_prefix: $pythonPrefix")
-    $lines.Add("python_expected: repo or canonical engine/.venv on Python 3.12.x or 3.13.x")
+    $lines.Add("python_expected: accepted engine venv on Python 3.12.x")
+    if (-not [string]::IsNullOrWhiteSpace($ExplicitEngineVenv)) {
+        $lines.Add("engine_venv_override: $ExplicitEngineVenv")
+    }
     $lines.Add("canonical_engine_root: $CanonicalEngineRoot")
     $lines.Add("node_version: $nodeVersion")
     $lines.Add("pnpm: $Pnpm")
@@ -321,7 +387,7 @@ function Invoke-ToolchainPreflight {
     $status = if ($exitCode -eq 0) { "PASS" } else { "FAIL" }
     Write-Host "[local-pr-gate] $status Toolchain preflight ($duration sec)"
     if (-not $pythonOk) {
-        Write-Host "[local-pr-gate]   expected repo or canonical engine/.venv on Python 3.12.x or 3.13.x, got $pythonVersion at $pythonPrefix"
+        Write-Host "[local-pr-gate]   expected accepted engine venv on Python 3.12.x, got $pythonVersion at $pythonPrefix"
     }
 
     return [pscustomobject]@{
@@ -336,6 +402,17 @@ function Invoke-ToolchainPreflight {
 $RepoRoot = (Resolve-Path $RepoRoot).Path
 $engineRoot = Join-Path $RepoRoot "engine"
 $dashboardRoot = Join-Path $RepoRoot "dashboard"
+$explicitEnginePython = $EnginePython
+if (-not [string]::IsNullOrWhiteSpace($explicitEnginePython)) {
+    $explicitEnginePython = (Resolve-Path $explicitEnginePython).Path
+}
+$explicitEngineVenv = $EngineVenv
+if ([string]::IsNullOrWhiteSpace($explicitEngineVenv) -and -not [string]::IsNullOrWhiteSpace($explicitEnginePython)) {
+    $explicitEngineVenv = Get-VenvRootFromPythonPath $explicitEnginePython
+}
+if (-not [string]::IsNullOrWhiteSpace($explicitEngineVenv)) {
+    $explicitEngineVenv = (Resolve-Path $explicitEngineVenv).Path
+}
 $canonicalEngineRoot = $env:JARVIS_CANONICAL_ENGINE_ROOT
 if ([string]::IsNullOrWhiteSpace($canonicalEngineRoot)) {
     $candidateCanonicalEngineRoot = "C:\Users\mattm\ThinkorSwim\jarvis-trader\engine"
@@ -393,9 +470,9 @@ try {
     }
 
     $results = New-Object System.Collections.Generic.List[object]
-    $python = Resolve-EngineTool $engineRoot $canonicalEngineRoot ".venv\Scripts\python.exe" "python"
-    $ruff = Resolve-EngineTool $engineRoot $canonicalEngineRoot ".venv\Scripts\ruff.exe" "ruff"
-    $mypy = Resolve-EngineTool $engineRoot $canonicalEngineRoot ".venv\Scripts\mypy.exe" "mypy"
+    $python = Resolve-EngineTool $engineRoot $canonicalEngineRoot ".venv\Scripts\python.exe" "python" $explicitEnginePython $explicitEngineVenv
+    $ruff = Resolve-EngineTool $engineRoot $canonicalEngineRoot ".venv\Scripts\ruff.exe" "ruff" $explicitEnginePython $explicitEngineVenv
+    $mypy = Resolve-EngineTool $engineRoot $canonicalEngineRoot ".venv\Scripts\mypy.exe" "mypy" $explicitEnginePython $explicitEngineVenv
     $pnpm = Resolve-Tool (Join-Path $env:APPDATA "npm\pnpm.cmd") "pnpm"
 
     if (-not $python) { throw "Python not found. Expected engine\.venv\Scripts\python.exe or python on PATH." }
@@ -423,6 +500,9 @@ try {
     Write-Host "[local-pr-gate] base: $BaseRef ($base)"
     Write-Host "[local-pr-gate] scope: $effectiveScope"
     Write-Host "[local-pr-gate] canonical engine: $canonicalEngineRoot"
+    if (-not [string]::IsNullOrWhiteSpace($explicitEngineVenv)) {
+        Write-Host "[local-pr-gate] engine venv override: $explicitEngineVenv"
+    }
 
     $runSafety = $effectiveScope -in @("all", "engine", "safety")
     $runSecurity = $effectiveScope -in @("all", "engine", "dashboard", "security")
@@ -430,7 +510,7 @@ try {
     $runDashboard = $effectiveScope -in @("all", "dashboard")
 
     if ($runEngine -or $runDashboard -or $runSafety) {
-        $results.Add((Invoke-ToolchainPreflight $RepoRoot $canonicalEngineRoot $python $pnpm (& $log "toolchain-preflight"))) | Out-Null
+        $results.Add((Invoke-ToolchainPreflight $RepoRoot $canonicalEngineRoot $python $explicitEngineVenv $pnpm (& $log "toolchain-preflight"))) | Out-Null
     }
 
     if ($runSafety) {

@@ -23,6 +23,15 @@ Worktree note: most JARVIS feature worktrees do not contain their own
 `engine/.venv`. The gate first checks the worktree venv, then falls back to the
 canonical engine venv at `C:\Users\mattm\ThinkorSwim\jarvis-trader\engine`.
 Override that fallback with `JARVIS_CANONICAL_ENGINE_ROOT` when needed.
+Engine checks require Python 3.12.x. To pin a known-good interpreter or venv,
+use `-EnginePython`, `-EngineVenv`, `JARVIS_ENGINE_PYTHON`, or
+`JARVIS_ENGINE_VENV`:
+
+```powershell
+pwsh -NoProfile -File scripts\local-pr-gate.ps1 `
+  -Scope engine `
+  -EngineVenv C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\.venv
+```
 
 Notes:
 
