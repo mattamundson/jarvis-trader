@@ -1,12 +1,12 @@
 /**
  * Default symbols for dashboard/Discord briefing widgets (T3-23, 2026-07-09).
- * Canonical active paper-trading pair per the 2026-05-24 instrument switch —
+ * Canonical active paper-trading symbol per the 2026-08-27 MES-only scope —
  * see jarvis-trader/CLAUDE.md "Active Instruments". Mirrors
  * `engine/backtest/signals.py::DEFAULT_BRIEFING_SYMBOLS` (TS/Python can't
  * share a literal source, so this is the dashboard-side twin) — update both
- * together if the active pair ever changes again.
+ * together if the active set ever changes again.
  */
-export const DEFAULT_BRIEFING_SYMBOLS = ["MES", "MGC"] as const;
+export const DEFAULT_BRIEFING_SYMBOLS = ["MES"] as const;
 
 /**
  * Symbols currently blocked from trading, mirroring the engine's live
@@ -28,12 +28,14 @@ export function symbolTradeStatus(symbol: string): "APPROVED" | "HALTED" {
  * Was lost when the approved-symbols module was refactored around
  * symbolTradeStatus(); the build broke on the missing export.
  */
-export const PREFERRED_BASELINE_LABEL = "APPROVED" as const;
+export const PREFERRED_BASELINE_LABEL = "MES" as const;
 
-/** Every symbol this component set knows about, active pair first. */
+/** Every dashboard-visible symbol this component set knows about, active set first. */
 export const ALL_TRACKED_SYMBOLS = [
   ...DEFAULT_BRIEFING_SYMBOLS,
-  ...HALTED_SYMBOLS,
+  "MCL",
+  "MNQ",
+  "MGC",
 ] as const;
 
 export type TrackedSymbol = (typeof ALL_TRACKED_SYMBOLS)[number];

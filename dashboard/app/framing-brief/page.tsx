@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import useSWR from "swr";
-import { Activity, Sunrise, Sunset } from "lucide-react";
+import { Activity, AlertTriangle, Sunrise, Sunset } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
 
 const REFRESH_MS = 5 * 60_000;
@@ -47,6 +47,20 @@ function fmtGeneratedAt(epochSeconds: number): string {
   } catch {
     return "";
   }
+}
+
+// The engine returns a 200 with an honest failure brief (rather than a 4xx/5xx)
+// when the LLM generator could not run — e.g. credit-balance exhaustion. Detect
+// that marker and render a clear failed state instead of raw error markdown.
+const FAILURE_RE = /generation failed|credit balance is too low|failed to generate/i;
+
+function isFailedBrief(markdown: string): boolean {
+  return FAILURE_RE.test(markdown);
+}
+
+function extractFailureReason(markdown: string): string {
+  const match = markdown.match(/Reason:\s*([^\n]+)/i);
+  return match?.[1]?.trim() ?? "";
 }
 
 export default function FramingBriefPage() {
@@ -142,27 +156,42 @@ export default function FramingBriefPage() {
               scheduled generator may not have run yet, or the engine is unreachable.
             </p>
           )}
-          {data && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between border-b border-border pb-3">
-                <span className="font-mono text-xs font-semibold text-accent">{data.date}</span>
-                <span className="font-mono text-[10px] text-muted-foreground">
-                  Generated {fmtGeneratedAt(data.generated_at)}
-                </span>
+          {data &&
+            (isFailedBrief(data.markdown) ? (
+              <div className="rounded-xl border border-warn/30 bg-warn/5 p-6 text-center space-y-3">
+                <AlertTriangle className="h-8 w-8 text-warn mx-auto" />
+                <p className="font-mono text-sm font-semibold text-warn">
+                  Framing brief generation failed
+                </p>
+                {extractFailureReason(data.markdown) && (
+                  <p className="font-mono text-[11px] text-muted-foreground max-w-2xl mx-auto break-words">
+                    {extractFailureReason(data.markdown)}
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground max-w-2xl mx-auto">
+                  No brief was posted for {data.date} — this is an honest gap, not a stale or
+                  fabricated read. The generator will retry on the next scheduled session.
+                </p>
               </div>
-              {/*
-                Plain whitespace-pre-wrap rendering (same pattern as
-                components/discord/corey-feed.tsx) rather than a markdown
-                renderer — no react-markdown dependency exists in this
-                dashboard today. Headers/bold render as literal '#'/'**'
-                rather than styled text; upgrading to react-markdown is a
-                small follow-up if richer formatting is wanted.
-              */}
-              <p className="font-mono text-[12px] text-foreground/90 leading-relaxed whitespace-pre-wrap">
-                {data.markdown}
-              </p>
-            </div>
-          )}
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between border-b border-border pb-3">
+                  <span className="font-mono text-xs font-semibold text-accent">{data.date}</span>
+                  <span className="font-mono text-[10px] text-muted-foreground">
+                    Generated {fmtGeneratedAt(data.generated_at)}
+                  </span>
+                </div>
+                {/* Plain whitespace-pre-wrap rendering (same pattern as
+                    components/discord/corey-feed.tsx) rather than a markdown
+                    renderer — no react-markdown dependency exists in this
+                    dashboard today. Headers/bold render as literal '#'/'**'
+                    rather than styled text; upgrading to react-markdown is a
+                    small follow-up if richer formatting is wanted. */}
+                <p className="font-mono text-[12px] text-foreground/90 leading-relaxed whitespace-pre-wrap">
+                  {data.markdown}
+                </p>
+              </div>
+            ))}
         </div>
       </main>
     </div>
