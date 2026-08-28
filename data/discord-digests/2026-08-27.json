@@ -1,0 +1,303 @@
+{
+  "date": "2026-08-27",
+  "session_bias": {
+    "session_type": "trend_day",
+    "directional_bias": "bullish",
+    "conviction": 0.6,
+    "ib_bias": "not_mentioned",
+    "data_quality": "fresh",
+    "message_count": 5
+  },
+  "sentiment_score": null,
+  "sentiment_label": null,
+  "top_signals": [
+    {
+      "symbol": "6E",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 1.16635,
+      "target2": 1.1677,
+      "stop1": null,
+      "win_rate": 83.75,
+      "rr": 0.67,
+      "timestamp": "2026-08-27T09:33:11.505-05:00"
+    },
+    {
+      "symbol": "6E",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 1.1666,
+      "target2": 1.16795,
+      "stop1": null,
+      "win_rate": 83.65,
+      "rr": 0.57,
+      "timestamp": "2026-08-27T08:53:02.079-05:00"
+    },
+    {
+      "symbol": "6E",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 1.1657,
+      "target2": 1.16705,
+      "stop1": null,
+      "win_rate": 83.54,
+      "rr": 0.57,
+      "timestamp": "2026-08-27T07:10:07.449-05:00"
+    },
+    {
+      "symbol": "6E",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 1.16515,
+      "target2": 1.1665,
+      "stop1": null,
+      "win_rate": 83.44,
+      "rr": 0.57,
+      "timestamp": "2026-08-27T06:20:04.417-05:00"
+    },
+    {
+      "symbol": "6E",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 1.1655,
+      "target2": 1.16685,
+      "stop1": null,
+      "win_rate": 83.33,
+      "rr": 0.57,
+      "timestamp": "2026-08-27T05:11:02.269-05:00"
+    }
+  ],
+  "corey_quote": "hold above 7735 \u2192 trend continuation confirmed; fail below 7705 \u2192 breakout failure risk increases",
+  "commentary_health": [
+    {
+      "date": "2026-08-28",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.6,
+      "message_count": 5
+    },
+    {
+      "date": "2026-08-27",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.6,
+      "message_count": 5
+    },
+    {
+      "date": "2026-08-26",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 5
+    },
+    {
+      "date": "2026-08-25",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 5
+    },
+    {
+      "date": "2026-08-24",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.9,
+      "message_count": 5
+    }
+  ],
+  "calibration_integrity": {
+    "total_outcomes": 12,
+    "rows_excluded_corrupt": 0,
+    "rows_excluded_duplicate": 0,
+    "alert": false,
+    "window_days": 30
+  },
+  "llm_provider_health": {
+    "engine_reachable": true,
+    "active_provider": null,
+    "primary_provider": "kimi",
+    "primary_healthy": true,
+    "providers_available": 2,
+    "google_fallback_count": 0,
+    "vertex_failover_count": 0,
+    "llm_path_healthy": true,
+    "alert": false
+  },
+  "task_health": {
+    "present": true,
+    "stale": false,
+    "age_hours": 0.0,
+    "scanned": 108,
+    "failing_enabled": 18,
+    "failing_disabled": 1,
+    "failing_tasks": [
+      {
+        "name": "Hermes-Nightly-Sync",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-DataIntegritySentinel",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-DiskWatch",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-EngineHealth-Hourly",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "jarvis-gapfill-papertrack",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "jarvis-heartbeat-brief",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-IntradayBarPersist",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Jarvis-MasterOverseer",
+        "result": "0x41306"
+      },
+      {
+        "name": "jarvis-morning-brief",
+        "result": "0x3"
+      },
+      {
+        "name": "jarvis-morning-framing-brief",
+        "result": "0x3"
+      },
+      {
+        "name": "Jarvis-OllamaRouter-Watchdog",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-PM2RestartWatch-15min",
+        "result": "0x1"
+      },
+      {
+        "name": "jarvis-preclose-framing-brief",
+        "result": "0x3"
+      },
+      {
+        "name": "Jarvis-Sentinel",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Jarvis-VaultGbrainSync",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Jarvis-VaultIngest-Files",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Jarvis-VaultIngest-Files-Guarded",
+        "result": "0x2"
+      },
+      {
+        "name": "Jarvis-VerdictRefresh-Weekly",
+        "result": "0x1"
+      }
+    ],
+    "alert": true
+  },
+  "gate_verdict_freshness": {
+    "active_symbols": [
+      "MES",
+      "MGC"
+    ],
+    "max_age_days": 7.0,
+    "symbols": {
+      "AAPL": {
+        "age_days": 10.2,
+        "newest": "2026-08-18T10:11:50.980568+00:00",
+        "files": 3,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "M2K": {
+        "age_days": 32.4,
+        "newest": "2026-07-27T04:22:26.852950+00:00",
+        "files": 5,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "MCL": {
+        "age_days": 6.4,
+        "newest": "2026-08-22T06:00:05.351575+00:00",
+        "files": 4,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "MES": {
+        "age_days": 2.9,
+        "newest": "2026-08-25T17:55:02.092384+00:00",
+        "files": 42,
+        "latest_verdict": "PASS",
+        "active": true
+      },
+      "MGC": {
+        "age_days": 1.0,
+        "newest": "2026-08-27T15:32:06.350498+00:00",
+        "files": 23,
+        "latest_verdict": "FAIL",
+        "active": true
+      },
+      "MNQ": {
+        "age_days": 6.4,
+        "newest": "2026-08-22T06:00:07.196071+00:00",
+        "files": 13,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "QQQ": {
+        "age_days": 9.7,
+        "newest": "2026-08-18T20:37:30.818561+00:00",
+        "files": 5,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "SPY": {
+        "age_days": 9.7,
+        "newest": "2026-08-18T20:37:23.164689+00:00",
+        "files": 5,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "TSLA": {
+        "age_days": 10.2,
+        "newest": "2026-08-18T09:38:18.712883+00:00",
+        "files": 4,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "ZB": {
+        "age_days": 71.4,
+        "newest": "2026-06-18T04:00:05.645209+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "ZN": {
+        "age_days": 71.4,
+        "newest": "2026-06-18T03:59:30.450756+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      }
+    },
+    "stale_active": [],
+    "missing_active": [],
+    "alert": false
+  }
+}
