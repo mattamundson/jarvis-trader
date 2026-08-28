@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import useSWR from "swr";
+import { ExploratoryBanner } from "@/components/ExploratoryBanner";
 import { Badge } from "@/components/ui/badge";
 import { fetchDomflow, type DomflowHistoryResponse, type DomflowSnapshot } from "@/lib/api";
 import { ServerOff } from "lucide-react";
@@ -113,6 +114,8 @@ export default function DomflowPage() {
         account has no L2 depth subscription, so IBKR delivers delayed top-of-book (L1) and the
         service labels it as such.
       </p>
+
+      <ExploratoryBanner what="DOM/order-flow imbalance is an informational research signal" />
 
       {latestLoading && !latest && <div className="text-sm text-slate-500">Loading…</div>}
       {latestError && !latest && (
