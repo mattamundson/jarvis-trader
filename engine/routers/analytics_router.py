@@ -531,188 +531,6 @@ async def get_performance_compare(request: Request) -> dict:
         raise HTTPException(500, f"Analytics error: {exc}") from exc
 
 
-# ---------------------------------------------------------------------------
-# Pipeline funnel — runs → signals → approved → executed → filled
-# ---------------------------------------------------------------------------
-
-# Short-TTL cache for the heavy COUNT(*) queries. The funnel is only meaningful
-# over 30/90d windows and the dashboard refreshes every 5 minutes; a 60s TTL
-# keeps repeat requests (and the two dashboard windows) from re-scanning the
-# full pipeline_runs/decisions tables on every poll.
-_funnel_cache: dict[str, dict] = {}
-_FUNNEL_CACHE_TTL_SECONDS = 60
-
-
-def _funnel_cutoff(days: int) -> str:
-    """UTC cutoff string in the ISO-T format used by the DB (no tz, no micros).
-
-    pipeline_runs/decisions store naive UTC "YYYY-MM-DDTHH:MM:SS"; the approval
-    and paper_trades tables store "YYYY-MM-DDTHH:MM:SS.ffffff+00:00". A
-    lexicographic >= against the naive cutoff works for both because the
-    prefixes are identical and "+00:00" sorts after any same-second naive row.
-    """
-    return (datetime.now(timezone.utc) - timedelta(days=days)).strftime(
-        "%Y-%m-%dT%H:%M:%S"
-    )
-
-
-def _compute_pipeline_funnel(db: DatabaseManager, days: int) -> dict:
-    """Compute funnel stage counts for the last ``days`` calendar days.
-
-    Stage definitions (single-source, monotone):
-      runs     — pipeline_runs rows in window (every engine execution)
-      signals  — runs whose final_action is buy/sell (directional decisions)
-      approved — directional runs cleared by the risk gate (requires_human=0),
-                 i.e. the engine approved execution without a human review
-      executed — paper_trades with entry_time in window, excluding the
-                 phantom/cancelled_duplicate/cancelled_contaminated artifacts
-                 that inflate the raw ledger (they are not real fills)
-      filled   — executed rows whose status is open/closed (real fills)
-
-    Human-review lanes (pending_trade_approvals / pipeline_approval_queue) are
-    reported separately in ``details`` so the funnel chain itself stays
-    monotone while the rejection/approval counts — the "why so few trades"
-    story — remain visible.
-    """
-    cutoff = _funnel_cutoff(days)
-
-    runs = db.fetch_one(
-        "SELECT COUNT(*) AS n FROM pipeline_runs WHERE created_at >= ?",
-        (cutoff,),
-    ) or {"n": 0}
-    signals = db.fetch_one(
-        "SELECT COUNT(*) AS n FROM pipeline_runs "
-        "WHERE created_at >= ? AND final_action IN ('buy','sell')",
-        (cutoff,),
-    ) or {"n": 0}
-    approved = db.fetch_one(
-        "SELECT COUNT(*) AS n FROM pipeline_runs "
-        "WHERE created_at >= ? AND final_action IN ('buy','sell') "
-        "AND requires_human = 0",
-        (cutoff,),
-    ) or {"n": 0}
-    executed = db.fetch_one(
-        "SELECT COUNT(*) AS n FROM paper_trades "
-        "WHERE entry_time IS NOT NULL AND entry_time != '' AND entry_time >= ? "
-        "AND status NOT IN ('phantom','cancelled_duplicate','cancelled_contaminated')",
-        (cutoff,),
-    ) or {"n": 0}
-    filled = db.fetch_one(
-        "SELECT COUNT(*) AS n FROM paper_trades "
-        "WHERE entry_time IS NOT NULL AND entry_time != '' AND entry_time >= ? "
-        "AND status IN ('open','closed')",
-        (cutoff,),
-    ) or {"n": 0}
-
-    # Human-review lanes (informational; not part of the monotone chain).
-    human_approved = db.fetch_one(
-        "SELECT COUNT(*) AS n FROM pipeline_approval_queue "
-        "WHERE status='approved' AND created_at >= ?",
-        (cutoff,),
-    ) or {"n": 0}
-    human_approved2 = db.fetch_one(
-        "SELECT COUNT(*) AS n FROM pending_trade_approvals "
-        "WHERE status='approved' AND created_at >= ?",
-        (cutoff,),
-    ) or {"n": 0}
-    human_rejected = db.fetch_one(
-        "SELECT COUNT(*) AS n FROM pending_trade_approvals "
-        "WHERE status='rejected' AND created_at >= ?",
-        (cutoff,),
-    ) or {"n": 0}
-
-    r = runs["n"]
-    s = signals["n"]
-    a = approved["n"]
-    e = executed["n"]
-    f = filled["n"]
-
-    def rate(numer: int, denom: int) -> float:
-        return round((numer / denom * 100), 1) if denom > 0 else 0.0
-
-    return {
-        "period": f"{days}d",
-        "days": days,
-        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "funnel": {
-            "runs": r,
-            "signals": s,
-            "approved": a,
-            "executed": e,
-            "filled": f,
-        },
-        "conversion_rates": {
-            "runs_to_signals": rate(s, r),
-            "signals_to_approved": rate(a, s),
-            "approved_to_executed": rate(e, a),
-            "executed_to_filled": rate(f, e),
-            "overall_conversion": rate(f, r),
-        },
-        "details": {
-            "window_days": days,
-            "cutoff": cutoff,
-            "runs": r,
-            "signals": s,
-            "approved": a,
-            "executed": e,
-            "filled": f,
-            "human_approved": human_approved["n"] + human_approved2["n"],
-            "human_rejected": human_rejected["n"],
-            "runs_to_signals_pct": rate(s, r),
-            "signals_to_approved_pct": rate(a, s),
-            "approved_to_executed_pct": rate(e, a),
-            "executed_to_filled_pct": rate(f, e),
-            "overall_conversion_pct": rate(f, r),
-        },
-    }
-
-
-@router.get(
-    "/pipeline-funnel",
-    response_model=None,
-    description="Pipeline conversion funnel: runs → signals → approved → executed → filled (last 30/90d).",
-)
-@limiter.limit("120/minute")
-async def get_pipeline_funnel(
-    request: Request,
-    days: int = Query(30, ge=7, le=90),
-) -> dict:
-    """Calculate pipeline conversion funnel metrics for the last N days.
-
-    The funnel turns 'the dashboard says few trades' into an understandable
-    system state: every run either produces a directional signal or not, every
-    signal either clears the risk gate or is held/reviewed, and every approved
-    signal either becomes a real fill or is lost (missing entry price, guard
-    skip, broker rejection, or ledger artifacts). Comparing the 30d and 90d
-    windows surfaces regressions in any stage.
-    """
-    try:
-        cache_key = str(days)
-        cached = _funnel_cache.get(cache_key)
-        now = time.time()
-        if cached and (now - cached["computed_at"]) < _FUNNEL_CACHE_TTL_SECONDS:
-            cached["payload"]["details"]["cache_hit"] = True
-            return cached["payload"]
-
-        db = _get_db()
-        payload = _compute_pipeline_funnel(db, days)
-        payload["details"]["cache_hit"] = False
-        _funnel_cache[cache_key] = {
-            "computed_at": now,
-            "payload": payload,
-        }
-        # Cap the cache at the handful of windows we serve.
-        if len(_funnel_cache) > 8:
-            oldest = min(_funnel_cache, key=lambda k: _funnel_cache[k]["computed_at"])
-            _funnel_cache.pop(oldest, None)
-        return payload
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.error("[Analytics] pipeline funnel calculation failed: %s", exc)
-        raise HTTPException(500, f"Analytics error: {exc}") from exc
-
-
 @router.get(
     "/forward-test",
     response_model=None,
@@ -2582,3 +2400,137 @@ def get_trade_pnl_breakdown(trade_id: str) -> dict:
     out = pnl_waterfall(dict(row), _post_trade_spec_lookup)
     out["timestamp"] = datetime.now(timezone.utc).isoformat()
     return out
+
+
+# ---------------------------------------------------------------------------
+# Pipeline funnel — trade-conversion visibility (T9)
+# ---------------------------------------------------------------------------
+# The funnel stages are derived from four independent ledgers (no single join):
+#   runs     = every pipeline_runs row in the window (all symbols/timeframes)
+#   signals  = pipeline_runs rows with a directional final_action (buy/sell)
+#   approved = directional signals that cleared the gate:
+#              auto_signals (requires_human=0, auto-logged) PLUS
+#              min(human_signals, queue_approved) — a human-required signal
+#              only counts as approved when an approval-queue row (paq/pta,
+#              status='approved') exists in the window. The cap keeps the
+#              funnel monotone even when the two ledgers drift (queue rows
+#              without a matching decision row); the raw queue count is still
+#              exposed so that drift stays visible via `notes`.
+#   executed = paper_trades rows with entry_time in the window (any status —
+#              an order was placed even if later cancelled/flagged phantom)
+#   filled   = paper_trades rows with status open/closed (real fills)
+# Timestamps are UTC ISO strings; all engine writers use UTC (naive or +00:00)
+# so string comparison against a %Y-%m-%dT%H:%M:%S cutoff is correct (probes
+# on the live DB confirmed window counts match naive-datetime comparisons).
+FUNNEL_CACHE_TTL_SECONDS = 300.0
+_funnel_cache: dict[str, tuple[float, dict]] = {}
+
+
+def _funnel_window(conn, days: int) -> dict:
+    """Compute one funnel window from an open sqlite connection (pure, testable)."""
+    now = datetime.now(timezone.utc)
+    cutoff = (now - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%S")
+
+    runs = conn.execute(
+        "SELECT COUNT(*) FROM pipeline_runs WHERE created_at >= ?", (cutoff,)
+    ).fetchone()[0]
+    signals = conn.execute(
+        "SELECT COUNT(*) FROM pipeline_runs WHERE created_at >= ? AND final_action IN ('buy','sell')",
+        (cutoff,),
+    ).fetchone()[0]
+    auto_signals = conn.execute(
+        "SELECT COUNT(*) FROM pipeline_runs WHERE created_at >= ? AND final_action IN ('buy','sell') AND requires_human=0",
+        (cutoff,),
+    ).fetchone()[0]
+    human_signals = signals - auto_signals
+    queue_approved = (
+        conn.execute(
+            "SELECT COUNT(*) FROM pipeline_approval_queue WHERE status='approved' AND created_at >= ?",
+            (cutoff,),
+        ).fetchone()[0]
+        + conn.execute(
+            "SELECT COUNT(*) FROM pending_trade_approvals WHERE status='approved' AND created_at >= ?",
+            (cutoff,),
+        ).fetchone()[0]
+    )
+    approved = auto_signals + min(human_signals, queue_approved)
+
+    executed = conn.execute(
+        "SELECT COUNT(*) FROM paper_trades WHERE entry_time IS NOT NULL AND entry_time != '' AND entry_time >= ?",
+        (cutoff,),
+    ).fetchone()[0]
+    filled = conn.execute(
+        "SELECT COUNT(*) FROM paper_trades WHERE status IN ('open','closed') AND entry_time >= ?",
+        (cutoff,),
+    ).fetchone()[0]
+
+    def pct(num: int, den: int) -> Optional[float]:
+        return round(100.0 * num / den, 2) if den else None
+
+    notes: list[str] = []
+    if queue_approved > human_signals:
+        notes.append(
+            f"approval ledger ({queue_approved}) exceeds human-required signals ({human_signals}) "
+            "— queue rows without matching decision rows; approved is capped at signals."
+        )
+    if executed > approved:
+        notes.append(
+            f"executions ({executed}) exceed recorded approvals ({approved}) — "
+            "orders are being placed outside the approval ledger."
+        )
+
+    return {
+        "days": days,
+        "cutoff_utc": cutoff,
+        "runs": runs,
+        "signals": signals,
+        "auto_signals": auto_signals,
+        "human_signals": human_signals,
+        "queue_approved_raw": queue_approved,
+        "approved": approved,
+        "executed": executed,
+        "filled": filled,
+        "conversion": {
+            "signal_rate_pct": pct(signals, runs),
+            "approval_rate_pct": pct(approved, signals),
+            "execution_rate_pct": pct(executed, approved),
+            "fill_rate_pct": pct(filled, executed),
+            "overall_fill_rate_pct": pct(filled, runs),
+        },
+        "notes": notes,
+    }
+
+
+@router.get(
+    "/pipeline-funnel",
+    summary="Trade-conversion funnel: runs -> signals -> approved -> executed -> filled (last 30/90d)",
+    description=(
+        "Counts each pipeline stage from its source ledger for the last 30 and 90 days. "
+        "Read-only; results are cached for 300s because the query walks four tables."
+    ),
+)
+@limiter.limit("60/minute")
+async def get_pipeline_funnel(request: Request) -> dict:
+    now = time.monotonic()
+    cached = _funnel_cache.get("both")
+    if cached is not None and (now - cached[0]) < FUNNEL_CACHE_TTL_SECONDS:
+        return cached[1]
+
+    db = _get_db()
+    with db._lock:  # type: ignore[attr-defined]
+        conn = db._connect()  # type: ignore[attr-defined]
+        try:
+            windows = {
+                "30": _funnel_window(conn, 30),
+                "90": _funnel_window(conn, 90),
+            }
+        finally:
+            conn.close()
+
+    payload = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "cache_ttl_seconds": FUNNEL_CACHE_TTL_SECONDS,
+        "windows": windows,
+    }
+    _funnel_cache["both"] = (time.monotonic(), payload)
+    return payload
