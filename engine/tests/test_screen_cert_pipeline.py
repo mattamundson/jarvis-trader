@@ -114,7 +114,7 @@ def test_cert_env_equity_defaults():
 def test_cert_env_futures_costs():
     env = scp.cert_env("MES", 50, 200, 2.0)
     assert env["CERT_MULT"] == "5.0"
-    assert env["CERT_COMMISSION"] == "0.62"
+    assert env["CERT_COMMISSION"] == "0.71"
     assert env["CERT_SLIPPAGE_TICKS"] == "2.0"
 
 

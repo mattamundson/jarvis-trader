@@ -23,25 +23,21 @@ import argparse
 import csv
 import json
 import math
+from numbers import Real
 from pathlib import Path
 from typing import Any, Iterable
 
 from backtest._gate_v2_helpers import classify_wfo_consistency
+from backtest.contract_specs import get_spec
 from backtest.signals import DO_NOT_TRADE_SYMBOLS
 
 #: Symbols iterate.py can screen (its CACHE_PATTERNS keys) minus DO_NOT_TRADE.
 #: MGC is excluded via DO_NOT_TRADE_SYMBOLS even though a cache exists.
 SCREENABLE_SYMBOLS = frozenset({"MES", "SPY", "QQQ", "AAPL", "TSLA"})
 
-#: Contract-aware costs for futures classes in the cert runner. Equities use
-#: the runner defaults (multiplier 1.0, $0 commission, no slippage).
-FUTURES_CERT_ENV = {
-    "MES": {
-        "CERT_MULT": "5.0",
-        "CERT_COMMISSION": "0.62",
-        "CERT_SLIPPAGE_TICKS": "2.0",
-    },
-}
+#: Cert-runner slippage overrides for futures classes. Multiplier and
+#: commission are derived from canonical contract_specs to avoid cost drift.
+FUTURES_CERT_SLIPPAGE_TICKS = {"MES": 2.0}
 
 #: Default screen filters (mirror iterate.py's shortlist print).
 DEFAULT_MIN_TRADES = 10
@@ -166,7 +162,15 @@ def cert_env(
         "CERT_ATR": str(float(atr_trail_mult)),
         "CERT_STRATEGY": strategy,
     }
-    env.update(FUTURES_CERT_ENV.get(sym, {}))
+    if sym in FUTURES_CERT_SLIPPAGE_TICKS:
+        spec = get_spec(sym)
+        env.update(
+            {
+                "CERT_MULT": str(float(spec.multiplier)),
+                "CERT_COMMISSION": str(float(spec.commission)),
+                "CERT_SLIPPAGE_TICKS": str(float(FUTURES_CERT_SLIPPAGE_TICKS[sym])),
+            }
+        )
     if smoke:
         env["CERT_SMOKE"] = "1"
     if cache_override:
@@ -175,13 +179,11 @@ def cert_env(
 
 
 def _fmt(value: Any) -> str:
-    """Journal cell formatting: empty string for None, else str()."""
-    return "" if value is None else str(value)
     """Journal cell formatting: empty string for None or non-finite numbers,
     else str(). Non-finite guard keeps 'inf'/'nan' out of the tracked CSV."""
     if value is None:
         return ""
-    if isinstance(value, float) and not math.isfinite(value):
+    if isinstance(value, Real) and not math.isfinite(float(value)):
         return ""
     return str(value)
 

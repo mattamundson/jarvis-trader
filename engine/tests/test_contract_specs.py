@@ -106,7 +106,7 @@ class TestCanonicalContractSpecs:
         spec = get_spec("MES")
         assert spec.multiplier == 5.0
         assert spec.tick_size == 0.25
-        assert spec.commission == 0.62
+        assert spec.commission == 0.71
         assert spec.slippage_ticks == 1
         assert spec.tick_value == 1.25
 
@@ -133,7 +133,7 @@ class TestCanonicalContractSpecs:
     def test_round_trip_commission_helper(self):
         from backtest.contract_specs import get_spec
         spec = get_spec("MES")
-        assert spec.round_trip_commission == 1.24  # 2 × 0.62
+        assert spec.round_trip_commission == 1.42  # 2 * 0.71
 
     def test_get_spec_case_insensitive(self):
         from backtest.contract_specs import get_spec

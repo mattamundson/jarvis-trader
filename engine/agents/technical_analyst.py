@@ -534,14 +534,44 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         All deterministic — no LLM involved here.
         """
         if not PANDAS_TA_AVAILABLE:
-            logger.warning("pandas_ta not installed — returning minimal indicator set")
+            logger.warning("pandas_ta not installed — using deterministic fallback indicators")
             df_tmp = df.copy()
             df_tmp.columns = [c.lower() for c in df_tmp.columns]
+            for col in ["open", "high", "low", "close", "volume"]:
+                if col not in df_tmp.columns:
+                    df_tmp[col] = 0.0
             current = df_tmp.iloc[-1]
+            hi = df_tmp["high"]
+            lo = df_tmp["low"]
+            cl = df_tmp["close"]
+            tr = pd.concat(
+                [hi - lo, (hi - cl.shift(1)).abs(), (lo - cl.shift(1)).abs()],
+                axis=1,
+            ).max(axis=1)
+            period = min(14, len(tr))
+            atr = float(tr.iloc[-period:].mean()) if period > 0 else None
+            recent = df_tmp.tail(50)
+            lows = recent["low"].nsmallest(3).tolist()
+            highs = recent["high"].nlargest(3).tolist()
+            price_change_pct = (
+                (float(current["close"]) - float(df_tmp["close"].iloc[-20]))
+                / float(df_tmp["close"].iloc[-20])
+                * 100
+                if len(df_tmp) >= 20 and float(df_tmp["close"].iloc[-20]) != 0
+                else 0.0
+            )
+            vol_avg = float(df_tmp["volume"].rolling(20).mean().iloc[-1])
+            volume_ratio = float(current["volume"]) / vol_avg if vol_avg > 0 else 1.0
             return {
                 "current_price": float(current.get("close", 0.0)),
-                "support_levels": [],
-                "resistance_levels": [],
+                "price_change_pct": price_change_pct,
+                "atr": atr,
+                "volume_ratio": volume_ratio,
+                "support_levels": sorted([round(float(x), 2) for x in lows]),
+                "resistance_levels": sorted(
+                    [round(float(x), 2) for x in highs],
+                    reverse=True,
+                ),
             }
         df = df.copy()
         df.columns = [c.lower() for c in df.columns]

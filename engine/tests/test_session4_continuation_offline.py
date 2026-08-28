@@ -115,6 +115,9 @@ _AUTH = {"X-API-Key": settings.API_KEY}
 class TestSession4ContinuationOffline:
     """Offline TestClient equivalents for Session 4 continuation endpoints."""
 
+    def setup_method(self) -> None:
+        _analytics_router.set_db_manager(_mock_db)
+
     # ── GET /analytics/performance — from TestPortfolioEndpoints ──────────
 
     def test_performance_endpoint(self) -> None:
