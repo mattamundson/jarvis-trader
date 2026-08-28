@@ -1,95 +1,116 @@
 // Tier-2 safety-action component test — Phase 9.2, P9-3.
 //
-// KillSwitch controls the single most consequential control on this dashboard:
-// halting/resuming live trading. Its rendered state is fully derived from the
-// `isActive` prop, which the PARENT only flips after `onToggle()` is invoked —
-// and `onToggle()` is only called after the engine POST resolves successfully
-// (see components/KillSwitch.tsx handleActivate/handleDeactivate). This suite
-// proves that contract holds: a failed/rejected POST must never trigger
-// `onToggle`, because on a live trading dashboard a halt request that silently
-// "looks like it worked" is a lethal lie.
+// KillSwitchPanel controls the single most consequential control on this
+// dashboard: halting/resuming live trading. Its rendered state is fully derived
+// from the server-backed `data` prop, and the parent refresh (`mutate`) only
+// fires after the engine POST resolves successfully. A failed request must never
+// make the UI look halted or resumed.
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { KillSwitch } from "@/components/KillSwitch";
-import { postEngine } from "@/lib/api";
+import { KillSwitchPanel } from "@/components/safety/SafetyPanels";
+import {
+  activateKillSwitch,
+  deactivateKillSwitch,
+  type KillSwitchStatus,
+} from "@/lib/settings-api";
 
-vi.mock("@/lib/api", () => ({
-  postEngine: vi.fn(),
+vi.mock("@/lib/settings-api", () => ({
+  activateKillSwitch: vi.fn(),
+  deactivateKillSwitch: vi.fn(),
 }));
 
-const mockedPostEngine = vi.mocked(postEngine);
+const mockedActivateKillSwitch = vi.mocked(activateKillSwitch);
+const mockedDeactivateKillSwitch = vi.mocked(deactivateKillSwitch);
 
-describe("KillSwitch — safety-critical state derivation", () => {
+function killSwitchStatus(
+  active: boolean,
+  reason: string | null = null
+): KillSwitchStatus {
+  return {
+    kill_switch_active: active,
+    kill_switch_reason: reason,
+    live_trading_enabled: false,
+    require_human_approval: true,
+    daily_pnl: 0,
+    equity_peak: 10000,
+    current_equity: 10000,
+    drawdown_pct: 0,
+    orders_last_minute: 0,
+  };
+}
+
+describe("KillSwitchPanel - safety-critical state derivation", () => {
   beforeEach(() => {
-    mockedPostEngine.mockReset();
+    mockedActivateKillSwitch.mockReset();
+    mockedDeactivateKillSwitch.mockReset();
   });
 
-  it("does NOT call onToggle when the activate (halt) POST fails — state must never optimistically flip to halted", async () => {
-    mockedPostEngine.mockRejectedValueOnce(new Error("engine returned 500"));
-    const onToggle = vi.fn();
-    render(<KillSwitch isActive={false} onToggle={onToggle} />);
+  it("does NOT mutate when the activate POST fails", async () => {
+    mockedActivateKillSwitch.mockRejectedValueOnce(new Error("engine returned 500"));
+    const mutate = vi.fn();
+    render(<KillSwitchPanel data={killSwitchStatus(false)} mutate={mutate} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /emergency stop/i }));
-    fireEvent.change(screen.getByPlaceholderText("Type here..."), {
-      target: { value: "CONFIRM KILL" },
+    fireEvent.click(screen.getByRole("button", { name: /activate kill switch/i }));
+    fireEvent.change(screen.getByPlaceholderText(/market volatility/i), {
+      target: { value: "manual_dashboard" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "HALT SYSTEM" }));
+    fireEvent.click(screen.getByRole("button", { name: "Activate" }));
 
     await waitFor(() =>
-      expect(mockedPostEngine).toHaveBeenCalledWith("/safety/kill-switch/activate", {
-        reason: "manual_dashboard",
-      })
+      expect(mockedActivateKillSwitch).toHaveBeenCalledWith("manual_dashboard")
     );
     await waitFor(() =>
-      expect(screen.getByText("Failed to activate kill switch")).toBeInTheDocument()
+      expect(screen.getByText("Failed to activate kill switch.")).toBeInTheDocument()
     );
 
-    // The load-bearing assertion: a failed request never told the parent to
-    // treat trading as halted.
-    expect(onToggle).not.toHaveBeenCalled();
-    // And the component itself never renders a halted UI on its own — the
-    // "Trading Active" header (driven purely by the still-unchanged isActive
-    // prop) is still present.
+    expect(mutate).not.toHaveBeenCalled();
     expect(screen.getByText("Trading Active")).toBeInTheDocument();
   });
 
-  it("DOES call onToggle exactly once when the activate POST succeeds (contrast case)", async () => {
-    mockedPostEngine.mockResolvedValueOnce({});
-    const onToggle = vi.fn();
-    render(<KillSwitch isActive={false} onToggle={onToggle} />);
-
-    fireEvent.click(screen.getByRole("button", { name: /emergency stop/i }));
-    fireEvent.change(screen.getByPlaceholderText("Type here..."), {
-      target: { value: "CONFIRM KILL" },
+  it("mutates exactly once when the activate POST succeeds", async () => {
+    mockedActivateKillSwitch.mockResolvedValueOnce({
+      status: "activated",
+      reason: "manual_dashboard",
     });
-    fireEvent.click(screen.getByRole("button", { name: "HALT SYSTEM" }));
+    const mutate = vi.fn();
+    render(<KillSwitchPanel data={killSwitchStatus(false)} mutate={mutate} />);
 
-    await waitFor(() => expect(onToggle).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: /activate kill switch/i }));
+    fireEvent.change(screen.getByPlaceholderText(/market volatility/i), {
+      target: { value: "manual_dashboard" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Activate" }));
+
+    await waitFor(() => expect(mutate).toHaveBeenCalledTimes(1));
   });
 
-  it("does NOT call onToggle when the deactivate (resume trading) POST fails — must never silently resume", async () => {
-    mockedPostEngine.mockRejectedValueOnce(new Error("engine returned 500"));
-    const onToggle = vi.fn();
-    render(<KillSwitch isActive={true} reason="manual_dashboard" onToggle={onToggle} />);
+  it("does NOT mutate when the deactivate POST fails", async () => {
+    mockedDeactivateKillSwitch.mockRejectedValueOnce(new Error("engine returned 500"));
+    const mutate = vi.fn();
+    render(
+      <KillSwitchPanel
+        data={killSwitchStatus(true, "manual_dashboard")}
+        mutate={mutate}
+      />
+    );
 
     const deactivateBtn = screen.getByRole("button", {
       name: /deactivate kill switch and resume trading/i,
     });
     // First click only arms the confirmation state (no request sent yet).
     fireEvent.click(deactivateBtn);
-    expect(mockedPostEngine).not.toHaveBeenCalled();
+    expect(mockedDeactivateKillSwitch).not.toHaveBeenCalled();
     // Second click actually sends the resume request.
     fireEvent.click(deactivateBtn);
 
     await waitFor(() =>
-      expect(mockedPostEngine).toHaveBeenCalledWith("/safety/kill-switch/deactivate")
+      expect(mockedDeactivateKillSwitch).toHaveBeenCalledTimes(1)
     );
     await waitFor(() =>
-      expect(screen.getByText("Failed to deactivate kill switch")).toBeInTheDocument()
+      expect(screen.getByText("Failed to deactivate kill switch.")).toBeInTheDocument()
     );
 
-    expect(onToggle).not.toHaveBeenCalled();
-    // Still shows the halted UI — trading was never actually resumed.
+    expect(mutate).not.toHaveBeenCalled();
     expect(screen.getByText("KILL SWITCH ACTIVE")).toBeInTheDocument();
   });
 });
