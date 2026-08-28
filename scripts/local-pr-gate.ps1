@@ -74,6 +74,31 @@ function Resolve-Tool {
     return $null
 }
 
+function Resolve-EngineTool {
+    param(
+        [Parameter(Mandatory)][string] $EngineRoot,
+        [Parameter(Mandatory)][string] $CanonicalEngineRoot,
+        [Parameter(Mandatory)][string] $RelativeToolPath,
+        [Parameter(Mandatory)][string] $FallbackName
+    )
+
+    $localPath = Join-Path $EngineRoot $RelativeToolPath
+    if (Test-Path $localPath) {
+        return (Resolve-Path $localPath).Path
+    }
+
+    $canonicalPath = Join-Path $CanonicalEngineRoot $RelativeToolPath
+    if (Test-Path $canonicalPath) {
+        return (Resolve-Path $canonicalPath).Path
+    }
+
+    $cmd = Get-Command $FallbackName -ErrorAction SilentlyContinue
+    if ($cmd) {
+        return $cmd.Source
+    }
+    return $null
+}
+
 function Invoke-Step {
     param(
         [Parameter(Mandatory)][string] $Name,
@@ -245,6 +270,7 @@ function Invoke-RedactedSecurityScan {
 function Invoke-ToolchainPreflight {
     param(
         [Parameter(Mandatory)][string] $RepoRoot,
+        [Parameter(Mandatory)][string] $CanonicalEngineRoot,
         [Parameter(Mandatory)][string] $Python,
         [string] $Pnpm,
         [Parameter(Mandatory)][string] $LogPath
@@ -258,9 +284,10 @@ function Invoke-ToolchainPreflight {
     $pythonParts = $pythonProbe -split '\|', 2
     $pythonVersion = $pythonParts[0]
     $pythonPrefix = if ($pythonParts.Count -gt 1) { $pythonParts[1] } else { "" }
-    $pythonVersionOk = $pythonVersion -like "3.12.*"
+    $pythonVersionOk = $pythonVersion -like "3.12.*" -or $pythonVersion -like "3.13.*"
     $localVenv = Join-Path $RepoRoot "engine\.venv"
-    $pythonVenvOk = $pythonPrefix -like "$localVenv*"
+    $canonicalVenv = Join-Path $CanonicalEngineRoot ".venv"
+    $pythonVenvOk = $pythonPrefix -like "$localVenv*" -or $pythonPrefix -like "$canonicalVenv*"
     $pythonOk = $pythonVersionOk -and $pythonVenvOk
     $nodeVersion = $null
     $pnpmVersion = $null
@@ -284,7 +311,8 @@ function Invoke-ToolchainPreflight {
     $lines.Add("python: $Python")
     $lines.Add("python_version: $pythonVersion")
     $lines.Add("python_prefix: $pythonPrefix")
-    $lines.Add("python_expected: repo engine/.venv on Python 3.12.x")
+    $lines.Add("python_expected: repo or canonical engine/.venv on Python 3.12.x or 3.13.x")
+    $lines.Add("canonical_engine_root: $CanonicalEngineRoot")
     $lines.Add("node_version: $nodeVersion")
     $lines.Add("pnpm: $Pnpm")
     $lines.Add("pnpm_version: $pnpmVersion")
@@ -293,7 +321,7 @@ function Invoke-ToolchainPreflight {
     $status = if ($exitCode -eq 0) { "PASS" } else { "FAIL" }
     Write-Host "[local-pr-gate] $status Toolchain preflight ($duration sec)"
     if (-not $pythonOk) {
-        Write-Host "[local-pr-gate]   expected repo engine/.venv on Python 3.12.x, got $pythonVersion at $pythonPrefix"
+        Write-Host "[local-pr-gate]   expected repo or canonical engine/.venv on Python 3.12.x or 3.13.x, got $pythonVersion at $pythonPrefix"
     }
 
     return [pscustomobject]@{
@@ -308,6 +336,17 @@ function Invoke-ToolchainPreflight {
 $RepoRoot = (Resolve-Path $RepoRoot).Path
 $engineRoot = Join-Path $RepoRoot "engine"
 $dashboardRoot = Join-Path $RepoRoot "dashboard"
+$canonicalEngineRoot = $env:JARVIS_CANONICAL_ENGINE_ROOT
+if ([string]::IsNullOrWhiteSpace($canonicalEngineRoot)) {
+    $candidateCanonicalEngineRoot = "C:\Users\mattm\ThinkorSwim\jarvis-trader\engine"
+    if (Test-Path $candidateCanonicalEngineRoot) {
+        $canonicalEngineRoot = $candidateCanonicalEngineRoot
+    }
+    else {
+        $canonicalEngineRoot = $engineRoot
+    }
+}
+$canonicalEngineRoot = (Resolve-Path $canonicalEngineRoot).Path
 $reportRoot = Join-Path $RepoRoot "docs\ci-reports"
 if (-not $NoReport -and -not (Test-Path $reportRoot)) {
     New-Item -ItemType Directory -Path $reportRoot -Force | Out-Null
@@ -354,9 +393,9 @@ try {
     }
 
     $results = New-Object System.Collections.Generic.List[object]
-    $python = Resolve-Tool (Join-Path $engineRoot ".venv\Scripts\python.exe") "python"
-    $ruff = Resolve-Tool (Join-Path $engineRoot ".venv\Scripts\ruff.exe") "ruff"
-    $mypy = Resolve-Tool (Join-Path $engineRoot ".venv\Scripts\mypy.exe") "mypy"
+    $python = Resolve-EngineTool $engineRoot $canonicalEngineRoot ".venv\Scripts\python.exe" "python"
+    $ruff = Resolve-EngineTool $engineRoot $canonicalEngineRoot ".venv\Scripts\ruff.exe" "ruff"
+    $mypy = Resolve-EngineTool $engineRoot $canonicalEngineRoot ".venv\Scripts\mypy.exe" "mypy"
     $pnpm = Resolve-Tool (Join-Path $env:APPDATA "npm\pnpm.cmd") "pnpm"
 
     if (-not $python) { throw "Python not found. Expected engine\.venv\Scripts\python.exe or python on PATH." }
@@ -383,6 +422,7 @@ try {
     Write-Host "[local-pr-gate] head: $head"
     Write-Host "[local-pr-gate] base: $BaseRef ($base)"
     Write-Host "[local-pr-gate] scope: $effectiveScope"
+    Write-Host "[local-pr-gate] canonical engine: $canonicalEngineRoot"
 
     $runSafety = $effectiveScope -in @("all", "engine", "safety")
     $runSecurity = $effectiveScope -in @("all", "engine", "dashboard", "security")
@@ -390,7 +430,7 @@ try {
     $runDashboard = $effectiveScope -in @("all", "dashboard")
 
     if ($runEngine -or $runDashboard -or $runSafety) {
-        $results.Add((Invoke-ToolchainPreflight $RepoRoot $python $pnpm (& $log "toolchain-preflight"))) | Out-Null
+        $results.Add((Invoke-ToolchainPreflight $RepoRoot $canonicalEngineRoot $python $pnpm (& $log "toolchain-preflight"))) | Out-Null
     }
 
     if ($runSafety) {
