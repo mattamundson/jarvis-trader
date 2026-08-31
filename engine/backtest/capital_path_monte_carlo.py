@@ -1,10 +1,8 @@
-"""Capital Path V1 empirical-bootstrap Monte Carlo.
+"""Capital Path V1 empirical Monte Carlo with selectable bootstrap geometry.
 
-This is deliberately the simplest probabilistic layer: sample historical/net
-R-multiples WITH replacement, feed each chronological sample through the dynamic
-Capital Path accounting engine, and aggregate first-passage / ruin / drawdown
-statistics. More realistic day/block/regime resampling can be added without
-changing the accounting core.
+Every sampled path is fed through the same dynamic R-based Capital Path accounting
+engine. Resampling may be IID, fixed moving-block, or stationary bootstrap so
+model disagreement can be measured rather than hidden behind one assumption.
 """
 
 from __future__ import annotations
@@ -21,6 +19,7 @@ from backtest.capital_path_core import (
     RiskPolicy,
     simulate_r_path,
 )
+from backtest.capital_path_resampling import ResamplingMethod, ResamplingError, resample_indices
 
 
 class CapitalPathMonteCarloError(ValueError):
@@ -32,12 +31,25 @@ class MonteCarloSpec:
     n_paths: int = 10_000
     trades_per_path: int = 1_000
     seed: int = 42
+    resampling_method: ResamplingMethod = "iid"
+    block_size: int | None = None
+    expected_block_length: float | None = None
 
     def __post_init__(self) -> None:
         if self.n_paths < 1:
             raise CapitalPathMonteCarloError("n_paths must be >= 1")
         if self.trades_per_path < 1:
             raise CapitalPathMonteCarloError("trades_per_path must be >= 1")
+        if self.resampling_method not in {"iid", "moving_block", "stationary"}:
+            raise CapitalPathMonteCarloError(
+                f"unknown resampling_method: {self.resampling_method}"
+            )
+        if self.resampling_method == "moving_block" and self.block_size is None:
+            raise CapitalPathMonteCarloError("moving_block requires block_size")
+        if self.resampling_method == "stationary" and self.expected_block_length is None:
+            raise CapitalPathMonteCarloError(
+                "stationary requires expected_block_length"
+            )
 
 
 @dataclass(frozen=True)
@@ -55,6 +67,9 @@ class CapitalPathMonteCarloSummary:
     trades_per_path: int
     empirical_sample_size: int
     seed: int
+    resampling_method: ResamplingMethod
+    block_size: int | None
+    expected_block_length: float | None
     success_probability: float
     ruin_probability: float
     halt_probability: float
@@ -94,7 +109,7 @@ def run_empirical_bootstrap(
     spec: MonteCarloSpec | None = None,
     retain_paths: bool = True,
 ) -> CapitalPathMonteCarloResult:
-    """Run IID-with-replacement bootstrap paths through dynamic Capital Path accounting."""
+    """Bootstrap empirical net-R paths and apply dynamic Capital Path accounting."""
     empirical = np.asarray(list(empirical_r_multiples), dtype=float)
     if len(empirical) < 2:
         raise CapitalPathMonteCarloError("at least two empirical R observations are required")
@@ -107,10 +122,20 @@ def run_empirical_bootstrap(
     rng = np.random.default_rng(mc.seed)
     paths: list[CapitalPathResult] = []
 
-    for _ in range(mc.n_paths):
-        sample_indices = rng.integers(0, len(empirical), size=mc.trades_per_path)
-        sampled_r = empirical[sample_indices]
-        paths.append(simulate_r_path(sampled_r, config=cfg, risk_policy=policy))
+    try:
+        for _ in range(mc.n_paths):
+            sample_indices = resample_indices(
+                mc.resampling_method,
+                len(empirical),
+                mc.trades_per_path,
+                rng,
+                block_size=mc.block_size,
+                expected_block_length=mc.expected_block_length,
+            )
+            sampled_r = empirical[sample_indices]
+            paths.append(simulate_r_path(sampled_r, config=cfg, risk_policy=policy))
+    except ResamplingError as exc:
+        raise CapitalPathMonteCarloError(str(exc)) from exc
 
     success = np.asarray([path.terminal_state == "SUCCESS" for path in paths], dtype=bool)
     ruin = np.asarray([path.terminal_state == "RUIN" for path in paths], dtype=bool)
@@ -122,10 +147,12 @@ def run_empirical_bootstrap(
     milestones = tuple(sorted(set(cfg.milestones + (cfg.target_equity,))))
     milestone_probabilities = {
         milestone: float(
-            np.mean([
-                path.milestone_first_passage.get(milestone) is not None
-                for path in paths
-            ])
+            np.mean(
+                [
+                    path.milestone_first_passage.get(milestone) is not None
+                    for path in paths
+                ]
+            )
         )
         for milestone in milestones
     }
@@ -142,6 +169,9 @@ def run_empirical_bootstrap(
         trades_per_path=mc.trades_per_path,
         empirical_sample_size=len(empirical),
         seed=mc.seed,
+        resampling_method=mc.resampling_method,
+        block_size=mc.block_size,
+        expected_block_length=mc.expected_block_length,
         success_probability=success_probability,
         ruin_probability=float(np.mean(ruin)),
         halt_probability=float(np.mean(halted)),
