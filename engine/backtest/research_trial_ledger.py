@@ -36,6 +36,15 @@ def _canonical_json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
+def _parse_timestamp(value: str) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise TrialLedgerIntegrityError(f"invalid event timestamp: {value}") from exc
+    _require_aware(parsed)
+    return parsed
+
+
 @dataclass(frozen=True)
 class TrialEvent:
     event_id: str
@@ -76,6 +85,10 @@ class TrialLedger:
 
     def verify(self) -> bool:
         previous_hash = GENESIS_HASH
+        event_ids: set[str] = set()
+        plan_times: dict[str, datetime] = {}
+        result_times: dict[str, datetime] = {}
+
         for expected_sequence, record in enumerate(self._read_records(), start=1):
             if record.get("sequence") != expected_sequence:
                 raise TrialLedgerIntegrityError(
@@ -95,12 +108,73 @@ class TrialLedger:
                 raise TrialLedgerIntegrityError(
                     f"event-hash mismatch at sequence {expected_sequence}"
                 )
+
+            try:
+                parsed = TrialEvent(**event)
+            except TypeError as exc:
+                raise TrialLedgerIntegrityError(
+                    f"invalid event schema at sequence {expected_sequence}"
+                ) from exc
+            if not parsed.event_id.strip() or not parsed.trial_id.strip():
+                raise TrialLedgerIntegrityError(
+                    f"empty event_id/trial_id at sequence {expected_sequence}"
+                )
+            if parsed.event_id in event_ids:
+                raise TrialLedgerIntegrityError(f"duplicate event_id: {parsed.event_id}")
+            event_ids.add(parsed.event_id)
+            created_at = _parse_timestamp(parsed.created_at)
+
+            if parsed.event_type == "PLAN":
+                if parsed.trial_id in plan_times:
+                    raise TrialLedgerIntegrityError(f"duplicate PLAN for trial: {parsed.trial_id}")
+                plan_times[parsed.trial_id] = created_at
+            elif parsed.event_type == "RESULT":
+                plan_at = plan_times.get(parsed.trial_id)
+                if plan_at is None:
+                    raise TrialLedgerIntegrityError(
+                        f"RESULT without prior PLAN: {parsed.trial_id}"
+                    )
+                if created_at < plan_at:
+                    raise TrialLedgerIntegrityError(
+                        f"RESULT predates PLAN: {parsed.trial_id}"
+                    )
+                if parsed.trial_id in result_times:
+                    raise TrialLedgerIntegrityError(
+                        f"duplicate RESULT for trial: {parsed.trial_id}"
+                    )
+                result_times[parsed.trial_id] = created_at
+            elif parsed.event_type == "SELECTION":
+                result_at = result_times.get(parsed.trial_id)
+                if result_at is None:
+                    raise TrialLedgerIntegrityError(
+                        f"SELECTION without prior RESULT: {parsed.trial_id}"
+                    )
+                if created_at < result_at:
+                    raise TrialLedgerIntegrityError(
+                        f"SELECTION predates RESULT: {parsed.trial_id}"
+                    )
+            else:
+                raise TrialLedgerIntegrityError(
+                    f"unknown event_type at sequence {expected_sequence}: {parsed.event_type}"
+                )
             previous_hash = expected_hash
         return True
 
     def _events(self) -> list[TrialEvent]:
         self.verify()
         return [TrialEvent(**record["event"]) for record in self._read_records()]
+
+    @staticmethod
+    def _require_identifiers(event_id: str, trial_id: str) -> None:
+        if not event_id.strip():
+            raise TrialLedgerError("event_id must be non-empty")
+        if not trial_id.strip():
+            raise TrialLedgerError("trial_id must be non-empty")
+
+    @staticmethod
+    def _require_unique_event_id(existing: list[TrialEvent], event_id: str) -> None:
+        if any(event.event_id == event_id for event in existing):
+            raise TrialLedgerError(f"event_id already exists: {event_id}")
 
     def _append(self, event: TrialEvent) -> str:
         records = self._read_records()
@@ -134,7 +208,9 @@ class TrialLedger:
         evaluation_plan: dict[str, Any],
     ) -> str:
         _require_aware(created_at)
+        self._require_identifiers(event_id, trial_id)
         existing = self._events()
+        self._require_unique_event_id(existing, event_id)
         if any(event.trial_id == trial_id and event.event_type == "PLAN" for event in existing):
             raise TrialLedgerError(f"trial already planned: {trial_id}")
         payload = {
@@ -161,11 +237,19 @@ class TrialLedger:
         status: str,
     ) -> str:
         _require_aware(created_at)
+        self._require_identifiers(event_id, trial_id)
         existing = self._events()
-        if not any(event.trial_id == trial_id and event.event_type == "PLAN" for event in existing):
+        self._require_unique_event_id(existing, event_id)
+        plans = [
+            event for event in existing if event.trial_id == trial_id and event.event_type == "PLAN"
+        ]
+        if not plans:
             raise TrialLedgerError(f"result has no preregistered plan: {trial_id}")
         if any(event.trial_id == trial_id and event.event_type == "RESULT" for event in existing):
             raise TrialLedgerError(f"trial already has a result: {trial_id}")
+        plan_at = _parse_timestamp(plans[0].created_at)
+        if created_at < plan_at:
+            raise TrialLedgerError(f"result predates plan: {trial_id}")
         return self._append(
             TrialEvent(
                 event_id,
@@ -186,9 +270,17 @@ class TrialLedger:
         rationale: str,
     ) -> str:
         _require_aware(created_at)
+        self._require_identifiers(event_id, trial_id)
         existing = self._events()
-        if not any(event.trial_id == trial_id and event.event_type == "RESULT" for event in existing):
+        self._require_unique_event_id(existing, event_id)
+        results = [
+            event for event in existing if event.trial_id == trial_id and event.event_type == "RESULT"
+        ]
+        if not results:
             raise TrialLedgerError(f"selection has no completed result: {trial_id}")
+        result_at = _parse_timestamp(results[0].created_at)
+        if created_at < result_at:
+            raise TrialLedgerError(f"selection predates result: {trial_id}")
         return self._append(
             TrialEvent(
                 event_id,
