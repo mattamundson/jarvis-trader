@@ -164,6 +164,10 @@ class TrialLedger:
         self.verify()
         return [TrialEvent(**record["event"]) for record in self._read_records()]
 
+    def events(self) -> tuple[TrialEvent, ...]:
+        """Return a verified immutable snapshot of ledger events."""
+        return tuple(self._events())
+
     @staticmethod
     def _require_identifiers(event_id: str, trial_id: str) -> None:
         if not event_id.strip():
@@ -291,8 +295,17 @@ class TrialLedger:
             )
         )
 
-    def trial_counts(self) -> dict[str, int]:
+    def trial_counts(self, *, strategy_family: str | None = None) -> dict[str, int]:
+        """Count verified events, optionally restricted to a preregistered family."""
         events = self._events()
+        if strategy_family is not None:
+            trial_ids = {
+                event.trial_id
+                for event in events
+                if event.event_type == "PLAN"
+                and event.payload.get("strategy_family") == strategy_family
+            }
+            events = [event for event in events if event.trial_id in trial_ids]
         return {
             "planned": sum(event.event_type == "PLAN" for event in events),
             "completed": sum(event.event_type == "RESULT" for event in events),
