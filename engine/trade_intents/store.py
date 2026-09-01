@@ -1,7 +1,8 @@
 """SQLite-backed paper trade-intent lifecycle store.
 
-A preview is immutable once persisted. Submission is idempotent: the same intent
-cannot create a second broker order after it reaches a terminal state.
+A preview is immutable once persisted. Submission is idempotent and concurrency
+safe: an intent must be atomically claimed (PREVIEWED -> SUBMITTING) before any
+broker call, preventing two concurrent requests from submitting the same intent.
 """
 
 from __future__ import annotations
@@ -157,6 +158,54 @@ class TradeIntentStore:
             raise TradeIntentStoreError("intent expired")
         return record
 
+    def claim_for_submission(
+        self,
+        intent_id: str,
+        *,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Atomically claim a PREVIEWED intent before any broker call.
+
+        SUBMITTED is returned idempotently. Any other state, including an
+        already-SUBMITTING concurrent request, fails closed.
+        """
+        current = now or datetime.now(timezone.utc)
+        record = self.get(intent_id)
+        if record is None:
+            raise TradeIntentStoreError(f"intent not found: {intent_id}")
+        if record["status"] == "SUBMITTED":
+            return record
+        if record["status"] != "PREVIEWED":
+            raise TradeIntentStoreError(
+                f"intent status {record['status']} is not claimable"
+            )
+        expires = datetime.fromisoformat(record["expires_at"])
+        if current >= expires:
+            self.mark_terminal(intent_id, status="EXPIRED", reason="intent TTL expired")
+            raise TradeIntentStoreError("intent expired")
+
+        with sqlite3.connect(self.db_path, timeout=5) as conn:
+            cur = conn.execute(
+                """
+                UPDATE manual_trade_intents
+                   SET status='SUBMITTING'
+                 WHERE intent_id=? AND status='PREVIEWED'
+                """,
+                (intent_id,),
+            )
+            conn.commit()
+        if cur.rowcount != 1:
+            latest = self.get(intent_id)
+            if latest is not None and latest["status"] == "SUBMITTED":
+                return latest
+            latest_status = latest["status"] if latest is not None else "missing"
+            raise TradeIntentStoreError(
+                f"intent could not be claimed; current status is {latest_status}"
+            )
+        claimed = self.get(intent_id)
+        assert claimed is not None
+        return claimed
+
     def mark_submitted(
         self,
         intent_id: str,
@@ -171,20 +220,22 @@ class TradeIntentStore:
             raise TradeIntentStoreError(f"intent not found: {intent_id}")
         if record["status"] == "SUBMITTED":
             return record
-        if record["status"] != "PREVIEWED":
+        if record["status"] != "SUBMITTING":
             raise TradeIntentStoreError(
                 f"cannot submit intent from status {record['status']}"
             )
         with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
+            cur = conn.execute(
                 """
                 UPDATE manual_trade_intents
                    SET status='SUBMITTED', submitted_at=?, order_id=?, broker_result_json=?
-                 WHERE intent_id=? AND status='PREVIEWED'
+                 WHERE intent_id=? AND status='SUBMITTING'
                 """,
                 (current.isoformat(), order_id, _canonical(broker_result), intent_id),
             )
             conn.commit()
+        if cur.rowcount != 1:
+            raise TradeIntentStoreError("intent submission state changed unexpectedly")
         updated = self.get(intent_id)
         assert updated is not None
         return updated
@@ -197,7 +248,7 @@ class TradeIntentStore:
                 """
                 UPDATE manual_trade_intents
                    SET status=?, terminal_reason=?
-                 WHERE intent_id=? AND status='PREVIEWED'
+                 WHERE intent_id=? AND status IN ('PREVIEWED', 'SUBMITTING')
                 """,
                 (status, reason, intent_id),
             )
