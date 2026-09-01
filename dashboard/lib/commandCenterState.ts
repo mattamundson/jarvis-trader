@@ -1,7 +1,11 @@
 import type {
+  CommandCenterBarQualityData,
   CommandCenterDataIntegrityResponse,
+  CommandCenterEdgeLedgerData,
   CommandCenterHealthData,
+  CommandCenterMacroData,
   CommandCenterSafetyData,
+  CommandCenterSessionTodayData,
 } from "@/lib/commandCenterApi";
 import type { ExecutionStatus } from "@/lib/executionPath";
 
@@ -39,8 +43,34 @@ export interface CommandCenterShellRegionState {
   tone: CommandCenterShellTone;
 }
 
+export interface CommandCenterSummaryRow {
+  label: string;
+  state: string;
+  detail: string;
+  tone: CommandCenterStatusTone;
+}
+
 export function compactCount(value: number | undefined | null): string {
   return typeof value === "number" && Number.isFinite(value) ? String(value) : "—";
+}
+
+function pctLabel(value: number | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "unknown";
+  return `${(Math.abs(value) * 100).toFixed(2)}%`;
+}
+
+function moneyLabel(value: number | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "unknown";
+  const sign = value > 0 ? "+" : value < 0 ? "-" : "";
+  return `${sign}$${Math.abs(value).toFixed(2)}`;
+}
+
+export function commandCenterOperationTone(status: string): CommandCenterStatusTone {
+  const normalized = status.toLowerCase();
+  if (["clear", "safe", "connected", "within limit", "online"].includes(normalized)) return "ok";
+  if (["active", "near limit", "no broker ack", "unprobed", "stale"].includes(normalized)) return "warn";
+  if (["offline", "halted", "breached", "disconnected", "simulated"].includes(normalized)) return "bad";
+  return "unknown";
 }
 
 export function deriveCommandCenterStatusStripState({
@@ -211,5 +241,151 @@ export function deriveCommandCenterShellRegions({
       detail: "candidate intake surface follows this shell",
       tone: "static",
     },
+  ];
+}
+
+export function deriveCommandCenterOperationsSummaryRows({
+  health,
+  healthErr,
+  safety,
+  safetyErr,
+  execution,
+}: {
+  health: CommandCenterHealthData | undefined;
+  healthErr: boolean;
+  safety: CommandCenterSafetyData | undefined;
+  safetyErr: boolean;
+  execution: Pick<ExecutionStatus, "label" | "detail">;
+}): CommandCenterSummaryRow[] {
+  const orderLimit = safety?.orders_per_minute_limit ?? 10;
+  const orderRateState = safetyErr || !safety ? "unknown" : `${safety.orders_last_minute}/${orderLimit}`;
+  const drawdownState = safetyErr || !safety ? "unknown" : pctLabel(safety.drawdown_pct);
+  const killState = safetyErr || !safety ? "unknown" : safety.kill_switch_active ? "active" : "clear";
+  const engineDataState = healthErr || !health
+    ? "unknown"
+    : health.ibkr_data_connected === true
+      ? "online"
+      : health.ibkr_data_connected === false
+        ? "offline"
+        : "unknown";
+
+  return [
+    {
+      label: "Kill Switch",
+      state: killState,
+      detail: safetyErr ? "safety endpoint unavailable" : "mission-control risk surface",
+      tone: commandCenterOperationTone(killState),
+    },
+    {
+      label: "Order Rate",
+      state: orderRateState,
+      detail: safetyErr ? "order limiter unavailable" : "orders per minute limit",
+      tone: commandCenterOperationTone(orderRateState),
+    },
+    {
+      label: "Drawdown",
+      state: drawdownState,
+      detail: safetyErr ? "drawdown unavailable" : "live safety drawdown",
+      tone: commandCenterOperationTone(drawdownState),
+    },
+    {
+      label: "Broker Execution",
+      state: execution.label.toLowerCase(),
+      detail: execution.detail,
+      tone: commandCenterOperationTone(execution.label),
+    },
+    {
+      label: "Data Leg",
+      state: engineDataState,
+      detail: healthErr ? "health endpoint unavailable" : "IBKR data connection flag",
+      tone: commandCenterOperationTone(engineDataState),
+    },
+  ];
+}
+
+export function deriveCommandCenterDailyBriefSummaryRows({
+  health,
+  sessionToday,
+  sessionTodayErr,
+  macro,
+}: {
+  health: CommandCenterHealthData | undefined;
+  sessionToday: CommandCenterSessionTodayData | undefined;
+  sessionTodayErr: boolean;
+  macro: CommandCenterMacroData | undefined;
+}): CommandCenterSummaryRow[] {
+  const mode = health?.paper_trading ? "paper" : health ? "live" : "unknown";
+  const tradesToday = sessionToday
+    ? `${sessionToday.closed_trades + sessionToday.open_trades}`
+    : "unknown";
+  const pnl = sessionToday ? moneyLabel(sessionToday.gross_pnl) : "unknown";
+  const openTrades = sessionToday ? `${sessionToday.open_trades}` : "unknown";
+  const marketContext = macro?.regime ?? macro?.vix_regime ?? "unknown";
+
+  return [
+    { label: "Mode", state: mode, detail: "from /health paper_trading", tone: mode === "unknown" ? "unknown" : "ok" },
+    {
+      label: "Trades",
+      state: tradesToday,
+      detail: sessionTodayErr ? "session endpoint unavailable" : "closed plus open",
+      tone: tradesToday === "unknown" ? "unknown" : "ok",
+    },
+    {
+      label: "Session P&L",
+      state: pnl,
+      detail: "gross session P&L",
+      tone: pnl === "unknown" ? "unknown" : "ok",
+    },
+    { label: "Open", state: openTrades, detail: "open session trades", tone: openTrades === "unknown" ? "unknown" : "ok" },
+    {
+      label: "Market",
+      state: marketContext.toLowerCase(),
+      detail: "macro/regime context",
+      tone: marketContext === "unknown" ? "unknown" : "ok",
+    },
+  ];
+}
+
+export function deriveCommandCenterTrustAuditSummaryRows({
+  health,
+  healthErr,
+  barQuality,
+  barQualityErr,
+  edgeLedger,
+  edgeLedgerErr,
+}: {
+  health: CommandCenterHealthData | undefined;
+  healthErr: boolean;
+  barQuality: CommandCenterBarQualityData | undefined;
+  barQualityErr: boolean;
+  edgeLedger: CommandCenterEdgeLedgerData | undefined;
+  edgeLedgerErr: boolean;
+}): CommandCenterSummaryRow[] {
+  const liveness = healthErr || !health ? "unknown" : health.status === "ok" ? "ok" : "degraded";
+  const barRejects = barQualityErr || !barQuality ? "unknown" : `${barQuality.total_rejections}`;
+  const edgeState = edgeLedgerErr || !edgeLedger ? "unknown" : `${edgeLedger.n_pass}/${edgeLedger.total}`;
+  const dataLeg = healthErr || !health
+    ? "unknown"
+    : health.ibkr_data_connected === true
+      ? "live"
+      : health.ibkr_data_connected === false
+        ? "offline"
+        : "unknown";
+
+  return [
+    { label: "Liveness", state: liveness, detail: "engine status", tone: commandCenterOperationTone(liveness) },
+    {
+      label: "Bar Rejects",
+      state: barRejects,
+      detail: barQualityErr ? "bar-quality unavailable" : "7d gate rejects",
+      tone: barRejects === "unknown" ? "unknown" : "ok",
+    },
+    {
+      label: "Edge Ledger",
+      state: edgeState,
+      detail: edgeLedgerErr ? "edge ledger unavailable" : "PASS over total",
+      tone: edgeState === "unknown" ? "unknown" : "ok",
+    },
+    { label: "Data Leg", state: dataLeg, detail: "IBKR market-data provenance", tone: commandCenterOperationTone(dataLeg) },
   ];
 }

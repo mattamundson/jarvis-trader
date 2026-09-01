@@ -11,7 +11,12 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { compactCount } from "@/lib/commandCenterState";
+import {
+  compactCount,
+  deriveCommandCenterDailyBriefSummaryRows,
+  deriveCommandCenterOperationsSummaryRows,
+  deriveCommandCenterTrustAuditSummaryRows,
+} from "@/lib/commandCenterState";
 import {
   type CommandCenterDataIntegrityResponse,
   type CommandCenterDecision,
@@ -574,19 +579,6 @@ export function CommandCenterDrilldownNav() {
   );
 }
 
-function pctLabel(value: number | undefined): string {
-  if (typeof value !== "number" || !Number.isFinite(value)) return "unknown";
-  return `${(Math.abs(value) * 100).toFixed(2)}%`;
-}
-
-function operationTone(status: string): StatusTone {
-  const normalized = status.toLowerCase();
-  if (["clear", "safe", "connected", "within limit", "online"].includes(normalized)) return "ok";
-  if (["active", "near limit", "no broker ack", "unprobed", "stale"].includes(normalized)) return "warn";
-  if (["offline", "halted", "breached", "disconnected", "simulated"].includes(normalized)) return "bad";
-  return "unknown";
-}
-
 export function CommandCenterOperationsSummary({
   health,
   healthErr,
@@ -600,44 +592,13 @@ export function CommandCenterOperationsSummary({
   safetyErr: boolean;
   execution: ExecutionStatus;
 }) {
-  const orderLimit = safety?.orders_per_minute_limit ?? 10;
-  const orderRateState = safetyErr || !safety ? "unknown" : `${safety.orders_last_minute}/${orderLimit}`;
-  const drawdownState = safetyErr || !safety ? "unknown" : pctLabel(safety.drawdown_pct);
-  const killState = safetyErr || !safety ? "unknown" : safety.kill_switch_active ? "active" : "clear";
-  const engineDataState = healthErr || !health
-    ? "unknown"
-    : health.ibkr_data_connected === true
-      ? "online"
-      : health.ibkr_data_connected === false
-        ? "offline"
-        : "unknown";
-  const rows = [
-    {
-      label: "Kill Switch",
-      state: killState,
-      detail: safetyErr ? "safety endpoint unavailable" : "mission-control risk surface",
-    },
-    {
-      label: "Order Rate",
-      state: orderRateState,
-      detail: safetyErr ? "order limiter unavailable" : "orders per minute limit",
-    },
-    {
-      label: "Drawdown",
-      state: drawdownState,
-      detail: safetyErr ? "drawdown unavailable" : "live safety drawdown",
-    },
-    {
-      label: "Broker Execution",
-      state: execution.label.toLowerCase(),
-      detail: execution.detail,
-    },
-    {
-      label: "Data Leg",
-      state: engineDataState,
-      detail: healthErr ? "health endpoint unavailable" : "IBKR data connection flag",
-    },
-  ];
+  const rows = deriveCommandCenterOperationsSummaryRows({
+    health,
+    healthErr,
+    safety,
+    safetyErr,
+    execution,
+  });
 
   return (
     <section
@@ -660,7 +621,7 @@ export function CommandCenterOperationsSummary({
               <span className="font-mono text-[10px] uppercase tracking-wider text-slate-500">
                 {row.label}
               </span>
-              <MiniStateBadge label={row.state} tone={operationTone(row.state)} />
+              <MiniStateBadge label={row.state} tone={row.tone} />
             </div>
             <p className="mt-1 line-clamp-2 text-[10px] leading-snug text-slate-500">
               {row.detail}
@@ -670,12 +631,6 @@ export function CommandCenterOperationsSummary({
       </div>
     </section>
   );
-}
-
-function moneyLabel(value: number | undefined): string {
-  if (typeof value !== "number" || !Number.isFinite(value)) return "unknown";
-  const sign = value > 0 ? "+" : value < 0 ? "-" : "";
-  return `${sign}$${Math.abs(value).toFixed(2)}`;
 }
 
 export function CommandCenterDailyBriefSummary({
@@ -689,24 +644,12 @@ export function CommandCenterDailyBriefSummary({
   sessionTodayErr: boolean;
   macro: CommandCenterMacroData | undefined;
 }) {
-  const mode = health?.paper_trading ? "paper" : health ? "live" : "unknown";
-  const tradesToday = sessionToday
-    ? `${sessionToday.closed_trades + sessionToday.open_trades}`
-    : "unknown";
-  const pnl = sessionToday ? moneyLabel(sessionToday.gross_pnl) : "unknown";
-  const openTrades = sessionToday ? `${sessionToday.open_trades}` : "unknown";
-  const marketContext = macro?.regime ?? macro?.vix_regime ?? "unknown";
-  const rows = [
-    { label: "Mode", state: mode, detail: "from /health paper_trading" },
-    {
-      label: "Trades",
-      state: tradesToday,
-      detail: sessionTodayErr ? "session endpoint unavailable" : "closed plus open",
-    },
-    { label: "Session P&L", state: pnl, detail: "gross session P&L" },
-    { label: "Open", state: openTrades, detail: "open session trades" },
-    { label: "Market", state: marketContext.toLowerCase(), detail: "macro/regime context" },
-  ];
+  const rows = deriveCommandCenterDailyBriefSummaryRows({
+    health,
+    sessionToday,
+    sessionTodayErr,
+    macro,
+  });
 
   return (
     <section
@@ -729,7 +672,7 @@ export function CommandCenterDailyBriefSummary({
               <span className="font-mono text-[10px] uppercase tracking-wider text-slate-500">
                 {row.label}
               </span>
-              <MiniStateBadge label={row.state} tone={row.state === "unknown" ? "unknown" : "ok"} />
+              <MiniStateBadge label={row.state} tone={row.tone} />
             </div>
             <p className="mt-1 line-clamp-2 text-[10px] leading-snug text-slate-500">
               {row.detail}
@@ -756,22 +699,14 @@ export function CommandCenterTrustAuditSummary({
   edgeLedger: CommandCenterEdgeLedgerData | undefined;
   edgeLedgerErr: boolean;
 }) {
-  const liveness = healthErr || !health ? "unknown" : health.status === "ok" ? "ok" : "degraded";
-  const barRejects = barQualityErr || !barQuality ? "unknown" : `${barQuality.total_rejections}`;
-  const edgeState = edgeLedgerErr || !edgeLedger ? "unknown" : `${edgeLedger.n_pass}/${edgeLedger.total}`;
-  const dataLeg = healthErr || !health
-    ? "unknown"
-    : health.ibkr_data_connected === true
-      ? "live"
-      : health.ibkr_data_connected === false
-        ? "offline"
-        : "unknown";
-  const rows = [
-    { label: "Liveness", state: liveness, detail: "engine status" },
-    { label: "Bar Rejects", state: barRejects, detail: barQualityErr ? "bar-quality unavailable" : "7d gate rejects" },
-    { label: "Edge Ledger", state: edgeState, detail: edgeLedgerErr ? "edge ledger unavailable" : "PASS over total" },
-    { label: "Data Leg", state: dataLeg, detail: "IBKR market-data provenance" },
-  ];
+  const rows = deriveCommandCenterTrustAuditSummaryRows({
+    health,
+    healthErr,
+    barQuality,
+    barQualityErr,
+    edgeLedger,
+    edgeLedgerErr,
+  });
 
   return (
     <section
@@ -794,7 +729,7 @@ export function CommandCenterTrustAuditSummary({
               <span className="font-mono text-[10px] uppercase tracking-wider text-slate-500">
                 {row.label}
               </span>
-              <MiniStateBadge label={row.state} tone={operationTone(row.state)} />
+              <MiniStateBadge label={row.state} tone={row.tone} />
             </div>
             <p className="mt-1 line-clamp-2 text-[10px] leading-snug text-slate-500">
               {row.detail}

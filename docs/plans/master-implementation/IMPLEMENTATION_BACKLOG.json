@@ -931,19 +931,20 @@
     {
       "id": "P10-003",
       "title": "Add pure derivation tests for Command Center summary rows",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 89,
       "program": "Testing",
       "blocked_by": [],
-      "acceptance": "Operations, Daily Brief, and Trust Audit summary states are derived in pure functions with node tests."
+      "acceptance": "Operations, Daily Brief, and Trust Audit summary states are derived in pure functions with node tests.",
+      "evidence": "docs/plans/master-implementation/PASS46_COMMAND_CENTER_SUMMARY_DERIVATIONS_2026-09-01.md"
     },
     {
       "id": "P10-004",
       "title": "Split Command Center summary components out of CanonicalSections",
-      "status": "blocked",
+      "status": "ready",
       "roi_rank": 90,
       "program": "Command Center",
-      "blocked_by": ["P10-003"],
+      "blocked_by": [],
       "acceptance": "Summary components move into a dedicated module without changing rendered behavior."
     },
     {

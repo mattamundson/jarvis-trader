@@ -2,8 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   compactCount,
+  deriveCommandCenterDailyBriefSummaryRows,
+  deriveCommandCenterOperationsSummaryRows,
   deriveCommandCenterShellRegions,
   deriveCommandCenterStatusStripState,
+  deriveCommandCenterTrustAuditSummaryRows,
 } from "../lib/commandCenterState.ts";
 
 test("compactCount formats only finite numbers", () => {
@@ -205,4 +208,151 @@ test("shell regions degrade independently when sources are unavailable", () => {
   assert.equal(byKey.strategyLedger.metric, "— pass");
   assert.equal(byKey.dataIntegrity.status, "degraded");
   assert.equal(byKey.dataIntegrity.metric, "—");
+});
+
+test("operations summary rows preserve risk and execution states", () => {
+  const rows = deriveCommandCenterOperationsSummaryRows({
+    health: {
+      status: "ok",
+      kill_switch_active: false,
+      uptime_seconds: 60,
+      ibkr_connected: true,
+      ibkr_data_connected: true,
+      paper_trading: true,
+      version: "fixture",
+    },
+    healthErr: false,
+    safety: {
+      daily_pnl: 0,
+      equity_peak: 10000,
+      drawdown_pct: -0.0125,
+      orders_last_minute: 2,
+      orders_per_minute_limit: 10,
+      kill_switch_active: false,
+    },
+    safetyErr: false,
+    execution: { label: "CONNECTED", detail: "broker ack" },
+  });
+
+  assert.deepEqual(rows.map((row) => [row.label, row.state, row.detail, row.tone]), [
+    ["Kill Switch", "clear", "mission-control risk surface", "ok"],
+    ["Order Rate", "2/10", "orders per minute limit", "unknown"],
+    ["Drawdown", "1.25%", "live safety drawdown", "unknown"],
+    ["Broker Execution", "connected", "broker ack", "ok"],
+    ["Data Leg", "online", "IBKR data connection flag", "ok"],
+  ]);
+});
+
+test("operations summary rows degrade independently when sources fail", () => {
+  const rows = deriveCommandCenterOperationsSummaryRows({
+    health: undefined,
+    healthErr: true,
+    safety: undefined,
+    safetyErr: true,
+    execution: { label: "NO BROKER ACK", detail: "unverified path" },
+  });
+
+  assert.deepEqual(rows.map((row) => [row.label, row.state, row.detail]), [
+    ["Kill Switch", "unknown", "safety endpoint unavailable"],
+    ["Order Rate", "unknown", "order limiter unavailable"],
+    ["Drawdown", "unknown", "drawdown unavailable"],
+    ["Broker Execution", "no broker ack", "unverified path"],
+    ["Data Leg", "unknown", "health endpoint unavailable"],
+  ]);
+});
+
+test("daily brief summary rows derive session and market facts", () => {
+  const rows = deriveCommandCenterDailyBriefSummaryRows({
+    health: {
+      status: "ok",
+      kill_switch_active: false,
+      uptime_seconds: 60,
+      ibkr_connected: true,
+      paper_trading: true,
+    },
+    sessionToday: {
+      date: "2026-09-01",
+      session: "RTH",
+      closed_trades: 2,
+      open_trades: 1,
+      gross_pnl: -42.5,
+      wins: 1,
+      losses: 1,
+      win_rate: 0.5,
+      best_trade: 25,
+      worst_trade: -67.5,
+      avg_pnl: -21.25,
+      symbols_traded: ["MES"],
+      last_updated: "2026-09-01T15:00:00.000Z",
+    },
+    sessionTodayErr: false,
+    macro: { regime: "TREND", vix_regime: "LOW", timestamp: "2026-09-01T15:00:00.000Z" },
+  });
+
+  assert.deepEqual(rows.map((row) => [row.label, row.state, row.detail, row.tone]), [
+    ["Mode", "paper", "from /health paper_trading", "ok"],
+    ["Trades", "3", "closed plus open", "ok"],
+    ["Session P&L", "-$42.50", "gross session P&L", "ok"],
+    ["Open", "1", "open session trades", "ok"],
+    ["Market", "trend", "macro/regime context", "ok"],
+  ]);
+});
+
+test("daily brief summary rows keep unknowns explicit", () => {
+  const rows = deriveCommandCenterDailyBriefSummaryRows({
+    health: undefined,
+    sessionToday: undefined,
+    sessionTodayErr: true,
+    macro: undefined,
+  });
+
+  assert.deepEqual(rows.map((row) => [row.label, row.state, row.detail, row.tone]), [
+    ["Mode", "unknown", "from /health paper_trading", "unknown"],
+    ["Trades", "unknown", "session endpoint unavailable", "unknown"],
+    ["Session P&L", "unknown", "gross session P&L", "unknown"],
+    ["Open", "unknown", "open session trades", "unknown"],
+    ["Market", "unknown", "macro/regime context", "unknown"],
+  ]);
+});
+
+test("trust audit summary rows derive liveness and evidence counts", () => {
+  const rows = deriveCommandCenterTrustAuditSummaryRows({
+    health: {
+      status: "ok",
+      kill_switch_active: false,
+      uptime_seconds: 60,
+      ibkr_connected: true,
+      ibkr_data_connected: true,
+    },
+    healthErr: false,
+    barQuality: { window_hours: 168, total_rejections: 4, gate_active: true },
+    barQualityErr: false,
+    edgeLedger: { total: 9, n_pass: 2, n_fail: 7, n_other: 0 },
+    edgeLedgerErr: false,
+  });
+
+  assert.deepEqual(rows.map((row) => [row.label, row.state, row.detail]), [
+    ["Liveness", "ok", "engine status"],
+    ["Bar Rejects", "4", "7d gate rejects"],
+    ["Edge Ledger", "2/9", "PASS over total"],
+    ["Data Leg", "live", "IBKR market-data provenance"],
+  ]);
+});
+
+test("trust audit summary rows keep unavailable evidence unknown", () => {
+  const rows = deriveCommandCenterTrustAuditSummaryRows({
+    health: undefined,
+    healthErr: true,
+    barQuality: undefined,
+    barQualityErr: true,
+    edgeLedger: undefined,
+    edgeLedgerErr: true,
+  });
+
+  assert.deepEqual(rows.map((row) => [row.label, row.state, row.detail, row.tone]), [
+    ["Liveness", "unknown", "engine status", "unknown"],
+    ["Bar Rejects", "unknown", "bar-quality unavailable", "unknown"],
+    ["Edge Ledger", "unknown", "edge ledger unavailable", "unknown"],
+    ["Data Leg", "unknown", "IBKR market-data provenance", "unknown"],
+  ]);
 });
