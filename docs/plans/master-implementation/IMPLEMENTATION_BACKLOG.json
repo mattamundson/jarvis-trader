@@ -711,16 +711,17 @@
     {
       "id": "P8-001",
       "title": "Extract Command Center canonical sections into dedicated components",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 67,
       "program": "Command Center",
       "blocked_by": [],
-      "acceptance": "`dashboard/app/command-center/page.tsx` delegates canonical shell, status strip, queue, and operations grid to focused components without behavior changes."
+      "acceptance": "`dashboard/app/command-center/page.tsx` delegates canonical shell, status strip, queue, and operations grid to focused components without behavior changes.",
+      "evidence": "docs/plans/master-implementation/PASS22_COMMAND_CENTER_COMPONENT_EXTRACTION_2026-09-01.md"
     },
     {
       "id": "P8-002",
       "title": "Add pure derivation tests for Command Center state mapping",
-      "status": "blocked",
+      "status": "ready",
       "roi_rank": 68,
       "program": "Command Center",
       "blocked_by": ["P8-001"],
