@@ -15,6 +15,7 @@
     "test:component:watch": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:fresh": "playwright test --config=playwright.fresh.config.ts",
+    "test:e2e:isolated": "node scripts/run-isolated-e2e.mjs",
     "check:live": "node scripts/check-live-data.mjs",
     "check:runtime-contract": "node scripts/check-runtime-contract.mjs",
     "guards": "node scripts/check-guards.mjs",
