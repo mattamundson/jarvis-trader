@@ -1061,19 +1061,20 @@
       {
         "id": "P11-006",
         "title": "Mount local fleet state in operations view",
-        "status": "ready",
+        "status": "done",
         "roi_rank": 102,
         "program": "Command Center",
         "blocked_by": [],
-        "acceptance": "Operations view renders `EnvironmentFleetPanel` and preserves `/api/fleet` empty and unreachable handling."
+        "acceptance": "Operations view renders `EnvironmentFleetPanel` and preserves `/api/fleet` empty and unreachable handling.",
+        "evidence": "docs/plans/master-implementation/PASS60_OPERATIONS_ENVIRONMENT_FLEET_PANEL_2026-09-01.md"
       },
       {
         "id": "P11-007",
         "title": "Add operations-view parity E2E coverage",
-        "status": "blocked",
+        "status": "ready",
         "roi_rank": 103,
         "program": "Testing",
-        "blocked_by": ["P11-006"],
+        "blocked_by": [],
         "acceptance": "Focused E2E proves `/command-center?view=operations` exposes the migrated mission-control panels in populated and degraded states."
       },
       {

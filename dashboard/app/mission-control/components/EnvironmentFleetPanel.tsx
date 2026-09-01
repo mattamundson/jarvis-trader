@@ -57,7 +57,14 @@ export function EnvironmentFleetPanel() {
     refreshInterval: 15_000,
   });
 
-  const hb = (id: string) => data?.loops.find((l) => l.id === id)?.last_heartbeat;
+  const loops = Array.isArray(data?.loops) ? data.loops : [];
+  const canary = data?.canary ?? { overall: "UNKNOWN" as const, failing: [], generated_at: null };
+  const failing = Array.isArray(canary.failing) ? canary.failing : [];
+  const counts = data?.counts ?? { total: loops.length, green: 0, red: 0, stale: 0 };
+  const errors = data?.errors ?? { registry: null, canary: null };
+  const redLoops = Array.isArray(data?.red_loops) ? data.red_loops : [];
+  const staleLoops = Array.isArray(data?.stale_loops) ? data.stale_loops : [];
+  const hb = (id: string) => loops.find((l) => l.id === id)?.last_heartbeat;
 
   return (
     <Card>
@@ -78,28 +85,28 @@ export function EnvironmentFleetPanel() {
               </span>
               <Badge
                 variant={
-                  data.canary.overall === "GREEN"
+                  canary.overall === "GREEN"
                     ? "bull"
-                    : data.canary.overall === "RED"
+                    : canary.overall === "RED"
                       ? "bear"
                       : "neutral"
                 }
               >
-                {data.canary.overall}
+                {canary.overall}
               </Badge>
-              {data.canary.generated_at && (
+              {canary.generated_at && (
                 <span className="font-mono text-[10px] text-muted-foreground">
-                  {relativeTime(data.canary.generated_at)}
+                  {relativeTime(canary.generated_at)}
                 </span>
               )}
-              {data.errors.canary && (
+              {errors.canary && (
                 <span className="text-[10px] text-warn">canary report unreadable</span>
               )}
             </div>
 
-            {data.canary.failing.length > 0 && (
+            {failing.length > 0 && (
               <ul className="space-y-1">
-                {data.canary.failing.map((f) => (
+                {failing.map((f) => (
                   <li key={f} className="flex items-start gap-1.5 text-[11px]">
                     <Badge variant="bear" className="shrink-0">
                       FAIL
@@ -112,12 +119,12 @@ export function EnvironmentFleetPanel() {
 
             {/* Loop counts */}
             <div className="flex flex-wrap gap-2 border-t border-border pt-3">
-              <CountPill label="green" value={data.counts.green} tone="bull" />
-              <CountPill label="red" value={data.counts.red} tone="bear" />
-              <CountPill label="stale" value={data.counts.stale} tone="warn" />
+              <CountPill label="green" value={counts.green} tone="bull" />
+              <CountPill label="red" value={counts.red} tone="bear" />
+              <CountPill label="stale" value={counts.stale} tone="warn" />
               <div className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/30 px-3 py-1.5">
                 <span className="font-mono text-sm font-bold text-foreground">
-                  {data.counts.total}
+                  {counts.total}
                 </span>
                 <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
                   loops
@@ -126,9 +133,9 @@ export function EnvironmentFleetPanel() {
             </div>
 
             {/* Red / stale loop names */}
-            {(data.red_loops.length > 0 || data.stale_loops.length > 0) && (
+            {(redLoops.length > 0 || staleLoops.length > 0) && (
               <div className="space-y-1.5">
-                {data.red_loops.map((id) => (
+                {redLoops.map((id) => (
                   <div key={`red-${id}`} className="flex items-center gap-2 text-[11px]">
                     <Badge variant="bear" className="shrink-0">
                       RED
@@ -139,8 +146,8 @@ export function EnvironmentFleetPanel() {
                     </span>
                   </div>
                 ))}
-                {data.stale_loops
-                  .filter((id) => !data.red_loops.includes(id))
+                {staleLoops
+                  .filter((id) => !redLoops.includes(id))
                   .map((id) => (
                     <div key={`stale-${id}`} className="flex items-center gap-2 text-[11px]">
                       <Badge variant="warn" className="shrink-0">
@@ -154,8 +161,8 @@ export function EnvironmentFleetPanel() {
                   ))}
               </div>
             )}
-            {data.errors.registry && (
-              <p className="text-[11px] text-warn">Registry unreadable: {data.errors.registry}</p>
+            {errors.registry && (
+              <p className="text-[11px] text-warn">Registry unreadable: {errors.registry}</p>
             )}
           </>
         ) : null}

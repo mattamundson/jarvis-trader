@@ -93,6 +93,7 @@ import {
 import { TradingStatusReconciliation } from "@/components/TradingStatusReconciliation";
 import PipelineFunnelCard from "@/components/command-center/PipelineFunnelCard";
 import { EngineDataPanel } from "@/app/mission-control/components/EngineDataPanel";
+import { EnvironmentFleetPanel } from "@/app/mission-control/components/EnvironmentFleetPanel";
 import { PositionsPerformancePanel } from "@/app/mission-control/components/PositionsPerformancePanel";
 import { RiskSafetyPanel } from "@/app/mission-control/components/RiskSafetyPanel";
 import { SignalsPipelinePanel } from "@/app/mission-control/components/SignalsPipelinePanel";
@@ -801,6 +802,9 @@ export default function CommandCenterPage() {
                 <EngineDataPanel />
               </WidgetErrorBoundary>
             </div>
+            <WidgetErrorBoundary name="Operations Environment Fleet">
+              <EnvironmentFleetPanel />
+            </WidgetErrorBoundary>
           </div>
         </section>
       )}
