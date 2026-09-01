@@ -61,7 +61,7 @@ for (const viewport of VIEWPORTS) {
     await expect(statusStrip).toBeVisible();
     await expect(shell).toBeVisible();
     await expect(drilldowns).toBeVisible();
-    await expect(drilldowns.getByRole("link", { name: /Operations/i })).toHaveAttribute("href", "/mission-control");
+    await expect(drilldowns.getByRole("link", { name: /Operations/i })).toHaveAttribute("href", "/command-center?view=operations");
     await expect(drilldowns.getByRole("link", { name: /Daily Brief/i })).toHaveAttribute("href", "/today");
     await expect(drilldowns.getByRole("link", { name: /Trust Audit/i })).toHaveAttribute("href", "/trust-pane");
     await expect(queue).toBeVisible();
