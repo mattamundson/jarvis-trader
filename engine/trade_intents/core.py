@@ -13,7 +13,6 @@ from typing import Literal
 
 from utils.position_sizing import get_contract_multiplier
 
-
 Direction = Literal["BUY", "SELL"]
 OrderType = Literal["MARKET", "LIMIT"]
 
