@@ -1071,19 +1071,20 @@
       {
         "id": "P11-007",
         "title": "Add operations-view parity E2E coverage",
-        "status": "ready",
+        "status": "done",
         "roi_rank": 103,
         "program": "Testing",
         "blocked_by": [],
-        "acceptance": "Focused E2E proves `/command-center?view=operations` exposes the migrated mission-control panels in populated and degraded states."
+        "acceptance": "Focused E2E proves `/command-center?view=operations` exposes the migrated mission-control panels in populated and degraded states.",
+        "evidence": "docs/plans/master-implementation/PASS61_OPERATIONS_VIEW_PARITY_E2E_2026-09-01.md"
       },
       {
         "id": "P11-008",
         "title": "Redirect mission-control to Command Center operations view",
-        "status": "blocked",
+        "status": "ready",
         "roi_rank": 104,
         "program": "Command Center",
-        "blocked_by": ["P11-007"],
+        "blocked_by": [],
         "acceptance": "`/mission-control` redirects to `/command-center?view=operations` after operations parity is test-proven."
       },
       {

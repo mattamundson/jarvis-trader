@@ -32,6 +32,16 @@ async function installOfflineExternalMocks(page: import("@playwright/test").Page
   });
 }
 
+async function installUnavailableFleet(page: import("@playwright/test").Page) {
+  await page.route("**/api/fleet", async (route) => {
+    await route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "fleet unavailable in route-consolidation test" }),
+    });
+  });
+}
+
 test("command center is the canonical entry and exposes consolidation drilldowns", async ({ page }) => {
   await installCommandCenterFixture(page, "populated");
 
@@ -79,6 +89,27 @@ test("command center operations query renders a real operations view state", asy
   await expect(operationsView.getByRole("heading", { name: /Validation & Gates/i })).toBeVisible();
   await expect(operationsView.getByRole("heading", { name: /Engine & Data/i })).toBeVisible();
   await expect(operationsView.getByRole("heading", { name: /Environment Fleet/i })).toBeVisible();
+});
+
+test("command center operations view preserves migrated degraded states", async ({ page }) => {
+  await installEngineMock(page, "offline");
+  await installOfflineExternalMocks(page);
+  await installUnavailableFleet(page);
+
+  await page.goto("/command-center?view=operations", { waitUntil: "domcontentloaded" });
+
+  const operationsView = page.getByTestId("command-center-operations-view");
+  await expect(operationsView).toBeVisible();
+  await expect(operationsView.getByRole("heading", { name: /Risk & Safety/i })).toBeVisible();
+  await expect(operationsView.getByRole("heading", { name: /Trading Status Reconciliation/i })).toBeVisible();
+  await expect(operationsView.getByRole("heading", { name: /Positions & Paper Performance/i })).toBeVisible();
+  await expect(operationsView.getByRole("heading", { name: /Signals & Pipeline/i })).toBeVisible();
+  await expect(operationsView.getByRole("heading", { name: /Validation & Gates/i })).toBeVisible();
+  await expect(operationsView.getByRole("heading", { name: /Engine & Data/i })).toBeVisible();
+  await expect(operationsView.getByRole("heading", { name: /Environment Fleet/i })).toBeVisible();
+  await expect(operationsView).toContainText(/UNREACHABLE/i);
+  await expect(operationsView).not.toContainText(/failed to render/i);
+  await expect(page.locator("body")).not.toHaveText(ERROR_BOUNDARY_TEXT);
 });
 
 for (const routeSpec of DRILLDOWNS) {
