@@ -74,9 +74,11 @@ def compute_initial_balance(
         idx.minute - market_open_minute
     )
     in_ib_window = (bar_minutes_from_open >= 0) & (bar_minutes_from_open < open_minutes)
+    after_ib_window = bar_minutes_from_open >= open_minutes
 
     df["_session_date"] = session_date
     df["_in_ib_window"] = in_ib_window
+    df["_after_ib_window"] = after_ib_window
 
     # Compute per-session IB high / low from bars inside the window only.
     ib_window_df = df[df["_in_ib_window"]]
@@ -95,8 +97,8 @@ def compute_initial_balance(
     #
     # Design choice: expose the final, frozen IB level for the entire session
     # (matches TOS "extends to next day open" behaviour).  Pre-IB bars get NaN.
-    df["ib_high"] = df["_ib_high_raw"].where(~df["_in_ib_window"], other=float("nan"))
-    df["ib_low"] = df["_ib_low_raw"].where(~df["_in_ib_window"], other=float("nan"))
+    df["ib_high"] = df["_ib_high_raw"].where(df["_after_ib_window"], other=float("nan"))
+    df["ib_low"] = df["_ib_low_raw"].where(df["_after_ib_window"], other=float("nan"))
 
     # Forward-fill within each session so post-IB bars all carry the frozen level.
     df["ib_high"] = df.groupby("_session_date")["ib_high"].transform(
@@ -129,7 +131,13 @@ def compute_initial_balance(
 
     # Drop internal working columns.
     df.drop(
-        columns=["_session_date", "_in_ib_window", "_ib_high_raw", "_ib_low_raw"],
+        columns=[
+            "_session_date",
+            "_in_ib_window",
+            "_after_ib_window",
+            "_ib_high_raw",
+            "_ib_low_raw",
+        ],
         inplace=True,
     )
 

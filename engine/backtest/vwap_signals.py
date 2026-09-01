@@ -50,7 +50,9 @@ DEFAULT_BAND_MULT = 1.5  # ATR multiples for band width
 DEFAULT_STOP_MULT = 0.5  # ATR multiples for stop beyond deviation extreme
 DEFAULT_ATR_PERIOD = 14
 RTH_OPEN_HOUR = 9  # First RTH bar (09:30-10:30 ET)
+RTH_OPEN_MINUTE = 30
 RTH_FINAL_HOUR = 15  # Block entries at 15:xx bars
+RTH_CLOSE_HOUR = 16
 
 
 def _compute_atr(df: pd.DataFrame, period: int = DEFAULT_ATR_PERIOD) -> pd.Series:
@@ -73,8 +75,8 @@ def _compute_atr(df: pd.DataFrame, period: int = DEFAULT_ATR_PERIOD) -> pd.Serie
     return atr
 
 
-def _get_eastern_hour(df: pd.DataFrame) -> pd.Series:
-    """Extract Eastern Time hour from DatetimeIndex.
+def _get_eastern_index(df: pd.DataFrame) -> pd.DatetimeIndex:
+    """Normalize DataFrame index to Eastern Time.
 
     MES data from Yahoo Finance via BacktestDataLoader is stored as
     timezone-naive UTC timestamps.  We localize as UTC first, then
@@ -95,6 +97,12 @@ def _get_eastern_hour(df: pd.DataFrame) -> pd.Series:
             eastern = idx.tz_localize("UTC").tz_convert("America/New_York")
         except Exception:
             eastern = idx  # fallback: use hours as-is
+    return eastern
+
+
+def _get_eastern_hour(df: pd.DataFrame) -> pd.Series:
+    """Extract Eastern Time hour from DatetimeIndex."""
+    eastern = _get_eastern_index(df)
     return pd.Series(eastern.hour, index=df.index)
 
 
@@ -172,23 +180,42 @@ def generate_vwap_signals(
         except Exception as e:
             logger.warning(f"{symbol}: regime filter failed ({e}) — proceeding without")
 
-    # Eastern hour
-    eastern_hour = _get_eastern_hour(df)
+    # Eastern session metadata. VWAP is explicitly RTH-anchored: accumulate only
+    # 09:30-16:00 ET, and allow new entries only before the final RTH hour.
+    eastern = _get_eastern_index(df)
+    eastern_minutes = pd.Series(eastern.hour * 60 + eastern.minute, index=df.index)
+    eastern_session = pd.Series(eastern.date, index=df.index)
+    rth_open_minute = RTH_OPEN_HOUR * 60 + RTH_OPEN_MINUTE
+    rth_signal_cutoff_minute = RTH_FINAL_HOUR * 60
+    rth_close_minute = RTH_CLOSE_HOUR * 60
+    in_rth = (eastern_minutes >= rth_open_minute) & (
+        eastern_minutes < rth_close_minute
+    )
+    signal_eligible = (eastern_minutes >= rth_open_minute) & (
+        eastern_minutes < rth_signal_cutoff_minute
+    )
+    eastern_hour = pd.Series(eastern.hour, index=df.index)
 
     # Session VWAP (reset at first RTH bar each day)
     cum_pv = 0.0  # cumulative price × volume
     cum_vol = 0.0  # cumulative volume
     vwap_vals = []
+    active_session = None
 
     for i in range(len(df)):
-        hour = int(eastern_hour.iloc[i])
+        if not bool(in_rth.iloc[i]):
+            vwap_vals.append(np.nan)
+            continue
+
+        session_key = eastern_session.iloc[i]
         vol = float(df["volume"].iloc[i])
         tp = (
             float(df["high"].iloc[i]) + float(df["low"].iloc[i]) + float(df["close"].iloc[i])
         ) / 3.0
 
-        if hour == RTH_OPEN_HOUR:
+        if session_key != active_session:
             # New session — reset
+            active_session = session_key
             cum_pv = tp * vol if vol > 0 else 0.0
             cum_vol = vol if vol > 0 else 0.0
         else:
@@ -217,6 +244,9 @@ def generate_vwap_signals(
     for i in range(1, len(df)):
         bar_close = float(df["close"].iloc[i])
         bar_hour = int(eastern_hour.iloc[i])
+        if not bool(signal_eligible.iloc[i]):
+            continue
+
         vwap = float(df["vwap"].iloc[i])
         upper = float(df["vwap_upper"].iloc[i])
         lower = float(df["vwap_lower"].iloc[i])

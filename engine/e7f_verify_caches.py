@@ -60,10 +60,6 @@ def main() -> int:
     whitelist = US_MARKET_HOLIDAYS | US_MARKET_EARLY_CLOSES
 
     # 1. Verify 2015-2018 additions against the reference closure calendar.
-    added = US_MARKET_HOLIDAYS - frozenset(
-        date(y, m, d) for y in range(2019, 2031)
-        for m, d in [(1, 1)]
-    )
     missing_from_ref = [d for d in whitelist if d.year in (2015, 2016, 2017, 2018)
                         and (d.year, d.month, d.day) not in REF_2015_2018]
     print("=== whitelist 2015-2018 vs NYSE reference ===")

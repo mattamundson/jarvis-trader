@@ -111,6 +111,28 @@ def test_premarket_bars_excluded_from_ib():
     assert post["ib_low"] == pytest.approx(90.0)
 
 
+def test_premarket_bars_do_not_see_completed_ib():
+    """Premarket rows must not receive the completed same-session IB levels."""
+    bars = [
+        ("2026-01-05", 8, 0, 100, 101, 99, 100),
+        ("2026-01-05", 9, 30, 100, 105, 98, 102),
+        ("2026-01-05", 10, 0, 102, 106, 97, 104),
+        ("2026-01-05", 10, 30, 104, 108, 103, 107),
+    ]
+
+    result = compute_initial_balance(_make_bars(bars), open_minutes=60)
+
+    premarket = result.iloc[0]
+    assert pd.isna(premarket["ib_high"])
+    assert pd.isna(premarket["ib_low"])
+    assert not premarket["above_ib_high"]
+    assert not premarket["below_ib_low"]
+
+    post = result.iloc[-1]
+    assert post["ib_high"] == pytest.approx(106.0)
+    assert post["ib_low"] == pytest.approx(97.0)
+
+
 # ---------------------------------------------------------------------------
 # Test 4 — fresh breakout fires exactly once per session
 # ---------------------------------------------------------------------------
