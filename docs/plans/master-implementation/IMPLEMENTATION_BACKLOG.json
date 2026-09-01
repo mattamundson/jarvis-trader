@@ -721,11 +721,12 @@
     {
       "id": "P8-002",
       "title": "Add pure derivation tests for Command Center state mapping",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 68,
       "program": "Command Center",
       "blocked_by": ["P8-001"],
-      "acceptance": "Engine/broker/safety/data/eligibility/ledger state derivations are unit-tested without rendering the full page."
+      "acceptance": "Engine/broker/safety/data/eligibility/ledger state derivations are unit-tested without rendering the full page.",
+      "evidence": "docs/plans/master-implementation/PASS23_COMMAND_CENTER_STATE_DERIVATION_TESTS_2026-09-01.md"
     },
     {
       "id": "P8-003",

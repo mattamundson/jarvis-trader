@@ -59,6 +59,10 @@ import {
   type HonestTradeSet,
   dedupCaveat,
 } from "@/lib/honestTrades";
+import {
+  deriveCommandCenterShellRegions,
+  deriveCommandCenterStatusStripState,
+} from "@/lib/commandCenterState";
 import { INSTRUMENTS, WFE_ROWS } from "./constants";
 import { SignalFeedWidget } from "@/components/SignalFeedWidget";
 import LiveTradeReasoningWidget from "@/components/LiveTradeReasoningWidget";
@@ -72,7 +76,6 @@ import {
   CommandCenterOperationsGrid,
   CommandCenterStatusStrip,
   CommandCenterTradeQueuePanel,
-  compactCount,
   type ShellRegion,
 } from "@/components/command-center/CanonicalSections";
 import PipelineFunnelCard from "@/components/command-center/PipelineFunnelCard";
@@ -488,98 +491,52 @@ export default function CommandCenterPage() {
     typeof ledger?.n_fail === "number";
   const integrityReady =
     Array.isArray(integrity?.sources) || typeof integrity?.count === "number";
-  const statusOrdersPerMin = safety?.orders_last_minute ?? 0;
-  const statusOrdersLimit = safety?.orders_per_minute_limit ?? 10;
-  const engineStatus = !health && !healthErr
-    ? { label: "unknown", detail: "health probe pending", tone: "unknown" as const }
-    : healthErr || !health
-      ? { label: "offline", detail: "health endpoint unreachable", tone: "bad" as const }
-      : health.status === "ok" || health.status === "healthy"
-        ? { label: "online", detail: `version ${health.version ?? "unknown"}`, tone: "ok" as const }
-        : { label: "degraded", detail: `status ${health.status ?? "unknown"}`, tone: "warn" as const };
-  const brokerStatus = !health && !healthErr
-    ? { label: "unknown", detail: "execution path pending", tone: "unknown" as const }
-    : healthErr || !health
-      ? { label: "unknown", detail: "engine offline; broker unprobed", tone: "unknown" as const }
-      : exec.tone === "bull"
-        ? { label: "verified", detail: exec.detail, tone: "ok" as const }
-        : exec.tone === "warn"
-          ? { label: "degraded", detail: exec.detail, tone: "warn" as const }
-          : { label: "offline", detail: exec.detail, tone: "bad" as const };
-  const safetyStatus = !safety && !safetyErr
-    ? { label: "unknown", detail: "safety probe pending", tone: "unknown" as const }
-    : safetyErr || !safety
-      ? { label: "unknown", detail: "safety endpoint unavailable", tone: "unknown" as const }
-      : killSwitchActive
-        ? { label: "halted", detail: "kill switch active", tone: "bad" as const }
-        : { label: "armed", detail: `${statusOrdersPerMin}/${statusOrdersLimit} orders per minute`, tone: "ok" as const };
-  const dataStatus = integrityErr || !integrityReady
-    ? { label: "unknown", detail: "data-integrity endpoint unavailable", tone: "unknown" as const }
-    : staleFeeds > 0
-      ? { label: "stale", detail: `${staleFeeds} stale feed${staleFeeds === 1 ? "" : "s"}`, tone: "warn" as const }
-      : { label: "current", detail: `${compactCount(integrity?.count ?? integrity?.sources?.length)} streams`, tone: "ok" as const };
-  const shellRegions: ShellRegion[] = [
-    {
-      label: "SYSTEM STATUS",
-      href: "/health",
-      status: engineOnline ? (killSwitchActive ? "halted" : "online") : "offline",
-      metric: engineOnline ? (killSwitchActive ? "HALT" : "OK") : "DOWN",
-      detail: `${health?.paper_trading === false ? "live flag observed" : "paper mode"} · ${exec.label}`,
-      tone: engineOnline ? (killSwitchActive ? "warn" : "live") : "offline",
-      Icon: Shield,
-    },
-    {
-      label: "TRADE QUEUE",
-      href: "/trades/pending-approvals",
-      status: decisionsErr ? "degraded" : "mounted",
-      metric: `${compactCount(decisions?.length)} recent`,
-      detail: tradesErr ? "fills unavailable" : `${compactCount(trades?.length)} fill rows visible`,
-      tone: decisionsErr || tradesErr ? "warn" : "live",
-      Icon: Zap,
-    },
-    {
-      label: "ELIGIBILITY",
-      href: "/trading-eligibility",
-      status: paperStatus ? "policy" : "fallback",
-      metric: `${approvedInstruments}/${liveInstruments.length}`,
-      detail: `${haltedInstruments} halted · gate-v2 authorization`,
-      tone: paperStatus ? "live" : "warn",
-      Icon: CheckCircle,
-    },
-    {
-      label: "STRATEGY LEDGER",
-      href: "/strategy-ledger",
-      status: ledgerErr || !ledgerReady ? "degraded" : "gate-v2",
-      metric: `${compactCount(ledger?.n_pass)} pass`,
-      detail: ledgerReady
-        ? `${compactCount(ledger?.n_fail)} fail · ${compactCount(ledger?.total)} verdicts`
-        : "verdict ledger unavailable",
-      tone: ledgerErr || !ledgerReady ? "warn" : "live",
-      Icon: TrendingUp,
-    },
-    {
-      label: "DATA INTEGRITY",
-      href: "/data-integrity",
-      status: integrityErr || !integrityReady ? "degraded" : "streams",
-      metric: compactCount(integrity?.count ?? integrity?.sources?.length),
-      detail: integrityReady
-        ? staleFeeds > 0
-          ? `${staleFeeds} stale feed${staleFeeds === 1 ? "" : "s"}`
-          : "no stale feed reported"
-        : "stream health unavailable",
-      tone: integrityErr || !integrityReady ? "warn" : staleFeeds > 0 ? "warn" : "live",
-      Icon: Database,
-    },
-    {
-      label: "RESEARCH INTAKE",
-      href: "/research-log",
-      status: "planned",
-      metric: "P7",
-      detail: "candidate intake surface follows this shell",
-      tone: "static",
-      Icon: BookOpen,
-    },
-  ];
+  const statusStripState = deriveCommandCenterStatusStripState({
+    health,
+    healthErr: Boolean(healthErr),
+    safety,
+    safetyErr: Boolean(safetyErr),
+    killSwitchActive,
+    execution: exec,
+    integrity,
+    integrityErr: Boolean(integrityErr),
+    integrityReady,
+    staleFeeds,
+  });
+  const shellRegionIcons = {
+    systemStatus: Shield,
+    tradeQueue: Zap,
+    eligibility: CheckCircle,
+    strategyLedger: TrendingUp,
+    dataIntegrity: Database,
+    researchIntake: BookOpen,
+  };
+  const shellRegions: ShellRegion[] = deriveCommandCenterShellRegions({
+    engineOnline,
+    killSwitchActive,
+    paperTrading: health?.paper_trading,
+    executionLabel: exec.label,
+    decisionsCount: decisions?.length,
+    decisionsErr: Boolean(decisionsErr),
+    tradesCount: trades?.length,
+    tradesErr: Boolean(tradesErr),
+    hasPaperStatus: Boolean(paperStatus),
+    approvedInstruments,
+    totalInstruments: liveInstruments.length,
+    haltedInstruments,
+    ledgerReady,
+    ledgerErr: Boolean(ledgerErr),
+    ledgerPassCount: ledger?.n_pass,
+    ledgerFailCount: ledger?.n_fail,
+    ledgerTotal: ledger?.total,
+    integrityReady,
+    integrityErr: Boolean(integrityErr),
+    integrityCount: integrity?.count ?? integrity?.sources?.length,
+    staleFeeds,
+  }).map((region) => ({
+    ...region,
+    Icon: shellRegionIcons[region.key],
+  }));
 
   // Risk gauge calculations
   const dailyPnlPct =
@@ -733,10 +690,10 @@ export default function CommandCenterPage() {
       </div>
 
       <CommandCenterStatusStrip
-        engine={engineStatus}
-        broker={brokerStatus}
-        safety={safetyStatus}
-        data={dataStatus}
+        engine={statusStripState.engine}
+        broker={statusStripState.broker}
+        safety={statusStripState.safety}
+        data={statusStripState.data}
       />
 
       <CanonicalShellMap regions={shellRegions} />

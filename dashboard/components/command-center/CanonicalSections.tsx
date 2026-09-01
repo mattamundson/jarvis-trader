@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { compactCount } from "@/lib/commandCenterState";
 import {
   type CommandCenterDataIntegrityResponse,
   type CommandCenterDecision,
@@ -20,6 +21,8 @@ import {
   type LedgerResponse,
 } from "@/lib/commandCenterApi";
 import { dedupCaveat, type HonestTradeSet } from "@/lib/honestTrades";
+
+export { compactCount } from "@/lib/commandCenterState";
 
 type ShellTone = "live" | "warn" | "offline" | "static";
 type StatusTone = "ok" | "warn" | "bad" | "unknown";
@@ -66,10 +69,6 @@ function shellToneClass(tone: ShellTone): string {
   if (tone === "warn") return "border-amber-800/50 bg-amber-950/10 text-amber-300";
   if (tone === "offline") return "border-red-800/50 bg-red-950/10 text-red-300";
   return "border-slate-800 bg-slate-900/60 text-slate-300";
-}
-
-export function compactCount(value: number | undefined | null): string {
-  return typeof value === "number" && Number.isFinite(value) ? String(value) : "—";
 }
 
 function statusToneClass(tone: StatusTone): string {
