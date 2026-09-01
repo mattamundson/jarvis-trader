@@ -731,11 +731,12 @@
     {
       "id": "P8-003",
       "title": "Fix dashboard test typecheck blocker from missing component imports",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 69,
       "program": "CI",
       "blocked_by": [],
-      "acceptance": "`pnpm run typecheck:tests` no longer fails on missing `CircuitBreakerPanel` and `KillSwitch` component imports."
+      "acceptance": "`pnpm run typecheck:tests` no longer fails on missing `CircuitBreakerPanel` and `KillSwitch` component imports.",
+      "evidence": "docs/plans/master-implementation/PASS24_DASHBOARD_TEST_TYPECHECK_UNBLOCK_2026-09-01.md"
     },
     {
       "id": "P8-004",
