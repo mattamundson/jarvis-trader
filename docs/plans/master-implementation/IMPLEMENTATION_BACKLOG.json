@@ -441,7 +441,7 @@
     {
       "id": "P4-010",
       "title": "Write session handoff for master-plan loop state",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 40,
       "program": "Session Hygiene",
       "blocked_by": [],
