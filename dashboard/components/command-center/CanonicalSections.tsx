@@ -21,6 +21,7 @@ import {
   type LedgerResponse,
 } from "@/lib/commandCenterApi";
 import { dedupCaveat, type HonestTradeSet } from "@/lib/honestTrades";
+import { commandCenterResearchIntakeRows } from "@/lib/researchIntake";
 
 export { compactCount } from "@/lib/commandCenterState";
 
@@ -339,12 +340,12 @@ export function CommandCenterOperationsGrid({
       tone: integrityReady ? dataIntegrityTone(sourceParityState) : "unknown" as const,
     },
   ];
-  const researchRows = [
-    { label: "PRS", state: "intake", detail: "keep / split / replace" },
-    { label: "ISSUES", state: "intake", detail: "acceptance before code" },
-    { label: "EXPERIMENTS", state: "research-only", detail: "no readiness promotion" },
-    { label: "SPIKES", state: "reference", detail: "retire-to-archive when superseded" },
-  ];
+  const researchRows = commandCenterResearchIntakeRows().map((row) => ({
+    label: `${row.source.ref} ${row.kind}`,
+    state: row.disposition.replace(/_/g, " "),
+    detail: row.next_action,
+    tone: row.disposition === "keep" ? "warn" as const : "unknown" as const,
+  }));
 
   return (
     <section
@@ -442,7 +443,7 @@ export function CommandCenterOperationsGrid({
             <div key={row.label} className="rounded border border-slate-800 bg-slate-950/40 p-2">
               <div className="flex items-center justify-between gap-2">
                 <span className="font-mono text-xs text-white">{row.label}</span>
-                <MiniStateBadge label={row.state} tone="unknown" />
+                <MiniStateBadge label={row.state} tone={row.tone} />
               </div>
               <p className="mt-1 text-[11px] font-mono text-slate-500">{row.detail}</p>
             </div>

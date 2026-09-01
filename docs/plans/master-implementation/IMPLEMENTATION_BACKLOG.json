@@ -851,11 +851,12 @@
     {
       "id": "P9-005",
       "title": "Wire Command Center Research Intake panel to normalized rows",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 81,
       "program": "Command Center",
       "blocked_by": ["P9-004"],
-      "acceptance": "Command Center renders real Research Intake rows and does not imply production readiness."
+      "acceptance": "Command Center renders real Research Intake rows and does not imply production readiness.",
+      "evidence": "docs/plans/master-implementation/PASS37_COMMAND_CENTER_RESEARCH_INTAKE_WIRING_2026-09-01.md"
     },
     {
       "id": "P9-006",

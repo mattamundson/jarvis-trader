@@ -66,6 +66,8 @@ for (const viewport of VIEWPORTS) {
     await expect(page.getByTestId("command-center-operations-grid")).toContainText(/PROVIDER\s*unknown/i);
     await expect(page.getByTestId("command-center-operations-grid")).toContainText(/BAR FRESHNESS\s*fresh/i);
     await expect(page.getByTestId("command-center-operations-grid")).toContainText(/SOURCE PARITY\s*not wired/i);
+    await expect(page.getByTestId("command-center-operations-grid")).toContainText(/#749\s*pr\s*keep/i);
+    await expect(page.getByTestId("command-center-operations-grid")).toContainText(/#754\s*pr\s*reference/i);
     await assertNoHorizontalOverflow(page);
     await assertVerticalOrder([
       { name: "heading", locator: heading },
