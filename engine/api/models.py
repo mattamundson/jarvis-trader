@@ -252,6 +252,99 @@ class FullHealthResponse(BaseModel):
     )
 
 
+class DataIntegritySource(BaseModel):
+    """Single data-source freshness row."""
+
+    source: str = Field(..., description="Logical data source name")
+    kind: Optional[str] = Field(None, description="Source kind, such as market_data")
+    provider: Optional[str] = Field(None, description="Provider name when known")
+    provider_tier: Optional[str] = Field(None, description="Provider tier when known")
+    last_update: Optional[str] = Field(None, description="Last observed update timestamp")
+    latency_sec: Optional[float] = Field(None, description="Seconds since last update")
+    age_seconds: Optional[float] = Field(None, description="Seconds since last update")
+    status: str = Field(..., description="healthy or stale")
+    cache_key: Optional[str] = Field(None, description="Backing cache key")
+
+
+class DataIntegrityCacheAgeSource(BaseModel):
+    """Cache-age status for one reported source."""
+
+    source: Optional[str] = Field(None, description="Logical data source name")
+    age_seconds: Optional[float] = Field(None, description="Seconds since last update")
+    status: str = Field(..., description="fresh or stale")
+
+
+class DataIntegrityCacheAge(BaseModel):
+    """Aggregate cache-age status."""
+
+    status: str = Field(..., description="fresh, stale, empty, or unknown")
+    max_age_seconds: Optional[float] = Field(None, description="Maximum source age in seconds")
+    stale_after_seconds: float = Field(..., description="Freshness threshold in seconds")
+    by_source: List[DataIntegrityCacheAgeSource] = Field(
+        default_factory=list, description="Per-source cache-age rows"
+    )
+
+
+class DataIntegrityProviderTier(BaseModel):
+    """Provider-tier status for data-integrity readiness."""
+
+    status: str = Field(..., description="known, unknown, fallback, or offline")
+    active: Optional[str] = Field(None, description="Active provider when known")
+    primary: Optional[str] = Field(None, description="Primary provider when known")
+    fallbacks: List[str] = Field(default_factory=list, description="Configured fallback providers")
+    reason: Optional[str] = Field(None, description="Reason provider metadata is not known")
+
+
+class DataIntegrityBarFreshness(BaseModel):
+    """Market-data bar freshness status."""
+
+    status: str = Field(..., description="fresh, stale, empty, unknown, or partial")
+    stale_after_seconds: float = Field(..., description="Freshness threshold in seconds")
+    max_lag_seconds: Optional[float] = Field(None, description="Maximum market-data lag in seconds")
+    symbols: List[str] = Field(default_factory=list, description="Reported market-data symbols")
+    timeframes: List[str] = Field(default_factory=list, description="Reported market-data timeframes")
+    stale_symbols: List[str] = Field(default_factory=list, description="Symbols with stale data")
+    unknown_symbols: List[str] = Field(default_factory=list, description="Symbols with unknown data")
+
+
+class DataIntegritySourceParity(BaseModel):
+    """Cross-source parity status."""
+
+    status: str = Field(..., description="matched, mismatch, missing, or not_wired")
+    window_seconds: Optional[float] = Field(None, description="Comparison window in seconds")
+    checked_symbols: List[str] = Field(default_factory=list, description="Symbols checked")
+    reference_source: Optional[str] = Field(None, description="Reference source used for comparison")
+    compared_sources: List[str] = Field(default_factory=list, description="Compared sources")
+    max_delta_bps: Optional[float] = Field(None, description="Maximum source delta in basis points")
+    mismatches: List[Dict[str, Any]] = Field(default_factory=list, description="Parity mismatches")
+    missing_sources: List[str] = Field(default_factory=list, description="Missing sources")
+
+
+class DataIntegrityTradeEnablement(BaseModel):
+    """Trade-enablement status derived from data-integrity checks."""
+
+    status: str = Field(..., description="allowed or blocked")
+    blocking_reasons: List[str] = Field(default_factory=list, description="Reasons trading is blocked")
+
+
+class DataIntegrityResponse(BaseModel):
+    """Expanded /system/data-integrity response."""
+
+    timestamp: str = Field(..., description="Response timestamp")
+    status: str = Field(..., description="ok, degraded, or offline")
+    stale_after_seconds: float = Field(..., description="Freshness threshold in seconds")
+    sources: List[DataIntegritySource] = Field(default_factory=list, description="Freshness rows")
+    count: int = Field(..., description="Number of reported sources")
+    cache_age: DataIntegrityCacheAge = Field(..., description="Aggregate cache-age state")
+    provider_tier: DataIntegrityProviderTier = Field(..., description="Provider-tier state")
+    bar_freshness: DataIntegrityBarFreshness = Field(..., description="Bar freshness state")
+    source_parity: DataIntegritySourceParity = Field(..., description="Cross-source parity state")
+    trade_enablement: DataIntegrityTradeEnablement = Field(
+        ..., description="Trade enablement state"
+    )
+    error: Optional[str] = Field(None, description="Error detail for offline responses")
+
+
 # ── IB Gateway Models ───────────────────────────────────────────────────────
 
 

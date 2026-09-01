@@ -19,7 +19,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from starlette.requests import Request
 
-from api.models import FullHealthResponse, HealthResponse
+from api.models import DataIntegrityResponse, FullHealthResponse, HealthResponse
 from config import settings
 from middleware.rate_limit import get_limiter
 
@@ -825,7 +825,7 @@ def _data_integrity_envelope(now: datetime, sources: list[dict], error: str | No
     return body
 
 
-@router.get("/system/data-integrity")
+@router.get("/system/data-integrity", response_model=DataIntegrityResponse)
 async def get_data_integrity():
     """
     Returns real-time data freshness metrics from Redis.

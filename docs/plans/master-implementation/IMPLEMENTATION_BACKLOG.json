@@ -951,28 +951,29 @@
     {
       "id": "P10-005",
       "title": "Add response model for expanded data-integrity endpoint",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 91,
       "program": "Engine API",
       "blocked_by": ["P9-001"],
-      "acceptance": "`/system/data-integrity` has an explicit response model covering the expanded contract."
+      "acceptance": "`/system/data-integrity` has an explicit response model covering the expanded contract.",
+      "evidence": "docs/plans/master-implementation/PASS48_DATA_INTEGRITY_RESPONSE_MODEL_2026-09-01.md"
     },
     {
       "id": "P10-006",
       "title": "Add data-integrity OpenAPI/schema regression tests",
-      "status": "blocked",
+      "status": "ready",
       "roi_rank": 92,
       "program": "Engine API",
-      "blocked_by": ["P10-005"],
+      "blocked_by": [],
       "acceptance": "Tests prove the expanded data-integrity schema remains in the engine OpenAPI contract."
     },
     {
       "id": "P10-007",
       "title": "Wire provider metadata into data-integrity provider tier",
-      "status": "blocked",
+      "status": "ready",
       "roi_rank": 93,
       "program": "Engine API",
-      "blocked_by": ["P10-005"],
+      "blocked_by": [],
       "acceptance": "`provider_tier` reports real configured provider metadata when available and unknown when absent."
     },
     {
