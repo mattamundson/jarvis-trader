@@ -339,6 +339,7 @@ docs/session-logs/**/*.jsonl
 # checkout reverted strategy_c_plus_live_signal.json from 06-05 to 05-29, and
 # stale gate_v2 verdicts would silently mis-authorize trading)
 engine/data/gate_v2_verdicts/*.json
+engine/data/health/environment_drift_latest.json
 engine/strategy_c/output/strategy_c_plus_live_signal.json
 engine/strategy_c/output/strategy_c_plus_metrics.json
 engine/strategy_c/output/strategy_c_plus_dashboard.png
