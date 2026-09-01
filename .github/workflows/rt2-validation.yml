@@ -59,7 +59,7 @@ jobs:
       - name: Run RT-2 focused pytest
         run: |
           cd engine
-          pytest \
+          pytest --noconftest \
             tests/test_trade_intent_core.py \
             tests/test_trade_intent_store.py \
             tests/test_trade_intents_router.py \
