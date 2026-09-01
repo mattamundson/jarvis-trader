@@ -11,7 +11,9 @@ permissions:
 jobs:
   focused-rt2:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 8
+    env:
+      TESTING: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -22,8 +24,16 @@ jobs:
 
       - name: Install focused dependencies
         run: |
-          pip install -q -r engine/requirements-core.txt
-          pip install -q ruff==0.8.0
+          pip install -q \
+            ruff==0.8.0 \
+            pytest \
+            pytest-asyncio \
+            fastapi \
+            pydantic \
+            pydantic-settings \
+            python-dotenv \
+            pandas \
+            numpy
 
       - name: Ruff RT-2 changed Python only
         run: |
@@ -48,8 +58,9 @@ jobs:
 
       - name: Run RT-2 focused pytest
         run: |
+          cd engine
           pytest \
-            engine/tests/test_trade_intent_core.py \
-            engine/tests/test_trade_intent_store.py \
-            engine/tests/test_trade_intents_router.py \
+            tests/test_trade_intent_core.py \
+            tests/test_trade_intent_store.py \
+            tests/test_trade_intents_router.py \
             -v --tb=short
