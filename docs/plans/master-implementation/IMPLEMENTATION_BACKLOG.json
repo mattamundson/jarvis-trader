@@ -631,11 +631,12 @@
     {
       "id": "P7-003",
       "title": "Add Command Center mocked data fixtures",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 59,
       "program": "Command Center",
       "blocked_by": ["P7-001"],
-      "acceptance": "Offline, degraded, empty, and populated fixture states exist for focused UI tests."
+      "acceptance": "Offline, degraded, empty, and populated fixture states exist for focused UI tests.",
+      "evidence": "docs/plans/master-implementation/PASS16_COMMAND_CENTER_FIXTURES_2026-09-01.md"
     },
     {
       "id": "P7-004",
