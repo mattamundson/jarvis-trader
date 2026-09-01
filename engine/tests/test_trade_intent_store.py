@@ -7,7 +7,6 @@ import pytest
 from trade_intents.core import compute_trade_intent_preview
 from trade_intents.store import TradeIntentStore, TradeIntentStoreError
 
-
 NOW = datetime(2026, 8, 31, 23, 0, tzinfo=timezone.utc)
 
 
