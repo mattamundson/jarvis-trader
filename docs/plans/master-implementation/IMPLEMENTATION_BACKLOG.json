@@ -871,11 +871,12 @@
     {
       "id": "P9-007",
       "title": "Extract mission-control safety/status summary into Command Center",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 83,
       "program": "Command Center",
       "blocked_by": ["P9-006"],
-      "acceptance": "Mission-control unique safety/status facts are visible from Command Center before redirect planning advances."
+      "acceptance": "Mission-control unique safety/status facts are visible from Command Center before redirect planning advances.",
+      "evidence": "docs/plans/master-implementation/PASS39_COMMAND_CENTER_OPERATIONS_SUMMARY_2026-09-01.md"
     },
     {
       "id": "P9-008",

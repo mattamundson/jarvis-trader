@@ -65,6 +65,9 @@ for (const viewport of VIEWPORTS) {
     await expect(drilldowns.getByRole("link", { name: /Daily Brief/i })).toHaveAttribute("href", "/today");
     await expect(drilldowns.getByRole("link", { name: /Trust Audit/i })).toHaveAttribute("href", "/trust-pane");
     await expect(queue).toBeVisible();
+    await expect(page.getByTestId("command-center-operations-summary")).toContainText(/Kill Switch\s*clear/i);
+    await expect(page.getByTestId("command-center-operations-summary")).toContainText(/Order Rate\s*0\/10/i);
+    await expect(page.getByTestId("command-center-operations-summary")).toContainText(/Broker Execution\s*no broker ack/i);
     await expect(page.getByTestId("command-center-operations-grid")).toContainText("next gate: repair thesis");
     await expect(page.getByTestId("command-center-operations-grid")).toContainText("freshness: reported");
     await expect(page.getByTestId("command-center-operations-grid")).toContainText(/CACHE AGE\s*fresh/i);

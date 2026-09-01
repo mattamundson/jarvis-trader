@@ -75,6 +75,7 @@ import {
   CanonicalShellMap,
   CommandCenterDrilldownNav,
   CommandCenterOperationsGrid,
+  CommandCenterOperationsSummary,
   CommandCenterStatusStrip,
   CommandCenterTradeQueuePanel,
   type ShellRegion,
@@ -710,6 +711,14 @@ export default function CommandCenterPage() {
       />
 
       <CommandCenterDrilldownNav />
+
+      <CommandCenterOperationsSummary
+        health={health}
+        healthErr={Boolean(healthErr)}
+        safety={safety}
+        safetyErr={Boolean(safetyErr)}
+        execution={exec}
+      />
 
       <CommandCenterOperationsGrid
         liveInstruments={liveInstruments}
