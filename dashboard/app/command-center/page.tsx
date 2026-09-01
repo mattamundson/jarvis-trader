@@ -79,15 +79,17 @@ import { SessionBriefPanel } from "@/components/SessionBriefPanel";
 import { ActionableBoardWidget } from "@/components/ActionableBoardWidget";
 import {
   CanonicalShellMap,
-  CommandCenterDailyBriefSummary,
   CommandCenterDrilldownNav,
   CommandCenterOperationsGrid,
-  CommandCenterOperationsSummary,
   CommandCenterStatusStrip,
-  CommandCenterTrustAuditSummary,
   CommandCenterTradeQueuePanel,
   type ShellRegion,
 } from "@/components/command-center/CanonicalSections";
+import {
+  CommandCenterDailyBriefSummary,
+  CommandCenterOperationsSummary,
+  CommandCenterTrustAuditSummary,
+} from "@/components/command-center/SummarySections";
 import PipelineFunnelCard from "@/components/command-center/PipelineFunnelCard";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { useToast } from "@/lib/toast-context";

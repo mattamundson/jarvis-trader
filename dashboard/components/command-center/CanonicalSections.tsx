@@ -13,27 +13,17 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   compactCount,
-  deriveCommandCenterDailyBriefSummaryRows,
-  deriveCommandCenterOperationsSummaryRows,
-  deriveCommandCenterTrustAuditSummaryRows,
 } from "@/lib/commandCenterState";
 import {
   type CommandCenterDataIntegrityResponse,
   type CommandCenterDecision,
-  type CommandCenterBarQualityData,
-  type CommandCenterEdgeLedgerData,
-  type CommandCenterHealthData,
-  type CommandCenterMacroData,
   type CommandCenterPaperStatusRow,
   type CommandCenterPortfolioData,
-  type CommandCenterSafetyData,
-  type CommandCenterSessionTodayData,
   type CommandCenterTrade,
   type LedgerResponse,
 } from "@/lib/commandCenterApi";
 import { dedupCaveat, type HonestTradeSet } from "@/lib/honestTrades";
 import { commandCenterResearchIntakeRows } from "@/lib/researchIntake";
-import type { ExecutionStatus } from "@/lib/executionPath";
 
 export { compactCount } from "@/lib/commandCenterState";
 
@@ -573,168 +563,6 @@ export function CommandCenterDrilldownNav() {
               {detail}
             </p>
           </a>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-export function CommandCenterOperationsSummary({
-  health,
-  healthErr,
-  safety,
-  safetyErr,
-  execution,
-}: {
-  health: CommandCenterHealthData | undefined;
-  healthErr: boolean;
-  safety: CommandCenterSafetyData | undefined;
-  safetyErr: boolean;
-  execution: ExecutionStatus;
-}) {
-  const rows = deriveCommandCenterOperationsSummaryRows({
-    health,
-    healthErr,
-    safety,
-    safetyErr,
-    execution,
-  });
-
-  return (
-    <section
-      className="mb-4 rounded-md border border-slate-800 bg-slate-950/35 p-3"
-      aria-label="Command Center operations summary"
-      data-testid="command-center-operations-summary"
-    >
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="text-[10px] font-mono tracking-[0.2em] text-slate-500">
-          OPERATIONS SUMMARY
-        </span>
-        <a href="/mission-control" className="text-[10px] font-mono uppercase tracking-wider text-cyan-400 hover:text-cyan-300">
-          mission control
-        </a>
-      </div>
-      <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
-        {rows.map((row) => (
-          <div key={row.label} className="rounded border border-slate-800 bg-slate-950/40 p-2">
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-mono text-[10px] uppercase tracking-wider text-slate-500">
-                {row.label}
-              </span>
-              <MiniStateBadge label={row.state} tone={row.tone} />
-            </div>
-            <p className="mt-1 line-clamp-2 text-[10px] leading-snug text-slate-500">
-              {row.detail}
-            </p>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-export function CommandCenterDailyBriefSummary({
-  health,
-  sessionToday,
-  sessionTodayErr,
-  macro,
-}: {
-  health: CommandCenterHealthData | undefined;
-  sessionToday: CommandCenterSessionTodayData | undefined;
-  sessionTodayErr: boolean;
-  macro: CommandCenterMacroData | undefined;
-}) {
-  const rows = deriveCommandCenterDailyBriefSummaryRows({
-    health,
-    sessionToday,
-    sessionTodayErr,
-    macro,
-  });
-
-  return (
-    <section
-      className="mb-4 rounded-md border border-slate-800 bg-slate-950/35 p-3"
-      aria-label="Command Center daily brief summary"
-      data-testid="command-center-daily-brief-summary"
-    >
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="text-[10px] font-mono tracking-[0.2em] text-slate-500">
-          DAILY BRIEF SUMMARY
-        </span>
-        <a href="/today" className="text-[10px] font-mono uppercase tracking-wider text-cyan-400 hover:text-cyan-300">
-          today drilldown
-        </a>
-      </div>
-      <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
-        {rows.map((row) => (
-          <div key={row.label} className="rounded border border-slate-800 bg-slate-950/40 p-2">
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-mono text-[10px] uppercase tracking-wider text-slate-500">
-                {row.label}
-              </span>
-              <MiniStateBadge label={row.state} tone={row.tone} />
-            </div>
-            <p className="mt-1 line-clamp-2 text-[10px] leading-snug text-slate-500">
-              {row.detail}
-            </p>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-export function CommandCenterTrustAuditSummary({
-  health,
-  healthErr,
-  barQuality,
-  barQualityErr,
-  edgeLedger,
-  edgeLedgerErr,
-}: {
-  health: CommandCenterHealthData | undefined;
-  healthErr: boolean;
-  barQuality: CommandCenterBarQualityData | undefined;
-  barQualityErr: boolean;
-  edgeLedger: CommandCenterEdgeLedgerData | undefined;
-  edgeLedgerErr: boolean;
-}) {
-  const rows = deriveCommandCenterTrustAuditSummaryRows({
-    health,
-    healthErr,
-    barQuality,
-    barQualityErr,
-    edgeLedger,
-    edgeLedgerErr,
-  });
-
-  return (
-    <section
-      className="mb-4 rounded-md border border-slate-800 bg-slate-950/35 p-3"
-      aria-label="Command Center trust audit summary"
-      data-testid="command-center-trust-audit-summary"
-    >
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="text-[10px] font-mono tracking-[0.2em] text-slate-500">
-          TRUST AUDIT SUMMARY
-        </span>
-        <a href="/trust-pane" className="text-[10px] font-mono uppercase tracking-wider text-cyan-400 hover:text-cyan-300">
-          trust pane
-        </a>
-      </div>
-      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-        {rows.map((row) => (
-          <div key={row.label} className="rounded border border-slate-800 bg-slate-950/40 p-2">
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-mono text-[10px] uppercase tracking-wider text-slate-500">
-                {row.label}
-              </span>
-              <MiniStateBadge label={row.state} tone={row.tone} />
-            </div>
-            <p className="mt-1 line-clamp-2 text-[10px] leading-snug text-slate-500">
-              {row.detail}
-            </p>
-          </div>
         ))}
       </div>
     </section>

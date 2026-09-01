@@ -941,11 +941,12 @@
     {
       "id": "P10-004",
       "title": "Split Command Center summary components out of CanonicalSections",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 90,
       "program": "Command Center",
       "blocked_by": [],
-      "acceptance": "Summary components move into a dedicated module without changing rendered behavior."
+      "acceptance": "Summary components move into a dedicated module without changing rendered behavior.",
+      "evidence": "docs/plans/master-implementation/PASS47_COMMAND_CENTER_SUMMARY_COMPONENT_SPLIT_2026-09-01.md"
     },
     {
       "id": "P10-005",
@@ -998,7 +999,7 @@
       "status": "blocked",
       "roi_rank": 96,
       "program": "Testing",
-      "blocked_by": ["P10-002", "P10-004", "P10-008"],
+      "blocked_by": ["P10-008"],
       "acceptance": "Focused typecheck, guards, node tests, and isolated E2E suite pass after the P10 dashboard changes."
     }
   ]
