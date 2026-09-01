@@ -52,10 +52,10 @@ for (const viewport of VIEWPORTS) {
     await page.goto("/command-center", { waitUntil: "domcontentloaded" });
 
     const heading = page.getByRole("heading", { name: /JARVIS TRADER.*COMMAND CENTER/i });
-    const statusStrip = page.getByTestId("command-center-status-strip");
-    const shell = page.getByTestId("canonical-shell");
-    const drilldowns = page.getByTestId("command-center-drilldowns");
-    const queue = page.getByTestId("command-center-trade-queue-panel");
+    const statusStrip = page.getByTestId("command-center-status-strip").first();
+    const shell = page.getByTestId("canonical-shell").first();
+    const drilldowns = page.getByTestId("command-center-drilldowns").first();
+    const queue = page.getByTestId("command-center-trade-queue-panel").first();
 
     await expect(heading).toBeVisible();
     await expect(statusStrip).toBeVisible();

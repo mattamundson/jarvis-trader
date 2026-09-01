@@ -999,7 +999,7 @@
       {
         "id": "P10-010",
         "title": "Run consolidated Command Center evidence suite",
-        "status": "ready",
+        "status": "done",
         "roi_rank": 96,
         "program": "Testing",
         "blocked_by": [],
