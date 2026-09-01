@@ -60,6 +60,8 @@ for (const viewport of VIEWPORTS) {
     await expect(statusStrip).toBeVisible();
     await expect(shell).toBeVisible();
     await expect(queue).toBeVisible();
+    await expect(page.getByTestId("command-center-operations-grid")).toContainText("next gate: repair thesis");
+    await expect(page.getByTestId("command-center-operations-grid")).toContainText("freshness: reported");
     await assertNoHorizontalOverflow(page);
     await assertVerticalOrder([
       { name: "heading", locator: heading },

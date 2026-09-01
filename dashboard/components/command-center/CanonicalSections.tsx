@@ -377,7 +377,8 @@ export function CommandCenterOperationsGrid({
             ledgerRows.map((row, index) => {
               const verdict = row.verdict ?? "UNKNOWN";
               const tone: StatusTone = verdict === "PASS" ? "ok" : verdict === "FAIL" ? "bad" : "unknown";
-              const nextGate = verdict === "PASS" ? "forward proof" : verdict === "FAIL" ? "repair thesis" : "gate-v2 rerun";
+              const nextGate = row.next_gate?.trim() || "not reported";
+              const freshness = row.freshness_status?.trim() || "freshness unknown";
               return (
                 <div key={`${row.symbol}-${row.family}-${index}`} className="rounded border border-slate-800 bg-slate-950/40 p-2">
                   <div className="flex items-center justify-between gap-2">
@@ -386,6 +387,9 @@ export function CommandCenterOperationsGrid({
                   </div>
                   <p className="mt-1 text-[11px] font-mono text-slate-500">
                     next gate: {nextGate}
+                  </p>
+                  <p className="mt-0.5 text-[11px] font-mono text-slate-600">
+                    freshness: {freshness}
                   </p>
                 </div>
               );

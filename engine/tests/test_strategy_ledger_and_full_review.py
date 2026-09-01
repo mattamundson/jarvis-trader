@@ -58,7 +58,24 @@ def test_load_ledger_parses_counts_and_oos(tmp_path):
     by_sym = {r["symbol"]: r for r in rows}
     assert by_sym["MES"]["verdict"] == "PASS"
     assert by_sym["MES"]["oos_trades"] == 25  # summed from windows
+    assert by_sym["MES"]["next_gate"] == "forward proof"
+    assert by_sym["MES"]["freshness_status"] == "reported"
+    assert by_sym["MES"]["freshness_basis"] == "created_at"
+    assert by_sym["MES"]["source_file_mtime"]
     assert by_sym["MCL"]["family"] == "meanrev"
+    assert by_sym["MCL"]["next_gate"] == "repair thesis"
+
+
+def test_strategy_ledger_response_includes_freshness_summary(tmp_path, monkeypatch):
+    _write_verdict(tmp_path, "MES_trend_rank1.json", verdict="PASS")
+    monkeypatch.setattr(L, "_verdicts_dir", lambda: tmp_path)
+
+    body = L.get_strategy_ledger(symbol=None, verdict=None)
+    assert body.ledger_freshness.status == "reported"
+    assert body.ledger_freshness.basis == "created_at"
+    assert body.ledger_freshness.entries_missing_created_at == 0
+    assert body.ledger_freshness.entries_with_source_file_mtime == 1
+    assert body.entries[0].next_gate == "forward proof"
 
 
 def test_find_verdict_prefers_pass_then_rank(tmp_path, monkeypatch):

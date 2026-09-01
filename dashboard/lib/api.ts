@@ -1347,6 +1347,20 @@ export interface LedgerEntry {
   cost_survives_through: string | null;
   oos_trades: number | null;
   source_file: string | null;
+  source_file_mtime?: string | null;
+  freshness_status?: string | null;
+  freshness_basis?: string | null;
+  next_gate?: string | null;
+  next_gate_reason?: string | null;
+}
+
+export interface LedgerFreshness {
+  status: string;
+  basis: string;
+  newest_created_at?: string | null;
+  newest_source_file_mtime?: string | null;
+  entries_missing_created_at: number;
+  entries_with_source_file_mtime: number;
 }
 
 export interface LedgerResponse {
@@ -1355,6 +1369,7 @@ export interface LedgerResponse {
   n_pass: number;
   n_fail: number;
   generated_at: string;
+  ledger_freshness?: LedgerFreshness;
 }
 
 /** GET /strategy/ledger — gate-v2 backtest verdict ledger. */

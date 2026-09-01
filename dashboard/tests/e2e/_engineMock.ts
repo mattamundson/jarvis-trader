@@ -91,7 +91,21 @@ const SHAPES: Array<[RegExp, unknown]> = [
   // the page tries to iterate a function, throwing "function is not iterable".
   // Found by iteration 7 (/strategy-ledger), which exercises this more directly
   // than mission-control's panel does.
-  [/\/strategy\/ledger/, { entries: [], total: 0, n_pass: 0, n_fail: 0, generated_at: "" }],
+  [/\/strategy\/ledger/, {
+    entries: [],
+    total: 0,
+    n_pass: 0,
+    n_fail: 0,
+    generated_at: "",
+    ledger_freshness: {
+      status: "empty",
+      basis: "none",
+      newest_created_at: null,
+      newest_source_file_mtime: null,
+      entries_missing_created_at: 0,
+      entries_with_source_file_mtime: 0,
+    },
+  }],
   [/\/portfolio\/paper\/positions\/unrealized/, []],
   [/\/portfolio\/paper\/performance/, { equity_curve: [], trades: [], summary: null }],
   [/\/pipeline\/status/, { stages: [], running: false }],

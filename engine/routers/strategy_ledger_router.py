@@ -67,6 +67,20 @@ class LedgerEntry(BaseModel):
     oos_trades: Optional[int] = None
     # provenance
     source_file: Optional[str] = None
+    source_file_mtime: Optional[str] = None
+    freshness_status: Optional[str] = None
+    freshness_basis: Optional[str] = None
+    next_gate: Optional[str] = None
+    next_gate_reason: Optional[str] = None
+
+
+class LedgerFreshness(BaseModel):
+    status: str
+    basis: str
+    newest_created_at: Optional[str] = None
+    newest_source_file_mtime: Optional[str] = None
+    entries_missing_created_at: int = 0
+    entries_with_source_file_mtime: int = 0
 
 
 class LedgerResponse(BaseModel):
@@ -75,9 +89,83 @@ class LedgerResponse(BaseModel):
     n_pass: int
     n_fail: int
     generated_at: str
+    ledger_freshness: LedgerFreshness
 
 
 # ── Parsing ────────────────────────────────────────────────────────────────────
+
+
+def _iso_from_mtime(path: Path) -> Optional[str]:
+    try:
+        return datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat()
+    except OSError:
+        return None
+
+
+def _parse_iso(value: Any) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+
+
+def _newest_iso(rows: List[Dict[str, Any]], field: str) -> Optional[str]:
+    pairs = []
+    for row in rows:
+        value = row.get(field)
+        parsed = _parse_iso(value)
+        if parsed is not None and value is not None:
+            pairs.append((parsed, str(value)))
+    if not pairs:
+        return None
+    return max(pairs, key=lambda pair: pair[0])[1]
+
+
+def _next_gate_fields(verdict: Optional[str]) -> tuple[str, str]:
+    verdict_norm = (verdict or "").upper()
+    if verdict_norm == "PASS":
+        return "forward proof", "PASS verdicts move to forward-proof tracking before capital promotion."
+    if verdict_norm == "FAIL":
+        return "repair thesis", "FAIL verdicts require thesis repair before another gate-v2 run."
+    return "gate-v2 rerun", "Missing or unknown verdicts require a fresh gate-v2 evaluation."
+
+
+def _freshness_fields(created_at: Any, source_file_mtime: Optional[str]) -> tuple[str, Optional[str]]:
+    if _parse_iso(created_at) is not None:
+        return "reported", "created_at"
+    if source_file_mtime:
+        return "reported", "source_file_mtime"
+    return "unknown", None
+
+
+def _ledger_freshness(rows: List[Dict[str, Any]]) -> LedgerFreshness:
+    if not rows:
+        return LedgerFreshness(
+            status="empty",
+            basis="none",
+            entries_missing_created_at=0,
+            entries_with_source_file_mtime=0,
+        )
+
+    entries_missing_created_at = sum(1 for row in rows if _parse_iso(row.get("created_at")) is None)
+    entries_with_source_file_mtime = sum(1 for row in rows if _parse_iso(row.get("source_file_mtime")) is not None)
+    if entries_missing_created_at == len(rows):
+        status = "unknown"
+    elif entries_missing_created_at > 0:
+        status = "partial"
+    else:
+        status = "reported"
+
+    return LedgerFreshness(
+        status=status,
+        basis="created_at",
+        newest_created_at=_newest_iso(rows, "created_at"),
+        newest_source_file_mtime=_newest_iso(rows, "source_file_mtime"),
+        entries_missing_created_at=entries_missing_created_at,
+        entries_with_source_file_mtime=entries_with_source_file_mtime,
+    )
 
 
 def _parse_verdict(path: Path) -> Optional[Dict[str, Any]]:
@@ -98,6 +186,10 @@ def _parse_verdict(path: Path) -> Optional[Dict[str, Any]]:
         except (TypeError, ValueError):
             oos_trades = None
 
+    source_file_mtime = _iso_from_mtime(path)
+    next_gate, next_gate_reason = _next_gate_fields(body.get("verdict"))
+    freshness_status, freshness_basis = _freshness_fields(body.get("created_at"), source_file_mtime)
+
     return {
         "symbol": body.get("symbol"),
         "family": body.get("family"),
@@ -117,6 +209,11 @@ def _parse_verdict(path: Path) -> Optional[Dict[str, Any]]:
         "cost_survives_through": metrics.get("cost_survives_through"),
         "oos_trades": oos_trades,
         "source_file": path.name,
+        "source_file_mtime": source_file_mtime,
+        "freshness_status": freshness_status,
+        "freshness_basis": freshness_basis,
+        "next_gate": next_gate,
+        "next_gate_reason": next_gate_reason,
     }
 
 
@@ -187,6 +284,7 @@ def get_strategy_ledger(
         n_pass=n_pass,
         n_fail=len(entries) - n_pass,
         generated_at=datetime.now(timezone.utc).isoformat(),
+        ledger_freshness=_ledger_freshness(rows),
     )
 
 
