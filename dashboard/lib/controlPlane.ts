@@ -1,4 +1,4 @@
-import { fetchEngine } from "@/lib/api";
+import { fetchEngine, postEngine } from "@/lib/api";
 
 export interface ControlPlaneHealth {
   status: string;
@@ -83,6 +83,56 @@ export interface ControlPlaneSnapshot {
   errors: Record<string, string>;
 }
 
+export interface CandidateTradeTerms {
+  side: "LONG" | "SHORT" | null;
+  entryPrice: number | null;
+  stopPrice: number | null;
+  targetPrice: number | null;
+  quantity: number | null;
+  riskPointsPerUnit: number | null;
+  rewardPointsPerUnit: number | null;
+  rewardRisk: number | null;
+}
+
+export interface CandidateApprovalCapability {
+  canApprove: boolean;
+  reasons: string[];
+  terms: CandidateTradeTerms;
+}
+
+export interface ApprovalMutationResult {
+  status: string;
+  candidate_id: number;
+  symbol?: string;
+  direction?: string;
+  entry_price?: number;
+  order_id?: string;
+  order_result?: Record<string, unknown>;
+}
+
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function finiteNumber(...values: unknown[]): number | null {
+  for (const value of values) {
+    if (value === null || value === undefined || value === "") continue;
+    const numeric = typeof value === "number" ? value : Number(value);
+    if (Number.isFinite(numeric)) return numeric;
+  }
+  return null;
+}
+
+function positiveInteger(...values: unknown[]): number | null {
+  for (const value of values) {
+    const numeric = finiteNumber(value);
+    if (numeric !== null && Number.isInteger(numeric) && numeric > 0) return numeric;
+  }
+  return null;
+}
+
 async function capture<T>(
   key: string,
   promise: Promise<T>,
@@ -164,4 +214,127 @@ export function executionCapability(snapshot: ControlPlaneSnapshot): {
     canApprovePaper: reasons.length === 0,
     reasons,
   };
+}
+
+/**
+ * Resolve the exact frozen candidate terms the existing approval_queue_router
+ * will use when the browser sends an empty approve body.
+ *
+ * Deliberately mirrors server precedence rather than inventing client-side
+ * overrides. Final broker authorization and sizing remain server-side.
+ */
+export function candidateTradeTerms(candidate: ControlPlaneApproval): CandidateTradeTerms {
+  const verdict = record(candidate.verdict);
+  const tradeDecision = record(verdict.trade_decision);
+  const fundDecision = record(verdict.fund_decision);
+  const direction = String(candidate.direction || "").toUpperCase();
+  const side = direction === "LONG" || direction === "SHORT" ? direction : null;
+
+  // Mirrors approval_queue_router: limit_price -> entry_price -> stop_price.
+  const entryPrice = finiteNumber(
+    tradeDecision.limit_price,
+    tradeDecision.entry_price,
+    tradeDecision.stop_price,
+  );
+  const stopPrice = finiteNumber(tradeDecision.stop_price, tradeDecision.stop_loss);
+  const targetPrice = finiteNumber(
+    tradeDecision.target_1,
+    tradeDecision.target_price,
+    tradeDecision.take_profit,
+  );
+  const quantity = positiveInteger(fundDecision.final_quantity, tradeDecision.quantity, 1);
+
+  let riskPointsPerUnit: number | null = null;
+  let rewardPointsPerUnit: number | null = null;
+  let rewardRisk: number | null = null;
+  if (entryPrice !== null && stopPrice !== null && targetPrice !== null && side !== null) {
+    riskPointsPerUnit = Math.abs(entryPrice - stopPrice);
+    rewardPointsPerUnit = Math.abs(targetPrice - entryPrice);
+    if (riskPointsPerUnit > 0) rewardRisk = rewardPointsPerUnit / riskPointsPerUnit;
+  }
+
+  return {
+    side,
+    entryPrice,
+    stopPrice,
+    targetPrice,
+    quantity,
+    riskPointsPerUnit,
+    rewardPointsPerUnit,
+    rewardRisk,
+  };
+}
+
+export function candidateApprovalCapability(
+  snapshot: ControlPlaneSnapshot,
+  candidate: ControlPlaneApproval,
+  nowMs: number = Date.now(),
+): CandidateApprovalCapability {
+  const global = executionCapability(snapshot);
+  const terms = candidateTradeTerms(candidate);
+  const reasons = [...global.reasons];
+
+  if (candidate.status !== "pending") reasons.push(`candidate status is ${candidate.status}`);
+  if (candidate.validation_only) reasons.push("strategy is validation-only");
+  if (terms.side === null) reasons.push("candidate direction is not LONG/SHORT");
+  if (terms.entryPrice === null) reasons.push("entry price unavailable");
+  if (terms.stopPrice === null) reasons.push("protective stop unavailable");
+  if (terms.targetPrice === null) reasons.push("target unavailable");
+  if (terms.quantity === null) reasons.push("quantity unavailable");
+
+  const expiryMs = Date.parse(candidate.expires_at);
+  if (!Number.isFinite(expiryMs)) reasons.push("candidate expiry is invalid");
+  else if (expiryMs <= nowMs) reasons.push("candidate expired");
+
+  if (
+    terms.side === "LONG" &&
+    terms.entryPrice !== null &&
+    terms.stopPrice !== null &&
+    terms.stopPrice >= terms.entryPrice
+  ) {
+    reasons.push("LONG stop must be below entry");
+  }
+  if (
+    terms.side === "SHORT" &&
+    terms.entryPrice !== null &&
+    terms.stopPrice !== null &&
+    terms.stopPrice <= terms.entryPrice
+  ) {
+    reasons.push("SHORT stop must be above entry");
+  }
+  if (
+    terms.side === "LONG" &&
+    terms.entryPrice !== null &&
+    terms.targetPrice !== null &&
+    terms.targetPrice <= terms.entryPrice
+  ) {
+    reasons.push("LONG target must be above entry");
+  }
+  if (
+    terms.side === "SHORT" &&
+    terms.entryPrice !== null &&
+    terms.targetPrice !== null &&
+    terms.targetPrice >= terms.entryPrice
+  ) {
+    reasons.push("SHORT target must be below entry");
+  }
+
+  return {
+    canApprove: reasons.length === 0,
+    reasons: [...new Set(reasons)],
+    terms,
+  };
+}
+
+/** Approve the frozen pipeline candidate through the existing paper-only server path. */
+export async function approvePaperCandidate(candidateId: number): Promise<ApprovalMutationResult> {
+  return postEngine<ApprovalMutationResult>(`/approvals/${candidateId}/approve`, {});
+}
+
+/** Reject a pending candidate through the existing audited approval queue. */
+export async function rejectPaperCandidate(
+  candidateId: number,
+  reason?: string,
+): Promise<ApprovalMutationResult> {
+  return postEngine<ApprovalMutationResult>(`/approvals/${candidateId}/reject`, { reason });
 }
