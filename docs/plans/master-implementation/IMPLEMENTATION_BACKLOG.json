@@ -1307,6 +1307,196 @@
         "blocked_by": [],
         "acceptance": "The backlog records that current historical artifact cleanup needs explicit approval because the directory is larger than 1 GB.",
         "evidence": "docs/plans/master-implementation/PASS72_E2E_ARTIFACT_DISK_RECOVERY_PATH_2026-09-01.md"
+      },
+      {
+        "id": "P14-001",
+        "title": "Rank next route-consolidation tranche after P13",
+        "status": "done",
+        "roi_rank": 127,
+        "program": "Planning",
+        "blocked_by": [],
+        "acceptance": "The next top-ROI tranche is recorded after P13 with disk-aware scope and explicit `/today` parity goals.",
+        "evidence": "docs/plans/master-implementation/PASS73_NEXT_TOP_ROI_TRANCHE_2026-09-01.md"
+      },
+      {
+        "id": "P14-002",
+        "title": "Extract daily brief execution status into Command Center",
+        "status": "done",
+        "roi_rank": 128,
+        "program": "Command Center",
+        "blocked_by": [],
+        "acceptance": "Command Center Daily Brief summary shows execution-path state derived through the honesty layer, matching `/today` system health intent.",
+        "evidence": "docs/plans/master-implementation/PASS74_DAILY_BRIEF_EXECUTION_SUMMARY_2026-09-01.md"
+      },
+      {
+        "id": "P14-003",
+        "title": "Keep daily brief session counts explicit",
+        "status": "done",
+        "roi_rank": 129,
+        "program": "Command Center",
+        "blocked_by": [],
+        "acceptance": "Daily Brief summary preserves closed-plus-open count semantics and unavailable endpoint states.",
+        "evidence": "docs/plans/master-implementation/PASS74_DAILY_BRIEF_EXECUTION_SUMMARY_2026-09-01.md"
+      },
+      {
+        "id": "P14-004",
+        "title": "Keep daily brief market-context handoff explicit",
+        "status": "done",
+        "roi_rank": 130,
+        "program": "Command Center",
+        "blocked_by": [],
+        "acceptance": "Daily Brief summary clearly links to `/today` for the detailed chart and market context strip while keeping compact macro context in Command Center.",
+        "evidence": "docs/plans/master-implementation/PASS74_DAILY_BRIEF_EXECUTION_SUMMARY_2026-09-01.md"
+      },
+      {
+        "id": "P14-005",
+        "title": "Add daily brief execution regression coverage",
+        "status": "done",
+        "roi_rank": 131,
+        "program": "Testing",
+        "blocked_by": [],
+        "acceptance": "Node tests prove Daily Brief summary rows include execution state and degrade honestly when health/session evidence is missing.",
+        "evidence": "docs/plans/master-implementation/PASS74_DAILY_BRIEF_EXECUTION_SUMMARY_2026-09-01.md"
+      },
+      {
+        "id": "P14-006",
+        "title": "Update route-consolidation plan for daily brief parity",
+        "status": "done",
+        "roi_rank": 132,
+        "program": "Documentation",
+        "blocked_by": [],
+        "acceptance": "Route consolidation docs mark `/today` first-screen facts as migrated while retaining `/today` as the detailed chart/context drilldown.",
+        "evidence": "docs/plans/master-implementation/PASS75_DAILY_BRIEF_ROUTE_STATIC_AUDIT_2026-09-01.md"
+      },
+      {
+        "id": "P14-007",
+        "title": "Audit today residual route ownership",
+        "status": "done",
+        "roi_rank": 133,
+        "program": "Command Center",
+        "blocked_by": [],
+        "acceptance": "Search confirms `/today` remains a detailed Daily Brief drilldown and not a competing primary operator shell.",
+        "evidence": "docs/plans/master-implementation/PASS75_DAILY_BRIEF_ROUTE_STATIC_AUDIT_2026-09-01.md"
+      },
+      {
+        "id": "P14-008",
+        "title": "Run daily brief static evidence",
+        "status": "done",
+        "roi_rank": 134,
+        "program": "Testing",
+        "blocked_by": [],
+        "acceptance": "Typecheck, test typecheck, guards, node state tests, and backlog JSON parse pass after the Daily Brief summary extraction.",
+        "evidence": "docs/plans/master-implementation/PASS75_DAILY_BRIEF_ROUTE_STATIC_AUDIT_2026-09-01.md"
+      },
+      {
+        "id": "P14-009",
+        "title": "Record daily brief route evidence blocker",
+        "status": "done",
+        "roi_rank": 135,
+        "program": "Testing",
+        "blocked_by": [],
+        "acceptance": "The evidence record states that route-level browser rerun is deferred behind the explicit historical artifact cleanup approval.",
+        "evidence": "docs/plans/master-implementation/PASS75_DAILY_BRIEF_ROUTE_STATIC_AUDIT_2026-09-01.md"
+      },
+      {
+        "id": "P14-010",
+        "title": "Seed trust-pane parity as next route-consolidation tranche",
+        "status": "done",
+        "roi_rank": 136,
+        "program": "Planning",
+        "blocked_by": [],
+        "acceptance": "The next top-ROI tranche after Daily Brief parity is seeded for Trust Audit parity without starting browser-heavy validation.",
+        "evidence": "docs/plans/master-implementation/PASS76_NEXT_TOP_ROI_TRANCHE_2026-09-01.md"
+      },
+      {
+        "id": "P15-001",
+        "title": "Rank Trust Audit parity tranche",
+        "status": "ready",
+        "roi_rank": 137,
+        "program": "Planning",
+        "blocked_by": [],
+        "acceptance": "Trust Audit parity is recorded as the next route-consolidation tranche after Daily Brief parity."
+      },
+      {
+        "id": "P15-002",
+        "title": "Audit trust-pane first-screen facts",
+        "status": "blocked",
+        "roi_rank": 138,
+        "program": "Command Center",
+        "blocked_by": ["P15-001"],
+        "acceptance": "`/trust-pane` first-screen provenance, liveness, bar-quality, edge-ledger, and post-trade audit facts are mapped against the existing Command Center Trust Audit summary."
+      },
+      {
+        "id": "P15-003",
+        "title": "Add explicit Trust Audit provenance summary",
+        "status": "blocked",
+        "roi_rank": 139,
+        "program": "Command Center",
+        "blocked_by": ["P15-002"],
+        "acceptance": "Command Center Trust Audit summary distinguishes live vs unavailable/static evidence without collapsing unknown data into healthy state."
+      },
+      {
+        "id": "P15-004",
+        "title": "Strengthen bar-quality Trust Audit summary",
+        "status": "blocked",
+        "roi_rank": 140,
+        "program": "Command Center",
+        "blocked_by": ["P15-003"],
+        "acceptance": "Command Center Trust Audit summary includes bar-quality gate status and reject count semantics from `/analytics/bar-quality?hours=168`."
+      },
+      {
+        "id": "P15-005",
+        "title": "Strengthen edge-ledger Trust Audit summary",
+        "status": "blocked",
+        "roi_rank": 141,
+        "program": "Command Center",
+        "blocked_by": ["P15-004"],
+        "acceptance": "Command Center Trust Audit summary preserves validated-edge pass/fail/total semantics from `/reports/edge-ledger`."
+      },
+      {
+        "id": "P15-006",
+        "title": "Add post-trade audit handoff to Trust Audit summary",
+        "status": "blocked",
+        "roi_rank": 142,
+        "program": "Command Center",
+        "blocked_by": ["P15-005"],
+        "acceptance": "Command Center Trust Audit summary links to `/trust-pane` for dense post-trade execution and quality diagnostics."
+      },
+      {
+        "id": "P15-007",
+        "title": "Add Trust Audit parity regression coverage",
+        "status": "blocked",
+        "roi_rank": 143,
+        "program": "Testing",
+        "blocked_by": ["P15-006"],
+        "acceptance": "Node tests prove Trust Audit summary rows preserve provenance, bar-quality, and edge-ledger states under populated and unavailable evidence."
+      },
+      {
+        "id": "P15-008",
+        "title": "Update route-consolidation docs for Trust Audit parity",
+        "status": "blocked",
+        "roi_rank": 144,
+        "program": "Documentation",
+        "blocked_by": ["P15-007"],
+        "acceptance": "Route consolidation docs mark Trust Audit compact parity as migrated while keeping `/trust-pane` as the deep audit drilldown."
+      },
+      {
+        "id": "P15-009",
+        "title": "Run Trust Audit static evidence",
+        "status": "blocked",
+        "roi_rank": 145,
+        "program": "Testing",
+        "blocked_by": ["P15-008"],
+        "acceptance": "Typecheck, test typecheck, guards, node state tests, and backlog JSON parse pass after Trust Audit parity changes."
+      },
+      {
+        "id": "P15-010",
+        "title": "Record Trust Audit route evidence gate",
+        "status": "blocked",
+        "roi_rank": 146,
+        "program": "Testing",
+        "blocked_by": ["P15-009"],
+        "acceptance": "Browser route evidence is either rerun after disk recovery or explicitly recorded as gated by historical artifact cleanup approval."
       }
   ]
 }

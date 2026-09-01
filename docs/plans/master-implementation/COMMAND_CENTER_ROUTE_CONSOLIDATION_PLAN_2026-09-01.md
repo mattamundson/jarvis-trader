@@ -9,7 +9,7 @@
 | Route | Action | Final State | Risk Notes |
 |---|---|---|---|
 | `/mission-control` | Redirected after merge | `/mission-control` redirects to `/command-center?view=operations` | Parity is proven by focused route-consolidation E2E. |
-| `/today` | Demote to Daily Brief drilldown | Keep route as `/today` for the market/session brief; link from Command Center instead of treating it as a competing first screen | [RISK] Immediate redirect would drop live chart context, market context strip, and session metrics that are useful but not command authority. |
+| `/today` | Demoted to Daily Brief drilldown | Keep route as `/today` for the detailed chart and market/session context; Command Center owns the compact Daily Brief summary | Daily Brief first-screen facts are migrated; route remains useful as a detailed chart/context drilldown. |
 | `/trust-pane` | Merge trust summary into Command Center; keep route as deep audit view | Keep route as `/trust-pane` until dual-system provenance and audit rows have a compact Command Center summary | [RISK] Immediate redirect would hide cross-system trust evidence, edge ledger detail, bar-quality context, and post-trade snippets that are too dense for the first screen. |
 
 ## Migration Checklist
@@ -20,7 +20,7 @@
    - `RiskSafetyPanel`
    - `EngineDataPanel`
    - `EnvironmentFleetPanel`
-3. Extract `/today` first-screen facts into Command Center:
+3. Extract `/today` first-screen facts into Command Center. **Done:**
    - mode banner
    - engine/execution status
    - session trade counts

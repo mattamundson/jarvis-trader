@@ -308,11 +308,13 @@ export function deriveCommandCenterDailyBriefSummaryRows({
   sessionToday,
   sessionTodayErr,
   macro,
+  execution,
 }: {
   health: CommandCenterHealthData | undefined;
   sessionToday: CommandCenterSessionTodayData | undefined;
   sessionTodayErr: boolean;
   macro: CommandCenterMacroData | undefined;
+  execution: Pick<ExecutionStatus, "label" | "tone" | "detail">;
 }): CommandCenterSummaryRow[] {
   const mode = health?.paper_trading ? "paper" : health ? "live" : "unknown";
   const tradesToday = sessionToday
@@ -321,9 +323,23 @@ export function deriveCommandCenterDailyBriefSummaryRows({
   const pnl = sessionToday ? moneyLabel(sessionToday.gross_pnl) : "unknown";
   const openTrades = sessionToday ? `${sessionToday.open_trades}` : "unknown";
   const marketContext = macro?.regime ?? macro?.vix_regime ?? "unknown";
+  const executionTone: CommandCenterStatusTone =
+    execution.tone === "bull"
+      ? "ok"
+      : execution.tone === "warn"
+        ? "warn"
+        : execution.tone === "bear"
+          ? "bad"
+          : "unknown";
 
   return [
     { label: "Mode", state: mode, detail: "from /health paper_trading", tone: mode === "unknown" ? "unknown" : "ok" },
+    {
+      label: "Execution",
+      state: execution.label.toLowerCase(),
+      detail: execution.detail,
+      tone: executionTone,
+    },
     {
       label: "Trades",
       state: tradesToday,

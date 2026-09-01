@@ -90,17 +90,20 @@ export function CommandCenterDailyBriefSummary({
   sessionToday,
   sessionTodayErr,
   macro,
+  execution,
 }: {
   health: CommandCenterHealthData | undefined;
   sessionToday: CommandCenterSessionTodayData | undefined;
   sessionTodayErr: boolean;
   macro: CommandCenterMacroData | undefined;
+  execution: ExecutionStatus;
 }) {
   const rows = deriveCommandCenterDailyBriefSummaryRows({
     health,
     sessionToday,
     sessionTodayErr,
     macro,
+    execution,
   });
 
   return (
@@ -117,7 +120,7 @@ export function CommandCenterDailyBriefSummary({
           today drilldown
         </a>
       </div>
-      <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-6">
         {rows.map((row) => (
           <div key={row.label} className="rounded border border-slate-800 bg-slate-950/40 p-2">
             <div className="flex items-center justify-between gap-2">

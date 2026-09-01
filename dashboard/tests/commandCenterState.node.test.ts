@@ -287,10 +287,16 @@ test("daily brief summary rows derive session and market facts", () => {
     },
     sessionTodayErr: false,
     macro: { regime: "TREND", vix_regime: "LOW", timestamp: "2026-09-01T15:00:00.000Z" },
+    execution: {
+      label: "CONNECTED",
+      tone: "bull",
+      detail: "Broker acknowledged the execution path.",
+    },
   });
 
   assert.deepEqual(rows.map((row) => [row.label, row.state, row.detail, row.tone]), [
     ["Mode", "paper", "from /health paper_trading", "ok"],
+    ["Execution", "connected", "Broker acknowledged the execution path.", "ok"],
     ["Trades", "3", "closed plus open", "ok"],
     ["Session P&L", "-$42.50", "gross session P&L", "ok"],
     ["Open", "1", "open session trades", "ok"],
@@ -304,10 +310,16 @@ test("daily brief summary rows keep unknowns explicit", () => {
     sessionToday: undefined,
     sessionTodayErr: true,
     macro: undefined,
+    execution: {
+      label: "EXEC ?",
+      tone: "neutral",
+      detail: "No health data available.",
+    },
   });
 
   assert.deepEqual(rows.map((row) => [row.label, row.state, row.detail, row.tone]), [
     ["Mode", "unknown", "from /health paper_trading", "unknown"],
+    ["Execution", "exec ?", "No health data available.", "unknown"],
     ["Trades", "unknown", "session endpoint unavailable", "unknown"],
     ["Session P&L", "unknown", "gross session P&L", "unknown"],
     ["Open", "unknown", "open session trades", "unknown"],

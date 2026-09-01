@@ -823,6 +823,7 @@ export default function CommandCenterPage() {
         sessionToday={sessionToday}
         sessionTodayErr={Boolean(sessionTodayErr)}
         macro={macro}
+        execution={exec}
       />
 
       <CommandCenterTrustAuditSummary
