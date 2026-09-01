@@ -971,11 +971,12 @@
     {
       "id": "P10-007",
       "title": "Wire provider metadata into data-integrity provider tier",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 93,
       "program": "Engine API",
       "blocked_by": [],
-      "acceptance": "`provider_tier` reports real configured provider metadata when available and unknown when absent."
+      "acceptance": "`provider_tier` reports real configured provider metadata when available and unknown when absent.",
+      "evidence": "docs/plans/master-implementation/PASS50_DATA_INTEGRITY_PROVIDER_METADATA_2026-09-01.md"
     },
     {
       "id": "P10-008",

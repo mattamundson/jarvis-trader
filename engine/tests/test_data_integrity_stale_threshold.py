@@ -119,6 +119,31 @@ def test_empty_data_integrity_response_is_explicitly_not_green(monkeypatch):
     assert body["trade_enablement"]["status"] == "blocked"
 
 
+def test_provider_tier_reports_configured_market_data_metadata(monkeypatch):
+    monkeypatch.setattr(
+        health_router.settings, "MARKET_DATA_ACTIVE_PROVIDER", "tradingview_mcp"
+    )
+    monkeypatch.setattr(
+        health_router.settings, "MARKET_DATA_PRIMARY_PROVIDER", "tradingview_mcp"
+    )
+    monkeypatch.setattr(
+        health_router.settings, "MARKET_DATA_FALLBACK_PROVIDERS", "ibkr,polygon"
+    )
+
+    body = _client(
+        monkeypatch, {"datasource:ticks:MES1!:last_update": _ts(60.0)}
+    ).get("/system/data-integrity").json()
+
+    assert body["provider_tier"] == {
+        "status": "known",
+        "active": "tradingview_mcp",
+        "primary": "tradingview_mcp",
+        "fallbacks": ["ibkr", "polygon"],
+        "reason": None,
+    }
+    assert "provider_tier_unknown" not in body["trade_enablement"]["blocking_reasons"]
+
+
 def test_openapi_exposes_expanded_data_integrity_contract(monkeypatch):
     app = _client(monkeypatch, {}).app
     schema = app.openapi()

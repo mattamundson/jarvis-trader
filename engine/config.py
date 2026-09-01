@@ -481,6 +481,18 @@ class TradingConfig(BaseSettings):
     )
 
     # ── Market Data ───────────────────────────────────────────────────────
+    MARKET_DATA_ACTIVE_PROVIDER: Optional[str] = Field(
+        default=None,
+        description="Currently active market-data provider when known",
+    )
+    MARKET_DATA_PRIMARY_PROVIDER: Optional[str] = Field(
+        default=None,
+        description="Configured primary market-data provider when known",
+    )
+    MARKET_DATA_FALLBACK_PROVIDERS: Union[str, list[str]] = Field(
+        default="",
+        description="Comma-separated or JSON list of configured market-data fallback providers",
+    )
     POLYGON_API_KEY: Optional[str] = Field(default=None, description="Polygon.io API key")
     POLYGON_STREAM_ENABLED: bool = Field(
         default=True,

@@ -769,15 +769,68 @@ def _data_integrity_bar_freshness(sources: list[dict]) -> dict:
     }
 
 
+def _setting_str(name: str) -> str | None:
+    value = getattr(settings, name, None)
+    if value is None:
+        return None
+    normalized = str(value).strip()
+    return normalized or None
+
+
+def _provider_list(value: object) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    raw = str(value).strip()
+    if not raw:
+        return []
+    if raw.startswith("["):
+        try:
+            import json
+
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                return [str(item).strip() for item in parsed if str(item).strip()]
+        except (TypeError, ValueError):
+            pass
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+def _data_integrity_provider_tier(error: str | None = None) -> dict:
+    if error:
+        return {
+            "status": "offline",
+            "active": None,
+            "primary": None,
+            "fallbacks": [],
+            "reason": error,
+        }
+
+    active = _setting_str("MARKET_DATA_ACTIVE_PROVIDER")
+    primary = _setting_str("MARKET_DATA_PRIMARY_PROVIDER")
+    fallbacks = _provider_list(getattr(settings, "MARKET_DATA_FALLBACK_PROVIDERS", None))
+    if not active and not primary and not fallbacks:
+        return {
+            "status": "unknown",
+            "active": None,
+            "primary": None,
+            "fallbacks": [],
+            "reason": "provider metadata not wired",
+        }
+
+    return {
+        "status": "known",
+        "active": active,
+        "primary": primary,
+        "fallbacks": fallbacks,
+        "reason": None,
+    }
+
+
 def _data_integrity_envelope(now: datetime, sources: list[dict], error: str | None = None) -> dict:
     cache_age = _data_integrity_cache_age(sources)
-    provider_tier = {
-        "status": "unknown" if not error else "offline",
-        "active": None,
-        "primary": None,
-        "fallbacks": [],
-        "reason": "provider metadata not wired" if not error else error,
-    }
+    provider_tier = _data_integrity_provider_tier(error)
     bar_freshness = _data_integrity_bar_freshness(sources)
     source_parity = {
         "status": "not_wired",
