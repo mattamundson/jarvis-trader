@@ -707,6 +707,96 @@
       "blocked_by": ["P7-002", "P7-005", "P7-006", "P7-007", "P7-008", "P7-009"],
       "acceptance": "`pnpm run guards`, `pnpm run typecheck`, and focused Command Center tests pass.",
       "evidence": "docs/plans/master-implementation/PASS20_COMMAND_CENTER_ACCEPTANCE_2026-09-01.md"
+    },
+    {
+      "id": "P8-001",
+      "title": "Extract Command Center canonical sections into dedicated components",
+      "status": "ready",
+      "roi_rank": 67,
+      "program": "Command Center",
+      "blocked_by": [],
+      "acceptance": "`dashboard/app/command-center/page.tsx` delegates canonical shell, status strip, queue, and operations grid to focused components without behavior changes."
+    },
+    {
+      "id": "P8-002",
+      "title": "Add pure derivation tests for Command Center state mapping",
+      "status": "blocked",
+      "roi_rank": 68,
+      "program": "Command Center",
+      "blocked_by": ["P8-001"],
+      "acceptance": "Engine/broker/safety/data/eligibility/ledger state derivations are unit-tested without rendering the full page."
+    },
+    {
+      "id": "P8-003",
+      "title": "Fix dashboard test typecheck blocker from missing component imports",
+      "status": "ready",
+      "roi_rank": 69,
+      "program": "CI",
+      "blocked_by": [],
+      "acceptance": "`pnpm run typecheck:tests` no longer fails on missing `CircuitBreakerPanel` and `KillSwitch` component imports."
+    },
+    {
+      "id": "P8-004",
+      "title": "Promote Command Center fixture contracts into shared route smoke coverage",
+      "status": "ready",
+      "roi_rank": 70,
+      "program": "Command Center",
+      "blocked_by": [],
+      "acceptance": "Homepage/root redirect and route-smoke tests reuse the Command Center fixture contracts instead of duplicating stale mock shapes."
+    },
+    {
+      "id": "P8-005",
+      "title": "Add isolated dashboard E2E runner that preserves generated Next metadata",
+      "status": "ready",
+      "roi_rank": 71,
+      "program": "DevOps and CI/CD",
+      "blocked_by": [],
+      "acceptance": "A script runs isolated `NEXT_DIST_DIR` build/tests, restores `next-env.d.ts` and `tsconfig.json`, and archives artifacts."
+    },
+    {
+      "id": "P8-006",
+      "title": "Add Command Center responsive screenshot acceptance checks",
+      "status": "blocked",
+      "roi_rank": 72,
+      "program": "Command Center",
+      "blocked_by": ["P8-005"],
+      "acceptance": "Desktop and mobile screenshots prove the first-viewport critical panels are visible and non-overlapping."
+    },
+    {
+      "id": "P8-007",
+      "title": "Define backend contracts for Command Center data-integrity gaps",
+      "status": "ready",
+      "roi_rank": 73,
+      "program": "Engine API",
+      "blocked_by": [],
+      "acceptance": "Source parity, cache age, provider tier, and bar-freshness fields are specified before UI claims move beyond unknown/not-wired."
+    },
+    {
+      "id": "P8-008",
+      "title": "Add strategy-ledger freshness and next-gate backend fields",
+      "status": "blocked",
+      "roi_rank": 74,
+      "program": "Engine API",
+      "blocked_by": ["P8-007"],
+      "acceptance": "`/strategy/ledger` exposes enough freshness/state/next-gate data for the Command Center panel without front-end inference."
+    },
+    {
+      "id": "P8-009",
+      "title": "Define research-intake data contract from PR/issue/spike disposition",
+      "status": "ready",
+      "roi_rank": 75,
+      "program": "Research Intake",
+      "blocked_by": [],
+      "acceptance": "Research intake source files and categories are defined so the panel can render real intake rows instead of static placeholders."
+    },
+    {
+      "id": "P8-010",
+      "title": "Plan duplicate route consolidation after Command Center canonicalization",
+      "status": "blocked",
+      "roi_rank": 76,
+      "program": "Command Center",
+      "blocked_by": ["P8-006", "P8-008", "P8-009"],
+      "acceptance": "`/mission-control`, `/today`, and `/trust-pane` each have a concrete keep/merge/demote/redirect action with risk notes."
     }
   ]
 }
