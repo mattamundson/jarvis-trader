@@ -319,3 +319,10 @@ async def get_order_router_status():
             else ("market_data_connector" if data_ib else "order_router")
         ),
     }
+
+
+# RT-2 Command Center subrouter. Imported only after this module's dependency
+# globals are defined; the subrouter resolves them lazily at request time.
+from routers.trade_intents_router import router as trade_intents_router  # noqa: E402
+
+router.include_router(trade_intents_router)
