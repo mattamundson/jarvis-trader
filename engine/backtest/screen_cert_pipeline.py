@@ -175,8 +175,6 @@ def cert_env(
 
 
 def _fmt(value: Any) -> str:
-    """Journal cell formatting: empty string for None, else str()."""
-    return "" if value is None else str(value)
     """Journal cell formatting: empty string for None or non-finite numbers,
     else str(). Non-finite guard keeps 'inf'/'nan' out of the tracked CSV."""
     if value is None:
