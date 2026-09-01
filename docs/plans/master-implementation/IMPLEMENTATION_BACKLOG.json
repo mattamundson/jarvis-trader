@@ -907,6 +907,96 @@
       "blocked_by": ["P9-006", "P9-007", "P9-008", "P9-009"],
       "acceptance": "Focused E2E verifies `/command-center` canonical entry and drilldown reachability for `/mission-control`, `/today`, and `/trust-pane`.",
       "evidence": "docs/plans/master-implementation/PASS42_ROUTE_CONSOLIDATION_ACCEPTANCE_2026-09-01.md"
+    },
+    {
+      "id": "P10-001",
+      "title": "Ratchet dashboard refresh-interval guard ceiling",
+      "status": "ready",
+      "roi_rank": 87,
+      "program": "CI",
+      "blocked_by": [],
+      "acceptance": "`REFRESH_INTERVAL_CEILING` matches the current passing hardcoded-refresh count so new debt fails guards."
+    },
+    {
+      "id": "P10-002",
+      "title": "Promote new Command Center endpoint shapes into generic E2E mock",
+      "status": "ready",
+      "roi_rank": 88,
+      "program": "Testing",
+      "blocked_by": [],
+      "acceptance": "Generic route smoke mock knows session-today, bar-quality, edge-ledger, and expanded data-integrity shapes."
+    },
+    {
+      "id": "P10-003",
+      "title": "Add pure derivation tests for Command Center summary rows",
+      "status": "ready",
+      "roi_rank": 89,
+      "program": "Testing",
+      "blocked_by": [],
+      "acceptance": "Operations, Daily Brief, and Trust Audit summary states are derived in pure functions with node tests."
+    },
+    {
+      "id": "P10-004",
+      "title": "Split Command Center summary components out of CanonicalSections",
+      "status": "blocked",
+      "roi_rank": 90,
+      "program": "Command Center",
+      "blocked_by": ["P10-003"],
+      "acceptance": "Summary components move into a dedicated module without changing rendered behavior."
+    },
+    {
+      "id": "P10-005",
+      "title": "Add response model for expanded data-integrity endpoint",
+      "status": "ready",
+      "roi_rank": 91,
+      "program": "Engine API",
+      "blocked_by": ["P9-001"],
+      "acceptance": "`/system/data-integrity` has an explicit response model covering the expanded contract."
+    },
+    {
+      "id": "P10-006",
+      "title": "Add data-integrity OpenAPI/schema regression tests",
+      "status": "blocked",
+      "roi_rank": 92,
+      "program": "Engine API",
+      "blocked_by": ["P10-005"],
+      "acceptance": "Tests prove the expanded data-integrity schema remains in the engine OpenAPI contract."
+    },
+    {
+      "id": "P10-007",
+      "title": "Wire provider metadata into data-integrity provider tier",
+      "status": "blocked",
+      "roi_rank": 93,
+      "program": "Engine API",
+      "blocked_by": ["P10-005"],
+      "acceptance": "`provider_tier` reports real configured provider metadata when available and unknown when absent."
+    },
+    {
+      "id": "P10-008",
+      "title": "Align sidebar navigation with Command Center consolidation policy",
+      "status": "ready",
+      "roi_rank": 94,
+      "program": "Command Center",
+      "blocked_by": ["P9-006"],
+      "acceptance": "Sidebar keeps `/command-center` primary and demotes `/mission-control`, `/today`, and `/trust-pane` according to the consolidation plan."
+    },
+    {
+      "id": "P10-009",
+      "title": "Plan mission-control redirect readiness checklist",
+      "status": "blocked",
+      "roi_rank": 95,
+      "program": "Command Center",
+      "blocked_by": ["P10-008"],
+      "acceptance": "Redirect readiness checklist names remaining parity gaps before `/mission-control` can redirect."
+    },
+    {
+      "id": "P10-010",
+      "title": "Run consolidated Command Center evidence suite",
+      "status": "blocked",
+      "roi_rank": 96,
+      "program": "Testing",
+      "blocked_by": ["P10-002", "P10-004", "P10-008"],
+      "acceptance": "Focused typecheck, guards, node tests, and isolated E2E suite pass after the P10 dashboard changes."
     }
   ]
 }
