@@ -113,7 +113,6 @@ def calculate_analytics(trades: list[dict]) -> TradeAnalytics:
     win_rate = (len(wins) / total_trades * 100) if total_trades > 0 else 0.0
     expectancy = (total_pnl / total_trades) if total_trades > 0 else 0.0
 
-    daily_returns = _calculate_daily_returns(trades)
     # C3 metric-honesty pass: annualize by the OBSERVED trade frequency, not a
     # fixed 252. A strategy that closes trades on ~60 days a year was
     # previously overstated by sqrt(252/60) ≈ 2.05x.

@@ -141,8 +141,6 @@ def get_trades_journal(
         "exit_price", "entry_time", "exit_time", "pnl", "status",
         "strategy_params", "notes", "regime", "structure_position", "bias",
         "composite_score", "stc_contrib", "orb_contrib", "vwap_contrib",
-        "regime_tier", "deciding_stage", "bull_score", "bear_score",
-        "debate_confidence", "timeframe",
     )
     cache_key = (symbol, regime, limit)
     now = _time.monotonic()

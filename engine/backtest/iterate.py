@@ -48,7 +48,6 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 engine_root = Path(__file__).parent.parent
@@ -194,7 +193,7 @@ def load_vix(csv_path: str | None) -> pd.DataFrame | None:
         raise SystemExit(
             "[VIX] no --vix-csv given, no VIX_*.csv cache found, and yfinance not installed. "
             "Provide --vix-csv or install yfinance."
-        )
+        ) from None
     print("[VIX] Downloading ^VIX daily via yfinance ...")
     vix = yf.download("^VIX", start="2015-01-01", progress=False, auto_adjust=True)
     if vix.empty:

@@ -154,7 +154,6 @@ def generate_trend_pullback_signals(
 
     in_trade = False
     direction = None
-    entry_bar_close = np.nan
     current_trail = np.nan
     extreme = np.nan  # highest close (long) / lowest close (short) since entry
 
@@ -184,7 +183,6 @@ def generate_trend_pullback_signals(
                 target_3[i] = price + 8.0 * atr_i
                 in_trade = True
                 direction = "long"
-                entry_bar_close = price
                 current_trail = stop_level[i]
                 extreme = price
             # --- Short setup (mirror)
@@ -204,7 +202,6 @@ def generate_trend_pullback_signals(
                 target_3[i] = price - 8.0 * atr_i
                 in_trade = True
                 direction = "short"
-                entry_bar_close = price
                 current_trail = stop_level[i]
                 extreme = price
         else:
@@ -312,7 +309,6 @@ def generate_guarded_meanrev_signals(
     regime_arr = np.full(n, "RANGE_BOUND", dtype=object)
 
     in_trade = False
-    direction = None
     entry_bar = -999
 
     for i in range(n):
@@ -353,7 +349,6 @@ def generate_guarded_meanrev_signals(
             target_2[i] = price + 1.5 * atr_i
             target_3[i] = price + 2.0 * atr_i
             in_trade = True
-            direction = "long"
             entry_bar = i
         # Short fade (mirror)
         elif (
@@ -370,7 +365,6 @@ def generate_guarded_meanrev_signals(
             target_2[i] = price - 1.5 * atr_i
             target_3[i] = price - 2.0 * atr_i
             in_trade = True
-            direction = "short"
             entry_bar = i
 
     df["entry_signal"] = entry_signal
