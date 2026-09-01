@@ -2,7 +2,8 @@
 
 A preview is immutable once persisted. Submission is idempotent and concurrency
 safe: an intent must be atomically claimed (PREVIEWED -> SUBMITTING) before any
-broker call, preventing two concurrent requests from submitting the same intent.
+broker call. A partial unique index also prevents identical active intents from
+coexisting under different idempotency keys.
 """
 
 from __future__ import annotations
@@ -58,6 +59,11 @@ class TradeIntentStore:
                 "CREATE INDEX IF NOT EXISTS idx_manual_trade_intents_status "
                 "ON manual_trade_intents(status, expires_at)"
             )
+            conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ux_manual_trade_intents_active_hash "
+                "ON manual_trade_intents(request_hash) "
+                "WHERE status IN ('PREVIEWED', 'SUBMITTING')"
+            )
             conn.commit()
 
     def _row(self, intent_id: str) -> dict[str, Any] | None:
@@ -82,6 +88,22 @@ class TradeIntentStore:
             conn.row_factory = sqlite3.Row
             row = conn.execute(
                 "SELECT intent_id FROM manual_trade_intents WHERE idempotency_key = ?", (key,)
+            ).fetchone()
+        return self._row(row["intent_id"]) if row else None
+
+    def get_active_by_request_hash(self, request_hash: str) -> dict[str, Any] | None:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                """
+                SELECT intent_id
+                  FROM manual_trade_intents
+                 WHERE request_hash = ?
+                   AND status IN ('PREVIEWED', 'SUBMITTING')
+                 ORDER BY created_at DESC
+                 LIMIT 1
+                """,
+                (request_hash,),
             ).fetchone()
         return self._row(row["intent_id"]) if row else None
 
@@ -112,26 +134,39 @@ class TradeIntentStore:
                 )
             return existing
 
+        active_duplicate = self.get_active_by_request_hash(fingerprint)
+        if active_duplicate is not None:
+            return active_duplicate
+
         intent_id = str(uuid.uuid4())
         expires = current + timedelta(seconds=ttl_seconds)
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                """
-                INSERT INTO manual_trade_intents
-                    (intent_id, idempotency_key, request_hash, preview_json, status,
-                     created_at, expires_at)
-                VALUES (?, ?, ?, ?, 'PREVIEWED', ?, ?)
-                """,
-                (
-                    intent_id,
-                    key,
-                    fingerprint,
-                    _canonical(asdict(preview)),
-                    current.isoformat(),
-                    expires.isoformat(),
-                ),
-            )
-            conn.commit()
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute(
+                    """
+                    INSERT INTO manual_trade_intents
+                        (intent_id, idempotency_key, request_hash, preview_json, status,
+                         created_at, expires_at)
+                    VALUES (?, ?, ?, ?, 'PREVIEWED', ?, ?)
+                    """,
+                    (
+                        intent_id,
+                        key,
+                        fingerprint,
+                        _canonical(asdict(preview)),
+                        current.isoformat(),
+                        expires.isoformat(),
+                    ),
+                )
+                conn.commit()
+        except sqlite3.IntegrityError as exc:
+            # Two simultaneous requests with different idempotency keys but the
+            # same payload can race past the application-level lookup above.
+            # The partial unique index is authoritative and closes that race.
+            active_duplicate = self.get_active_by_request_hash(fingerprint)
+            if active_duplicate is not None:
+                return active_duplicate
+            raise TradeIntentStoreError(f"trade-intent uniqueness conflict: {exc}") from exc
         created = self.get(intent_id)
         assert created is not None
         return created
