@@ -296,11 +296,12 @@
     {
       "id": "P3-004",
       "title": "Rerun affected MES VWAP Gate-v2 certification under patched RTH semantics",
-      "status": "ready",
+      "status": "blocked",
       "roi_rank": 24,
       "program": "Validation",
       "blocked_by": ["P3-003"],
-      "acceptance": "New verdict artifact is compared against prior provenance and verdict flips are surfaced."
+      "acceptance": "New verdict artifact is compared against prior provenance and verdict flips are surfaced.",
+      "blocker": "Full runner exceeded 15 minutes with no verdict artifact; needs profiling or bounded fast mode."
     },
     {
       "id": "P3-005",
@@ -368,7 +369,7 @@
     {
       "id": "P4-002",
       "title": "Auto-fix PR #749 ruff-only findings inside the PR inspection worktree",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 32,
       "program": "CI",
       "blocked_by": [],
@@ -377,7 +378,7 @@
     {
       "id": "P4-003",
       "title": "Split PR #749 scope into feature-integrity core versus dashboard/data artifacts",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 33,
       "program": "Feature Engineering",
       "blocked_by": [],
@@ -386,7 +387,7 @@
     {
       "id": "P4-004",
       "title": "Run dashboard static quality check for touched Command Center dependency files",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 34,
       "program": "Command Center",
       "blocked_by": [],
@@ -395,7 +396,7 @@
     {
       "id": "P4-005",
       "title": "Create canonical Command Center information architecture spec",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 35,
       "program": "Command Center",
       "blocked_by": ["P3-007", "P3-008"],
@@ -404,7 +405,7 @@
     {
       "id": "P4-006",
       "title": "Create environment drift detector script plan",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 36,
       "program": "DevOps and CI/CD",
       "blocked_by": [],
@@ -413,7 +414,7 @@
     {
       "id": "P4-007",
       "title": "Create recertification manifest for IB and VWAP changes",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 37,
       "program": "Validation",
       "blocked_by": ["P4-001"],
@@ -422,7 +423,7 @@
     {
       "id": "P4-008",
       "title": "Create PR queue action plan from master-plan disposition",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 38,
       "program": "Program Management",
       "blocked_by": [],
@@ -431,7 +432,7 @@
     {
       "id": "P4-009",
       "title": "Refresh loop heartbeat with current blocked and ready state",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 39,
       "program": "Loop Engineering",
       "blocked_by": [],
