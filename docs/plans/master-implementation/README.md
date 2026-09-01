@@ -12,6 +12,7 @@ Use these files together:
 - `IMPLEMENTATION_BACKLOG.json` - machine-readable backlog for the in-session drain loop.
 - `PASS8_VWAP_RUNNER_BOUNDS_2026-09-01.md` - bounded VWAP recert runner controls and smoke evidence.
 - `PASS9_IB_AND_VWAP_RECERT_2026-09-01.md` - refreshed IB verdicts, VWAP profiling, optimization, and canonical VWAP verdict.
+- `PASS10_IB_RUNNER_OBSERVABILITY_2026-09-01.md` - IB WFO line-buffered output and explicit CLI dispatch controls.
 
 Formal implementation rule:
 

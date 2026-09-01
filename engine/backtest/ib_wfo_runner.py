@@ -28,6 +28,7 @@ from __future__ import annotations
 import itertools
 import json
 import sys
+from argparse import ArgumentParser, Namespace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -37,6 +38,9 @@ import pandas as pd
 engine_root = Path(__file__).parent.parent
 if str(engine_root) not in sys.path:
     sys.path.insert(0, str(engine_root))
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(line_buffering=True)
 
 from backtest._constants import (  # noqa: E402
     COST_TIER_ORDER,
@@ -101,6 +105,53 @@ COST_SWEEP_TIERS = {
 }
 
 MIN_OOS_TRADES_PER_WINDOW = 1
+VALID_SYMBOLS = tuple(SPECS)
+VALID_MODES = ("go", "fade")
+
+
+def _build_parser() -> ArgumentParser:
+    parser = ArgumentParser(description="Corey Initial Balance gate-v2 WFO validation")
+    parser.add_argument(
+        "pos_symbol",
+        nargs="?",
+        choices=VALID_SYMBOLS,
+        help="Optional positional symbol for backward compatibility, e.g. MES go.",
+    )
+    parser.add_argument(
+        "pos_mode",
+        nargs="?",
+        choices=VALID_MODES,
+        help="Optional positional mode for backward compatibility, e.g. MES go.",
+    )
+    parser.add_argument(
+        "--symbol",
+        dest="opt_symbol",
+        choices=VALID_SYMBOLS,
+        help="Run one symbol. With no --mode, both modes run.",
+    )
+    parser.add_argument(
+        "--mode",
+        dest="opt_mode",
+        choices=VALID_MODES,
+        help="Run one mode. With no --symbol, both symbols run.",
+    )
+    return parser
+
+
+def _resolve_targets(args: Namespace) -> list[tuple[str, str]]:
+    symbol = args.opt_symbol or args.pos_symbol
+    mode = args.opt_mode or args.pos_mode
+
+    if args.opt_symbol and args.pos_symbol and args.opt_symbol != args.pos_symbol:
+        raise ValueError("positional symbol and --symbol disagree")
+    if args.opt_mode and args.pos_mode and args.opt_mode != args.pos_mode:
+        raise ValueError("positional mode and --mode disagree")
+    if args.pos_mode and not args.pos_symbol:
+        raise ValueError("positional mode requires positional symbol")
+
+    symbols = (symbol,) if symbol else VALID_SYMBOLS
+    modes = (mode,) if mode else VALID_MODES
+    return [(sym, md) for sym in symbols for md in modes]
 
 
 def _commission_for(symbol: str) -> float:
@@ -412,14 +463,17 @@ def run_one(symbol: str, mode: str) -> dict:
     return doc
 
 
-def main():
-    args = sys.argv[1:]
-    if len(args) == 2:
-        run_one(args[0], args[1])
-        return
-    for symbol in ("MES", "MGC"):
-        for mode in ("go", "fade"):
-            run_one(symbol, mode)
+def main(argv: list[str] | None = None):
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+    try:
+        targets = _resolve_targets(args)
+    except ValueError as exc:
+        parser.error(str(exc))
+
+    print(f"[IB-WFO] Targets: {', '.join(f'{symbol}/{mode}' for symbol, mode in targets)}")
+    for symbol, mode in targets:
+        run_one(symbol, mode)
 
 
 if __name__ == "__main__":

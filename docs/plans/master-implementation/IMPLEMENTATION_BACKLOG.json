@@ -511,29 +511,32 @@
     {
       "id": "P6-001",
       "title": "Create path-bounded local commit for pass 8 and pass 9 validation work",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 47,
       "program": "Git Hygiene",
       "blocked_by": [],
-      "acceptance": "Commit includes only tracked plan, VWAP runner, VWAP hot-path, and focused test files from this loop pass."
+      "acceptance": "Commit includes only tracked plan, VWAP runner, VWAP hot-path, and focused test files from this loop pass.",
+      "evidence": "local commit 1d6043fe"
     },
     {
       "id": "P6-002",
       "title": "Add observable output controls to the IB WFO runner",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 48,
       "program": "Validation",
       "blocked_by": [],
-      "acceptance": "IB WFO runner streams progress and supports explicit all/single symbol-mode execution without changing default verdict outputs."
+      "acceptance": "IB WFO runner streams progress and supports explicit all/single symbol-mode execution without changing default verdict outputs.",
+      "evidence": "docs/plans/master-implementation/PASS10_IB_RUNNER_OBSERVABILITY_2026-09-01.md"
     },
     {
       "id": "P6-003",
       "title": "Add focused coverage for IB WFO CLI argument handling",
-      "status": "blocked",
+      "status": "done",
       "roi_rank": 49,
       "program": "Validation",
       "blocked_by": ["P6-002"],
-      "acceptance": "Tests prove default all-mode and single symbol/mode dispatch behavior without running the expensive WFO loop."
+      "acceptance": "Tests prove default all-mode and single symbol/mode dispatch behavior without running the expensive WFO loop.",
+      "evidence": "engine/tests/test_ib_wfo_runner_cli.py"
     },
     {
       "id": "P6-004",
