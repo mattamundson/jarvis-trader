@@ -978,32 +978,32 @@
       "acceptance": "`provider_tier` reports real configured provider metadata when available and unknown when absent.",
       "evidence": "docs/plans/master-implementation/PASS50_DATA_INTEGRITY_PROVIDER_METADATA_2026-09-01.md"
     },
-    {
-      "id": "P10-008",
-      "title": "Align sidebar navigation with Command Center consolidation policy",
-      "status": "ready",
-      "roi_rank": 94,
-      "program": "Command Center",
-      "blocked_by": ["P9-006"],
-      "acceptance": "Sidebar keeps `/command-center` primary and demotes `/mission-control`, `/today`, and `/trust-pane` according to the consolidation plan."
-    },
-    {
-      "id": "P10-009",
-      "title": "Plan mission-control redirect readiness checklist",
-      "status": "blocked",
-      "roi_rank": 95,
-      "program": "Command Center",
-      "blocked_by": ["P10-008"],
-      "acceptance": "Redirect readiness checklist names remaining parity gaps before `/mission-control` can redirect."
-    },
-    {
-      "id": "P10-010",
-      "title": "Run consolidated Command Center evidence suite",
-      "status": "blocked",
-      "roi_rank": 96,
-      "program": "Testing",
-      "blocked_by": ["P10-008"],
-      "acceptance": "Focused typecheck, guards, node tests, and isolated E2E suite pass after the P10 dashboard changes."
-    }
+      {
+        "id": "P10-008",
+        "title": "Align sidebar navigation with Command Center consolidation policy",
+        "status": "done",
+        "roi_rank": 94,
+        "program": "Command Center",
+        "blocked_by": ["P9-006"],
+        "acceptance": "Sidebar keeps `/command-center` primary and demotes `/mission-control`, `/today`, and `/trust-pane` according to the consolidation plan."
+      },
+      {
+        "id": "P10-009",
+        "title": "Plan mission-control redirect readiness checklist",
+        "status": "ready",
+        "roi_rank": 95,
+        "program": "Command Center",
+        "blocked_by": [],
+        "acceptance": "Redirect readiness checklist names remaining parity gaps before `/mission-control` can redirect."
+      },
+      {
+        "id": "P10-010",
+        "title": "Run consolidated Command Center evidence suite",
+        "status": "ready",
+        "roi_rank": 96,
+        "program": "Testing",
+        "blocked_by": [],
+        "acceptance": "Focused typecheck, guards, node tests, and isolated E2E suite pass after the P10 dashboard changes."
+      }
   ]
 }

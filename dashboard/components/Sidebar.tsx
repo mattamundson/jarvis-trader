@@ -21,7 +21,6 @@ import {
   HeartPulse,
   History,
   Layers,
-  LayoutDashboard,
   LayoutGrid,
   Lightbulb,
   LineChart,
@@ -60,6 +59,7 @@ interface NavItem {
    * mount <ExploratoryBanner /> (amo-arbitrage honesty-layer pattern).
    */
   exploratory?: boolean;
+  secondary?: boolean;
 }
 
 interface NavGroup {
@@ -82,10 +82,17 @@ interface NavGroup {
 //   /trades/journal → /journal, /stats → /performance — intentional redirect stubs.
 const NAV_GROUPS: NavGroup[] = [
   {
+    title: "Command",
+    items: [
+      { label: "Command Center", href: "/command-center", icon: <Cpu className="h-3.5 w-3.5" /> },
+      { label: "Daily Brief", href: "/today", icon: <SunMedium className="h-3.5 w-3.5" />, secondary: true },
+      { label: "Operations", href: "/mission-control", icon: <Cpu className="h-3.5 w-3.5" />, secondary: true },
+      { label: "Trust Audit", href: "/trust-pane", icon: <Gauge className="h-3.5 w-3.5" />, secondary: true },
+    ],
+  },
+  {
     title: "Trading",
     items: [
-      { label: "Dashboard", href: "/", icon: <LayoutDashboard className="h-3.5 w-3.5" /> },
-      { label: "Today at a Glance", href: "/today", icon: <SunMedium className="h-3.5 w-3.5" /> },
       { label: "Pending Approvals", href: "/trades/pending-approvals", icon: <Zap className="h-3.5 w-3.5" /> },
       { label: "Trade History", href: "/trades", icon: <History className="h-3.5 w-3.5" /> },
       { label: "Paper Trading", href: "/paper", icon: <Layers className="h-3.5 w-3.5" /> },
@@ -134,7 +141,6 @@ const NAV_GROUPS: NavGroup[] = [
     title: "Intelligence",
     items: [
       { label: "Signals", href: "/signals", icon: <Radar className="h-3.5 w-3.5" /> },
-      { label: "Command Center", href: "/command-center", icon: <Cpu className="h-3.5 w-3.5" /> },
       { label: "Learning", href: "/learning", icon: <Rss className="h-3.5 w-3.5" /> },
       { label: "Research Log", href: "/research-log", icon: <FileText className="h-3.5 w-3.5" /> },
       { label: "Discord", href: "/discord", icon: <MessageSquare className="h-3.5 w-3.5" /> },
@@ -144,8 +150,6 @@ const NAV_GROUPS: NavGroup[] = [
   {
     title: "System",
     items: [
-      { label: "Mission Control", href: "/mission-control", icon: <Cpu className="h-3.5 w-3.5" /> },
-      { label: "Trust Pane", href: "/trust-pane", icon: <Gauge className="h-3.5 w-3.5" /> },
       { label: "Health", href: "/health", icon: <HeartPulse className="h-3.5 w-3.5" /> },
       { label: "Data Integrity", href: "/data-integrity", icon: <Database className="h-3.5 w-3.5" /> },
       { label: "Config", href: "/config", icon: <Sliders className="h-3.5 w-3.5" /> },
@@ -208,6 +212,7 @@ export function Sidebar() {
                   onClick={() => setMobileOpen(false)}
                   className={[
                     "flex items-center gap-2.5 mx-2 px-3 py-2 rounded-md text-xs transition-colors",
+                    item.secondary ? "ml-5 py-1.5 text-[11px]" : "",
                     active
                       ? "bg-accent/10 text-accent font-semibold"
                       : "text-muted-foreground hover:text-foreground hover:bg-muted/40",

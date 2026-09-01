@@ -44,6 +44,24 @@ test("command center is the canonical entry and exposes consolidation drilldowns
   await expect(drilldowns.getByRole("link", { name: /Trust Audit/i })).toHaveAttribute("href", "/trust-pane");
 });
 
+test("sidebar keeps command center primary and demotes related routes to drilldowns", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await installCommandCenterFixture(page, "populated");
+
+  await page.goto("/command-center", { waitUntil: "domcontentloaded" });
+
+  const sidebar = page.locator("aside").first();
+  await expect(sidebar.getByText("Command", { exact: true })).toBeVisible();
+  await expect(sidebar.getByRole("link", { name: /Command Center/i })).toHaveAttribute("href", "/command-center");
+  await expect(sidebar.getByRole("link", { name: /Daily Brief/i })).toHaveAttribute("href", "/today");
+  await expect(sidebar.getByRole("link", { name: /Operations/i })).toHaveAttribute("href", "/mission-control");
+  await expect(sidebar.getByRole("link", { name: /Trust Audit/i })).toHaveAttribute("href", "/trust-pane");
+  await expect(sidebar.getByRole("link", { name: /^Dashboard$/i })).toHaveCount(0);
+  await expect(sidebar.getByRole("link", { name: /Today at a Glance/i })).toHaveCount(0);
+  await expect(sidebar.getByRole("link", { name: /Mission Control/i })).toHaveCount(0);
+  await expect(sidebar.getByRole("link", { name: /Trust Pane/i })).toHaveCount(0);
+});
+
 for (const routeSpec of DRILLDOWNS) {
   test(`${routeSpec.path} remains reachable as a Command Center drilldown`, async ({ page }) => {
     await installEngineMock(page, "offline");
