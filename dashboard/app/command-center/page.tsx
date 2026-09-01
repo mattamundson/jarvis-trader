@@ -27,8 +27,10 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import {
   fetchCommandCenterBars,
+  fetchCommandCenterBarQuality,
   fetchCommandCenterDataIntegrity,
   fetchCommandCenterDecisions,
+  fetchCommandCenterEdgeLedger,
   fetchCommandCenterHealth,
   fetchCommandCenterJournalStats,
   fetchCommandCenterMacro,
@@ -41,8 +43,10 @@ import {
   fetchCommandCenterStrategyLedger,
   fetchCommandCenterTrades,
   setCommandCenterKillSwitch,
+  type CommandCenterBarQualityData,
   type CommandCenterDataIntegrityResponse,
   type CommandCenterDecision,
+  type CommandCenterEdgeLedgerData,
   type CommandCenterHealthData,
   type CommandCenterMacroData,
   type CommandCenterPaperStatusRow,
@@ -80,6 +84,7 @@ import {
   CommandCenterOperationsGrid,
   CommandCenterOperationsSummary,
   CommandCenterStatusStrip,
+  CommandCenterTrustAuditSummary,
   CommandCenterTradeQueuePanel,
   type ShellRegion,
 } from "@/components/command-center/CanonicalSections";
@@ -365,6 +370,16 @@ export default function CommandCenterPage() {
   const { data: sessionToday, error: sessionTodayErr } = useSWR<CommandCenterSessionTodayData>(
     "/portfolio/stats/session-today-command-center",
     fetchCommandCenterSessionToday,
+    { refreshInterval, shouldRetryOnError: false }
+  );
+  const { data: barQuality, error: barQualityErr } = useSWR<CommandCenterBarQualityData>(
+    "bar-quality-command-center",
+    fetchCommandCenterBarQuality,
+    { refreshInterval, shouldRetryOnError: false }
+  );
+  const { data: edgeLedger, error: edgeLedgerErr } = useSWR<CommandCenterEdgeLedgerData>(
+    "edge-ledger-command-center",
+    fetchCommandCenterEdgeLedger,
     { refreshInterval, shouldRetryOnError: false }
   );
 
@@ -734,6 +749,15 @@ export default function CommandCenterPage() {
         sessionToday={sessionToday}
         sessionTodayErr={Boolean(sessionTodayErr)}
         macro={macro}
+      />
+
+      <CommandCenterTrustAuditSummary
+        health={health}
+        healthErr={Boolean(healthErr)}
+        barQuality={barQuality}
+        barQualityErr={Boolean(barQualityErr)}
+        edgeLedger={edgeLedger}
+        edgeLedgerErr={Boolean(edgeLedgerErr)}
       />
 
       <CommandCenterOperationsGrid

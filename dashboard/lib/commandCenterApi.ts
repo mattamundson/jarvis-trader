@@ -103,6 +103,19 @@ export interface CommandCenterSessionTodayData {
   last_updated: string;
 }
 
+export interface CommandCenterBarQualityData {
+  window_hours: number;
+  total_rejections: number;
+  gate_active: boolean;
+}
+
+export interface CommandCenterEdgeLedgerData {
+  total: number;
+  n_pass: number;
+  n_fail: number;
+  n_other?: number;
+}
+
 export interface CommandCenterPaperStatusRow {
   symbol?: string;
   status?: string;
@@ -215,6 +228,14 @@ export function fetchCommandCenterMacro(): Promise<CommandCenterMacroData> {
 
 export function fetchCommandCenterSessionToday(): Promise<CommandCenterSessionTodayData> {
   return fetchEngine<CommandCenterSessionTodayData>("/portfolio/stats/session-today");
+}
+
+export function fetchCommandCenterBarQuality(): Promise<CommandCenterBarQualityData> {
+  return fetchEngine<CommandCenterBarQualityData>("/analytics/bar-quality?hours=168");
+}
+
+export function fetchCommandCenterEdgeLedger(): Promise<CommandCenterEdgeLedgerData> {
+  return fetchEngine<CommandCenterEdgeLedgerData>("/reports/edge-ledger");
 }
 
 export function fetchCommandCenterPaperStatus(): Promise<Record<string, CommandCenterPaperStatusRow>> {

@@ -71,6 +71,9 @@ for (const viewport of VIEWPORTS) {
     await expect(page.getByTestId("command-center-daily-brief-summary")).toContainText(/Mode\s*paper/i);
     await expect(page.getByTestId("command-center-daily-brief-summary")).toContainText(/Trades\s*2/i);
     await expect(page.getByTestId("command-center-daily-brief-summary")).toContainText(/Session P&L\s*\+\$125\.00/i);
+    await expect(page.getByTestId("command-center-trust-audit-summary")).toContainText(/Liveness\s*ok/i);
+    await expect(page.getByTestId("command-center-trust-audit-summary")).toContainText(/Bar Rejects\s*0/i);
+    await expect(page.getByTestId("command-center-trust-audit-summary")).toContainText(/Edge Ledger\s*1\/1/i);
     await expect(page.getByTestId("command-center-operations-grid")).toContainText("next gate: repair thesis");
     await expect(page.getByTestId("command-center-operations-grid")).toContainText("freshness: reported");
     await expect(page.getByTestId("command-center-operations-grid")).toContainText(/CACHE AGE\s*fresh/i);

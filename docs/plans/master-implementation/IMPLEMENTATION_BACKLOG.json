@@ -891,16 +891,17 @@
     {
       "id": "P9-009",
       "title": "Extract Trust Audit summary into Command Center",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 85,
       "program": "Command Center",
       "blocked_by": ["P9-006"],
-      "acceptance": "Trust-pane provenance and edge-ledger summaries are reachable from Command Center while deep audit detail remains on `/trust-pane`."
+      "acceptance": "Trust-pane provenance and edge-ledger summaries are reachable from Command Center while deep audit detail remains on `/trust-pane`.",
+      "evidence": "docs/plans/master-implementation/PASS41_COMMAND_CENTER_TRUST_AUDIT_SUMMARY_2026-09-01.md"
     },
     {
       "id": "P9-010",
       "title": "Add route-consolidation acceptance tests",
-      "status": "blocked",
+      "status": "ready",
       "roi_rank": 86,
       "program": "Command Center",
       "blocked_by": ["P9-006", "P9-007", "P9-008", "P9-009"],

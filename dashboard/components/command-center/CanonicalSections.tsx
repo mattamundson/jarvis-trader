@@ -15,6 +15,8 @@ import { compactCount } from "@/lib/commandCenterState";
 import {
   type CommandCenterDataIntegrityResponse,
   type CommandCenterDecision,
+  type CommandCenterBarQualityData,
+  type CommandCenterEdgeLedgerData,
   type CommandCenterHealthData,
   type CommandCenterMacroData,
   type CommandCenterPaperStatusRow,
@@ -728,6 +730,71 @@ export function CommandCenterDailyBriefSummary({
                 {row.label}
               </span>
               <MiniStateBadge label={row.state} tone={row.state === "unknown" ? "unknown" : "ok"} />
+            </div>
+            <p className="mt-1 line-clamp-2 text-[10px] leading-snug text-slate-500">
+              {row.detail}
+            </p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+export function CommandCenterTrustAuditSummary({
+  health,
+  healthErr,
+  barQuality,
+  barQualityErr,
+  edgeLedger,
+  edgeLedgerErr,
+}: {
+  health: CommandCenterHealthData | undefined;
+  healthErr: boolean;
+  barQuality: CommandCenterBarQualityData | undefined;
+  barQualityErr: boolean;
+  edgeLedger: CommandCenterEdgeLedgerData | undefined;
+  edgeLedgerErr: boolean;
+}) {
+  const liveness = healthErr || !health ? "unknown" : health.status === "ok" ? "ok" : "degraded";
+  const barRejects = barQualityErr || !barQuality ? "unknown" : `${barQuality.total_rejections}`;
+  const edgeState = edgeLedgerErr || !edgeLedger ? "unknown" : `${edgeLedger.n_pass}/${edgeLedger.total}`;
+  const dataLeg = healthErr || !health
+    ? "unknown"
+    : health.ibkr_data_connected === true
+      ? "live"
+      : health.ibkr_data_connected === false
+        ? "offline"
+        : "unknown";
+  const rows = [
+    { label: "Liveness", state: liveness, detail: "engine status" },
+    { label: "Bar Rejects", state: barRejects, detail: barQualityErr ? "bar-quality unavailable" : "7d gate rejects" },
+    { label: "Edge Ledger", state: edgeState, detail: edgeLedgerErr ? "edge ledger unavailable" : "PASS over total" },
+    { label: "Data Leg", state: dataLeg, detail: "IBKR market-data provenance" },
+  ];
+
+  return (
+    <section
+      className="mb-4 rounded-md border border-slate-800 bg-slate-950/35 p-3"
+      aria-label="Command Center trust audit summary"
+      data-testid="command-center-trust-audit-summary"
+    >
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="text-[10px] font-mono tracking-[0.2em] text-slate-500">
+          TRUST AUDIT SUMMARY
+        </span>
+        <a href="/trust-pane" className="text-[10px] font-mono uppercase tracking-wider text-cyan-400 hover:text-cyan-300">
+          trust pane
+        </a>
+      </div>
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+        {rows.map((row) => (
+          <div key={row.label} className="rounded border border-slate-800 bg-slate-950/40 p-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-mono text-[10px] uppercase tracking-wider text-slate-500">
+                {row.label}
+              </span>
+              <MiniStateBadge label={row.state} tone={operationTone(row.state)} />
             </div>
             <p className="mt-1 line-clamp-2 text-[10px] leading-snug text-slate-500">
               {row.detail}
