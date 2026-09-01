@@ -1597,6 +1597,26 @@
         "program": "Planning",
         "blocked_by": ["P16-009"],
         "acceptance": "If route consolidation is complete, the next highest-ROI tranche is seeded from remaining master-plan evidence gaps."
+      },
+      {
+        "id": "P16-011",
+        "title": "Prepare guarded historical E2E artifact cleanup helper",
+        "status": "done",
+        "roi_rank": 157,
+        "program": "Operations",
+        "blocked_by": [],
+        "acceptance": "A dry-run-first helper validates the exact artifact root and only removes child directories when explicit approval is supplied.",
+        "evidence": "docs/plans/master-implementation/PASS80_E2E_ARTIFACT_CLEANUP_PREFLIGHT_2026-09-01.md"
+      },
+      {
+        "id": "P16-012",
+        "title": "Validate cleanup helper dry run and execution guard",
+        "status": "done",
+        "roi_rank": 158,
+        "program": "Operations",
+        "blocked_by": [],
+        "acceptance": "Dry run reports artifact size/count and `-Execute` refuses to run without the explicit confirmation switch.",
+        "evidence": "docs/plans/master-implementation/PASS80_E2E_ARTIFACT_CLEANUP_PREFLIGHT_2026-09-01.md"
       }
   ]
 }

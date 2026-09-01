@@ -17,11 +17,12 @@ Completed P13-010 by recording the current disk blocker and the safe recovery pa
 Recommended approved action:
 
 ```powershell
-$target = 'C:\Users\mattm\Archive\2026\jarvis-temp-build-artifacts'
-Get-ChildItem -LiteralPath $target -Directory | Remove-Item -Recurse -Force
+.\scripts\inspect-jarvis-e2e-artifacts.ps1 -Execute -ConfirmApprovedGeneratedArtifactCleanup
 ```
 
 This removes only generated isolated Next/Playwright artifacts. It does not touch source, repo files, handoffs, evidence docs, or project data.
+
+PASS80 added a guarded helper for this action. It defaults to dry run, validates the exact expected artifact root, operates only on child directories, and refuses `-Execute` unless `-ConfirmApprovedGeneratedArtifactCleanup` is also present.
 
 ## Non-Destructive Work Completed
 
