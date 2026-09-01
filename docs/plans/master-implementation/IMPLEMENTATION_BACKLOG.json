@@ -641,16 +641,17 @@
     {
       "id": "P7-004",
       "title": "Implement Command Center API proxy client helpers",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 60,
       "program": "Command Center",
       "blocked_by": ["P7-001"],
-      "acceptance": "Command Center engine calls route through `dashboard/lib/api.ts` and `/api/engine/*`; no direct browser engine URL is introduced."
+      "acceptance": "Command Center engine calls route through `dashboard/lib/api.ts` and `/api/engine/*`; no direct browser engine URL is introduced.",
+      "evidence": "docs/plans/master-implementation/PASS17_COMMAND_CENTER_API_HELPERS_2026-09-01.md"
     },
     {
       "id": "P7-005",
       "title": "Implement Trade Queue panel offline and empty states",
-      "status": "blocked",
+      "status": "ready",
       "roi_rank": 61,
       "program": "Command Center",
       "blocked_by": ["P7-003", "P7-004"],
@@ -659,7 +660,7 @@
     {
       "id": "P7-006",
       "title": "Implement Eligibility panel offline and stale-verdict states",
-      "status": "blocked",
+      "status": "ready",
       "roi_rank": 62,
       "program": "Command Center",
       "blocked_by": ["P7-003", "P7-004"],
@@ -668,7 +669,7 @@
     {
       "id": "P7-007",
       "title": "Implement Strategy Ledger panel",
-      "status": "blocked",
+      "status": "ready",
       "roi_rank": 63,
       "program": "Command Center",
       "blocked_by": ["P7-003", "P7-004"],
@@ -677,7 +678,7 @@
     {
       "id": "P7-008",
       "title": "Implement Data Integrity panel",
-      "status": "blocked",
+      "status": "ready",
       "roi_rank": 64,
       "program": "Command Center",
       "blocked_by": ["P7-003", "P7-004"],
@@ -686,7 +687,7 @@
     {
       "id": "P7-009",
       "title": "Implement Research Intake panel",
-      "status": "blocked",
+      "status": "ready",
       "roi_rank": 65,
       "program": "Command Center",
       "blocked_by": ["P7-003", "P7-004"],

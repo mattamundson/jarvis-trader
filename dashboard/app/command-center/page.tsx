@@ -27,16 +27,33 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import {
-  fetchEngine,
-  fetchJournalStats,
-  fetchBars,
-  fetchSymbolRegime,
-  fetchStrategyLedger,
-  toggleKillSwitch,
+  fetchCommandCenterBars,
+  fetchCommandCenterDataIntegrity,
+  fetchCommandCenterDecisions,
+  fetchCommandCenterHealth,
+  fetchCommandCenterJournalStats,
+  fetchCommandCenterMacro,
+  fetchCommandCenterPaperStatus,
+  fetchCommandCenterPortfolio,
+  fetchCommandCenterRegime,
+  fetchCommandCenterSafety,
+  fetchCommandCenterScheduler,
+  fetchCommandCenterStrategyLedger,
+  fetchCommandCenterTrades,
+  setCommandCenterKillSwitch,
+  type CommandCenterDataIntegrityResponse,
+  type CommandCenterDecision,
+  type CommandCenterHealthData,
+  type CommandCenterMacroData,
+  type CommandCenterPaperStatusRow,
+  type CommandCenterPortfolioData,
+  type CommandCenterSafetyData,
+  type CommandCenterSchedulerData,
+  type CommandCenterTrade,
   type JournalTradeStats,
   type LedgerResponse,
   type OHLCVBar,
-} from "@/lib/api";
+} from "@/lib/commandCenterApi";
 import { executionStatus, type ExecutionPathProbe } from "@/lib/executionPath";
 import {
   fetchHonestTrades,
@@ -78,110 +95,6 @@ const fontMono = JetBrains_Mono({
 });
 
 // ── Types ──────────────────────────────────────────────────────────────────
-
-interface HealthData {
-  status: string;
-  kill_switch_active: boolean;
-  uptime_seconds: number;
-  ibkr_connected: boolean;
-  ibkr_execution_connected?: boolean | null;
-  ibkr_data_connected?: boolean | null;
-  paper_trading?: boolean;
-  version?: string;
-  // D3-01: honest execution-path fields — see @/lib/executionPath.
-  execution_connected_verified?: boolean | null;
-  ib_execution_stale?: boolean | null;
-  execution_path?: ExecutionPathProbe | null;
-}
-
-interface SafetyData {
-  daily_pnl: number;
-  equity_peak: number;
-  drawdown_pct: number;
-  orders_last_minute: number;
-  consecutive_losses?: number;
-  kill_switch_active?: boolean;
-  daily_limit_pct?: number;
-  drawdown_limit_pct?: number;
-  orders_per_minute_limit?: number;
-}
-
-interface Position {
-  symbol: string;
-  quantity: number;
-  avg_cost: number;
-  current_price?: number;
-  unrealized_pnl?: number;
-}
-
-interface PortfolioData {
-  total_equity: number;
-  daily_pnl: number;
-  positions: Position[];
-  cash?: number;
-}
-
-interface Decision {
-  timestamp: string;
-  symbol: string;
-  action: string;
-  reason?: string;
-  signal?: string;
-  regime?: string;
-  quantity?: number;
-  price?: number;
-}
-
-interface SchedulerJob {
-  name: string;
-  last_run: string | null;
-  next_run: string | null;
-  running: boolean;
-}
-
-interface SchedulerData {
-  running: boolean;
-  jobs?: SchedulerJob[];
-  total_decisions_logged: number;
-  last_scan?: string;
-  next_scan?: string;
-}
-
-interface MacroData {
-  vix?: number;
-  vix_regime?: string;
-  regime?: string;
-  timestamp?: string;
-}
-
-interface PaperStatusRow {
-  status?: string;
-  wfe?: number;
-  wfe_label?: string;
-  reason?: string;
-  cleared_date?: string;
-  closed_date?: string;
-}
-
-interface Trade {
-  timestamp: string;
-  symbol: string;
-  action: string;
-  quantity: number;
-  price: number;
-  pnl?: number;
-  commission?: number;
-}
-
-interface DataIntegritySource {
-  source?: string;
-  status?: string;
-}
-
-interface DataIntegrityResponse {
-  sources?: DataIntegritySource[];
-  count?: number;
-}
 
 // ── Market Session Detection (Central Time) ───────────────────────────────
 
@@ -313,10 +226,6 @@ function pnlColor(n: number | undefined | null): string {
   return "text-gray-300";
 }
 
-function fetcher<T>(path: string): Promise<T> {
-  return fetchEngine<T>(path);
-}
-
 function shouldRevalidateCommandCenter(event: WsEvent): boolean {
   return (
     event.type === "order_fill" ||
@@ -337,7 +246,7 @@ function shouldRevalidateCommandCenter(event: WsEvent): boolean {
 function useSymbolRegime(symbol: string) {
   const { data, error, isLoading } = useSWR(
     `/analytics/regime/${symbol}`,
-    () => fetchSymbolRegime(symbol),
+    () => fetchCommandCenterRegime(symbol),
     { refreshInterval: 60_000, shouldRetryOnError: false }
   );
   return {
@@ -525,7 +434,7 @@ export default function CommandCenterPage() {
   const [chartSym, setChartSym] = useState<string>(INSTRUMENTS[0]?.symbol ?? "MES");
   const { data: ccBars } = useSWR<OHLCVBar[]>(
     `cc-bars-${chartSym}`,
-    () => fetchBars(chartSym, { timeframe: "15m", days: 14, futures: true }),
+    () => fetchCommandCenterBars(chartSym),
     { refreshInterval: 60_000, revalidateOnFocus: false }
   );
 
@@ -535,65 +444,65 @@ export default function CommandCenterPage() {
     data: health,
     error: healthErr,
     mutate: mutateHealth,
-  } = useSWR<HealthData>("/health", fetcher, {
+  } = useSWR<CommandCenterHealthData>("/health", fetchCommandCenterHealth, {
     refreshInterval,
     shouldRetryOnError: false,
   });
 
-  const { data: safety, mutate: mutateSafety, error: safetyErr } = useSWR<SafetyData>("/safety/status", fetcher, {
+  const { data: safety, mutate: mutateSafety, error: safetyErr } = useSWR<CommandCenterSafetyData>("/safety/status", fetchCommandCenterSafety, {
     refreshInterval,
     shouldRetryOnError: false,
   });
 
-  const { data: portfolio, mutate: mutatePortfolio, error: portfolioErr } = useSWR<PortfolioData>("/portfolio", fetcher, {
+  const { data: portfolio, mutate: mutatePortfolio, error: portfolioErr } = useSWR<CommandCenterPortfolioData>("/portfolio", fetchCommandCenterPortfolio, {
     refreshInterval,
     shouldRetryOnError: false,
   });
 
-  const { data: decisions, mutate: mutateDecisions, error: decisionsErr } = useSWR<Decision[]>(
+  const { data: decisions, mutate: mutateDecisions, error: decisionsErr } = useSWR<CommandCenterDecision[]>(
     "/decisions/recent?limit=5",
-    fetcher,
+    fetchCommandCenterDecisions,
     { refreshInterval, shouldRetryOnError: false }
   );
 
-  const { data: scheduler, mutate: mutateScheduler, error: schedulerErr } = useSWR<SchedulerData>(
+  const { data: scheduler, mutate: mutateScheduler, error: schedulerErr } = useSWR<CommandCenterSchedulerData>(
     "/scheduler/status",
-    fetcher,
+    fetchCommandCenterScheduler,
     { refreshInterval, shouldRetryOnError: false }
   );
 
-  const { data: macro, mutate: mutateMacro } = useSWR<MacroData>("/macro/snapshot", fetcher, {
+  const { data: macro, mutate: mutateMacro } = useSWR<CommandCenterMacroData>("/macro/snapshot", fetchCommandCenterMacro, {
     refreshInterval: 120_000,
     shouldRetryOnError: false,
   });
 
-  const { data: paperStatus, mutate: mutatePaperStatus } = useSWR<Record<string, PaperStatusRow>>(
+  const { data: paperStatus, mutate: mutatePaperStatus } = useSWR<Record<string, CommandCenterPaperStatusRow>>(
     "/backtest/paper-status",
-    fetcher,
+    fetchCommandCenterPaperStatus,
     { refreshInterval: 120_000, shouldRetryOnError: false }
   );
 
   const { data: ledger, error: ledgerErr, mutate: mutateLedger } = useSWR<LedgerResponse>(
     "strategy-ledger-command-center",
-    fetchStrategyLedger,
+    fetchCommandCenterStrategyLedger,
     { refreshInterval, shouldRetryOnError: false }
   );
 
-  const { data: integrity, error: integrityErr, mutate: mutateIntegrity } = useSWR<DataIntegrityResponse>(
+  const { data: integrity, error: integrityErr, mutate: mutateIntegrity } = useSWR<CommandCenterDataIntegrityResponse>(
     "/system/data-integrity",
-    fetcher,
+    fetchCommandCenterDataIntegrity,
     { refreshInterval, shouldRetryOnError: false }
   );
 
-  const { data: trades, mutate: mutateTrades, error: tradesErr } = useSWR<Trade[]>(
+  const { data: trades, mutate: mutateTrades, error: tradesErr } = useSWR<CommandCenterTrade[]>(
     "/portfolio/history/trades",
-    fetcher,
+    fetchCommandCenterTrades,
     { refreshInterval, shouldRetryOnError: false }
   );
 
   const { data: journalStats, mutate: mutateJournalStats } = useSWR<JournalTradeStats>(
     "/journal/review/stats?limit=30",
-    fetcher,
+    fetchCommandCenterJournalStats,
     { refreshInterval: 60_000, shouldRetryOnError: false }
   );
 
@@ -835,10 +744,7 @@ export default function CommandCenterPage() {
     try {
       // Use the verified helper — it hits /safety/kill-switch/activate +
       // /deactivate (the bare /safety/kill-switch route is a 404).
-      await toggleKillSwitch(
-        activating ? "activate" : "deactivate",
-        activating ? "Manual kill from command center" : undefined
-      );
+      await setCommandCenterKillSwitch(activating);
       addToast(
         activating
           ? "Kill switch ACTIVATED — all trading halted."
