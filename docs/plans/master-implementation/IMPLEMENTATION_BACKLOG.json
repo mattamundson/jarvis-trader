@@ -841,16 +841,17 @@
     {
       "id": "P9-004",
       "title": "Create normalized research-intake source rows",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 80,
       "program": "Research Intake",
       "blocked_by": ["P8-009"],
-      "acceptance": "A checked-in source or endpoint fixture exposes normalized Research Intake rows from the disposition matrix."
+      "acceptance": "A checked-in source or endpoint fixture exposes normalized Research Intake rows from the disposition matrix.",
+      "evidence": "docs/plans/master-implementation/PASS36_NORMALIZED_RESEARCH_INTAKE_ROWS_2026-09-01.md"
     },
     {
       "id": "P9-005",
       "title": "Wire Command Center Research Intake panel to normalized rows",
-      "status": "blocked",
+      "status": "ready",
       "roi_rank": 81,
       "program": "Command Center",
       "blocked_by": ["P9-004"],
