@@ -13,7 +13,9 @@
   - Runs `pnpm run build` with `NEXT_DIST_DIR` defaulting to `.next-codex-isolated`.
   - Runs `pnpm exec playwright test -c playwright.fresh.config.ts ...args`.
   - Restores the two Next-generated files in `finally`.
-  - Archives the isolated build output and `test-results` under `~/Archive/<year>/jarvis-temp-build-artifacts/`.
+  - As of PASS71, handles generated artifacts through `JARVIS_E2E_ARTIFACT_MODE`.
+- `dashboard/scripts/isolated-e2e-artifacts.mjs`
+  - Provides artifact mode validation and dashboard-root-bounded archive/cleanup helpers.
 - `dashboard/package.json`
   - Adds `test:e2e:isolated`.
 
@@ -23,7 +25,7 @@
   - Build passed.
   - Route-contract E2E passed: 3 tests.
   - Script restored generated Next metadata.
-  - Script archived:
+  - At the time of PASS26, script archived:
     - `C:\Users\mattm\Archive\2026\jarvis-temp-build-artifacts\.next-codex-isolated-20260901-164331`
     - `C:\Users\mattm\Archive\2026\jarvis-temp-build-artifacts\test-results-20260901-164331`
 - Post-run checks:
@@ -33,5 +35,8 @@
 
 ## Notes
 
-- The runner intentionally archives rather than deletes generated artifacts.
+- Artifact retention is now bounded by default:
+  - `JARVIS_E2E_ARTIFACT_MODE=on-failure` is the default: failed runs archive evidence; successful runs remove only current-run reproducible temp outputs.
+  - `JARVIS_E2E_ARTIFACT_MODE=always` preserves the original archive-every-run behavior.
+  - `JARVIS_E2E_ARTIFACT_MODE=never` removes current-run reproducible temp outputs even on failed runs.
 - The runner defaults dashboard auth environment variables to empty only when they are absent, matching the current local focused-E2E workflow.

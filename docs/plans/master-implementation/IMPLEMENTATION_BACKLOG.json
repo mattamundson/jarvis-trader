@@ -1207,6 +1207,106 @@
         "blocked_by": [],
         "acceptance": "Focused static, ownership, and route suites pass and P12 evidence is recorded.",
         "evidence": "docs/plans/master-implementation/PASS70_P12_OWNERSHIP_EVIDENCE_SUITE_2026-09-01.md"
+      },
+      {
+        "id": "P13-001",
+        "title": "Define isolated E2E artifact retention policy",
+        "status": "done",
+        "roi_rank": 117,
+        "program": "Testing",
+        "blocked_by": [],
+        "acceptance": "`test:e2e:isolated` has an explicit retention policy that prevents successful runs from permanently growing the temp archive by default.",
+        "evidence": "docs/plans/master-implementation/PASS71_ISOLATED_E2E_ARTIFACT_RETENTION_2026-09-01.md"
+      },
+      {
+        "id": "P13-002",
+        "title": "Add bounded artifact-mode helper",
+        "status": "done",
+        "roi_rank": 118,
+        "program": "Testing",
+        "blocked_by": [],
+        "acceptance": "A helper validates `always`, `on-failure`, and `never` retention modes and rejects unknown values.",
+        "evidence": "docs/plans/master-implementation/PASS71_ISOLATED_E2E_ARTIFACT_RETENTION_2026-09-01.md"
+      },
+      {
+        "id": "P13-003",
+        "title": "Restrict cleanup to current isolated-run outputs",
+        "status": "done",
+        "roi_rank": 119,
+        "program": "Testing",
+        "blocked_by": [],
+        "acceptance": "Successful-run cleanup can only remove the current run's `NEXT_DIST_DIR` and `test-results` paths under the dashboard root.",
+        "evidence": "docs/plans/master-implementation/PASS71_ISOLATED_E2E_ARTIFACT_RETENTION_2026-09-01.md"
+      },
+      {
+        "id": "P13-004",
+        "title": "Archive failed isolated E2E artifacts by default",
+        "status": "done",
+        "roi_rank": 120,
+        "program": "Testing",
+        "blocked_by": [],
+        "acceptance": "Failed runs still archive build/test evidence under the existing archive root with stamped paths.",
+        "evidence": "docs/plans/master-implementation/PASS71_ISOLATED_E2E_ARTIFACT_RETENTION_2026-09-01.md"
+      },
+      {
+        "id": "P13-005",
+        "title": "Clean successful isolated E2E temp outputs by default",
+        "status": "done",
+        "roi_rank": 121,
+        "program": "Testing",
+        "blocked_by": [],
+        "acceptance": "Successful runs remove only reproducible current-run temp outputs unless `JARVIS_E2E_ARTIFACT_MODE=always` is set.",
+        "evidence": "docs/plans/master-implementation/PASS71_ISOLATED_E2E_ARTIFACT_RETENTION_2026-09-01.md"
+      },
+      {
+        "id": "P13-006",
+        "title": "Preserve snapshot restoration before artifact handling",
+        "status": "done",
+        "roi_rank": 122,
+        "program": "Testing",
+        "blocked_by": [],
+        "acceptance": "`next-env.d.ts` and `tsconfig.json` restoration still occurs before archive or cleanup handling.",
+        "evidence": "docs/plans/master-implementation/PASS71_ISOLATED_E2E_ARTIFACT_RETENTION_2026-09-01.md"
+      },
+      {
+        "id": "P13-007",
+        "title": "Add artifact retention helper tests",
+        "status": "done",
+        "roi_rank": 123,
+        "program": "Testing",
+        "blocked_by": [],
+        "acceptance": "Node tests cover mode validation, archive decisions, and safe cleanup path restrictions without running a Next build.",
+        "evidence": "docs/plans/master-implementation/PASS71_ISOLATED_E2E_ARTIFACT_RETENTION_2026-09-01.md"
+      },
+      {
+        "id": "P13-008",
+        "title": "Update isolated E2E runner documentation",
+        "status": "done",
+        "roi_rank": 124,
+        "program": "Documentation",
+        "blocked_by": [],
+        "acceptance": "Evidence docs explain the new default `on-failure` retention and the override for persistent artifacts.",
+        "evidence": "docs/plans/master-implementation/PASS71_ISOLATED_E2E_ARTIFACT_RETENTION_2026-09-01.md"
+      },
+      {
+        "id": "P13-009",
+        "title": "Run isolated E2E retention static evidence",
+        "status": "done",
+        "roi_rank": 125,
+        "program": "Testing",
+        "blocked_by": [],
+        "acceptance": "Typecheck, guards, JSON parse, and artifact helper tests pass without requiring another browser build.",
+        "evidence": "docs/plans/master-implementation/PASS71_ISOLATED_E2E_ARTIFACT_RETENTION_2026-09-01.md"
+      },
+      {
+        "id": "P13-010",
+        "title": "Record disk blocker and safe recovery path",
+        "status": "done",
+        "roi_rank": 126,
+        "program": "Operations",
+        "blocked_by": [],
+        "acceptance": "The backlog records that current historical artifact cleanup needs explicit approval because the directory is larger than 1 GB.",
+        "evidence": "docs/plans/master-implementation/PASS72_E2E_ARTIFACT_DISK_RECOVERY_PATH_2026-09-01.md"
       }
   ]
 }

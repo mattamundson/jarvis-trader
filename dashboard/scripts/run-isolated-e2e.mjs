@@ -1,9 +1,10 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { handleRunArtifacts, normalizeArtifactMode } from "./isolated-e2e-artifacts.mjs";
 
 const DASHBOARD_ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const NEXT_ENV_PATH = join(DASHBOARD_ROOT, "next-env.d.ts");
@@ -29,22 +30,6 @@ function restoreSnapshot(path, snapshot) {
   writeFileSync(path, snapshot);
 }
 
-function archivePath(relativePath) {
-  const source = join(DASHBOARD_ROOT, relativePath);
-  if (!existsSync(source)) return null;
-
-  mkdirSync(ARCHIVE_ROOT, { recursive: true });
-  const base = `${relativePath.replace(/[\\/]/g, "_")}-${stamp()}`;
-  let destination = join(ARCHIVE_ROOT, base);
-  let counter = 1;
-  while (existsSync(destination)) {
-    destination = join(ARCHIVE_ROOT, `${base}-${counter}`);
-    counter += 1;
-  }
-  renameSync(source, destination);
-  return destination;
-}
-
 function run(command, args, env) {
   console.log(`\n> ${command} ${args.join(" ")}`);
   const result = spawnSync(command, args, {
@@ -59,6 +44,7 @@ function run(command, args, env) {
 const nextEnvSnapshot = readSnapshot(NEXT_ENV_PATH);
 const tsconfigSnapshot = readSnapshot(TSCONFIG_PATH);
 const playwrightArgs = process.argv.slice(2);
+const artifactMode = normalizeArtifactMode(process.env.JARVIS_E2E_ARTIFACT_MODE);
 const env = {
   ...process.env,
   NEXT_DIST_DIR: DIST_DIR,
@@ -76,13 +62,20 @@ try {
   restoreSnapshot(NEXT_ENV_PATH, nextEnvSnapshot);
   restoreSnapshot(TSCONFIG_PATH, tsconfigSnapshot);
 
-  const archived = [
-    archivePath(DIST_DIR),
-    archivePath("test-results"),
-  ].filter(Boolean);
+  const { archived, cleaned } = handleRunArtifacts({
+    dashboardRoot: DASHBOARD_ROOT,
+    archiveRoot: ARCHIVE_ROOT,
+    outputs: [DIST_DIR, "test-results"],
+    mode: artifactMode,
+    exitCode,
+    stamp: stamp(),
+  });
 
   for (const destination of archived) {
     console.log(`archived ${destination}`);
+  }
+  for (const target of cleaned) {
+    console.log(`removed temp artifact ${target}`);
   }
 }
 
