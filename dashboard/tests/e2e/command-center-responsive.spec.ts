@@ -68,6 +68,9 @@ for (const viewport of VIEWPORTS) {
     await expect(page.getByTestId("command-center-operations-summary")).toContainText(/Kill Switch\s*clear/i);
     await expect(page.getByTestId("command-center-operations-summary")).toContainText(/Order Rate\s*0\/10/i);
     await expect(page.getByTestId("command-center-operations-summary")).toContainText(/Broker Execution\s*no broker ack/i);
+    await expect(page.getByTestId("command-center-daily-brief-summary")).toContainText(/Mode\s*paper/i);
+    await expect(page.getByTestId("command-center-daily-brief-summary")).toContainText(/Trades\s*2/i);
+    await expect(page.getByTestId("command-center-daily-brief-summary")).toContainText(/Session P&L\s*\+\$125\.00/i);
     await expect(page.getByTestId("command-center-operations-grid")).toContainText("next gate: repair thesis");
     await expect(page.getByTestId("command-center-operations-grid")).toContainText("freshness: reported");
     await expect(page.getByTestId("command-center-operations-grid")).toContainText(/CACHE AGE\s*fresh/i);

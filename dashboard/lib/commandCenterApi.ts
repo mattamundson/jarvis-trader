@@ -87,6 +87,22 @@ export interface CommandCenterMacroData {
   timestamp?: string;
 }
 
+export interface CommandCenterSessionTodayData {
+  date: string;
+  session: string;
+  closed_trades: number;
+  open_trades: number;
+  gross_pnl: number;
+  wins: number;
+  losses: number;
+  win_rate: number | null;
+  best_trade: number | null;
+  worst_trade: number | null;
+  avg_pnl: number | null;
+  symbols_traded: string[];
+  last_updated: string;
+}
+
 export interface CommandCenterPaperStatusRow {
   symbol?: string;
   status?: string;
@@ -195,6 +211,10 @@ export function fetchCommandCenterScheduler(): Promise<CommandCenterSchedulerDat
 
 export function fetchCommandCenterMacro(): Promise<CommandCenterMacroData> {
   return fetchEngine<CommandCenterMacroData>("/macro/snapshot");
+}
+
+export function fetchCommandCenterSessionToday(): Promise<CommandCenterSessionTodayData> {
+  return fetchEngine<CommandCenterSessionTodayData>("/portfolio/stats/session-today");
 }
 
 export function fetchCommandCenterPaperStatus(): Promise<Record<string, CommandCenterPaperStatusRow>> {

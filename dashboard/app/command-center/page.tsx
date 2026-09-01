@@ -37,6 +37,7 @@ import {
   fetchCommandCenterRegime,
   fetchCommandCenterSafety,
   fetchCommandCenterScheduler,
+  fetchCommandCenterSessionToday,
   fetchCommandCenterStrategyLedger,
   fetchCommandCenterTrades,
   setCommandCenterKillSwitch,
@@ -48,6 +49,7 @@ import {
   type CommandCenterPortfolioData,
   type CommandCenterSafetyData,
   type CommandCenterSchedulerData,
+  type CommandCenterSessionTodayData,
   type CommandCenterTrade,
   type JournalTradeStats,
   type LedgerResponse,
@@ -73,6 +75,7 @@ import { SessionBriefPanel } from "@/components/SessionBriefPanel";
 import { ActionableBoardWidget } from "@/components/ActionableBoardWidget";
 import {
   CanonicalShellMap,
+  CommandCenterDailyBriefSummary,
   CommandCenterDrilldownNav,
   CommandCenterOperationsGrid,
   CommandCenterOperationsSummary,
@@ -358,6 +361,12 @@ export default function CommandCenterPage() {
     refreshInterval: 120_000,
     shouldRetryOnError: false,
   });
+
+  const { data: sessionToday, error: sessionTodayErr } = useSWR<CommandCenterSessionTodayData>(
+    "/portfolio/stats/session-today-command-center",
+    fetchCommandCenterSessionToday,
+    { refreshInterval, shouldRetryOnError: false }
+  );
 
   const { data: paperStatus, mutate: mutatePaperStatus } = useSWR<Record<string, CommandCenterPaperStatusRow>>(
     "/backtest/paper-status",
@@ -718,6 +727,13 @@ export default function CommandCenterPage() {
         safety={safety}
         safetyErr={Boolean(safetyErr)}
         execution={exec}
+      />
+
+      <CommandCenterDailyBriefSummary
+        health={health}
+        sessionToday={sessionToday}
+        sessionTodayErr={Boolean(sessionTodayErr)}
+        macro={macro}
       />
 
       <CommandCenterOperationsGrid

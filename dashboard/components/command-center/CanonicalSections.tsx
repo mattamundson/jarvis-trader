@@ -16,9 +16,11 @@ import {
   type CommandCenterDataIntegrityResponse,
   type CommandCenterDecision,
   type CommandCenterHealthData,
+  type CommandCenterMacroData,
   type CommandCenterPaperStatusRow,
   type CommandCenterPortfolioData,
   type CommandCenterSafetyData,
+  type CommandCenterSessionTodayData,
   type CommandCenterTrade,
   type LedgerResponse,
 } from "@/lib/commandCenterApi";
@@ -657,6 +659,75 @@ export function CommandCenterOperationsSummary({
                 {row.label}
               </span>
               <MiniStateBadge label={row.state} tone={operationTone(row.state)} />
+            </div>
+            <p className="mt-1 line-clamp-2 text-[10px] leading-snug text-slate-500">
+              {row.detail}
+            </p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function moneyLabel(value: number | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "unknown";
+  const sign = value > 0 ? "+" : value < 0 ? "-" : "";
+  return `${sign}$${Math.abs(value).toFixed(2)}`;
+}
+
+export function CommandCenterDailyBriefSummary({
+  health,
+  sessionToday,
+  sessionTodayErr,
+  macro,
+}: {
+  health: CommandCenterHealthData | undefined;
+  sessionToday: CommandCenterSessionTodayData | undefined;
+  sessionTodayErr: boolean;
+  macro: CommandCenterMacroData | undefined;
+}) {
+  const mode = health?.paper_trading ? "paper" : health ? "live" : "unknown";
+  const tradesToday = sessionToday
+    ? `${sessionToday.closed_trades + sessionToday.open_trades}`
+    : "unknown";
+  const pnl = sessionToday ? moneyLabel(sessionToday.gross_pnl) : "unknown";
+  const openTrades = sessionToday ? `${sessionToday.open_trades}` : "unknown";
+  const marketContext = macro?.regime ?? macro?.vix_regime ?? "unknown";
+  const rows = [
+    { label: "Mode", state: mode, detail: "from /health paper_trading" },
+    {
+      label: "Trades",
+      state: tradesToday,
+      detail: sessionTodayErr ? "session endpoint unavailable" : "closed plus open",
+    },
+    { label: "Session P&L", state: pnl, detail: "gross session P&L" },
+    { label: "Open", state: openTrades, detail: "open session trades" },
+    { label: "Market", state: marketContext.toLowerCase(), detail: "macro/regime context" },
+  ];
+
+  return (
+    <section
+      className="mb-4 rounded-md border border-slate-800 bg-slate-950/35 p-3"
+      aria-label="Command Center daily brief summary"
+      data-testid="command-center-daily-brief-summary"
+    >
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="text-[10px] font-mono tracking-[0.2em] text-slate-500">
+          DAILY BRIEF SUMMARY
+        </span>
+        <a href="/today" className="text-[10px] font-mono uppercase tracking-wider text-cyan-400 hover:text-cyan-300">
+          today drilldown
+        </a>
+      </div>
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
+        {rows.map((row) => (
+          <div key={row.label} className="rounded border border-slate-800 bg-slate-950/40 p-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-mono text-[10px] uppercase tracking-wider text-slate-500">
+                {row.label}
+              </span>
+              <MiniStateBadge label={row.state} tone={row.state === "unknown" ? "unknown" : "ok"} />
             </div>
             <p className="mt-1 line-clamp-2 text-[10px] leading-snug text-slate-500">
               {row.detail}

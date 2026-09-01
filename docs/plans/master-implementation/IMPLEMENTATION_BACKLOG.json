@@ -881,11 +881,12 @@
     {
       "id": "P9-008",
       "title": "Extract Today daily-brief summary into Command Center",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 84,
       "program": "Command Center",
       "blocked_by": ["P9-006"],
-      "acceptance": "Today route mode/session/market-context facts are reachable from Command Center without making `/today` a competing first screen."
+      "acceptance": "Today route mode/session/market-context facts are reachable from Command Center without making `/today` a competing first screen.",
+      "evidence": "docs/plans/master-implementation/PASS40_COMMAND_CENTER_DAILY_BRIEF_SUMMARY_2026-09-01.md"
     },
     {
       "id": "P9-009",
