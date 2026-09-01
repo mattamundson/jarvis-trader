@@ -791,16 +791,17 @@
     {
       "id": "P8-009",
       "title": "Define research-intake data contract from PR/issue/spike disposition",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 75,
       "program": "Research Intake",
       "blocked_by": [],
-      "acceptance": "Research intake source files and categories are defined so the panel can render real intake rows instead of static placeholders."
+      "acceptance": "Research intake source files and categories are defined so the panel can render real intake rows instead of static placeholders.",
+      "evidence": "docs/plans/master-implementation/PASS30_RESEARCH_INTAKE_CONTRACT_2026-09-01.md"
     },
     {
       "id": "P8-010",
       "title": "Plan duplicate route consolidation after Command Center canonicalization",
-      "status": "blocked",
+      "status": "ready",
       "roi_rank": 76,
       "program": "Command Center",
       "blocked_by": ["P8-006", "P8-008", "P8-009"],
