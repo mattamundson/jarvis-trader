@@ -15,6 +15,8 @@ Use these files together:
 - `PASS10_IB_RUNNER_OBSERVABILITY_2026-09-01.md` - IB WFO line-buffered output and explicit CLI dispatch controls.
 - `PASS11_PR749_READINESS_2026-09-01.md` - isolated PR #749 ruff cleanup commits and focused verification.
 - `PASS12_ENVIRONMENT_DRIFT_DETECTOR_2026-09-01.md` - read-only environment drift detector, tests, and local proof.
+- `COMMAND_CENTER_IMPLEMENTATION_TICKETS_2026-09-01.md` - concrete Command Center implementation ticket map.
+- `PASS13_COMMAND_CENTER_TICKETS_2026-09-01.md` - P6-010 completion report and next UI tranche.
 
 Formal implementation rule:
 

@@ -601,11 +601,102 @@
     {
       "id": "P6-010",
       "title": "Convert Command Center IA spec into implementation tickets",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 56,
       "program": "Command Center",
       "blocked_by": [],
-      "acceptance": "Tickets map canonical surfaces to concrete files, endpoints, empty states, and unsafe-action gates."
+      "acceptance": "Tickets map canonical surfaces to concrete files, endpoints, empty states, and unsafe-action gates.",
+      "evidence": "docs/plans/master-implementation/COMMAND_CENTER_IMPLEMENTATION_TICKETS_2026-09-01.md"
+    },
+    {
+      "id": "P7-001",
+      "title": "Implement Command Center canonical shell skeleton",
+      "status": "ready",
+      "roi_rank": 57,
+      "program": "Command Center",
+      "blocked_by": ["P6-010"],
+      "acceptance": "`/command-center` renders health, trade queue, eligibility, strategy ledger, data integrity, and research intake regions without requiring engine uptime."
+    },
+    {
+      "id": "P7-002",
+      "title": "Implement Command Center status strip",
+      "status": "blocked",
+      "roi_rank": 58,
+      "program": "Command Center",
+      "blocked_by": ["P7-001"],
+      "acceptance": "Engine, broker, safety, and data health render as independent known/unknown/offline states."
+    },
+    {
+      "id": "P7-003",
+      "title": "Add Command Center mocked data fixtures",
+      "status": "blocked",
+      "roi_rank": 59,
+      "program": "Command Center",
+      "blocked_by": ["P7-001"],
+      "acceptance": "Offline, degraded, empty, and populated fixture states exist for focused UI tests."
+    },
+    {
+      "id": "P7-004",
+      "title": "Implement Command Center API proxy client helpers",
+      "status": "blocked",
+      "roi_rank": 60,
+      "program": "Command Center",
+      "blocked_by": ["P7-001"],
+      "acceptance": "Command Center engine calls route through `dashboard/lib/api.ts` and `/api/engine/*`; no direct browser engine URL is introduced."
+    },
+    {
+      "id": "P7-005",
+      "title": "Implement Trade Queue panel offline and empty states",
+      "status": "blocked",
+      "roi_rank": 61,
+      "program": "Command Center",
+      "blocked_by": ["P7-003", "P7-004"],
+      "acceptance": "Approval, position, stale-stop, and journal states render with unsafe actions disabled until backend contracts are present."
+    },
+    {
+      "id": "P7-006",
+      "title": "Implement Eligibility panel offline and stale-verdict states",
+      "status": "blocked",
+      "roi_rank": 62,
+      "program": "Command Center",
+      "blocked_by": ["P7-003", "P7-004"],
+      "acceptance": "Adopted, paused, failed, stale, and research-only strategy states are visually distinct."
+    },
+    {
+      "id": "P7-007",
+      "title": "Implement Strategy Ledger panel",
+      "status": "blocked",
+      "roi_rank": 63,
+      "program": "Command Center",
+      "blocked_by": ["P7-003", "P7-004"],
+      "acceptance": "Strategy family, rank, verdict, freshness, state, and next required gate are visible."
+    },
+    {
+      "id": "P7-008",
+      "title": "Implement Data Integrity panel",
+      "status": "blocked",
+      "roi_rank": 64,
+      "program": "Command Center",
+      "blocked_by": ["P7-003", "P7-004"],
+      "acceptance": "Cache age, provider status, bar freshness, and source parity states render with explicit stale/unknown labels."
+    },
+    {
+      "id": "P7-009",
+      "title": "Implement Research Intake panel",
+      "status": "blocked",
+      "roi_rank": 65,
+      "program": "Command Center",
+      "blocked_by": ["P7-003", "P7-004"],
+      "acceptance": "PRs, issues, experiments, and spikes are grouped as intake and cannot imply production readiness."
+    },
+    {
+      "id": "P7-010",
+      "title": "Add focused Command Center acceptance harness",
+      "status": "blocked",
+      "roi_rank": 66,
+      "program": "Command Center",
+      "blocked_by": ["P7-002", "P7-005", "P7-006", "P7-007", "P7-008", "P7-009"],
+      "acceptance": "`pnpm run guards`, `pnpm run typecheck`, and focused Command Center tests pass."
     }
   ]
 }
