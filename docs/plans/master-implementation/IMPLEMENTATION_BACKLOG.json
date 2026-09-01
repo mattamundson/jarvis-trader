@@ -296,22 +296,20 @@
     {
       "id": "P3-004",
       "title": "Rerun affected MES VWAP Gate-v2 certification under patched RTH semantics",
-      "status": "blocked",
+      "status": "ready",
       "roi_rank": 24,
       "program": "Validation",
       "blocked_by": ["P3-003"],
-      "acceptance": "New verdict artifact is compared against prior provenance and verdict flips are surfaced.",
-      "blocker": "Wait for a proven Python 3.12 engine venv; current active venv is Python 3.13.3."
+      "acceptance": "New verdict artifact is compared against prior provenance and verdict flips are surfaced."
     },
     {
       "id": "P3-005",
       "title": "Rerun affected IB validation under patched point-in-time semantics",
-      "status": "blocked",
+      "status": "ready",
       "roi_rank": 25,
       "program": "Validation",
       "blocked_by": ["P3-003"],
-      "acceptance": "Affected IB validation outputs are regenerated or marked not impacted with evidence.",
-      "blocker": "Wait for a proven Python 3.12 engine venv; current active venv is Python 3.13.3."
+      "acceptance": "Affected IB validation outputs are regenerated or marked not impacted with evidence."
     },
     {
       "id": "P3-006",
@@ -361,7 +359,7 @@
     {
       "id": "P4-001",
       "title": "Create and prove a parallel Python 3.12 engine venv",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 31,
       "program": "Platform and Infrastructure",
       "blocked_by": [],
