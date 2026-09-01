@@ -831,11 +831,12 @@
     {
       "id": "P9-003",
       "title": "Update Data Integrity drilldown page for expanded contract",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 79,
       "program": "Dashboard",
       "blocked_by": ["P9-001"],
-      "acceptance": "`/data-integrity` remains backward-compatible and shows the expanded data-integrity state without false green claims."
+      "acceptance": "`/data-integrity` remains backward-compatible and shows the expanded data-integrity state without false green claims.",
+      "evidence": "docs/plans/master-implementation/PASS35_DATA_INTEGRITY_DRILLDOWN_CONTRACT_2026-09-01.md"
     },
     {
       "id": "P9-004",

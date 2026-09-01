@@ -18,15 +18,48 @@ import { fetchEngine } from "@/lib/api";
 
 interface DataSource {
   source: string;
-  last_update: string;
-  latency_sec: number;
+  kind?: string;
+  provider?: string | null;
+  provider_tier?: string | null;
+  last_update?: string;
+  latency_sec?: number;
+  age_seconds?: number;
+  cache_key?: string;
   status: "healthy" | "stale";
 }
 
 interface DataIntegrityResponse {
-  timestamp: string;
+  timestamp?: string;
+  status?: string;
+  stale_after_seconds?: number;
   sources: DataSource[];
   count: number;
+  cache_age?: {
+    status?: string;
+    max_age_seconds?: number | null;
+    stale_after_seconds?: number;
+  };
+  provider_tier?: {
+    status?: string;
+    active?: string | null;
+    primary?: string | null;
+    reason?: string | null;
+  };
+  bar_freshness?: {
+    status?: string;
+    max_lag_seconds?: number | null;
+    stale_symbols?: string[];
+    unknown_symbols?: string[];
+  };
+  source_parity?: {
+    status?: string;
+    max_delta_bps?: number | null;
+    missing_sources?: string[];
+  };
+  trade_enablement?: {
+    status?: string;
+    blocking_reasons?: string[];
+  };
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -40,6 +73,32 @@ function formatLatency(seconds: number): string {
   return `${seconds.toFixed(1)}s`;
 }
 
+function statusLabel(status: string | undefined, fallback = "unknown"): string {
+  return (status?.trim() || fallback).replace(/_/g, " ");
+}
+
+function statusClass(status: string): string {
+  const normalized = status.toLowerCase();
+  if (["ok", "fresh", "known", "matched", "allowed", "healthy"].includes(normalized)) {
+    return "border-green-500/25 bg-green-500/10 text-green-500";
+  }
+  if (["offline", "error"].includes(normalized)) {
+    return "border-destructive/25 bg-destructive/10 text-destructive";
+  }
+  if (["stale", "partial", "fallback", "mismatch", "missing", "blocked", "degraded"].includes(normalized)) {
+    return "border-amber-500/25 bg-amber-500/10 text-amber-500";
+  }
+  return "border-slate-500/25 bg-slate-500/10 text-muted-foreground";
+}
+
+function StatusPill({ status }: { status: string }) {
+  return (
+    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-mono uppercase ${statusClass(status)}`}>
+      {status}
+    </span>
+  );
+}
+
 // ── Page Component ────────────────────────────────────────────────────────────
 
 export default function DataIntegrityPage() {
@@ -48,6 +107,35 @@ export default function DataIntegrityPage() {
     fetcher,
     { refreshInterval: 2000 }
   );
+  const summaryRows = [
+    {
+      label: "Cache Age",
+      status: statusLabel(data?.cache_age?.status),
+      detail: data?.cache_age?.max_age_seconds == null ? "max age unavailable" : `max ${formatLatency(data.cache_age.max_age_seconds)}`,
+    },
+    {
+      label: "Provider Tier",
+      status: statusLabel(data?.provider_tier?.status),
+      detail: data?.provider_tier?.active ?? data?.provider_tier?.reason ?? "provider metadata unavailable",
+    },
+    {
+      label: "Bar Freshness",
+      status: statusLabel(data?.bar_freshness?.status),
+      detail: data?.bar_freshness?.max_lag_seconds == null ? "bar lag unavailable" : `max lag ${formatLatency(data.bar_freshness.max_lag_seconds)}`,
+    },
+    {
+      label: "Source Parity",
+      status: statusLabel(data?.source_parity?.status, "not wired"),
+      detail: data?.source_parity?.max_delta_bps == null ? "comparison unavailable" : `max delta ${data.source_parity.max_delta_bps.toFixed(2)} bps`,
+    },
+    {
+      label: "Trade Enablement",
+      status: statusLabel(data?.trade_enablement?.status),
+      detail: (data?.trade_enablement?.blocking_reasons ?? []).length
+        ? data!.trade_enablement!.blocking_reasons!.slice(0, 2).join(", ")
+        : "no blocking reasons reported",
+    },
+  ];
 
   return (
     <div className="flex flex-col gap-8 p-8 max-w-6xl mx-auto">
@@ -59,6 +147,7 @@ export default function DataIntegrityPage() {
           </p>
         </div>
         <div className="flex items-center gap-4">
+          <StatusPill status={statusLabel(data?.status, data?.count ? "reported" : "unknown")} />
           <Badge variant={data?.count ? "info" : "bear"}>
             {data?.count || 0} active streams
           </Badge>
@@ -90,6 +179,18 @@ export default function DataIntegrityPage() {
         </div>
       )}
 
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+        {summaryRows.map((row) => (
+          <div key={row.label} className="rounded-xl border border-border bg-card p-4">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{row.label}</h2>
+              <StatusPill status={row.status} />
+            </div>
+            <p className="text-xs text-muted-foreground">{row.detail}</p>
+          </div>
+        ))}
+      </div>
+
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {(data?.sources ?? []).map((src) => (
           <div
@@ -117,8 +218,8 @@ export default function DataIntegrityPage() {
                 <span className="text-muted-foreground flex items-center gap-2">
                   <Clock className="w-4 h-4" /> Latency
                 </span>
-                <span className={`font-mono font-medium ${src.latency_sec > 5 ? "text-amber-500" : ""}`}>
-                  {formatLatency(src.latency_sec)}
+                <span className={`font-mono font-medium ${(src.latency_sec ?? src.age_seconds ?? 0) > 5 ? "text-amber-500" : ""}`}>
+                  {formatLatency(src.latency_sec ?? src.age_seconds ?? 0)}
                 </span>
               </div>
               
@@ -127,7 +228,13 @@ export default function DataIntegrityPage() {
                   <Activity className="w-4 h-4" /> Last Update
                 </span>
                 <span className="font-mono text-xs opacity-80">
-                  {new Date(src.last_update).toLocaleTimeString()}
+                  {src.last_update ? new Date(src.last_update).toLocaleTimeString() : "—"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-sm border-t pt-3">
+                <span className="text-muted-foreground">Provider</span>
+                <span className="font-mono text-xs opacity-80">
+                  {src.provider ?? src.provider_tier ?? "unknown"}
                 </span>
               </div>
             </div>
