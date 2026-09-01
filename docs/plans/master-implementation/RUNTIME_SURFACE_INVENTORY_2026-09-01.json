@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-01",
+  "collection_method": {
+    "engine_router_routes": "PowerShell Select-String over engine/routers/*.py route decorators",
+    "dashboard_routes": "PowerShell Get-ChildItem over dashboard/app page.tsx, route.ts, layout.tsx",
+    "worktrees": "git worktree list --porcelain plus per-worktree git status --short counts",
+    "excluded": [
+      "engine/.venv",
+      "dashboard/node_modules",
+      "generated endpoint bodies"
+    ]
+  },
+  "engine": {
+    "router_route_decorator_count": 420,
+    "top_router_files": [
+      {"file": "portfolio_router.py", "route_count": 36},
+      {"file": "analytics_router.py", "route_count": 31},
+      {"file": "safety_router.py", "route_count": 18},
+      {"file": "backtest_router.py", "route_count": 18},
+      {"file": "health_router.py", "route_count": 17},
+      {"file": "pipeline_router.py", "route_count": 14},
+      {"file": "discord_router.py", "route_count": 14},
+      {"file": "strategies_router.py", "route_count": 12},
+      {"file": "paper_validation_router.py", "route_count": 11},
+      {"file": "journal_router.py", "route_count": 10},
+      {"file": "options_router.py", "route_count": 10}
+    ]
+  },
+  "dashboard": {
+    "app_route_file_count": 61,
+    "primary_operator_routes": [
+      "dashboard/app/command-center/page.tsx",
+      "dashboard/app/mission-control/page.tsx",
+      "dashboard/app/trades/page.tsx",
+      "dashboard/app/trades/journal/page.tsx",
+      "dashboard/app/trades/pending-approvals/page.tsx",
+      "dashboard/app/trading-eligibility/page.tsx",
+      "dashboard/app/validation/page.tsx",
+      "dashboard/app/strategy-ledger/page.tsx",
+      "dashboard/app/research-log/page.tsx",
+      "dashboard/app/health/page.tsx",
+      "dashboard/app/data-integrity/page.tsx",
+      "dashboard/app/trust-pane/page.tsx"
+    ],
+    "proxy_routes": [
+      "dashboard/app/api/amo/[...path]/route.ts",
+      "dashboard/app/api/domflow/[...path]/route.ts",
+      "dashboard/app/api/engine/[...path]/route.ts",
+      "dashboard/app/api/fleet/route.ts",
+      "dashboard/app/api/master/[...path]/route.ts"
+    ]
+  },
+  "worktrees": {
+    "total": 28,
+    "clean": 15,
+    "dirty": 13,
+    "detached": 3,
+    "locked": 1,
+    "prunable": 1,
+    "coordination_notes": [
+      "Current worktree is dirty from this loop plus pre-existing untracked artifacts.",
+      "C:/Users/mattm/ThinkorSwim/jarvis-trader-orca-wt is prunable because its gitdir points to a missing path.",
+      "C:/Users/mattm/ThinkorSwim/jarvis-trader/.claude/worktrees/wt-dash-wire-shells-20260818 is locked initializing.",
+      "Several peer worktrees have dirty strategy/cache/dashboard changes and should not be auto-archived from this loop."
+    ]
+  }
+}

@@ -1,0 +1,360 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-09-01",
+  "loop_id": "jarvis-master-plan-drain-20260901",
+  "ranking_method": "Highest ROI = safety/risk reduction + unlocks downstream work + low coordination risk + verifiable in current environment.",
+  "stop_condition": "No unblocked recommended tasks remain; human-gated tasks are explicitly marked blocked.",
+  "pass_size": 10,
+  "tasks": [
+    {
+      "id": "P0-001",
+      "title": "Create master implementation plan package",
+      "status": "done",
+      "roi_rank": 1,
+      "program": "Planning",
+      "evidence": "docs/plans/master-implementation/README.md"
+    },
+    {
+      "id": "P0-002",
+      "title": "Define executive product charter and non-goals",
+      "status": "done",
+      "roi_rank": 2,
+      "program": "Planning",
+      "evidence": "docs/plans/master-implementation/JARVIS_MASTER_IMPLEMENTATION_PLAN_V1.md"
+    },
+    {
+      "id": "P0-003",
+      "title": "Define end-state architecture and ownership boundaries",
+      "status": "done",
+      "roi_rank": 3,
+      "program": "Architecture",
+      "evidence": "docs/plans/master-implementation/JARVIS_MASTER_IMPLEMENTATION_PLAN_V1.md"
+    },
+    {
+      "id": "P0-004",
+      "title": "Define Command Center operator specification",
+      "status": "done",
+      "roi_rank": 4,
+      "program": "Command Center",
+      "evidence": "docs/plans/master-implementation/JARVIS_MASTER_IMPLEMENTATION_PLAN_V1.md"
+    },
+    {
+      "id": "P0-005",
+      "title": "Define data, feature, Judge, risk, OMS, and environment architecture",
+      "status": "done",
+      "roi_rank": 5,
+      "program": "Architecture",
+      "evidence": "docs/plans/master-implementation/JARVIS_MASTER_IMPLEMENTATION_PLAN_V1.md"
+    },
+    {
+      "id": "P0-006",
+      "title": "Define workstream hierarchy",
+      "status": "done",
+      "roi_rank": 6,
+      "program": "Program Management",
+      "evidence": "docs/plans/master-implementation/JARVIS_MASTER_IMPLEMENTATION_PLAN_V1.md"
+    },
+    {
+      "id": "P0-007",
+      "title": "Define dependency graph",
+      "status": "done",
+      "roi_rank": 7,
+      "program": "Program Management",
+      "evidence": "docs/plans/master-implementation/JARVIS_MASTER_IMPLEMENTATION_PLAN_V1.md"
+    },
+    {
+      "id": "P0-008",
+      "title": "Define milestone gates",
+      "status": "done",
+      "roi_rank": 8,
+      "program": "Validation",
+      "evidence": "docs/plans/master-implementation/JARVIS_MASTER_IMPLEMENTATION_PLAN_V1.md"
+    },
+    {
+      "id": "P0-009",
+      "title": "Disposition current open PRs, issues, and spikes",
+      "status": "done",
+      "roi_rank": 9,
+      "program": "Program Management",
+      "evidence": "docs/plans/master-implementation/PR_ISSUE_SPIKE_DISPOSITION_2026-09-01.md"
+    },
+    {
+      "id": "P0-010",
+      "title": "Seed machine-readable loop backlog",
+      "status": "done",
+      "roi_rank": 10,
+      "program": "Loop Engineering",
+      "evidence": "docs/plans/master-implementation/IMPLEMENTATION_BACKLOG.json"
+    },
+    {
+      "id": "P1-001",
+      "title": "Generate compact repo map for engine routers, dashboard routes, tests, scripts, and data stores",
+      "status": "done",
+      "roi_rank": 1,
+      "program": "Platform and Infrastructure",
+      "blocked_by": [],
+      "acceptance": "A generated markdown inventory exists and is referenced from the master plan package."
+    },
+    {
+      "id": "P1-002",
+      "title": "Verify live engine health using 127.0.0.1:8010 and record evidence without restarting",
+      "status": "done",
+      "roi_rank": 2,
+      "program": "Observability",
+      "blocked_by": [],
+      "acceptance": "Health response or connection failure is recorded with timestamp; no runtime mutation."
+    },
+    {
+      "id": "P1-003",
+      "title": "Verify dashboard health using 127.0.0.1:3010 and record evidence without restarting",
+      "status": "done",
+      "roi_rank": 3,
+      "program": "Command Center",
+      "blocked_by": [],
+      "acceptance": "HTTP status and page reachability are recorded with timestamp; no dev/build mutation."
+    },
+    {
+      "id": "P1-004",
+      "title": "Inspect PR #755 CI failures and decide if failures are PR-caused or pre-existing",
+      "status": "done",
+      "roi_rank": 4,
+      "program": "Feature Engineering",
+      "blocked_by": [],
+      "acceptance": "A local/CI failure classification is recorded; no merge claim without tests."
+    },
+    {
+      "id": "P1-005",
+      "title": "Inspect PR #749 CI failures and classify feature-registry hardening blockers",
+      "status": "done",
+      "roi_rank": 5,
+      "program": "Feature Engineering",
+      "blocked_by": [],
+      "acceptance": "A blocker list maps each failure to code, CI, dependency, or unrelated dashboard gate."
+    },
+    {
+      "id": "P1-006",
+      "title": "Write acceptance criteria for Initial Balance PIT leak issue #751",
+      "status": "done",
+      "roi_rank": 6,
+      "program": "Data Engineering",
+      "blocked_by": [],
+      "acceptance": "Issue #751 has repo-local acceptance criteria and test plan."
+    },
+    {
+      "id": "P1-007",
+      "title": "Write acceptance criteria for VWAP RTH semantics issue #752",
+      "status": "done",
+      "roi_rank": 7,
+      "program": "Data Engineering",
+      "blocked_by": [],
+      "acceptance": "Issue #752 has repo-local acceptance criteria and test plan."
+    },
+    {
+      "id": "P1-008",
+      "title": "Map dashboard routes to Command Center surfaces before UI implementation",
+      "status": "done",
+      "roi_rank": 8,
+      "program": "Command Center",
+      "blocked_by": [],
+      "acceptance": "Route-to-surface matrix exists; duplicate/dead surfaces are labeled."
+    },
+    {
+      "id": "P1-009",
+      "title": "Create stale-doc supersession plan for CURRENT_STATE and Unified Canon",
+      "status": "done",
+      "roi_rank": 9,
+      "program": "Documentation",
+      "blocked_by": [],
+      "acceptance": "Specific doc edits are proposed; no broad rewrite without line-level targets."
+    },
+    {
+      "id": "P1-010",
+      "title": "Create branch/worktree convergence report without archiving or deleting",
+      "status": "done",
+      "roi_rank": 10,
+      "program": "DevOps and CI/CD",
+      "blocked_by": [],
+      "acceptance": "Report lists worktrees, branch state, pushed state, and safe next action."
+    },
+    {
+      "id": "P2-001",
+      "title": "Fix test_latency_fixes_20260818.py syntax corruption",
+      "status": "done",
+      "roi_rank": 11,
+      "program": "Data Engineering",
+      "blocked_by": [],
+      "acceptance": "The module collects and focused tests run."
+    },
+    {
+      "id": "P2-002",
+      "title": "Fix low-risk ruff F841 blockers from PR #755 logs",
+      "status": "done",
+      "roi_rank": 12,
+      "program": "CI",
+      "blocked_by": [],
+      "acceptance": "Focused ruff check passes on affected files."
+    },
+    {
+      "id": "P2-003",
+      "title": "Fix trades journal missing-column selection exposed by focused test",
+      "status": "done",
+      "roi_rank": 13,
+      "program": "Engine API",
+      "blocked_by": [],
+      "acceptance": "trades_router no longer selects paper_trades columns that do not exist; focused test passes."
+    },
+    {
+      "id": "P2-004",
+      "title": "Run focused pytest for latency fixes",
+      "status": "done",
+      "roi_rank": 14,
+      "program": "CI",
+      "blocked_by": [],
+      "acceptance": "tests/test_latency_fixes_20260818.py passes."
+    },
+    {
+      "id": "P2-005",
+      "title": "Patch Initial Balance PIT leak after acceptance criteria are written",
+      "status": "done",
+      "roi_rank": 15,
+      "program": "Data Engineering",
+      "blocked_by": [],
+      "acceptance": "Tests prove premarket rows cannot see completed IB60 levels."
+    },
+    {
+      "id": "P2-006",
+      "title": "Patch VWAP RTH semantics after acceptance criteria are written",
+      "status": "done",
+      "roi_rank": 16,
+      "program": "Data Engineering",
+      "blocked_by": [],
+      "acceptance": "Tests prove RTH VWAP strategy cannot consume premarket Globex bars unless explicitly configured."
+    },
+    {
+      "id": "P2-007",
+      "title": "Investigate engine venv Python 3.13 drift from project-required Python 3.12",
+      "status": "done",
+      "roi_rank": 17,
+      "program": "Platform and Infrastructure",
+      "blocked_by": [],
+      "acceptance": "A no-mutation diagnosis identifies why engine/.venv is 3.13.3 and proposes a safe 3.12 repair path."
+    },
+    {
+      "id": "P2-008",
+      "title": "Fetch or locally inspect PR #749 research-platform failure context",
+      "status": "done",
+      "roi_rank": 18,
+      "program": "Feature Engineering",
+      "blocked_by": [],
+      "acceptance": "PR #749 failures are reproduced or classified from branch-local evidence."
+    },
+    {
+      "id": "P2-009",
+      "title": "Generate machine-readable API and route inventory",
+      "status": "done",
+      "roi_rank": 19,
+      "program": "Platform and Infrastructure",
+      "blocked_by": [],
+      "acceptance": "JSON inventory lists engine routers/endpoints and dashboard routes."
+    },
+    {
+      "id": "P2-010",
+      "title": "Generate worktree dirty-state report without cleanup",
+      "status": "done",
+      "roi_rank": 20,
+      "program": "DevOps and CI/CD",
+      "blocked_by": [],
+      "acceptance": "Every worktree is classified as clean, dirty, detached, gone-upstream, prunable, or locked without removing anything."
+    },
+    {
+      "id": "P3-001",
+      "title": "Run consolidated focused verification for pass 3 and pass 4 touched files",
+      "status": "done",
+      "roi_rank": 21,
+      "program": "CI",
+      "blocked_by": [],
+      "acceptance": "Ruff, pytest, JSON parsing, and diff whitespace checks pass on the bounded touched set."
+    },
+    {
+      "id": "P3-002",
+      "title": "Create path-bounded local commits for plan package and implementation fixes",
+      "status": "ready",
+      "roi_rank": 22,
+      "program": "Git Hygiene",
+      "blocked_by": ["P3-001"],
+      "acceptance": "Commits include only files from this loop and preserve unrelated untracked/dirty work."
+    },
+    {
+      "id": "P3-003",
+      "title": "Prepare reversible Python 3.12 venv repair plan",
+      "status": "ready",
+      "roi_rank": 23,
+      "program": "Platform and Infrastructure",
+      "blocked_by": [],
+      "acceptance": "Plan archives the current venv before replacement and identifies the exact Python 3.12 executable."
+    },
+    {
+      "id": "P3-004",
+      "title": "Rerun affected MES VWAP Gate-v2 certification under patched RTH semantics",
+      "status": "ready",
+      "roi_rank": 24,
+      "program": "Validation",
+      "blocked_by": ["P3-003"],
+      "acceptance": "New verdict artifact is compared against prior provenance and verdict flips are surfaced."
+    },
+    {
+      "id": "P3-005",
+      "title": "Rerun affected IB validation under patched point-in-time semantics",
+      "status": "ready",
+      "roi_rank": 25,
+      "program": "Validation",
+      "blocked_by": ["P3-003"],
+      "acceptance": "Affected IB validation outputs are regenerated or marked not impacted with evidence."
+    },
+    {
+      "id": "P3-006",
+      "title": "Build exact PR #749 reproduction worktree without mutating current checkout",
+      "status": "ready",
+      "roi_rank": 26,
+      "program": "Feature Engineering",
+      "blocked_by": [],
+      "acceptance": "A separate worktree reproduces or disproves PR #749 failures without touching this branch."
+    },
+    {
+      "id": "P3-007",
+      "title": "Map Command Center pages to canonical operator workflows",
+      "status": "ready",
+      "roi_rank": 27,
+      "program": "Command Center",
+      "blocked_by": [],
+      "acceptance": "Each primary operator route is classified as keep, merge, retire-to-archive, or reference spike."
+    },
+    {
+      "id": "P3-008",
+      "title": "Generate endpoint-to-dashboard dependency matrix",
+      "status": "ready",
+      "roi_rank": 28,
+      "program": "Platform and Infrastructure",
+      "blocked_by": [],
+      "acceptance": "Matrix maps major dashboard pages to engine endpoints or marks unknown dependency gaps."
+    },
+    {
+      "id": "P3-009",
+      "title": "Create CI failure taxonomy for the master plan loop",
+      "status": "ready",
+      "roi_rank": 29,
+      "program": "CI",
+      "blocked_by": [],
+      "acceptance": "Failures are grouped into code, environment, data artifact, dashboard runtime, and external-service classes."
+    },
+    {
+      "id": "P3-010",
+      "title": "Issue superseding doc note for legacy state documents",
+      "status": "ready",
+      "roi_rank": 30,
+      "program": "Documentation",
+      "blocked_by": [],
+      "acceptance": "Legacy docs point readers to the master implementation package without rewriting historical content."
+    }
+  ]
+}
