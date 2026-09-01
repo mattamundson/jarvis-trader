@@ -4,7 +4,9 @@ import {
   installEngineMock,
   collectConsoleErrors,
   ERROR_BOUNDARY_TEXT,
+  type MockMode,
 } from "./_engineMock";
+import { installCommandCenterFixture } from "./command-center-fixtures";
 
 // Table-driven smoke across every route in the manifest.
 //
@@ -28,6 +30,22 @@ import {
 /** Concrete URL to visit: dynamic routes carry a sample path. */
 function visitPath(r: RouteSpec): string {
   return r.samplePath ?? r.path;
+}
+
+function resolvesToCommandCenter(r: RouteSpec): boolean {
+  return (r.kind === "redirect" ? r.target : r.path) === "/command-center";
+}
+
+async function installRouteMock(
+  page: import("@playwright/test").Page,
+  r: RouteSpec,
+  mode: MockMode
+): Promise<void> {
+  if (mode !== "slow" && resolvesToCommandCenter(r)) {
+    await installCommandCenterFixture(page, mode === "offline" ? "offline" : "degraded");
+    return;
+  }
+  await installEngineMock(page, mode);
 }
 
 /**
@@ -97,7 +115,7 @@ for (const r of ROUTES) {
   // ---- every route, degraded engine (up, but no data yet) ------------------
   test(`${r.path} [degraded] renders without crashing on empty engine data`, async ({ page }) => {
     const consoleErrors = collectConsoleErrors(page);
-    await installEngineMock(page, "degraded");
+    await installRouteMock(page, r, "degraded");
 
     // gotoRoute enforces the redirect target: a redirect that never lands, or
     // lands somewhere else, fails here. A wrong-target redirect otherwise
@@ -113,7 +131,7 @@ for (const r of ROUTES) {
       page,
     }) => {
       const consoleErrors = collectConsoleErrors(page);
-      await installEngineMock(page, "offline");
+      await installRouteMock(page, r, "offline");
 
       await gotoRoute(page, r);
 
@@ -139,7 +157,7 @@ for (const r of ROUTES) {
       page,
     }) => {
       const consoleErrors = collectConsoleErrors(page);
-      await installEngineMock(page, "slow");
+      await installRouteMock(page, r, "slow");
 
       await gotoRoute(page, r);
 
@@ -154,7 +172,7 @@ for (const r of ROUTES) {
     test(`${r.path} [exploratory-banner] carries its exploratory provenance banner`, async ({
       page,
     }) => {
-      await installEngineMock(page, "degraded");
+      await installRouteMock(page, r, "degraded");
       await gotoRoute(page, r);
 
       // A research surface without this banner reads as a production signal.

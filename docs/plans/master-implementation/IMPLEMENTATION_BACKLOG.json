@@ -741,11 +741,12 @@
     {
       "id": "P8-004",
       "title": "Promote Command Center fixture contracts into shared route smoke coverage",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 70,
       "program": "Command Center",
       "blocked_by": [],
-      "acceptance": "Homepage/root redirect and route-smoke tests reuse the Command Center fixture contracts instead of duplicating stale mock shapes."
+      "acceptance": "Homepage/root redirect and route-smoke tests reuse the Command Center fixture contracts instead of duplicating stale mock shapes.",
+      "evidence": "docs/plans/master-implementation/PASS25_COMMAND_CENTER_ROUTE_FIXTURE_CONTRACTS_2026-09-01.md"
     },
     {
       "id": "P8-005",
