@@ -512,8 +512,8 @@ export function CanonicalShellMap({ regions }: { regions: ShellRegion[] }) {
 const DRILLDOWN_LINKS = [
   {
     label: "Operations",
-    href: "/mission-control",
-    status: "merge target",
+    href: "/command-center?view=operations",
+    status: "operations",
     detail: "Safety, reconciliation, engine data, and environment fleet panels.",
     Icon: CheckCircle,
   },

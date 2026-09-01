@@ -39,7 +39,7 @@ test("command center is the canonical entry and exposes consolidation drilldowns
 
   await expect(page.getByRole("heading", { name: /JARVIS TRADER.*COMMAND CENTER/i })).toBeVisible();
   const drilldowns = page.getByTestId("command-center-drilldowns");
-  await expect(drilldowns.getByRole("link", { name: /Operations/i })).toHaveAttribute("href", "/mission-control");
+  await expect(drilldowns.getByRole("link", { name: /Operations/i })).toHaveAttribute("href", "/command-center?view=operations");
   await expect(drilldowns.getByRole("link", { name: /Daily Brief/i })).toHaveAttribute("href", "/today");
   await expect(drilldowns.getByRole("link", { name: /Trust Audit/i })).toHaveAttribute("href", "/trust-pane");
 });
@@ -54,7 +54,7 @@ test("sidebar keeps command center primary and demotes related routes to drilldo
   await expect(sidebar.getByText("Command", { exact: true })).toBeVisible();
   await expect(sidebar.getByRole("link", { name: /Command Center/i })).toHaveAttribute("href", "/command-center");
   await expect(sidebar.getByRole("link", { name: /Daily Brief/i })).toHaveAttribute("href", "/today");
-  await expect(sidebar.getByRole("link", { name: /Operations/i })).toHaveAttribute("href", "/mission-control");
+  await expect(sidebar.getByRole("link", { name: /Operations/i })).toHaveAttribute("href", "/command-center?view=operations");
   await expect(sidebar.getByRole("link", { name: /Trust Audit/i })).toHaveAttribute("href", "/trust-pane");
   await expect(sidebar.getByRole("link", { name: /^Dashboard$/i })).toHaveCount(0);
   await expect(sidebar.getByRole("link", { name: /Today at a Glance/i })).toHaveCount(0);

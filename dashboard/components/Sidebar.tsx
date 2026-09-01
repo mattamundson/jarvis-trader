@@ -86,7 +86,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Command Center", href: "/command-center", icon: <Cpu className="h-3.5 w-3.5" /> },
       { label: "Daily Brief", href: "/today", icon: <SunMedium className="h-3.5 w-3.5" />, secondary: true },
-      { label: "Operations", href: "/mission-control", icon: <Cpu className="h-3.5 w-3.5" />, secondary: true },
+      { label: "Operations", href: "/command-center?view=operations", icon: <Cpu className="h-3.5 w-3.5" />, secondary: true },
       { label: "Trust Audit", href: "/trust-pane", icon: <Gauge className="h-3.5 w-3.5" />, secondary: true },
     ],
   },

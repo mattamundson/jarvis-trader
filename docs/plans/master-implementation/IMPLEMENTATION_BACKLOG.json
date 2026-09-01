@@ -1021,11 +1021,12 @@
       {
         "id": "P11-002",
         "title": "Retarget Operations drilldowns to Command Center operations view",
-        "status": "ready",
+        "status": "done",
         "roi_rank": 98,
         "program": "Command Center",
         "blocked_by": [],
-        "acceptance": "Command Center and sidebar Operations links point to `/command-center?view=operations` while `/mission-control` remains directly reachable until parity completes."
+        "acceptance": "Command Center and sidebar Operations links point to `/command-center?view=operations` while `/mission-control` remains directly reachable until parity completes.",
+        "evidence": "docs/plans/master-implementation/PASS56_OPERATIONS_DRILLDOWN_RETARGET_2026-09-01.md"
       },
       {
         "id": "P11-003",
