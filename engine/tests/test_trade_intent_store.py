@@ -84,7 +84,7 @@ def test_expired_intent_fails_closed_and_persists_expired_status(tmp_path) -> No
     assert store.get(created["intent_id"])["status"] == "EXPIRED"
 
 
-def test_submitted_intent_is_idempotently_returned_not_resubmittable(tmp_path) -> None:
+def test_submission_requires_atomic_claim_and_then_is_idempotent(tmp_path) -> None:
     store = TradeIntentStore(tmp_path / "intents.db")
     created = store.create_preview(
         idempotency_key="intent-key-0004",
@@ -92,18 +92,45 @@ def test_submitted_intent_is_idempotently_returned_not_resubmittable(tmp_path) -
         preview=preview(),
         now=NOW,
     )
+    claimed = store.claim_for_submission(
+        created["intent_id"], now=NOW + timedelta(seconds=1)
+    )
+    assert claimed["status"] == "SUBMITTING"
+
+    with pytest.raises(TradeIntentStoreError, match="not claimable"):
+        store.claim_for_submission(
+            created["intent_id"], now=NOW + timedelta(seconds=1, milliseconds=1)
+        )
+
     submitted = store.mark_submitted(
         created["intent_id"],
         broker_result={"approved": True, "order_id": "IB-123"},
         order_id="IB-123",
         now=NOW + timedelta(seconds=2),
     )
-    again = store.require_submittable(
+    again = store.claim_for_submission(
         created["intent_id"], now=NOW + timedelta(seconds=3)
     )
     assert submitted["status"] == "SUBMITTED"
     assert again["status"] == "SUBMITTED"
     assert again["order_id"] == "IB-123"
+
+
+def test_mark_submitted_before_claim_is_rejected(tmp_path) -> None:
+    store = TradeIntentStore(tmp_path / "intents.db")
+    created = store.create_preview(
+        idempotency_key="intent-key-0006",
+        request_payload=payload(),
+        preview=preview(),
+        now=NOW,
+    )
+    with pytest.raises(TradeIntentStoreError, match="cannot submit intent from status PREVIEWED"):
+        store.mark_submitted(
+            created["intent_id"],
+            broker_result={"approved": True},
+            order_id="IB-456",
+            now=NOW + timedelta(seconds=1),
+        )
 
 
 def test_blocked_intent_cannot_return_to_previewed_state(tmp_path) -> None:
