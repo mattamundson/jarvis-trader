@@ -801,11 +801,12 @@
     {
       "id": "P8-010",
       "title": "Plan duplicate route consolidation after Command Center canonicalization",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 76,
       "program": "Command Center",
       "blocked_by": ["P8-006", "P8-008", "P8-009"],
-      "acceptance": "`/mission-control`, `/today`, and `/trust-pane` each have a concrete keep/merge/demote/redirect action with risk notes."
+      "acceptance": "`/mission-control`, `/today`, and `/trust-pane` each have a concrete keep/merge/demote/redirect action with risk notes.",
+      "evidence": "docs/plans/master-implementation/PASS31_ROUTE_CONSOLIDATION_PLAN_2026-09-01.md"
     }
   ]
 }
