@@ -541,29 +541,32 @@
     {
       "id": "P6-004",
       "title": "Commit PR #749 ruff-only fixes inside the isolated PR worktree",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 50,
       "program": "Feature Engineering",
       "blocked_by": [],
-      "acceptance": "The PR #749 worktree has a local commit containing only the inspected ruff-safe fixes; no push is performed."
+      "acceptance": "The PR #749 worktree has a local commit containing only the inspected ruff-safe fixes; no push is performed.",
+      "evidence": "docs/plans/master-implementation/PASS11_PR749_READINESS_2026-09-01.md"
     },
     {
       "id": "P6-005",
       "title": "Run focused PR #749 verification after isolated commit",
-      "status": "blocked",
+      "status": "done",
       "roi_rank": 51,
       "program": "CI",
       "blocked_by": ["P6-004"],
-      "acceptance": "Ruff and the smallest relevant pytest slice pass or remaining blockers are classified."
+      "acceptance": "Ruff and the smallest relevant pytest slice pass or remaining blockers are classified.",
+      "evidence": "docs/plans/master-implementation/PASS11_PR749_READINESS_2026-09-01.md"
     },
     {
       "id": "P6-006",
       "title": "Write PR #749 readiness report",
-      "status": "blocked",
+      "status": "done",
       "roi_rank": 52,
       "program": "Feature Engineering",
       "blocked_by": ["P6-005"],
-      "acceptance": "Report states whether PR #749 is mergeable, needs split, or should be replaced by a fresh implementation."
+      "acceptance": "Report states whether PR #749 is mergeable, needs split, or should be replaced by a fresh implementation.",
+      "evidence": "docs/plans/master-implementation/PASS11_PR749_READINESS_2026-09-01.md"
     },
     {
       "id": "P6-007",
