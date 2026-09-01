@@ -861,16 +861,17 @@
     {
       "id": "P9-006",
       "title": "Add Command Center drilldown navigation for route consolidation",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 82,
       "program": "Command Center",
       "blocked_by": ["P8-010"],
-      "acceptance": "`/command-center` links explicitly to Operations, Daily Brief, and Trust Audit drilldowns."
+      "acceptance": "`/command-center` links explicitly to Operations, Daily Brief, and Trust Audit drilldowns.",
+      "evidence": "docs/plans/master-implementation/PASS38_COMMAND_CENTER_DRILLDOWN_NAV_2026-09-01.md"
     },
     {
       "id": "P9-007",
       "title": "Extract mission-control safety/status summary into Command Center",
-      "status": "blocked",
+      "status": "ready",
       "roi_rank": 83,
       "program": "Command Center",
       "blocked_by": ["P9-006"],
@@ -879,7 +880,7 @@
     {
       "id": "P9-008",
       "title": "Extract Today daily-brief summary into Command Center",
-      "status": "blocked",
+      "status": "ready",
       "roi_rank": 84,
       "program": "Command Center",
       "blocked_by": ["P9-006"],
@@ -888,7 +889,7 @@
     {
       "id": "P9-009",
       "title": "Extract Trust Audit summary into Command Center",
-      "status": "blocked",
+      "status": "ready",
       "roi_rank": 85,
       "program": "Command Center",
       "blocked_by": ["P9-006"],

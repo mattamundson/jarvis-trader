@@ -73,6 +73,7 @@ import { SessionBriefPanel } from "@/components/SessionBriefPanel";
 import { ActionableBoardWidget } from "@/components/ActionableBoardWidget";
 import {
   CanonicalShellMap,
+  CommandCenterDrilldownNav,
   CommandCenterOperationsGrid,
   CommandCenterStatusStrip,
   CommandCenterTradeQueuePanel,
@@ -707,6 +708,8 @@ export default function CommandCenterPage() {
         tradesErr={tradesErr}
         honestSet={honestSet}
       />
+
+      <CommandCenterDrilldownNav />
 
       <CommandCenterOperationsGrid
         liveInstruments={liveInstruments}

@@ -54,11 +54,16 @@ for (const viewport of VIEWPORTS) {
     const heading = page.getByRole("heading", { name: /JARVIS TRADER.*COMMAND CENTER/i });
     const statusStrip = page.getByTestId("command-center-status-strip");
     const shell = page.getByTestId("canonical-shell");
+    const drilldowns = page.getByTestId("command-center-drilldowns");
     const queue = page.getByTestId("command-center-trade-queue-panel");
 
     await expect(heading).toBeVisible();
     await expect(statusStrip).toBeVisible();
     await expect(shell).toBeVisible();
+    await expect(drilldowns).toBeVisible();
+    await expect(drilldowns.getByRole("link", { name: /Operations/i })).toHaveAttribute("href", "/mission-control");
+    await expect(drilldowns.getByRole("link", { name: /Daily Brief/i })).toHaveAttribute("href", "/today");
+    await expect(drilldowns.getByRole("link", { name: /Trust Audit/i })).toHaveAttribute("href", "/trust-pane");
     await expect(queue).toBeVisible();
     await expect(page.getByTestId("command-center-operations-grid")).toContainText("next gate: repair thesis");
     await expect(page.getByTestId("command-center-operations-grid")).toContainText("freshness: reported");

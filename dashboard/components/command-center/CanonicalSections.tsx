@@ -506,3 +506,63 @@ export function CanonicalShellMap({ regions }: { regions: ShellRegion[] }) {
     </section>
   );
 }
+
+const DRILLDOWN_LINKS = [
+  {
+    label: "Operations",
+    href: "/mission-control",
+    status: "merge target",
+    detail: "Safety, reconciliation, engine data, and environment fleet panels.",
+    Icon: CheckCircle,
+  },
+  {
+    label: "Daily Brief",
+    href: "/today",
+    status: "drilldown",
+    detail: "Mode banner, session facts, market context, and live chart detail.",
+    Icon: Zap,
+  },
+  {
+    label: "Trust Audit",
+    href: "/trust-pane",
+    status: "audit",
+    detail: "Provenance, edge ledger, bar quality, and post-trade evidence.",
+    Icon: Database,
+  },
+];
+
+export function CommandCenterDrilldownNav() {
+  return (
+    <section
+      className="mb-4"
+      aria-label="Command Center drilldowns"
+      data-testid="command-center-drilldowns"
+    >
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+        {DRILLDOWN_LINKS.map(({ label, href, status, detail, Icon }) => (
+          <a
+            key={href}
+            href={href}
+            className="group rounded-md border border-slate-800 bg-slate-950/40 p-3 transition-colors hover:border-cyan-700/70 hover:bg-slate-900/70"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <Icon className="h-3.5 w-3.5 shrink-0 text-cyan-400" aria-hidden="true" />
+                <span className="truncate text-xs font-mono font-bold uppercase tracking-wider text-white">
+                  {label}
+                </span>
+              </div>
+              <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-600 transition-colors group-hover:text-cyan-400" aria-hidden="true" />
+            </div>
+            <div className="mt-2 text-[10px] font-mono uppercase tracking-wider text-cyan-400">
+              {status}
+            </div>
+            <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-slate-500">
+              {detail}
+            </p>
+          </a>
+        ))}
+      </div>
+    </section>
+  );
+}
