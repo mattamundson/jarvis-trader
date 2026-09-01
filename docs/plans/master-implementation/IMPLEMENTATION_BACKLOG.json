@@ -821,11 +821,12 @@
     {
       "id": "P9-002",
       "title": "Wire Command Center Data Integrity panel to backend contract",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 78,
       "program": "Command Center",
       "blocked_by": ["P9-001"],
-      "acceptance": "Command Center renders cache/provider/bar/parity states from backend fields and keeps unknown/not-wired fallbacks for older responses."
+      "acceptance": "Command Center renders cache/provider/bar/parity states from backend fields and keeps unknown/not-wired fallbacks for older responses.",
+      "evidence": "docs/plans/master-implementation/PASS34_COMMAND_CENTER_DATA_INTEGRITY_CONTRACT_WIRING_2026-09-01.md"
     },
     {
       "id": "P9-003",

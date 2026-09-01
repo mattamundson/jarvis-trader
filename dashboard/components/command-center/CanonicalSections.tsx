@@ -262,6 +262,18 @@ function MiniStateBadge({ label, tone }: { label: string; tone: StatusTone }) {
   );
 }
 
+function dataIntegrityTone(status: string): StatusTone {
+  const normalized = status.toLowerCase();
+  if (["fresh", "known", "matched", "allowed", "ok"].includes(normalized)) return "ok";
+  if (["stale", "partial", "fallback", "mismatch", "missing", "blocked", "degraded"].includes(normalized)) return "warn";
+  if (["offline", "error"].includes(normalized)) return "bad";
+  return "unknown";
+}
+
+function dataIntegrityState(status: string | undefined, fallback: string) {
+  return (status?.trim() || fallback).replace(/_/g, " ");
+}
+
 export function CommandCenterOperationsGrid({
   liveInstruments,
   paperStatus,
@@ -301,27 +313,30 @@ export function CommandCenterOperationsGrid({
 
   const ledgerRows = Array.isArray(ledger?.entries) ? ledger.entries.slice(0, 4) : [];
   const integritySources = Array.isArray(integrity?.sources) ? integrity.sources : [];
-  const staleSourceCount = integritySources.filter((src) => src.status === "stale").length;
+  const cacheAgeState = dataIntegrityState(integrity?.cache_age?.status, "unknown");
+  const providerState = dataIntegrityState(integrity?.provider_tier?.status, "unknown");
+  const barFreshnessState = dataIntegrityState(integrity?.bar_freshness?.status, "unknown");
+  const sourceParityState = dataIntegrityState(integrity?.source_parity?.status, "not wired");
   const dataRows = [
     {
       label: "CACHE AGE",
-      state: integrityReady ? "reported" : "unknown",
-      tone: integrityReady ? "ok" as const : "unknown" as const,
+      state: integrityReady ? cacheAgeState : "unknown",
+      tone: integrityReady ? dataIntegrityTone(cacheAgeState) : "unknown" as const,
     },
     {
       label: "PROVIDER",
-      state: integrityReady ? `${integrity?.count ?? integritySources.length} streams` : "unknown",
-      tone: integrityReady ? "ok" as const : "unknown" as const,
+      state: integrityReady ? providerState : "unknown",
+      tone: integrityReady ? dataIntegrityTone(providerState) : "unknown" as const,
     },
     {
       label: "BAR FRESHNESS",
-      state: staleSourceCount > 0 ? `${staleSourceCount} stale` : integrityReady ? "current" : "unknown",
-      tone: staleSourceCount > 0 ? "warn" as const : integrityReady ? "ok" as const : "unknown" as const,
+      state: integrityReady ? barFreshnessState : "unknown",
+      tone: integrityReady ? dataIntegrityTone(barFreshnessState) : "unknown" as const,
     },
     {
       label: "SOURCE PARITY",
-      state: "not wired",
-      tone: "unknown" as const,
+      state: sourceParityState,
+      tone: integrityReady ? dataIntegrityTone(sourceParityState) : "unknown" as const,
     },
   ];
   const researchRows = [

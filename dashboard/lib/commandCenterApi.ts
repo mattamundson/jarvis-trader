@@ -112,11 +112,57 @@ export interface CommandCenterTrade {
 export interface CommandCenterDataIntegritySource {
   source?: string;
   status?: string;
+  kind?: string;
+  provider?: string | null;
+  provider_tier?: string | null;
+  last_update?: string;
+  latency_sec?: number;
+  age_seconds?: number;
+  cache_key?: string;
 }
 
 export interface CommandCenterDataIntegrityResponse {
+  timestamp?: string;
+  status?: string;
+  stale_after_seconds?: number;
   sources?: CommandCenterDataIntegritySource[];
   count?: number;
+  cache_age?: {
+    status?: string;
+    max_age_seconds?: number | null;
+    stale_after_seconds?: number;
+    by_source?: Array<{ source?: string; age_seconds?: number; status?: string }>;
+  };
+  provider_tier?: {
+    status?: string;
+    active?: string | null;
+    primary?: string | null;
+    fallbacks?: string[];
+    reason?: string | null;
+  };
+  bar_freshness?: {
+    status?: string;
+    stale_after_seconds?: number;
+    max_lag_seconds?: number | null;
+    symbols?: string[];
+    timeframes?: string[];
+    stale_symbols?: string[];
+    unknown_symbols?: string[];
+  };
+  source_parity?: {
+    status?: string;
+    window_seconds?: number | null;
+    checked_symbols?: string[];
+    reference_source?: string | null;
+    compared_sources?: string[];
+    max_delta_bps?: number | null;
+    mismatches?: unknown[];
+    missing_sources?: string[];
+  };
+  trade_enablement?: {
+    status?: string;
+    blocking_reasons?: string[];
+  };
 }
 
 export function fetchCommandCenterBars(symbol: string): Promise<OHLCVBar[]> {
