@@ -1051,19 +1051,20 @@
       {
         "id": "P11-005",
         "title": "Mount validation and engine diagnostics in operations view",
-        "status": "ready",
+        "status": "done",
         "roi_rank": 101,
         "program": "Command Center",
         "blocked_by": [],
-        "acceptance": "Operations view renders `ValidationGatesPanel` and `EngineDataPanel` with existing unreachable states."
+        "acceptance": "Operations view renders `ValidationGatesPanel` and `EngineDataPanel` with existing unreachable states.",
+        "evidence": "docs/plans/master-implementation/PASS59_OPERATIONS_VALIDATION_ENGINE_PANELS_2026-09-01.md"
       },
       {
         "id": "P11-006",
         "title": "Mount local fleet state in operations view",
-        "status": "blocked",
+        "status": "ready",
         "roi_rank": 102,
         "program": "Command Center",
-        "blocked_by": ["P11-005"],
+        "blocked_by": [],
         "acceptance": "Operations view renders `EnvironmentFleetPanel` and preserves `/api/fleet` empty and unreachable handling."
       },
       {

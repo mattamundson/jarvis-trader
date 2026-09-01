@@ -76,6 +76,8 @@ test("command center operations query renders a real operations view state", asy
   await expect(operationsView.getByRole("heading", { name: /Trading Status Reconciliation/i })).toBeVisible();
   await expect(operationsView.getByRole("heading", { name: /Positions & Paper Performance/i })).toBeVisible();
   await expect(operationsView.getByRole("heading", { name: /Signals & Pipeline/i })).toBeVisible();
+  await expect(operationsView.getByRole("heading", { name: /Validation & Gates/i })).toBeVisible();
+  await expect(operationsView.getByRole("heading", { name: /Engine & Data/i })).toBeVisible();
 });
 
 for (const routeSpec of DRILLDOWNS) {
