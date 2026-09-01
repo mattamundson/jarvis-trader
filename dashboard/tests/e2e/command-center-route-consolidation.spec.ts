@@ -3,7 +3,6 @@ import { installCommandCenterFixture } from "./command-center-fixtures";
 import { installEngineMock, ERROR_BOUNDARY_TEXT } from "./_engineMock";
 
 const DRILLDOWNS = [
-  { path: "/mission-control", name: "MISSION CONTROL" },
   { path: "/today", name: "Today at a Glance" },
   { path: "/trust-pane", name: "Trust Pane" },
 ] as const;
@@ -110,6 +109,17 @@ test("command center operations view preserves migrated degraded states", async 
   await expect(operationsView).toContainText(/UNREACHABLE/i);
   await expect(operationsView).not.toContainText(/failed to render/i);
   await expect(page.locator("body")).not.toHaveText(ERROR_BOUNDARY_TEXT);
+});
+
+test("mission-control redirects to the Command Center operations view", async ({ page }) => {
+  await installEngineMock(page, "offline");
+  await installOfflineExternalMocks(page);
+
+  await page.goto("/mission-control", { waitUntil: "domcontentloaded" });
+
+  await expect(page).toHaveURL(/\/command-center\?view=operations$/);
+  await expect(page.getByTestId("command-center-operations-view")).toBeVisible();
+  await expect(page.getByTestId("command-center-operations-view")).not.toContainText(/failed to render/i);
 });
 
 for (const routeSpec of DRILLDOWNS) {

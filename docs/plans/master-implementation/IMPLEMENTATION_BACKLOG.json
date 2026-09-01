@@ -1081,28 +1081,30 @@
       {
         "id": "P11-008",
         "title": "Redirect mission-control to Command Center operations view",
-        "status": "ready",
+        "status": "done",
         "roi_rank": 104,
         "program": "Command Center",
         "blocked_by": [],
-        "acceptance": "`/mission-control` redirects to `/command-center?view=operations` after operations parity is test-proven."
+        "acceptance": "`/mission-control` redirects to `/command-center?view=operations` after operations parity is test-proven.",
+        "evidence": "docs/plans/master-implementation/PASS62_MISSION_CONTROL_OPERATIONS_REDIRECT_2026-09-01.md"
       },
       {
         "id": "P11-009",
         "title": "Update route-consolidation tests for mission-control redirect",
-        "status": "blocked",
+        "status": "done",
         "roi_rank": 105,
         "program": "Testing",
-        "blocked_by": ["P11-008"],
-        "acceptance": "Route-consolidation tests expect the mission-control redirect while preserving `/today` and `/trust-pane` drilldown reachability."
+        "blocked_by": [],
+        "acceptance": "Route-consolidation tests expect the mission-control redirect while preserving `/today` and `/trust-pane` drilldown reachability.",
+        "evidence": "docs/plans/master-implementation/PASS63_MISSION_CONTROL_REDIRECT_TESTS_2026-09-01.md"
       },
       {
         "id": "P11-010",
         "title": "Run consolidated operations-view evidence suite",
-        "status": "blocked",
+        "status": "ready",
         "roi_rank": 106,
         "program": "Testing",
-        "blocked_by": ["P11-009"],
+        "blocked_by": [],
         "acceptance": "Typecheck, guards, node tests, and focused isolated E2E pass after the operations-view migration."
       }
   ]
