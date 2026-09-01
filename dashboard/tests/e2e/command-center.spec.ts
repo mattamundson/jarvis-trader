@@ -37,4 +37,12 @@ test("command-center smoke: renders flagship header under mocked engine", async 
   await page.goto("/command-center", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: /JARVIS TRADER.*COMMAND CENTER/i })).toBeVisible();
   await expect(page.getByRole("button", { name: /KILL SWITCH/i })).toBeVisible();
+  const shell = page.getByTestId("canonical-shell");
+  await expect(shell.getByText("CANONICAL SHELL")).toBeVisible();
+  await expect(shell.getByRole("link", { name: /SYSTEM STATUS/i })).toBeVisible();
+  await expect(shell.getByRole("link", { name: /TRADE QUEUE/i })).toBeVisible();
+  await expect(shell.getByRole("link", { name: /ELIGIBILITY/i })).toBeVisible();
+  await expect(shell.getByRole("link", { name: /STRATEGY LEDGER/i })).toBeVisible();
+  await expect(shell.getByRole("link", { name: /DATA INTEGRITY/i })).toBeVisible();
+  await expect(shell.getByRole("link", { name: /RESEARCH INTAKE/i })).toBeVisible();
 });

@@ -5,6 +5,7 @@ import type { NextConfig } from "next";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const nextConfig: NextConfig = {
+  distDir: process.env.NEXT_DIST_DIR ?? ".next",
   // Pin Watchpack/output-file-tracing root to this dashboard dir.
   // Without this, Next.js walks up looking for a workspace lockfile and can
   // fall back to C:\, which produces EINVAL lstat errors on hiberfil.sys etc.

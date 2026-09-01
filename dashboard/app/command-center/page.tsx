@@ -20,6 +20,7 @@ import {
   Power,
   ChevronRight,
   BookOpen,
+  type LucideIcon,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -30,8 +31,10 @@ import {
   fetchJournalStats,
   fetchBars,
   fetchSymbolRegime,
+  fetchStrategyLedger,
   toggleKillSwitch,
   type JournalTradeStats,
+  type LedgerResponse,
   type OHLCVBar,
 } from "@/lib/api";
 import { executionStatus, type ExecutionPathProbe } from "@/lib/executionPath";
@@ -168,6 +171,16 @@ interface Trade {
   price: number;
   pnl?: number;
   commission?: number;
+}
+
+interface DataIntegritySource {
+  source?: string;
+  status?: string;
+}
+
+interface DataIntegrityResponse {
+  sources?: DataIntegritySource[];
+  count?: number;
 }
 
 // ── Market Session Detection (Central Time) ───────────────────────────────
@@ -343,6 +356,82 @@ function regimeColorClass(regime: string | null): string {
   return "text-cyan-400";
 }
 
+type ShellTone = "live" | "warn" | "offline" | "static";
+
+interface ShellRegion {
+  label: string;
+  href: string;
+  status: string;
+  metric: string;
+  detail: string;
+  tone: ShellTone;
+  Icon: LucideIcon;
+}
+
+function shellToneClass(tone: ShellTone): string {
+  if (tone === "live") return "border-emerald-800/50 bg-emerald-950/10 text-emerald-300";
+  if (tone === "warn") return "border-amber-800/50 bg-amber-950/10 text-amber-300";
+  if (tone === "offline") return "border-red-800/50 bg-red-950/10 text-red-300";
+  return "border-slate-800 bg-slate-900/60 text-slate-300";
+}
+
+function compactCount(value: number | undefined | null): string {
+  return typeof value === "number" && Number.isFinite(value) ? String(value) : "—";
+}
+
+function CanonicalShellMap({ regions }: { regions: ShellRegion[] }) {
+  return (
+    <section
+      className="mb-4"
+      aria-label="Command Center canonical sections"
+      data-testid="canonical-shell"
+    >
+      <div className="mb-1.5 flex items-center justify-between">
+        <span className="text-[10px] font-mono tracking-[0.2em] text-slate-500">
+          CANONICAL SHELL
+        </span>
+        <span className="text-[10px] font-mono text-slate-600">
+          {regions.filter((r) => r.tone === "live").length}/{regions.length} live
+        </span>
+      </div>
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-6">
+        {regions.map((region) => {
+          const Icon = region.Icon;
+          return (
+            <a
+              key={region.label}
+              data-testid={`canonical-shell-${region.label.toLowerCase().replace(/\s+/g, "-")}`}
+              href={region.href}
+              className={`group min-h-[112px] rounded-md border p-3 transition-colors hover:border-cyan-700/70 ${shellToneClass(region.tone)}`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  <span className="truncate text-[11px] font-bold tracking-widest">
+                    {region.label}
+                  </span>
+                </div>
+                <ChevronRight className="h-3.5 w-3.5 shrink-0 opacity-40 transition-opacity group-hover:opacity-80" aria-hidden="true" />
+              </div>
+              <div className="mt-3 font-mono text-lg font-bold leading-none text-white tabular-nums">
+                {region.metric}
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <span className="text-[10px] font-mono uppercase tracking-wider opacity-80">
+                  {region.status}
+                </span>
+              </div>
+              <p className="mt-2 line-clamp-2 text-[11px] leading-snug text-slate-500">
+                {region.detail}
+              </p>
+            </a>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 // ── Page Component ────────────────────────────────────────────────────────
 
 // Stable placeholder session used on the server and the first client paint so
@@ -431,6 +520,18 @@ export default function CommandCenterPage() {
     { refreshInterval: 120_000, shouldRetryOnError: false }
   );
 
+  const { data: ledger, error: ledgerErr, mutate: mutateLedger } = useSWR<LedgerResponse>(
+    "strategy-ledger-command-center",
+    fetchStrategyLedger,
+    { refreshInterval, shouldRetryOnError: false }
+  );
+
+  const { data: integrity, error: integrityErr, mutate: mutateIntegrity } = useSWR<DataIntegrityResponse>(
+    "/system/data-integrity",
+    fetcher,
+    { refreshInterval, shouldRetryOnError: false }
+  );
+
   const { data: trades, mutate: mutateTrades, error: tradesErr } = useSWR<Trade[]>(
     "/portfolio/history/trades",
     fetcher,
@@ -492,6 +593,8 @@ export default function CommandCenterPage() {
     mutateScheduler();
     mutateMacro();
     mutatePaperStatus();
+    mutateLedger();
+    mutateIntegrity();
     mutateTrades();
     mutateJournalStats();
     mutateHonestSet();
@@ -534,6 +637,79 @@ export default function CommandCenterPage() {
       };
     });
   }, [paperStatus]);
+
+  const approvedInstruments = liveInstruments.filter((inst) => inst.status === "APPROVED").length;
+  const haltedInstruments = liveInstruments.length - approvedInstruments;
+  const staleFeeds = (integrity?.sources ?? []).filter((src) => src.status === "stale").length;
+  const ledgerReady =
+    Array.isArray(ledger?.entries) &&
+    typeof ledger?.total === "number" &&
+    typeof ledger?.n_pass === "number" &&
+    typeof ledger?.n_fail === "number";
+  const integrityReady =
+    Array.isArray(integrity?.sources) || typeof integrity?.count === "number";
+  const shellRegions: ShellRegion[] = [
+    {
+      label: "SYSTEM STATUS",
+      href: "/health",
+      status: engineOnline ? (killSwitchActive ? "halted" : "online") : "offline",
+      metric: engineOnline ? (killSwitchActive ? "HALT" : "OK") : "DOWN",
+      detail: `${health?.paper_trading === false ? "live flag observed" : "paper mode"} · ${exec.label}`,
+      tone: engineOnline ? (killSwitchActive ? "warn" : "live") : "offline",
+      Icon: Shield,
+    },
+    {
+      label: "TRADE QUEUE",
+      href: "/trades/pending-approvals",
+      status: decisionsErr ? "degraded" : "mounted",
+      metric: `${compactCount(decisions?.length)} recent`,
+      detail: tradesErr ? "fills unavailable" : `${compactCount(trades?.length)} fill rows visible`,
+      tone: decisionsErr || tradesErr ? "warn" : "live",
+      Icon: Zap,
+    },
+    {
+      label: "ELIGIBILITY",
+      href: "/trading-eligibility",
+      status: paperStatus ? "policy" : "fallback",
+      metric: `${approvedInstruments}/${liveInstruments.length}`,
+      detail: `${haltedInstruments} halted · gate-v2 authorization`,
+      tone: paperStatus ? "live" : "warn",
+      Icon: CheckCircle,
+    },
+    {
+      label: "STRATEGY LEDGER",
+      href: "/strategy-ledger",
+      status: ledgerErr || !ledgerReady ? "degraded" : "gate-v2",
+      metric: `${compactCount(ledger?.n_pass)} pass`,
+      detail: ledgerReady
+        ? `${compactCount(ledger?.n_fail)} fail · ${compactCount(ledger?.total)} verdicts`
+        : "verdict ledger unavailable",
+      tone: ledgerErr || !ledgerReady ? "warn" : "live",
+      Icon: TrendingUp,
+    },
+    {
+      label: "DATA INTEGRITY",
+      href: "/data-integrity",
+      status: integrityErr || !integrityReady ? "degraded" : "streams",
+      metric: compactCount(integrity?.count ?? integrity?.sources?.length),
+      detail: integrityReady
+        ? staleFeeds > 0
+          ? `${staleFeeds} stale feed${staleFeeds === 1 ? "" : "s"}`
+          : "no stale feed reported"
+        : "stream health unavailable",
+      tone: integrityErr || !integrityReady ? "warn" : staleFeeds > 0 ? "warn" : "live",
+      Icon: Database,
+    },
+    {
+      label: "RESEARCH INTAKE",
+      href: "/research-log",
+      status: "planned",
+      metric: "P7",
+      detail: "candidate intake surface follows this shell",
+      tone: "static",
+      Icon: BookOpen,
+    },
+  ];
 
   // Risk gauge calculations
   const dailyPnlPct =
@@ -688,6 +864,8 @@ export default function CommandCenterPage() {
           </Button>
         </div>
       </div>
+
+      <CanonicalShellMap regions={shellRegions} />
 
       {/* ═══════════════════════════════════════════════════════
           TRADE APPROVALS — human-in-the-loop gate

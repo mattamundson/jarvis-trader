@@ -611,16 +611,17 @@
     {
       "id": "P7-001",
       "title": "Implement Command Center canonical shell skeleton",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 57,
       "program": "Command Center",
       "blocked_by": ["P6-010"],
-      "acceptance": "`/command-center` renders health, trade queue, eligibility, strategy ledger, data integrity, and research intake regions without requiring engine uptime."
+      "acceptance": "`/command-center` renders health, trade queue, eligibility, strategy ledger, data integrity, and research intake regions without requiring engine uptime.",
+      "evidence": "docs/plans/master-implementation/PASS14_COMMAND_CENTER_SHELL_2026-09-01.md"
     },
     {
       "id": "P7-002",
       "title": "Implement Command Center status strip",
-      "status": "blocked",
+      "status": "ready",
       "roi_rank": 58,
       "program": "Command Center",
       "blocked_by": ["P7-001"],
@@ -629,7 +630,7 @@
     {
       "id": "P7-003",
       "title": "Add Command Center mocked data fixtures",
-      "status": "blocked",
+      "status": "ready",
       "roi_rank": 59,
       "program": "Command Center",
       "blocked_by": ["P7-001"],
@@ -638,7 +639,7 @@
     {
       "id": "P7-004",
       "title": "Implement Command Center API proxy client helpers",
-      "status": "blocked",
+      "status": "ready",
       "roi_rank": 60,
       "program": "Command Center",
       "blocked_by": ["P7-001"],

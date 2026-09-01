@@ -53,6 +53,12 @@ test("flagship /command-center survives degraded engine data without white-scree
   const body = (await page.textContent("body")) || "";
 
   expect(body, "flagship header did not render").toContain("COMMAND CENTER");
+  expect(body, "canonical shell map did not render").toContain("CANONICAL SHELL");
+  expect(body, "trade queue shell region did not render").toContain("TRADE QUEUE");
+  expect(body, "eligibility shell region did not render").toContain("ELIGIBILITY");
+  expect(body, "strategy ledger shell region did not render").toContain("STRATEGY LEDGER");
+  expect(body, "data integrity shell region did not render").toContain("DATA INTEGRITY");
+  expect(body, "research intake shell region did not render").toContain("RESEARCH INTAKE");
   expect(body, "page white-screened to the route error fallback").not.toMatch(/something went wrong/i);
 });
 
