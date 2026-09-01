@@ -127,6 +127,13 @@ interface SessionInfo {
   isActive: boolean;
 }
 
+type CommandCenterView = "overview" | "operations";
+
+function commandCenterViewFromSearch(search: string): CommandCenterView {
+  const params = new URLSearchParams(search);
+  return params.get("view") === "operations" ? "operations" : "overview";
+}
+
 function getMarketSession(): SessionInfo {
   const now = new Date();
   // Rough DST detection: DST is active Mar–Nov in the US
@@ -309,6 +316,7 @@ export default function CommandCenterPage() {
   const [session, setSession] = useState<SessionInfo>(SESSION_PLACEHOLDER);
   const [retryCount, setRetryCount] = useState(0);
   const [isRetrying, setIsRetrying] = useState(false);
+  const [activeView, setActiveView] = useState<CommandCenterView>("overview");
 
   useEffect(() => {
     // Initialise both clock and session together so they are always in sync.
@@ -319,6 +327,13 @@ export default function CommandCenterPage() {
     tick();
     const timer = setInterval(tick, 1000);
     return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const syncActiveView = () => setActiveView(commandCenterViewFromSearch(window.location.search));
+    syncActiveView();
+    window.addEventListener("popstate", syncActiveView);
+    return () => window.removeEventListener("popstate", syncActiveView);
   }, []);
 
   const refreshInterval = session.isActive ? 30_000 : 5 * 60_000;
@@ -737,6 +752,28 @@ export default function CommandCenterPage() {
       />
 
       <CommandCenterDrilldownNav />
+
+      {activeView === "operations" && (
+        <section
+          data-testid="command-center-operations-view"
+          aria-label="Command Center operations view"
+          className="mb-4 rounded-md border border-cyan-900/60 bg-cyan-950/10 p-4"
+        >
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="font-mono text-sm font-bold uppercase tracking-wider text-cyan-300">
+                Operations View
+              </h2>
+              <p className="mt-1 text-xs text-slate-400">
+                Risk, execution, pipeline, diagnostics, and local fleet state.
+              </p>
+            </div>
+            <Badge className="w-fit border border-cyan-800 bg-cyan-950/60 text-cyan-300">
+              parity migration
+            </Badge>
+          </div>
+        </section>
+      )}
 
       <CommandCenterOperationsSummary
         health={health}

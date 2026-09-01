@@ -1011,28 +1011,29 @@
       {
         "id": "P11-001",
         "title": "Add Command Center operations view URL contract",
-        "status": "ready",
+        "status": "done",
         "roi_rank": 97,
         "program": "Command Center",
         "blocked_by": [],
-        "acceptance": "`/command-center?view=operations` renders a real operations view state with focused route tests."
+        "acceptance": "`/command-center?view=operations` renders a real operations view state with focused route tests.",
+        "evidence": "docs/plans/master-implementation/PASS55_COMMAND_CENTER_OPERATIONS_VIEW_CONTRACT_2026-09-01.md"
       },
       {
         "id": "P11-002",
         "title": "Retarget Operations drilldowns to Command Center operations view",
-        "status": "blocked",
+        "status": "ready",
         "roi_rank": 98,
         "program": "Command Center",
-        "blocked_by": ["P11-001"],
+        "blocked_by": [],
         "acceptance": "Command Center and sidebar Operations links point to `/command-center?view=operations` while `/mission-control` remains directly reachable until parity completes."
       },
       {
         "id": "P11-003",
         "title": "Mount risk and split-brain panels in operations view",
-        "status": "blocked",
+        "status": "ready",
         "roi_rank": 99,
         "program": "Command Center",
-        "blocked_by": ["P11-001"],
+        "blocked_by": [],
         "acceptance": "Operations view renders `RiskSafetyPanel` and `TradingStatusReconciliation` with their degraded states preserved."
       },
       {

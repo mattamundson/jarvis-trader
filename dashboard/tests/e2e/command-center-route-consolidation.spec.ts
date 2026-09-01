@@ -62,6 +62,18 @@ test("sidebar keeps command center primary and demotes related routes to drilldo
   await expect(sidebar.getByRole("link", { name: /Trust Pane/i })).toHaveCount(0);
 });
 
+test("command center operations query renders a real operations view state", async ({ page }) => {
+  await installCommandCenterFixture(page, "populated");
+
+  await page.goto("/command-center?view=operations", { waitUntil: "domcontentloaded" });
+
+  await expect(page.getByRole("heading", { name: /JARVIS TRADER.*COMMAND CENTER/i })).toBeVisible();
+  const operationsView = page.getByTestId("command-center-operations-view");
+  await expect(operationsView).toBeVisible();
+  await expect(operationsView.getByRole("heading", { name: /Operations View/i })).toBeVisible();
+  await expect(operationsView).toContainText(/Risk, execution, pipeline, diagnostics, and local fleet state/i);
+});
+
 for (const routeSpec of DRILLDOWNS) {
   test(`${routeSpec.path} remains reachable as a Command Center drilldown`, async ({ page }) => {
     await installEngineMock(page, "offline");
