@@ -701,11 +701,12 @@
     {
       "id": "P7-010",
       "title": "Add focused Command Center acceptance harness",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 66,
       "program": "Command Center",
       "blocked_by": ["P7-002", "P7-005", "P7-006", "P7-007", "P7-008", "P7-009"],
-      "acceptance": "`pnpm run guards`, `pnpm run typecheck`, and focused Command Center tests pass."
+      "acceptance": "`pnpm run guards`, `pnpm run typecheck`, and focused Command Center tests pass.",
+      "evidence": "docs/plans/master-implementation/PASS20_COMMAND_CENTER_ACCEPTANCE_2026-09-01.md"
     }
   ]
 }

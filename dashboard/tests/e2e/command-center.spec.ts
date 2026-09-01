@@ -35,3 +35,31 @@ test("command-center smoke: renders flagship header under mocked engine", async 
   await expect(operations.getByText("SOURCE PARITY")).toBeVisible();
   await expect(operations.getByText(/research-only/i).first()).toBeVisible();
 });
+
+test("command-center acceptance: offline fixture keeps canonical panels visible", async ({ page }) => {
+  await installCommandCenterFixture(page, "offline");
+
+  await page.goto("/command-center", { waitUntil: "domcontentloaded" });
+
+  await expect(page.getByRole("heading", { name: /JARVIS TRADER.*COMMAND CENTER/i })).toBeVisible();
+  await expect(page.getByTestId("command-center-status-strip")).toContainText(/offline|unknown/i);
+  await expect(page.getByTestId("canonical-shell")).toBeVisible();
+  await expect(page.getByTestId("command-center-trade-queue-panel")).toContainText("ORDER ACTIONS DISABLED");
+  await expect(page.getByTestId("command-center-operations-grid")).toBeVisible();
+  await expect(page.locator("body")).not.toContainText(/something went wrong/i);
+});
+
+test("command-center acceptance: populated fixture leaves canonical queue read-only", async ({ page }) => {
+  await installCommandCenterFixture(page, "populated");
+
+  await page.goto("/command-center", { waitUntil: "domcontentloaded" });
+
+  const queue = page.getByTestId("command-center-trade-queue-panel");
+  await expect(queue).toContainText("fixture trend continuation");
+  await expect(queue).toContainText("ORDER ACTIONS DISABLED");
+  await expect(queue.getByRole("button")).toHaveCount(0);
+
+  const operations = page.getByTestId("command-center-operations-grid");
+  await expect(operations).toContainText("MES vwap");
+  await expect(operations).toContainText("SOURCE PARITY");
+});
