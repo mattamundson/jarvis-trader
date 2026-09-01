@@ -1041,19 +1041,20 @@
       {
         "id": "P11-004",
         "title": "Mount positions and pipeline panels in operations view",
-        "status": "ready",
+        "status": "done",
         "roi_rank": 100,
         "program": "Command Center",
         "blocked_by": [],
-        "acceptance": "Operations view renders `PositionsPerformancePanel` and `SignalsPipelinePanel` without weakening missing-data caveats."
+        "acceptance": "Operations view renders `PositionsPerformancePanel` and `SignalsPipelinePanel` without weakening missing-data caveats.",
+        "evidence": "docs/plans/master-implementation/PASS58_OPERATIONS_POSITIONS_PIPELINE_PANELS_2026-09-01.md"
       },
       {
         "id": "P11-005",
         "title": "Mount validation and engine diagnostics in operations view",
-        "status": "blocked",
+        "status": "ready",
         "roi_rank": 101,
         "program": "Command Center",
-        "blocked_by": ["P11-004"],
+        "blocked_by": [],
         "acceptance": "Operations view renders `ValidationGatesPanel` and `EngineDataPanel` with existing unreachable states."
       },
       {

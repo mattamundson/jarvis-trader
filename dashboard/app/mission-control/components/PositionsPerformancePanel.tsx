@@ -25,6 +25,8 @@ interface PaperPerformanceResponse {
   performance: PaperPerformanceLive;
 }
 
+type PositionsPayload = UnrealizedPosition[] | { positions?: UnrealizedPosition[] };
+
 function Stat({ label, value, tone }: { label: string; value: string; tone?: "bull" | "bear" }) {
   const toneCls = tone === "bull" ? "text-bull" : tone === "bear" ? "text-bear" : "text-foreground";
   return (
@@ -40,7 +42,7 @@ export function PositionsPerformancePanel() {
     data: positions,
     error: posError,
     isLoading: posLoading,
-  } = useSWR<UnrealizedPosition[]>("/portfolio/paper/positions/unrealized", fetcher, {
+  } = useSWR<PositionsPayload>("/portfolio/paper/positions/unrealized", fetcher, {
     refreshInterval: 15_000,
   });
 
@@ -53,6 +55,11 @@ export function PositionsPerformancePanel() {
   });
 
   const perf = perfResp?.performance;
+  const positionRows = Array.isArray(positions)
+    ? positions
+    : Array.isArray(positions?.positions)
+      ? positions.positions
+      : [];
 
   return (
     <Card>
@@ -89,7 +96,7 @@ export function PositionsPerformancePanel() {
           <UnreachableNote endpoint="/portfolio/paper/positions/unrealized" />
         ) : posLoading ? (
           <LoadingRows rows={3} />
-        ) : !positions || positions.length === 0 ? (
+        ) : positionRows.length === 0 ? (
           <p className="text-xs text-muted-foreground">No open paper positions.</p>
         ) : (
           <div className="overflow-x-auto">
@@ -105,7 +112,7 @@ export function PositionsPerformancePanel() {
                 </tr>
               </thead>
               <tbody>
-                {positions.map((p) => (
+                {positionRows.map((p) => (
                   <tr key={p.trade_id} className="border-b border-border/50 last:border-0">
                     <td className="py-1.5 pr-3 font-semibold">{p.symbol}</td>
                     <td className="py-1.5 pr-3">

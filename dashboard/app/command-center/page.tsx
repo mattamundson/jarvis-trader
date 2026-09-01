@@ -92,7 +92,9 @@ import {
 } from "@/components/command-center/SummarySections";
 import { TradingStatusReconciliation } from "@/components/TradingStatusReconciliation";
 import PipelineFunnelCard from "@/components/command-center/PipelineFunnelCard";
+import { PositionsPerformancePanel } from "@/app/mission-control/components/PositionsPerformancePanel";
 import { RiskSafetyPanel } from "@/app/mission-control/components/RiskSafetyPanel";
+import { SignalsPipelinePanel } from "@/app/mission-control/components/SignalsPipelinePanel";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { useToast } from "@/lib/toast-context";
 import { useWebSocket, type WsEvent } from "@/hooks/useWebSocket";
@@ -781,6 +783,14 @@ export default function CommandCenterPage() {
             <WidgetErrorBoundary name="Operations Trading Status Reconciliation">
               <TradingStatusReconciliation />
             </WidgetErrorBoundary>
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+              <WidgetErrorBoundary name="Operations Positions & Performance">
+                <PositionsPerformancePanel />
+              </WidgetErrorBoundary>
+              <WidgetErrorBoundary name="Operations Signals & Pipeline">
+                <SignalsPipelinePanel />
+              </WidgetErrorBoundary>
+            </div>
           </div>
         </section>
       )}
