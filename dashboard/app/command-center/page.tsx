@@ -357,6 +357,7 @@ function regimeColorClass(regime: string | null): string {
 }
 
 type ShellTone = "live" | "warn" | "offline" | "static";
+type StatusTone = "ok" | "warn" | "bad" | "unknown";
 
 interface ShellRegion {
   label: string;
@@ -377,6 +378,58 @@ function shellToneClass(tone: ShellTone): string {
 
 function compactCount(value: number | undefined | null): string {
   return typeof value === "number" && Number.isFinite(value) ? String(value) : "—";
+}
+
+function statusToneClass(tone: StatusTone): string {
+  if (tone === "ok") return "border-emerald-800 bg-emerald-950/25 text-emerald-300";
+  if (tone === "warn") return "border-amber-800 bg-amber-950/25 text-amber-300";
+  if (tone === "bad") return "border-red-800 bg-red-950/25 text-red-300";
+  return "border-slate-800 bg-slate-900/70 text-slate-400";
+}
+
+function CommandCenterStatusStrip({
+  engine,
+  broker,
+  safety,
+  data,
+}: {
+  engine: { label: string; detail: string; tone: StatusTone };
+  broker: { label: string; detail: string; tone: StatusTone };
+  safety: { label: string; detail: string; tone: StatusTone };
+  data: { label: string; detail: string; tone: StatusTone };
+}) {
+  const rows = [
+    { title: "ENGINE", ...engine },
+    { title: "BROKER", ...broker },
+    { title: "SAFETY", ...safety },
+    { title: "DATA", ...data },
+  ];
+  return (
+    <section
+      data-testid="command-center-status-strip"
+      className="mb-4 grid grid-cols-1 gap-2 rounded-md border border-slate-800 bg-slate-950/60 p-2 md:grid-cols-2 xl:grid-cols-4"
+      aria-label="Command Center independent status strip"
+    >
+      {rows.map((row) => (
+        <div
+          key={row.title}
+          className={`rounded-md border px-3 py-2 ${statusToneClass(row.tone)}`}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-[10px] font-mono font-bold tracking-widest text-slate-500">
+              {row.title}
+            </span>
+            <span className="text-[10px] font-mono uppercase tracking-wider">
+              {row.label}
+            </span>
+          </div>
+          <p className="mt-1 truncate text-[11px] font-mono text-slate-500" title={row.detail}>
+            {row.detail}
+          </p>
+        </div>
+      ))}
+    </section>
+  );
 }
 
 function CanonicalShellMap({ regions }: { regions: ShellRegion[] }) {
@@ -648,6 +701,36 @@ export default function CommandCenterPage() {
     typeof ledger?.n_fail === "number";
   const integrityReady =
     Array.isArray(integrity?.sources) || typeof integrity?.count === "number";
+  const statusOrdersPerMin = safety?.orders_last_minute ?? 0;
+  const statusOrdersLimit = safety?.orders_per_minute_limit ?? 10;
+  const engineStatus = !health && !healthErr
+    ? { label: "unknown", detail: "health probe pending", tone: "unknown" as const }
+    : healthErr || !health
+      ? { label: "offline", detail: "health endpoint unreachable", tone: "bad" as const }
+      : health.status === "ok" || health.status === "healthy"
+        ? { label: "online", detail: `version ${health.version ?? "unknown"}`, tone: "ok" as const }
+        : { label: "degraded", detail: `status ${health.status ?? "unknown"}`, tone: "warn" as const };
+  const brokerStatus = !health && !healthErr
+    ? { label: "unknown", detail: "execution path pending", tone: "unknown" as const }
+    : healthErr || !health
+      ? { label: "unknown", detail: "engine offline; broker unprobed", tone: "unknown" as const }
+      : exec.tone === "bull"
+        ? { label: "verified", detail: exec.detail, tone: "ok" as const }
+        : exec.tone === "warn"
+          ? { label: "degraded", detail: exec.detail, tone: "warn" as const }
+          : { label: "offline", detail: exec.detail, tone: "bad" as const };
+  const safetyStatus = !safety && !safetyErr
+    ? { label: "unknown", detail: "safety probe pending", tone: "unknown" as const }
+    : safetyErr || !safety
+      ? { label: "unknown", detail: "safety endpoint unavailable", tone: "unknown" as const }
+      : killSwitchActive
+        ? { label: "halted", detail: "kill switch active", tone: "bad" as const }
+        : { label: "armed", detail: `${statusOrdersPerMin}/${statusOrdersLimit} orders per minute`, tone: "ok" as const };
+  const dataStatus = integrityErr || !integrityReady
+    ? { label: "unknown", detail: "data-integrity endpoint unavailable", tone: "unknown" as const }
+    : staleFeeds > 0
+      ? { label: "stale", detail: `${staleFeeds} stale feed${staleFeeds === 1 ? "" : "s"}`, tone: "warn" as const }
+      : { label: "current", detail: `${compactCount(integrity?.count ?? integrity?.sources?.length)} streams`, tone: "ok" as const };
   const shellRegions: ShellRegion[] = [
     {
       label: "SYSTEM STATUS",
@@ -864,6 +947,13 @@ export default function CommandCenterPage() {
           </Button>
         </div>
       </div>
+
+      <CommandCenterStatusStrip
+        engine={engineStatus}
+        broker={brokerStatus}
+        safety={safetyStatus}
+        data={dataStatus}
+      />
 
       <CanonicalShellMap regions={shellRegions} />
 

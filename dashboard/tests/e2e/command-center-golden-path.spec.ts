@@ -59,6 +59,10 @@ test("flagship /command-center survives degraded engine data without white-scree
   expect(body, "strategy ledger shell region did not render").toContain("STRATEGY LEDGER");
   expect(body, "data integrity shell region did not render").toContain("DATA INTEGRITY");
   expect(body, "research intake shell region did not render").toContain("RESEARCH INTAKE");
+  expect(body, "independent status strip did not render").toContain("ENGINE");
+  expect(body, "broker status chip did not render").toContain("BROKER");
+  expect(body, "safety status chip did not render").toContain("SAFETY");
+  expect(body, "data status chip did not render").toContain("DATA");
   expect(body, "page white-screened to the route error fallback").not.toMatch(/something went wrong/i);
 });
 

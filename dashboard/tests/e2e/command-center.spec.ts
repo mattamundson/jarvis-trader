@@ -45,4 +45,9 @@ test("command-center smoke: renders flagship header under mocked engine", async 
   await expect(shell.getByRole("link", { name: /STRATEGY LEDGER/i })).toBeVisible();
   await expect(shell.getByRole("link", { name: /DATA INTEGRITY/i })).toBeVisible();
   await expect(shell.getByRole("link", { name: /RESEARCH INTAKE/i })).toBeVisible();
+  const strip = page.getByTestId("command-center-status-strip");
+  await expect(strip.getByText("ENGINE", { exact: true })).toBeVisible();
+  await expect(strip.getByText("BROKER", { exact: true })).toBeVisible();
+  await expect(strip.getByText("SAFETY", { exact: true })).toBeVisible();
+  await expect(strip.getByText("DATA", { exact: true })).toBeVisible();
 });

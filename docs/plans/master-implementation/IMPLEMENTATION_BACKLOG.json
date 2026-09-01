@@ -621,11 +621,12 @@
     {
       "id": "P7-002",
       "title": "Implement Command Center status strip",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 58,
       "program": "Command Center",
       "blocked_by": ["P7-001"],
-      "acceptance": "Engine, broker, safety, and data health render as independent known/unknown/offline states."
+      "acceptance": "Engine, broker, safety, and data health render as independent known/unknown/offline states.",
+      "evidence": "docs/plans/master-implementation/PASS15_COMMAND_CENTER_STATUS_STRIP_2026-09-01.md"
     },
     {
       "id": "P7-003",
