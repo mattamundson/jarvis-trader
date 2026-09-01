@@ -379,7 +379,13 @@ export function deriveCommandCenterTrustAuditSummaryRows({
 }): CommandCenterSummaryRow[] {
   const liveness = healthErr || !health ? "unknown" : health.status === "ok" ? "ok" : "degraded";
   const barRejects = barQualityErr || !barQuality ? "unknown" : `${barQuality.total_rejections}`;
+  const barGateDetail = barQualityErr || !barQuality
+    ? "bar-quality unavailable"
+    : `${barQuality.gate_active ? "gate active" : "gate off"} · ${barQuality.window_hours}h`;
   const edgeState = edgeLedgerErr || !edgeLedger ? "unknown" : `${edgeLedger.n_pass}/${edgeLedger.total}`;
+  const edgeDetail = edgeLedgerErr || !edgeLedger
+    ? "edge ledger unavailable"
+    : `PASS ${edgeLedger.n_pass} · FAIL ${edgeLedger.n_fail}`;
   const dataLeg = healthErr || !health
     ? "unknown"
     : health.ibkr_data_connected === true
@@ -387,21 +393,40 @@ export function deriveCommandCenterTrustAuditSummaryRows({
       : health.ibkr_data_connected === false
         ? "offline"
         : "unknown";
+  const liveSources = [
+    healthErr || !health ? null : "health",
+    barQualityErr || !barQuality ? null : "bar-quality",
+    edgeLedgerErr || !edgeLedger ? null : "edge-ledger",
+  ].filter(Boolean).length;
+  const provenance =
+    liveSources === 3 ? "live" : liveSources > 0 ? "partial" : "unknown";
 
   return [
     { label: "Liveness", state: liveness, detail: "engine status", tone: commandCenterOperationTone(liveness) },
     {
+      label: "Provenance",
+      state: provenance,
+      detail: `${liveSources}/3 live sources`,
+      tone: provenance === "live" ? "ok" : provenance === "partial" ? "warn" : "unknown",
+    },
+    {
       label: "Bar Rejects",
       state: barRejects,
-      detail: barQualityErr ? "bar-quality unavailable" : "7d gate rejects",
-      tone: barRejects === "unknown" ? "unknown" : "ok",
+      detail: barGateDetail,
+      tone: barRejects === "unknown" ? "unknown" : Number(barRejects) > 0 ? "warn" : "ok",
     },
     {
       label: "Edge Ledger",
       state: edgeState,
-      detail: edgeLedgerErr ? "edge ledger unavailable" : "PASS over total",
+      detail: edgeDetail,
       tone: edgeState === "unknown" ? "unknown" : "ok",
     },
     { label: "Data Leg", state: dataLeg, detail: "IBKR market-data provenance", tone: commandCenterOperationTone(dataLeg) },
+    {
+      label: "Post-Trade",
+      state: "linked",
+      detail: "/trust-pane execution + quality",
+      tone: "ok",
+    },
   ];
 }

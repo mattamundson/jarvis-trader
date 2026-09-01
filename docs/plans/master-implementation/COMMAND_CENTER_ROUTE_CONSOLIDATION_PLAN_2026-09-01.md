@@ -10,7 +10,7 @@
 |---|---|---|---|
 | `/mission-control` | Redirected after merge | `/mission-control` redirects to `/command-center?view=operations` | Parity is proven by focused route-consolidation E2E. |
 | `/today` | Demoted to Daily Brief drilldown | Keep route as `/today` for the detailed chart and market/session context; Command Center owns the compact Daily Brief summary | Daily Brief first-screen facts are migrated; route remains useful as a detailed chart/context drilldown. |
-| `/trust-pane` | Merge trust summary into Command Center; keep route as deep audit view | Keep route as `/trust-pane` until dual-system provenance and audit rows have a compact Command Center summary | [RISK] Immediate redirect would hide cross-system trust evidence, edge ledger detail, bar-quality context, and post-trade snippets that are too dense for the first screen. |
+| `/trust-pane` | Demoted to Trust Audit drilldown | Keep route as `/trust-pane` for deep audit detail; Command Center owns compact Trust Audit liveness, provenance, bar-quality, edge-ledger, data-leg, and post-trade handoff facts | Deep post-trade and cross-system diagnostics remain too dense for first-screen authority. |
 
 ## Migration Checklist
 
@@ -25,7 +25,7 @@
    - engine/execution status
    - session trade counts
    - market context strip link
-4. Extract `/trust-pane` first-screen facts into Command Center:
+4. Extract `/trust-pane` first-screen facts into Command Center. **Done:**
    - live/static provenance summary
    - edge-ledger summary
    - bar-quality summary
@@ -71,6 +71,7 @@ Post-redirect ownership:
 - `dashboard/app/mission-control/page.tsx` remains a redirect stub only.
 - Primary and secondary Operations navigation targets `/command-center?view=operations`.
 - Preserve `/today` and `/trust-pane` as drilldowns until their own parity plans close.
+- `/today` and `/trust-pane` compact parity is migrated; both remain detailed drilldowns, not competing first-screen operator shells.
 
 ## Sidebar/Nav Policy
 

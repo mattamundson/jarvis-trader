@@ -345,9 +345,11 @@ test("trust audit summary rows derive liveness and evidence counts", () => {
 
   assert.deepEqual(rows.map((row) => [row.label, row.state, row.detail]), [
     ["Liveness", "ok", "engine status"],
-    ["Bar Rejects", "4", "7d gate rejects"],
-    ["Edge Ledger", "2/9", "PASS over total"],
+    ["Provenance", "live", "3/3 live sources"],
+    ["Bar Rejects", "4", "gate active · 168h"],
+    ["Edge Ledger", "2/9", "PASS 2 · FAIL 7"],
     ["Data Leg", "live", "IBKR market-data provenance"],
+    ["Post-Trade", "linked", "/trust-pane execution + quality"],
   ]);
 });
 
@@ -363,8 +365,10 @@ test("trust audit summary rows keep unavailable evidence unknown", () => {
 
   assert.deepEqual(rows.map((row) => [row.label, row.state, row.detail, row.tone]), [
     ["Liveness", "unknown", "engine status", "unknown"],
+    ["Provenance", "unknown", "0/3 live sources", "unknown"],
     ["Bar Rejects", "unknown", "bar-quality unavailable", "unknown"],
     ["Edge Ledger", "unknown", "edge ledger unavailable", "unknown"],
     ["Data Leg", "unknown", "IBKR market-data provenance", "unknown"],
+    ["Post-Trade", "linked", "/trust-pane execution + quality", "ok"],
   ]);
 });

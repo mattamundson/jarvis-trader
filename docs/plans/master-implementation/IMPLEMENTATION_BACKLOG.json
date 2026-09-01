@@ -1411,92 +1411,192 @@
       {
         "id": "P15-001",
         "title": "Rank Trust Audit parity tranche",
-        "status": "ready",
+        "status": "done",
         "roi_rank": 137,
         "program": "Planning",
         "blocked_by": [],
-        "acceptance": "Trust Audit parity is recorded as the next route-consolidation tranche after Daily Brief parity."
+        "acceptance": "Trust Audit parity is recorded as the next route-consolidation tranche after Daily Brief parity.",
+        "evidence": "docs/plans/master-implementation/PASS77_TRUST_AUDIT_PARITY_MAPPING_2026-09-01.md"
       },
       {
         "id": "P15-002",
         "title": "Audit trust-pane first-screen facts",
-        "status": "blocked",
+        "status": "done",
         "roi_rank": 138,
         "program": "Command Center",
-        "blocked_by": ["P15-001"],
-        "acceptance": "`/trust-pane` first-screen provenance, liveness, bar-quality, edge-ledger, and post-trade audit facts are mapped against the existing Command Center Trust Audit summary."
+        "blocked_by": [],
+        "acceptance": "`/trust-pane` first-screen provenance, liveness, bar-quality, edge-ledger, and post-trade audit facts are mapped against the existing Command Center Trust Audit summary.",
+        "evidence": "docs/plans/master-implementation/PASS77_TRUST_AUDIT_PARITY_MAPPING_2026-09-01.md"
       },
       {
         "id": "P15-003",
         "title": "Add explicit Trust Audit provenance summary",
-        "status": "blocked",
+        "status": "done",
         "roi_rank": 139,
         "program": "Command Center",
-        "blocked_by": ["P15-002"],
-        "acceptance": "Command Center Trust Audit summary distinguishes live vs unavailable/static evidence without collapsing unknown data into healthy state."
+        "blocked_by": [],
+        "acceptance": "Command Center Trust Audit summary distinguishes live vs unavailable/static evidence without collapsing unknown data into healthy state.",
+        "evidence": "docs/plans/master-implementation/PASS78_TRUST_AUDIT_COMPACT_SUMMARY_2026-09-01.md"
       },
       {
         "id": "P15-004",
         "title": "Strengthen bar-quality Trust Audit summary",
-        "status": "blocked",
+        "status": "done",
         "roi_rank": 140,
         "program": "Command Center",
-        "blocked_by": ["P15-003"],
-        "acceptance": "Command Center Trust Audit summary includes bar-quality gate status and reject count semantics from `/analytics/bar-quality?hours=168`."
+        "blocked_by": [],
+        "acceptance": "Command Center Trust Audit summary includes bar-quality gate status and reject count semantics from `/analytics/bar-quality?hours=168`.",
+        "evidence": "docs/plans/master-implementation/PASS78_TRUST_AUDIT_COMPACT_SUMMARY_2026-09-01.md"
       },
       {
         "id": "P15-005",
         "title": "Strengthen edge-ledger Trust Audit summary",
-        "status": "blocked",
+        "status": "done",
         "roi_rank": 141,
         "program": "Command Center",
-        "blocked_by": ["P15-004"],
-        "acceptance": "Command Center Trust Audit summary preserves validated-edge pass/fail/total semantics from `/reports/edge-ledger`."
+        "blocked_by": [],
+        "acceptance": "Command Center Trust Audit summary preserves validated-edge pass/fail/total semantics from `/reports/edge-ledger`.",
+        "evidence": "docs/plans/master-implementation/PASS78_TRUST_AUDIT_COMPACT_SUMMARY_2026-09-01.md"
       },
       {
         "id": "P15-006",
         "title": "Add post-trade audit handoff to Trust Audit summary",
-        "status": "blocked",
+        "status": "done",
         "roi_rank": 142,
         "program": "Command Center",
-        "blocked_by": ["P15-005"],
-        "acceptance": "Command Center Trust Audit summary links to `/trust-pane` for dense post-trade execution and quality diagnostics."
+        "blocked_by": [],
+        "acceptance": "Command Center Trust Audit summary links to `/trust-pane` for dense post-trade execution and quality diagnostics.",
+        "evidence": "docs/plans/master-implementation/PASS78_TRUST_AUDIT_COMPACT_SUMMARY_2026-09-01.md"
       },
       {
         "id": "P15-007",
         "title": "Add Trust Audit parity regression coverage",
-        "status": "blocked",
+        "status": "done",
         "roi_rank": 143,
         "program": "Testing",
-        "blocked_by": ["P15-006"],
-        "acceptance": "Node tests prove Trust Audit summary rows preserve provenance, bar-quality, and edge-ledger states under populated and unavailable evidence."
+        "blocked_by": [],
+        "acceptance": "Node tests prove Trust Audit summary rows preserve provenance, bar-quality, and edge-ledger states under populated and unavailable evidence.",
+        "evidence": "docs/plans/master-implementation/PASS78_TRUST_AUDIT_COMPACT_SUMMARY_2026-09-01.md"
       },
       {
         "id": "P15-008",
         "title": "Update route-consolidation docs for Trust Audit parity",
-        "status": "blocked",
+        "status": "done",
         "roi_rank": 144,
         "program": "Documentation",
-        "blocked_by": ["P15-007"],
-        "acceptance": "Route consolidation docs mark Trust Audit compact parity as migrated while keeping `/trust-pane` as the deep audit drilldown."
+        "blocked_by": [],
+        "acceptance": "Route consolidation docs mark Trust Audit compact parity as migrated while keeping `/trust-pane` as the deep audit drilldown.",
+        "evidence": "docs/plans/master-implementation/PASS79_TRUST_AUDIT_ROUTE_STATIC_AUDIT_2026-09-01.md"
       },
       {
         "id": "P15-009",
         "title": "Run Trust Audit static evidence",
-        "status": "blocked",
+        "status": "done",
         "roi_rank": 145,
         "program": "Testing",
-        "blocked_by": ["P15-008"],
-        "acceptance": "Typecheck, test typecheck, guards, node state tests, and backlog JSON parse pass after Trust Audit parity changes."
+        "blocked_by": [],
+        "acceptance": "Typecheck, test typecheck, guards, node state tests, and backlog JSON parse pass after Trust Audit parity changes.",
+        "evidence": "docs/plans/master-implementation/PASS79_TRUST_AUDIT_ROUTE_STATIC_AUDIT_2026-09-01.md"
       },
       {
         "id": "P15-010",
         "title": "Record Trust Audit route evidence gate",
-        "status": "blocked",
+        "status": "done",
         "roi_rank": 146,
         "program": "Testing",
-        "blocked_by": ["P15-009"],
-        "acceptance": "Browser route evidence is either rerun after disk recovery or explicitly recorded as gated by historical artifact cleanup approval."
+        "blocked_by": [],
+        "acceptance": "Browser route evidence is either rerun after disk recovery or explicitly recorded as gated by historical artifact cleanup approval.",
+        "evidence": "docs/plans/master-implementation/PASS79_TRUST_AUDIT_ROUTE_STATIC_AUDIT_2026-09-01.md"
+      },
+      {
+        "id": "P16-001",
+        "title": "Approve historical isolated E2E artifact cleanup",
+        "status": "blocked",
+        "roi_rank": 147,
+        "program": "Operations",
+        "blocked_by": ["approval:jarvis-temp-build-artifacts-cleanup"],
+        "acceptance": "Amo explicitly approves removing child directories under `C:\\Users\\mattm\\Archive\\2026\\jarvis-temp-build-artifacts`."
+      },
+      {
+        "id": "P16-002",
+        "title": "Remove historical generated isolated E2E artifact directories",
+        "status": "blocked",
+        "roi_rank": 148,
+        "program": "Operations",
+        "blocked_by": ["P16-001"],
+        "acceptance": "Only child directories under the generated artifact root are removed; source and evidence docs are untouched."
+      },
+      {
+        "id": "P16-003",
+        "title": "Verify recovered C drive free space",
+        "status": "blocked",
+        "roi_rank": 149,
+        "program": "Operations",
+        "blocked_by": ["P16-002"],
+        "acceptance": "C: free space is recorded after cleanup with artifact directory size/count."
+      },
+      {
+        "id": "P16-004",
+        "title": "Prove successful isolated E2E retention cleanup",
+        "status": "blocked",
+        "roi_rank": 150,
+        "program": "Testing",
+        "blocked_by": ["P16-003"],
+        "acceptance": "A successful isolated E2E run completes under default `on-failure` mode and does not leave new permanent artifact directories."
+      },
+      {
+        "id": "P16-005",
+        "title": "Run full route-consolidation browser evidence",
+        "status": "blocked",
+        "roi_rank": 151,
+        "program": "Testing",
+        "blocked_by": ["P16-004"],
+        "acceptance": "Focused route-consolidation and responsive E2E cover Command Center, operations, Daily Brief, Trust Audit, `/today`, and `/trust-pane` after compact parity."
+      },
+      {
+        "id": "P16-006",
+        "title": "Record full route-consolidation acceptance",
+        "status": "blocked",
+        "roi_rank": 152,
+        "program": "Documentation",
+        "blocked_by": ["P16-005"],
+        "acceptance": "A PASS record captures the successful browser route evidence and final route-consolidation state."
+      },
+      {
+        "id": "P16-007",
+        "title": "Audit Command navigation final state",
+        "status": "blocked",
+        "roi_rank": 153,
+        "program": "Command Center",
+        "blocked_by": ["P16-006"],
+        "acceptance": "Sidebar and Command Center drilldowns keep `/command-center` primary and expose only secondary Daily Brief, Operations, and Trust Audit links."
+      },
+      {
+        "id": "P16-008",
+        "title": "Decide final `/today` and `/trust-pane` route disposition",
+        "status": "blocked",
+        "roi_rank": 154,
+        "program": "Planning",
+        "blocked_by": ["P16-007"],
+        "acceptance": "The route-consolidation plan explicitly records why `/today` and `/trust-pane` remain drilldowns or identifies any remaining redirect work."
+      },
+      {
+        "id": "P16-009",
+        "title": "Run master backlog completion audit",
+        "status": "blocked",
+        "roi_rank": 155,
+        "program": "Planning",
+        "blocked_by": ["P16-008"],
+        "acceptance": "The master backlog is checked for incomplete tasks and evidence gaps before selecting the next implementation area."
+      },
+      {
+        "id": "P16-010",
+        "title": "Seed next master-plan tranche after route consolidation",
+        "status": "blocked",
+        "roi_rank": 156,
+        "program": "Planning",
+        "blocked_by": ["P16-009"],
+        "acceptance": "If route consolidation is complete, the next highest-ROI tranche is seeded from remaining master-plan evidence gaps."
       }
   ]
 }

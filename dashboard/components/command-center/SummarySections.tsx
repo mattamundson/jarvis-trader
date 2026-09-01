@@ -177,7 +177,7 @@ export function CommandCenterTrustAuditSummary({
           trust pane
         </a>
       </div>
-      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-6">
         {rows.map((row) => (
           <div key={row.label} className="rounded border border-slate-800 bg-slate-950/40 p-2">
             <div className="flex items-center justify-between gap-2">
