@@ -50,6 +50,24 @@ def test_same_idempotency_key_and_same_payload_returns_same_preview(tmp_path) ->
     assert first["intent_id"] == second["intent_id"]
 
 
+def test_same_active_payload_with_different_key_reuses_existing_intent(tmp_path) -> None:
+    store = TradeIntentStore(tmp_path / "intents.db")
+    first = store.create_preview(
+        idempotency_key="intent-key-1001",
+        request_payload=payload(),
+        preview=preview(),
+        now=NOW,
+    )
+    second = store.create_preview(
+        idempotency_key="intent-key-1002",
+        request_payload=payload(),
+        preview=preview(),
+        now=NOW + timedelta(seconds=1),
+    )
+    assert first["intent_id"] == second["intent_id"]
+    assert first["request_hash"] == second["request_hash"]
+
+
 def test_reusing_idempotency_key_for_different_payload_is_rejected(tmp_path) -> None:
     store = TradeIntentStore(tmp_path / "intents.db")
     store.create_preview(
