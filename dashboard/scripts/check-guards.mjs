@@ -186,7 +186,7 @@ const ENGINE_URL_ALLOW = new Map([
 // migration, failing on improvement is pure friction; it prints a reminder to
 // lower the ceiling instead.
 // ---------------------------------------------------------------------------
-const REFRESH_INTERVAL_CEILING = 128;
+const REFRESH_INTERVAL_CEILING = 105;
 {
   const re = /refreshInterval:\s*[0-9]/;
   let count = 0;

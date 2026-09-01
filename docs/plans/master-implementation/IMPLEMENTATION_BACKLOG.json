@@ -911,11 +911,12 @@
     {
       "id": "P10-001",
       "title": "Ratchet dashboard refresh-interval guard ceiling",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 87,
       "program": "CI",
       "blocked_by": [],
-      "acceptance": "`REFRESH_INTERVAL_CEILING` matches the current passing hardcoded-refresh count so new debt fails guards."
+      "acceptance": "`REFRESH_INTERVAL_CEILING` matches the current passing hardcoded-refresh count so new debt fails guards.",
+      "evidence": "docs/plans/master-implementation/PASS44_REFRESH_INTERVAL_GUARD_RATCHET_2026-09-01.md"
     },
     {
       "id": "P10-002",
