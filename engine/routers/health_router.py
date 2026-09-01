@@ -699,6 +699,132 @@ DATA_INTEGRITY_STALE_AFTER_S = 900.0
 MARKET_DATA_STALE_AFTER_S = DATA_INTEGRITY_STALE_AFTER_S
 
 
+def _data_integrity_kind(source: str) -> str:
+    prefix = source.split(":", 1)[0].lower()
+    if prefix in {"ticks", "bars", "prices", "market"}:
+        return "market_data"
+    return "data_source"
+
+
+def _data_integrity_symbol(source: str) -> str:
+    parts = [p for p in source.split(":") if p]
+    return parts[-1] if parts else source
+
+
+def _data_integrity_cache_age(sources: list[dict]) -> dict:
+    if not sources:
+        return {
+            "status": "empty",
+            "max_age_seconds": None,
+            "stale_after_seconds": DATA_INTEGRITY_STALE_AFTER_S,
+            "by_source": [],
+        }
+
+    max_age = max(float(src.get("age_seconds") or src.get("latency_sec") or 0.0) for src in sources)
+    stale = any(src.get("status") == "stale" for src in sources)
+    return {
+        "status": "stale" if stale else "fresh",
+        "max_age_seconds": round(max_age, 2),
+        "stale_after_seconds": DATA_INTEGRITY_STALE_AFTER_S,
+        "by_source": [
+            {
+                "source": src.get("source"),
+                "age_seconds": src.get("age_seconds", src.get("latency_sec")),
+                "status": "stale" if src.get("status") == "stale" else "fresh",
+            }
+            for src in sources
+        ],
+    }
+
+
+def _data_integrity_bar_freshness(sources: list[dict]) -> dict:
+    market_sources = [src for src in sources if _data_integrity_kind(str(src.get("source") or "")) == "market_data"]
+    if not market_sources:
+        return {
+            "status": "empty",
+            "stale_after_seconds": DATA_INTEGRITY_STALE_AFTER_S,
+            "max_lag_seconds": None,
+            "symbols": [],
+            "timeframes": [],
+            "stale_symbols": [],
+            "unknown_symbols": [],
+        }
+
+    stale_symbols = sorted(
+        {
+            _data_integrity_symbol(str(src.get("source") or ""))
+            for src in market_sources
+            if src.get("status") == "stale"
+        }
+    )
+    max_lag = max(float(src.get("age_seconds") or src.get("latency_sec") or 0.0) for src in market_sources)
+    return {
+        "status": "stale" if stale_symbols else "fresh",
+        "stale_after_seconds": DATA_INTEGRITY_STALE_AFTER_S,
+        "max_lag_seconds": round(max_lag, 2),
+        "symbols": sorted({_data_integrity_symbol(str(src.get("source") or "")) for src in market_sources}),
+        "timeframes": [],
+        "stale_symbols": stale_symbols,
+        "unknown_symbols": [],
+    }
+
+
+def _data_integrity_envelope(now: datetime, sources: list[dict], error: str | None = None) -> dict:
+    cache_age = _data_integrity_cache_age(sources)
+    provider_tier = {
+        "status": "unknown" if not error else "offline",
+        "active": None,
+        "primary": None,
+        "fallbacks": [],
+        "reason": "provider metadata not wired" if not error else error,
+    }
+    bar_freshness = _data_integrity_bar_freshness(sources)
+    source_parity = {
+        "status": "not_wired",
+        "window_seconds": None,
+        "checked_symbols": [],
+        "reference_source": None,
+        "compared_sources": [],
+        "max_delta_bps": None,
+        "mismatches": [],
+        "missing_sources": [],
+    }
+
+    blocking_reasons: list[str] = []
+    if error:
+        blocking_reasons.append("data_integrity_error")
+    if not sources:
+        blocking_reasons.append("no_data_sources_reported")
+    if cache_age["status"] in {"stale", "empty", "unknown"}:
+        blocking_reasons.append(f"cache_age_{cache_age['status']}")
+    if provider_tier["status"] in {"unknown", "offline"}:
+        blocking_reasons.append(f"provider_tier_{provider_tier['status']}")
+    if bar_freshness["status"] in {"stale", "empty", "unknown", "partial"}:
+        blocking_reasons.append(f"bar_freshness_{bar_freshness['status']}")
+    if source_parity["status"] != "matched":
+        blocking_reasons.append("source_parity_not_wired")
+
+    status = "offline" if error else "degraded" if blocking_reasons else "ok"
+    body = {
+        "timestamp": now.isoformat(),
+        "status": status,
+        "stale_after_seconds": DATA_INTEGRITY_STALE_AFTER_S,
+        "sources": sources,
+        "count": len(sources),
+        "cache_age": cache_age,
+        "provider_tier": provider_tier,
+        "bar_freshness": bar_freshness,
+        "source_parity": source_parity,
+        "trade_enablement": {
+            "status": "blocked" if blocking_reasons else "allowed",
+            "blocking_reasons": blocking_reasons,
+        },
+    }
+    if error:
+        body["error"] = error
+    return body
+
+
 @router.get("/system/data-integrity")
 async def get_data_integrity():
     """
@@ -727,19 +853,24 @@ async def get_data_integrity():
                 results.append(
                     {
                         "source": key.replace("datasource:", "").replace(":last_update", ""),
+                        "kind": _data_integrity_kind(key.replace("datasource:", "").replace(":last_update", "")),
+                        "provider": None,
+                        "provider_tier": None,
                         "last_update": val,
                         "latency_sec": round(latency, 2),
+                        "age_seconds": round(latency, 2),
                         "status": "healthy" if latency < DATA_INTEGRITY_STALE_AFTER_S else "stale",
+                        "cache_key": key,
                     }
                 )
             except Exception:
                 continue
 
         await r.close()
-        return {"timestamp": now.isoformat(), "sources": results, "count": len(results)}
+        return _data_integrity_envelope(now, results)
     except Exception as e:
         logger.error(f"Data integrity check failed: {e}")
-        return {"error": str(e), "sources": [], "count": 0}
+        return _data_integrity_envelope(datetime.now(timezone.utc), [], error=str(e))
 
 
 @router.get(

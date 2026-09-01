@@ -811,16 +811,17 @@
     {
       "id": "P9-001",
       "title": "Implement expanded data-integrity backend contract",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 77,
       "program": "Engine API",
       "blocked_by": ["P8-007"],
-      "acceptance": "`/system/data-integrity` returns cache age, provider tier, bar freshness, source parity, and trade-enable fields while preserving current clients."
+      "acceptance": "`/system/data-integrity` returns cache age, provider tier, bar freshness, source parity, and trade-enable fields while preserving current clients.",
+      "evidence": "docs/plans/master-implementation/PASS33_EXPANDED_DATA_INTEGRITY_BACKEND_2026-09-01.md"
     },
     {
       "id": "P9-002",
       "title": "Wire Command Center Data Integrity panel to backend contract",
-      "status": "blocked",
+      "status": "ready",
       "roi_rank": 78,
       "program": "Command Center",
       "blocked_by": ["P9-001"],
@@ -829,7 +830,7 @@
     {
       "id": "P9-003",
       "title": "Update Data Integrity drilldown page for expanded contract",
-      "status": "blocked",
+      "status": "ready",
       "roi_rank": 79,
       "program": "Dashboard",
       "blocked_by": ["P9-001"],

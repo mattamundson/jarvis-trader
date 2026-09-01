@@ -71,6 +71,15 @@ def test_source_within_documented_tolerance_reads_healthy(monkeypatch):
     body = client.get("/system/data-integrity").json()
     source = next(s for s in body["sources"] if s["source"] == "ticks:MES1!")
     assert source["status"] == "healthy"
+    assert source["kind"] == "market_data"
+    assert source["age_seconds"] == source["latency_sec"]
+    assert source["cache_key"] == "datasource:ticks:MES1!:last_update"
+    assert body["cache_age"]["status"] == "fresh"
+    assert body["bar_freshness"]["status"] == "fresh"
+    assert body["source_parity"]["status"] == "not_wired"
+    assert body["provider_tier"]["status"] == "unknown"
+    assert body["trade_enablement"]["status"] == "blocked"
+    assert "source_parity_not_wired" in body["trade_enablement"]["blocking_reasons"]
 
 
 def test_source_beyond_documented_tolerance_reads_stale(monkeypatch):
@@ -78,6 +87,10 @@ def test_source_beyond_documented_tolerance_reads_stale(monkeypatch):
     body = client.get("/system/data-integrity").json()
     source = next(s for s in body["sources"] if s["source"] == "ticks:MCL1!")
     assert source["status"] == "stale"
+    assert body["cache_age"]["status"] == "stale"
+    assert body["bar_freshness"]["status"] == "stale"
+    assert "cache_age_stale" in body["trade_enablement"]["blocking_reasons"]
+    assert "bar_freshness_stale" in body["trade_enablement"]["blocking_reasons"]
 
 
 def test_threshold_matches_readiness_gate_constant(monkeypatch):
@@ -93,3 +106,14 @@ def test_threshold_matches_readiness_gate_constant(monkeypatch):
         monkeypatch, {"datasource:tv_stream:last_update": _ts(901.0)}
     ).get("/system/data-integrity").json()
     assert just_outside["sources"][0]["status"] == "stale"
+
+
+def test_empty_data_integrity_response_is_explicitly_not_green(monkeypatch):
+    body = _client(monkeypatch, {}).get("/system/data-integrity").json()
+    assert body["status"] == "degraded"
+    assert body["count"] == 0
+    assert body["cache_age"]["status"] == "empty"
+    assert body["bar_freshness"]["status"] == "empty"
+    assert body["provider_tier"]["status"] == "unknown"
+    assert body["source_parity"]["status"] == "not_wired"
+    assert body["trade_enablement"]["status"] == "blocked"
