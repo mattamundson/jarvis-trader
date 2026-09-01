@@ -238,6 +238,70 @@ const SHAPES: Array<[RegExp, unknown]> = [
       last_updated: "",
     },
   ],
+  // Command Center and Trust Pane both consume these expanded P9 contracts.
+  // Empty arrays/nulls are the honest degraded state; the important part is
+  // preserving object wrappers and nested field names so route smoke catches
+  // real UI crashes instead of mock-shape noise.
+  [
+    /\/analytics\/bar-quality/,
+    {
+      window_hours: 168,
+      total_rejections: 0,
+      by_reason: [],
+      by_symbol: [],
+      by_path: { sanity: 0, gate: 0 },
+      recent: [],
+      gate_active: false,
+    },
+  ],
+  [/\/reports\/edge-ledger/, { total: 0, n_pass: 0, n_fail: 0, n_other: 0, rows: [] }],
+  [
+    /\/system\/data-integrity/,
+    {
+      timestamp: "",
+      status: "degraded",
+      stale_after_seconds: 900,
+      count: 0,
+      sources: [],
+      cache_age: { status: "empty", max_age_seconds: null, stale_after_seconds: 900, by_source: [] },
+      provider_tier: {
+        status: "unknown",
+        active: null,
+        primary: null,
+        fallbacks: [],
+        reason: "provider metadata not wired",
+      },
+      bar_freshness: {
+        status: "empty",
+        stale_after_seconds: 900,
+        max_lag_seconds: null,
+        symbols: [],
+        timeframes: [],
+        stale_symbols: [],
+        unknown_symbols: [],
+      },
+      source_parity: {
+        status: "not_wired",
+        window_seconds: null,
+        checked_symbols: [],
+        reference_source: null,
+        compared_sources: [],
+        max_delta_bps: null,
+        mismatches: [],
+        missing_sources: [],
+      },
+      trade_enablement: {
+        status: "blocked",
+        blocking_reasons: [
+          "no_data_sources_reported",
+          "cache_age_empty",
+          "provider_tier_unknown",
+          "bar_freshness_empty",
+          "source_parity_not_wired",
+        ],
+      },
+    },
+  ],
   // Real contract is PnlTruthResponse (pnl_truth_router.py / lib/api.ts) --
   // `{status, realized_pnl, closed_trades, excluded_trades, reasons,
   // sources_present, trusted}`. None of the old mock's keys exist on it, so
@@ -267,7 +331,7 @@ const SHAPES: Array<[RegExp, unknown]> = [
 const LIST_HINTS =
   /\/(recent|history|list|all|trades|signals|decisions|alerts|events|logs|snapshots|candidates|results|items|entries|positions|orders|jobs)\/?$/;
 
-function bodyFor(pathname: string): unknown {
+export function bodyFor(pathname: string): unknown {
   for (const [re, body] of SHAPES) {
     if (re.test(pathname)) return body;
   }

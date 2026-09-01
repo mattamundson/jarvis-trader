@@ -921,11 +921,12 @@
     {
       "id": "P10-002",
       "title": "Promote new Command Center endpoint shapes into generic E2E mock",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 88,
       "program": "Testing",
       "blocked_by": [],
-      "acceptance": "Generic route smoke mock knows session-today, bar-quality, edge-ledger, and expanded data-integrity shapes."
+      "acceptance": "Generic route smoke mock knows session-today, bar-quality, edge-ledger, and expanded data-integrity shapes.",
+      "evidence": "docs/plans/master-implementation/PASS45_ROUTE_SMOKE_MOCK_CONTRACTS_2026-09-01.md"
     },
     {
       "id": "P10-003",
