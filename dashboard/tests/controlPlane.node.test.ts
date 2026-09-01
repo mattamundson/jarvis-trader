@@ -2,7 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  candidateApprovalCapability,
+  candidateTradeTerms,
   executionCapability,
+  type ControlPlaneApproval,
   type ControlPlaneSnapshot,
 } from "@/lib/controlPlane";
 
@@ -46,6 +49,30 @@ function snapshot(overrides: Partial<ControlPlaneSnapshot> = {}): ControlPlaneSn
     pendingApprovals: { count: 0, candidates: [] },
     paperStatus: {},
     errors: {},
+    ...overrides,
+  };
+}
+
+function candidate(overrides: Partial<ControlPlaneApproval> = {}): ControlPlaneApproval {
+  return {
+    id: 7,
+    created_at: "2026-08-31T22:55:00.000Z",
+    symbol: "MES",
+    direction: "LONG",
+    confidence: 0.74,
+    expires_at: "2026-09-01T00:30:00.000Z",
+    status: "pending",
+    stark_signal: "MOM_BREAKOUT_V4",
+    validation_only: false,
+    verdict: {
+      trade_decision: {
+        entry_price: 6500,
+        stop_price: 6498,
+        target_1: 6504,
+        quantity: 1,
+      },
+      fund_decision: { final_quantity: 2 },
+    },
     ...overrides,
   };
 }
@@ -109,4 +136,89 @@ test("drawdown breach disables approval capability", () => {
   );
   assert.equal(result.canApprovePaper, false);
   assert.ok(result.reasons.includes("drawdown limit breached"));
+});
+
+test("candidate terms mirror server precedence and compute R:R", () => {
+  const terms = candidateTradeTerms(candidate());
+  assert.equal(terms.side, "LONG");
+  assert.equal(terms.entryPrice, 6500);
+  assert.equal(terms.stopPrice, 6498);
+  assert.equal(terms.targetPrice, 6504);
+  assert.equal(terms.quantity, 2, "fund_decision.final_quantity wins over trade quantity");
+  assert.equal(terms.riskPointsPerUnit, 2);
+  assert.equal(terms.rewardPointsPerUnit, 4);
+  assert.equal(terms.rewardRisk, 2);
+});
+
+test("valid frozen candidate is paper-approvable when global cockpit is healthy", () => {
+  const result = candidateApprovalCapability(snapshot(), candidate(), Date.parse("2026-08-31T23:15:00Z"));
+  assert.equal(result.canApprove, true);
+  assert.deepEqual(result.reasons, []);
+});
+
+test("validation-only candidate is blocked client-side as well as server-side", () => {
+  const result = candidateApprovalCapability(
+    snapshot(),
+    candidate({ validation_only: true }),
+    Date.parse("2026-08-31T23:15:00Z"),
+  );
+  assert.equal(result.canApprove, false);
+  assert.ok(result.reasons.includes("strategy is validation-only"));
+});
+
+test("expired candidate is blocked", () => {
+  const result = candidateApprovalCapability(
+    snapshot(),
+    candidate({ expires_at: "2026-08-31T23:00:00Z" }),
+    Date.parse("2026-08-31T23:15:00Z"),
+  );
+  assert.equal(result.canApprove, false);
+  assert.ok(result.reasons.includes("candidate expired"));
+});
+
+test("candidate without a protective stop or target fails closed", () => {
+  const result = candidateApprovalCapability(
+    snapshot(),
+    candidate({
+      verdict: {
+        trade_decision: { entry_price: 6500, quantity: 1 },
+        fund_decision: { final_quantity: 1 },
+      },
+    }),
+    Date.parse("2026-08-31T23:15:00Z"),
+  );
+  assert.equal(result.canApprove, false);
+  assert.ok(result.reasons.includes("protective stop unavailable"));
+  assert.ok(result.reasons.includes("target unavailable"));
+});
+
+test("wrong LONG stop/target geometry fails closed", () => {
+  const result = candidateApprovalCapability(
+    snapshot(),
+    candidate({
+      verdict: {
+        trade_decision: {
+          entry_price: 6500,
+          stop_price: 6501,
+          target_1: 6499,
+          quantity: 1,
+        },
+      },
+    }),
+    Date.parse("2026-08-31T23:15:00Z"),
+  );
+  assert.equal(result.canApprove, false);
+  assert.ok(result.reasons.includes("LONG stop must be below entry"));
+  assert.ok(result.reasons.includes("LONG target must be above entry"));
+});
+
+test("global safety failure also blocks an otherwise valid candidate", () => {
+  const base = snapshot();
+  const result = candidateApprovalCapability(
+    snapshot({ safety: { ...base.safety!, kill_switch_active: true } }),
+    candidate(),
+    Date.parse("2026-08-31T23:15:00Z"),
+  );
+  assert.equal(result.canApprove, false);
+  assert.ok(result.reasons.includes("kill switch active"));
 });
