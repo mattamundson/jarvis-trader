@@ -90,7 +90,9 @@ import {
   CommandCenterOperationsSummary,
   CommandCenterTrustAuditSummary,
 } from "@/components/command-center/SummarySections";
+import { TradingStatusReconciliation } from "@/components/TradingStatusReconciliation";
 import PipelineFunnelCard from "@/components/command-center/PipelineFunnelCard";
+import { RiskSafetyPanel } from "@/app/mission-control/components/RiskSafetyPanel";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { useToast } from "@/lib/toast-context";
 import { useWebSocket, type WsEvent } from "@/hooks/useWebSocket";
@@ -771,6 +773,14 @@ export default function CommandCenterPage() {
             <Badge className="w-fit border border-cyan-800 bg-cyan-950/60 text-cyan-300">
               parity migration
             </Badge>
+          </div>
+          <div className="mt-4 space-y-4">
+            <WidgetErrorBoundary name="Operations Risk & Safety">
+              <RiskSafetyPanel />
+            </WidgetErrorBoundary>
+            <WidgetErrorBoundary name="Operations Trading Status Reconciliation">
+              <TradingStatusReconciliation />
+            </WidgetErrorBoundary>
           </div>
         </section>
       )}

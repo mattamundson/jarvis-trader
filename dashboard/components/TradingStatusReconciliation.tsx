@@ -132,8 +132,9 @@ export function TradingStatusReconciliation() {
     { refreshInterval: REFRESH_MS, revalidateOnFocus: false }
   );
 
-  const rows = data?.symbols ?? [];
-  const disagreementCount = data?.summary.disagreements ?? 0;
+  const rows = Array.isArray(data?.symbols) ? data.symbols : [];
+  const disagreementCount =
+    typeof data?.summary?.disagreements === "number" ? data.summary.disagreements : 0;
 
   return (
     <Card className={disagreementCount > 0 ? "border-warn/40" : undefined}>

@@ -1031,19 +1031,20 @@
       {
         "id": "P11-003",
         "title": "Mount risk and split-brain panels in operations view",
-        "status": "ready",
+        "status": "done",
         "roi_rank": 99,
         "program": "Command Center",
         "blocked_by": [],
-        "acceptance": "Operations view renders `RiskSafetyPanel` and `TradingStatusReconciliation` with their degraded states preserved."
+        "acceptance": "Operations view renders `RiskSafetyPanel` and `TradingStatusReconciliation` with their degraded states preserved.",
+        "evidence": "docs/plans/master-implementation/PASS57_OPERATIONS_RISK_RECONCILIATION_PANELS_2026-09-01.md"
       },
       {
         "id": "P11-004",
         "title": "Mount positions and pipeline panels in operations view",
-        "status": "blocked",
+        "status": "ready",
         "roi_rank": 100,
         "program": "Command Center",
-        "blocked_by": ["P11-003"],
+        "blocked_by": [],
         "acceptance": "Operations view renders `PositionsPerformancePanel` and `SignalsPipelinePanel` without weakening missing-data caveats."
       },
       {
