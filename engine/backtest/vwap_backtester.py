@@ -235,27 +235,44 @@ def run_vwap_backtest(
 
     idx = df.index
     if hasattr(idx, "tz") and idx.tz is not None:
-        eastern_hours = pd.Series(idx.tz_convert("America/New_York").hour, index=df.index)
+        eastern_hours = idx.tz_convert("America/New_York").hour
     else:
-        eastern_hours = pd.Series(idx.hour, index=df.index)
+        eastern_hours = idx.hour
+
+    highs = df["high"].to_numpy(dtype=float, copy=False)
+    lows = df["low"].to_numpy(dtype=float, copy=False)
+    closes = df["close"].to_numpy(dtype=float, copy=False)
+    opens = df["open"].to_numpy(dtype=float, copy=False)
+    volumes = (
+        df["volume"].to_numpy(dtype=float, copy=False)
+        if "volume" in df.columns
+        else np.zeros(len(df), dtype=float)
+    )
+    atr_values = df["atr"].to_numpy(dtype=float, copy=False)
+    signals = df["vwap_signal"].to_numpy(dtype=object, copy=False)
+    stops = df["vwap_stop"].to_numpy(dtype=float, copy=False)
+    targets_1 = df["vwap_target_1"].to_numpy(dtype=float, copy=False)
+    targets_2 = df["vwap_target_2"].to_numpy(dtype=float, copy=False)
+    vwaps = df["vwap"].to_numpy(dtype=float, copy=False)
 
     open_pos: Optional[Dict] = None
 
     for i in range(len(df)):
-        bar_high = float(df["high"].iloc[i])
-        bar_low = float(df["low"].iloc[i])
-        bar_close = float(df["close"].iloc[i])
-        bar_open = float(df["open"].iloc[i])
-        bar_vol = float(df["volume"].iloc[i]) if "volume" in df.columns else 0.0
-        bar_time = str(df.index[i])
-        bar_hour = int(eastern_hours.iloc[i])
+        bar_high = float(highs[i])
+        bar_low = float(lows[i])
+        bar_close = float(closes[i])
+        bar_open = float(opens[i])
+        bar_vol = float(volumes[i])
+        bar_time = str(idx[i])
+        bar_hour = int(eastern_hours[i])
 
         # SOTA: volatility-scaled slippage multiplier (ATR-relative)
         slip_mult = 1.0
-        if volatility_scaled_slippage and "atr" in df.columns:
-            atr_val = float(df["atr"].iloc[i])
+        if volatility_scaled_slippage:
+            atr_val = float(atr_values[i])
             lookback = max(0, i - 20)
-            hist = df["atr"].iloc[lookback:i].dropna()
+            hist = atr_values[lookback:i]
+            hist = hist[~np.isnan(hist)]
             if len(hist) >= 1 and atr_val > 0:
                 mean_atr = float(hist.mean())
                 if mean_atr > 0:
@@ -389,15 +406,15 @@ def run_vwap_backtest(
 
         # New entry
         if open_pos is None:
-            sig = str(df["vwap_signal"].iloc[i])
+            sig = str(signals[i])
             if sig in ("LONG_ENTRY", "SHORT_ENTRY"):
                 side = "long" if sig == "LONG_ENTRY" else "short"
                 entry_p = _slip(bar_close, side, True, eff_spec)
-                stop_p = float(df["vwap_stop"].iloc[i])
-                t1_p = float(df["vwap_target_1"].iloc[i])
-                t2_p = float(df["vwap_target_2"].iloc[i])
-                vwap_p = float(df["vwap"].iloc[i])
-                atr_p = float(df["atr"].iloc[i])
+                stop_p = float(stops[i])
+                t1_p = float(targets_1[i])
+                t2_p = float(targets_2[i])
+                vwap_p = float(vwaps[i])
+                atr_p = float(atr_values[i])
 
                 open_pos = {
                     "side": side,
@@ -412,7 +429,7 @@ def run_vwap_backtest(
 
     # Force-close any remaining open position
     if open_pos is not None:
-        last_close = float(df["close"].iloc[-1])
+        last_close = float(closes[-1])
         exit_p = _slip(last_close, open_pos["side"], False, eff_spec)
         pnl = _pnl(open_pos["entry"], exit_p, open_pos["side"], eff_contracts, eff_spec)
         trades.append(

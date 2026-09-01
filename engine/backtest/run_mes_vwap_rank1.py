@@ -60,6 +60,9 @@ engine_root = Path(__file__).parent.parent
 if str(engine_root) not in sys.path:
     sys.path.insert(0, str(engine_root))
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(line_buffering=True)
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -82,6 +85,9 @@ REQUIRE_REVERSAL_VALUES = [True, False]
 REGIME_FILTER_VALUES = [True, False]
 
 MIN_OOS_TRADES_PER_WINDOW = 5  # soft sanity floor
+
+SMOKE_WINDOWS = 1
+SMOKE_GRID_COMBOS = 4
 
 
 # ---------------------------------------------------------------------------
@@ -140,6 +146,69 @@ def _find_data_file(data_dir: Path) -> Path:
     chosen = _find_latest_cache(data_dir, "MES")
     print(f"[MES-VWAP-R1] Selected {chosen.name}")
     return chosen
+
+
+def _validate_positive_limit(name: str, value: int | None) -> None:
+    if value is not None and value < 1:
+        raise ValueError(f"{name} must be >= 1 when provided")
+
+
+def _sanitize_output_suffix(output_suffix: str) -> str:
+    parts = []
+    current = []
+    for char in output_suffix.strip().lower():
+        if char.isalnum():
+            current.append(char)
+        elif current:
+            parts.append("".join(current))
+            current = []
+    if current:
+        parts.append("".join(current))
+    suffix = "_".join(parts)
+    if not suffix:
+        raise ValueError("output_suffix must contain at least one alphanumeric character")
+    return suffix
+
+
+def _normalize_run_bounds(
+    *,
+    smoke: bool,
+    max_windows: int | None,
+    max_grid_combos: int | None,
+    skip_fixed_sweep: bool,
+    skip_cost_sweep: bool,
+    output_suffix: str | None,
+) -> dict:
+    if smoke:
+        max_windows = max_windows or SMOKE_WINDOWS
+        max_grid_combos = max_grid_combos or SMOKE_GRID_COMBOS
+        skip_fixed_sweep = True
+        skip_cost_sweep = True
+        output_suffix = output_suffix or "smoke"
+
+    _validate_positive_limit("max_windows", max_windows)
+    _validate_positive_limit("max_grid_combos", max_grid_combos)
+
+    is_bounded = any(
+        [
+            max_windows is not None,
+            max_grid_combos is not None,
+            skip_fixed_sweep,
+            skip_cost_sweep,
+        ]
+    )
+    if is_bounded and output_suffix is None:
+        output_suffix = "bounded"
+
+    return {
+        "canonical": not is_bounded,
+        "run_mode": "canonical" if not is_bounded else ("smoke" if smoke else "bounded"),
+        "max_windows": max_windows,
+        "max_grid_combos": max_grid_combos,
+        "skip_fixed_sweep": skip_fixed_sweep,
+        "skip_cost_sweep": skip_cost_sweep,
+        "output_suffix": _sanitize_output_suffix(output_suffix) if output_suffix else None,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -518,7 +587,23 @@ def _compute_gate_v2(
 # ---------------------------------------------------------------------------
 
 
-def run_wfo(sota_hardening: bool = False) -> dict:
+def run_wfo(
+    sota_hardening: bool = False,
+    max_windows: int | None = None,
+    max_grid_combos: int | None = None,
+    skip_fixed_sweep: bool = False,
+    skip_cost_sweep: bool = False,
+    output_suffix: str | None = None,
+    smoke: bool = False,
+) -> dict:
+    bounds = _normalize_run_bounds(
+        smoke=smoke,
+        max_windows=max_windows,
+        max_grid_combos=max_grid_combos,
+        skip_fixed_sweep=skip_fixed_sweep,
+        skip_cost_sweep=skip_cost_sweep,
+        output_suffix=output_suffix,
+    )
     if sota_hardening:
         print("[MES-VWAP-R1] SOTA EXECUTION-REALISM HARDENING ENABLED (gap stops, pessimistic "
               "tie-break, vol-scaled slippage, POV impact, margin cap).")
@@ -529,10 +614,15 @@ def run_wfo(sota_hardening: bool = False) -> dict:
     df = _load_data(data_file)
     print(f"[MES-VWAP-R1] {len(df)} bars | {df.index.min().date()} -> {df.index.max().date()}")
 
-    windows = _generate_windows(df)
-    if not windows:
+    all_windows = _generate_windows(df)
+    if not all_windows:
         print("[MES-VWAP-R1] ERROR: not enough data to form WFO windows.")
         return {}
+    windows = (
+        all_windows[: bounds["max_windows"]]
+        if bounds["max_windows"] is not None
+        else all_windows
+    )
 
     grid = list(
         itertools.product(
@@ -542,13 +632,25 @@ def run_wfo(sota_hardening: bool = False) -> dict:
             REGIME_FILTER_VALUES,
         )
     )
-    n_combos = len(grid)  # = 36
+    full_grid_combos = len(grid)  # = 36
+    if bounds["max_grid_combos"] is not None:
+        grid = grid[: bounds["max_grid_combos"]]
+    n_combos = len(grid)
 
     print(f"\n{'=' * 70}")
     print("=== MES VWAP REVERSION RANK 1 - GATE v2 (legacy WFE REJECTED, WFE=0.02) ===")
     print(
         f"Windows: {len(windows)} | Train: {TRAIN_MONTHS}mo | Test: {TEST_MONTHS}mo | Step: {STEP_MONTHS}mo"
     )
+    print(f"Mode: {bounds['run_mode']} | Canonical artifact: {bounds['canonical']}")
+    if not bounds["canonical"]:
+        print(
+            "Bounds: "
+            f"windows={len(windows)}/{len(all_windows)}, "
+            f"grid={n_combos}/{full_grid_combos}, "
+            f"skip_fixed_sweep={bounds['skip_fixed_sweep']}, "
+            f"skip_cost_sweep={bounds['skip_cost_sweep']}"
+        )
     print(f"Grid: {n_combos} combos")
     print(f"  band_mult            : {BAND_MULT_VALUES}")
     print(f"  stop_mult            : {STOP_MULT_VALUES}")
@@ -642,12 +744,23 @@ def run_wfo(sota_hardening: bool = False) -> dict:
         return {}
 
     # Fixed-params sweep on full dataset
-    print(f"\n[MES-VWAP-R1] Fixed-params sweep on full dataset ({n_combos} combos)...")
-    fixed_params_metrics = _run_fixed_params_sweep(df, grid, sota_hardening=sota_hardening)
-    print(
-        f"  fixed_params_min_pf  = {fixed_params_metrics['fixed_params_min_pf']:.4f}  "
-        f"(need >= {GATE_FIXED_PARAMS_MIN_PF})"
-    )
+    if bounds["skip_fixed_sweep"]:
+        print("\n[MES-VWAP-R1] Fixed-params sweep skipped for bounded diagnostic run.")
+        fixed_params_metrics = {
+            "fixed_params_min_pf": 0.0,
+            "fixed_params_mean_pf": 0.0,
+            "fixed_params_max_pf": 0.0,
+            "n_combos_with_trades": 0,
+            "combo_results": [],
+            "skipped": True,
+        }
+    else:
+        print(f"\n[MES-VWAP-R1] Fixed-params sweep on full dataset ({n_combos} combos)...")
+        fixed_params_metrics = _run_fixed_params_sweep(df, grid, sota_hardening=sota_hardening)
+        print(
+            f"  fixed_params_min_pf  = {fixed_params_metrics['fixed_params_min_pf']:.4f}  "
+            f"(need >= {GATE_FIXED_PARAMS_MIN_PF})"
+        )
 
     # Cost sweep using most-selected champion params
     param_votes = Counter(
@@ -666,18 +779,32 @@ def run_wfo(sota_hardening: bool = False) -> dict:
         "require_reversal_bar": most_selected[2],
         "regime_filter": most_selected[3],
     }
-    print(f"\n[MES-VWAP-R1] Cost sweep (champion: {champion_params})...")
-    cost_sweep_metrics = _run_cost_sweep(df, champion_params, sota_hardening=sota_hardening)
-    print(
-        f"  cost_survives_through = {cost_sweep_metrics['cost_survives_through']}  "
-        f"(need >= 'realistic')"
-    )
+    if bounds["skip_cost_sweep"]:
+        print("\n[MES-VWAP-R1] Cost sweep skipped for bounded diagnostic run.")
+        cost_sweep_metrics = {
+            "cost_survives_through": "skipped",
+            "tier_results": {},
+            "skipped": True,
+        }
+    else:
+        print(f"\n[MES-VWAP-R1] Cost sweep (champion: {champion_params})...")
+        cost_sweep_metrics = _run_cost_sweep(df, champion_params, sota_hardening=sota_hardening)
+        print(
+            f"  cost_survives_through = {cost_sweep_metrics['cost_survives_through']}  "
+            f"(need >= 'realistic')"
+        )
 
     # Gate v2 evaluation
     gate = _compute_gate_v2(oos_results, n_combos, fixed_params_metrics, cost_sweep_metrics)
 
     print(f"\n{'=' * 70}")
-    print(f"=== GATE v2 VERDICT: {gate['verdict']} (via {gate['passed_via'] or 'NONE'}) ===")
+    if bounds["canonical"]:
+        print(f"=== GATE v2 VERDICT: {gate['verdict']} (via {gate['passed_via'] or 'NONE'}) ===")
+    else:
+        print(
+            "=== GATE v2 DIAGNOSTIC ONLY: "
+            f"{gate['verdict']} (via {gate['passed_via'] or 'NONE'}) ==="
+        )
     print(f"  pf_ci_lower          = {gate['pf_ci_lower']:.4f}  (need >= {GATE_PF_CI_LOWER})")
     print(f"  p_edge               = {gate['p_edge']:.4f}  (need >= {GATE_P_EDGE})")
     print(
@@ -705,13 +832,29 @@ def run_wfo(sota_hardening: bool = False) -> dict:
     # Write gate v2 verdict JSON
     verdicts_dir = engine_root / "data" / "gate_v2_verdicts"
     verdicts_dir.mkdir(parents=True, exist_ok=True)
-    verdict_file = verdicts_dir / "MES_vwap_rank1.json"
+    suffix = bounds["output_suffix"]
+    verdict_file = verdicts_dir / (
+        f"MES_vwap_rank1_{suffix}.json" if suffix else "MES_vwap_rank1.json"
+    )
 
     now_iso = datetime.now(tz=timezone.utc).isoformat()
     verdict_doc = {
         "symbol": SYMBOL,
         "family": "vwap",
         "hypothesis": "rank1",
+        "run_mode": bounds["run_mode"],
+        "canonical": bounds["canonical"],
+        "certification_complete": bounds["canonical"],
+        "bounds": {
+            "max_windows": bounds["max_windows"],
+            "max_grid_combos": bounds["max_grid_combos"],
+            "skip_fixed_sweep": bounds["skip_fixed_sweep"],
+            "skip_cost_sweep": bounds["skip_cost_sweep"],
+            "windows_evaluated": len(windows),
+            "windows_available": len(all_windows),
+            "grid_combos_evaluated": n_combos,
+            "grid_combos_available": full_grid_combos,
+        },
         "verdict": gate["verdict"],
         "passed_via": gate["passed_via"],
         "core_verdict": gate["core_verdict"],
@@ -744,10 +887,12 @@ def run_wfo(sota_hardening: bool = False) -> dict:
             "test_months": TEST_MONTHS,
             "step_months": STEP_MONTHS,
             "n_windows": len(windows),
+            "n_windows_available": len(all_windows),
             "n_oos_windows": gate["n_oos_windows"],
             "n_oos_windows_with_trades": gate["n_oos_windows_with_trades"],
             "total_oos_trades": gate["total_oos_trades"],
             "grid_combos": n_combos,
+            "grid_combos_available": full_grid_combos,
             "grid_band_mult": BAND_MULT_VALUES,
             "grid_stop_mult": STOP_MULT_VALUES,
             "grid_require_reversal_bar": REQUIRE_REVERSAL_VALUES,
@@ -822,12 +967,61 @@ def main():
         "tie-break, vol-scaled slippage, POV impact, margin cap). Default: off "
         "(baseline behavior, byte-identical to pre-hardening runs).",
     )
+    parser.add_argument(
+        "--smoke",
+        action="store_true",
+        help=(
+            "Run a bounded diagnostic pass that writes MES_vwap_rank1_smoke.json "
+            "and never overwrites the canonical verdict artifact."
+        ),
+    )
+    parser.add_argument(
+        "--max-windows",
+        type=int,
+        default=None,
+        help="Limit the number of WFO windows for diagnostic runs.",
+    )
+    parser.add_argument(
+        "--max-grid-combos",
+        type=int,
+        default=None,
+        help="Limit the parameter-grid combos for diagnostic runs.",
+    )
+    parser.add_argument(
+        "--skip-fixed-sweep",
+        action="store_true",
+        help="Skip the full fixed-params sweep; output is non-canonical.",
+    )
+    parser.add_argument(
+        "--skip-cost-sweep",
+        action="store_true",
+        help="Skip the full cost sweep; output is non-canonical.",
+    )
+    parser.add_argument(
+        "--output-suffix",
+        default=None,
+        help="Write a suffixed verdict artifact, e.g. MES_vwap_rank1_<suffix>.json.",
+    )
     args = parser.parse_args()
 
-    verdict = run_wfo(sota_hardening=args.sota)
+    verdict = run_wfo(
+        sota_hardening=args.sota,
+        max_windows=args.max_windows,
+        max_grid_combos=args.max_grid_combos,
+        skip_fixed_sweep=args.skip_fixed_sweep,
+        skip_cost_sweep=args.skip_cost_sweep,
+        output_suffix=args.output_suffix,
+        smoke=args.smoke,
+    )
     if not verdict:
         print("[MES-VWAP-R1] No verdict produced.")
         sys.exit(1)
+
+    if not verdict.get("canonical", True):
+        print("\n[DIAGNOSTIC] MES VWAP Rank 1 bounded run completed.")
+        print("  This artifact is not a gate-v2 certification and cannot replace MES_vwap_rank1.json.")
+        print(f"  Artifact mode: {verdict.get('run_mode')} | bounds: {verdict.get('bounds')}")
+        return
 
     final = verdict.get("verdict", "FAIL")
     passed_via = verdict.get("passed_via")

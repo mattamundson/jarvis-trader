@@ -296,21 +296,22 @@
     {
       "id": "P3-004",
       "title": "Rerun affected MES VWAP Gate-v2 certification under patched RTH semantics",
-      "status": "blocked",
+      "status": "done",
       "roi_rank": 24,
       "program": "Validation",
       "blocked_by": ["P3-003"],
       "acceptance": "New verdict artifact is compared against prior provenance and verdict flips are surfaced.",
-      "blocker": "Full runner exceeded 15 minutes with no verdict artifact; needs profiling or bounded fast mode."
+      "evidence": "docs/plans/master-implementation/PASS9_IB_AND_VWAP_RECERT_2026-09-01.md"
     },
     {
       "id": "P3-005",
       "title": "Rerun affected IB validation under patched point-in-time semantics",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 25,
       "program": "Validation",
       "blocked_by": ["P3-003"],
-      "acceptance": "Affected IB validation outputs are regenerated or marked not impacted with evidence."
+      "acceptance": "Affected IB validation outputs are regenerated or marked not impacted with evidence.",
+      "evidence": "docs/plans/master-implementation/PASS9_IB_AND_VWAP_RECERT_2026-09-01.md"
     },
     {
       "id": "P3-006",
@@ -446,6 +447,156 @@
       "program": "Session Hygiene",
       "blocked_by": [],
       "acceptance": "Handoff exists under ~/.Codex/handoffs with required sections."
+    },
+    {
+      "id": "P5-001",
+      "title": "Add bounded and observable controls to the MES VWAP Gate-v2 runner",
+      "status": "done",
+      "roi_rank": 41,
+      "program": "Validation",
+      "blocked_by": ["P3-004"],
+      "acceptance": "Runner exposes smoke/window/grid/sweep/output controls without changing canonical full-run behavior.",
+      "evidence": "engine/backtest/run_mes_vwap_rank1.py"
+    },
+    {
+      "id": "P5-002",
+      "title": "Run MES VWAP smoke recertification under Python 3.12",
+      "status": "done",
+      "roi_rank": 42,
+      "program": "Validation",
+      "blocked_by": ["P5-001"],
+      "acceptance": "A non-canonical smoke artifact is written and verified as certification_complete=false.",
+      "evidence": "docs/plans/master-implementation/PASS8_VWAP_RUNNER_BOUNDS_2026-09-01.md"
+    },
+    {
+      "id": "P5-003",
+      "title": "Run affected IB validation under patched point-in-time semantics",
+      "status": "done",
+      "roi_rank": 43,
+      "program": "Validation",
+      "blocked_by": ["P4-001"],
+      "acceptance": "Affected IB validation outputs are regenerated or marked not impacted with evidence.",
+      "evidence": "docs/plans/master-implementation/PASS9_IB_AND_VWAP_RECERT_2026-09-01.md"
+    },
+    {
+      "id": "P5-004",
+      "title": "Profile the full MES VWAP Gate-v2 runner",
+      "status": "done",
+      "roi_rank": 44,
+      "program": "Validation",
+      "blocked_by": ["P5-001"],
+      "acceptance": "A profiler report identifies the dominant runtime cost and the smallest safe optimization target.",
+      "evidence": "docs/plans/master-implementation/PASS9_IB_AND_VWAP_RECERT_2026-09-01.md"
+    },
+    {
+      "id": "P5-005",
+      "title": "Optimize the full MES VWAP Gate-v2 runner based on profiler evidence",
+      "status": "done",
+      "roi_rank": 45,
+      "program": "Validation",
+      "blocked_by": ["P5-004"],
+      "acceptance": "Optimization preserves canonical metrics while reducing full-run wall time enough to complete reliably.",
+      "evidence": "engine/backtest/vwap_backtester.py; engine/backtest/vwap_signals.py"
+    },
+    {
+      "id": "P5-006",
+      "title": "Rerun full canonical MES VWAP Gate-v2 certification",
+      "status": "done",
+      "roi_rank": 46,
+      "program": "Validation",
+      "blocked_by": ["P5-005"],
+      "acceptance": "New canonical MES_vwap_rank1.json is compared against prior provenance and verdict flips are surfaced.",
+      "evidence": "docs/plans/master-implementation/PASS9_IB_AND_VWAP_RECERT_2026-09-01.md"
+    },
+    {
+      "id": "P6-001",
+      "title": "Create path-bounded local commit for pass 8 and pass 9 validation work",
+      "status": "ready",
+      "roi_rank": 47,
+      "program": "Git Hygiene",
+      "blocked_by": [],
+      "acceptance": "Commit includes only tracked plan, VWAP runner, VWAP hot-path, and focused test files from this loop pass."
+    },
+    {
+      "id": "P6-002",
+      "title": "Add observable output controls to the IB WFO runner",
+      "status": "ready",
+      "roi_rank": 48,
+      "program": "Validation",
+      "blocked_by": [],
+      "acceptance": "IB WFO runner streams progress and supports explicit all/single symbol-mode execution without changing default verdict outputs."
+    },
+    {
+      "id": "P6-003",
+      "title": "Add focused coverage for IB WFO CLI argument handling",
+      "status": "blocked",
+      "roi_rank": 49,
+      "program": "Validation",
+      "blocked_by": ["P6-002"],
+      "acceptance": "Tests prove default all-mode and single symbol/mode dispatch behavior without running the expensive WFO loop."
+    },
+    {
+      "id": "P6-004",
+      "title": "Commit PR #749 ruff-only fixes inside the isolated PR worktree",
+      "status": "ready",
+      "roi_rank": 50,
+      "program": "Feature Engineering",
+      "blocked_by": [],
+      "acceptance": "The PR #749 worktree has a local commit containing only the inspected ruff-safe fixes; no push is performed."
+    },
+    {
+      "id": "P6-005",
+      "title": "Run focused PR #749 verification after isolated commit",
+      "status": "blocked",
+      "roi_rank": 51,
+      "program": "CI",
+      "blocked_by": ["P6-004"],
+      "acceptance": "Ruff and the smallest relevant pytest slice pass or remaining blockers are classified."
+    },
+    {
+      "id": "P6-006",
+      "title": "Write PR #749 readiness report",
+      "status": "blocked",
+      "roi_rank": 52,
+      "program": "Feature Engineering",
+      "blocked_by": ["P6-005"],
+      "acceptance": "Report states whether PR #749 is mergeable, needs split, or should be replaced by a fresh implementation."
+    },
+    {
+      "id": "P6-007",
+      "title": "Implement lightweight environment drift detector script",
+      "status": "ready",
+      "roi_rank": 53,
+      "program": "DevOps and CI/CD",
+      "blocked_by": [],
+      "acceptance": "Script checks Python, Node, pnpm, and key port expectations without mutating runtime state."
+    },
+    {
+      "id": "P6-008",
+      "title": "Add environment drift detector tests",
+      "status": "blocked",
+      "roi_rank": 54,
+      "program": "DevOps and CI/CD",
+      "blocked_by": ["P6-007"],
+      "acceptance": "Tests cover pass and fail cases for version/port detection using mocked command output."
+    },
+    {
+      "id": "P6-009",
+      "title": "Run local proof for environment drift detector",
+      "status": "blocked",
+      "roi_rank": 55,
+      "program": "DevOps and CI/CD",
+      "blocked_by": ["P6-008"],
+      "acceptance": "Local proof records current machine drift without restarting services."
+    },
+    {
+      "id": "P6-010",
+      "title": "Convert Command Center IA spec into implementation tickets",
+      "status": "ready",
+      "roi_rank": 56,
+      "program": "Command Center",
+      "blocked_by": [],
+      "acceptance": "Tickets map canonical surfaces to concrete files, endpoints, empty states, and unsafe-action gates."
     }
   ]
 }

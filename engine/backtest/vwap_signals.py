@@ -196,6 +196,15 @@ def generate_vwap_signals(
     )
     eastern_hour = pd.Series(eastern.hour, index=df.index)
 
+    highs = df["high"].to_numpy(dtype=float, copy=False)
+    lows = df["low"].to_numpy(dtype=float, copy=False)
+    closes = df["close"].to_numpy(dtype=float, copy=False)
+    volumes = df["volume"].to_numpy(dtype=float, copy=False)
+    in_rth_values = in_rth.to_numpy(dtype=bool, copy=False)
+    signal_eligible_values = signal_eligible.to_numpy(dtype=bool, copy=False)
+    eastern_session_values = eastern_session.to_numpy(dtype=object, copy=False)
+    eastern_hour_values = eastern_hour.to_numpy(dtype=int, copy=False)
+
     # Session VWAP (reset at first RTH bar each day)
     cum_pv = 0.0  # cumulative price × volume
     cum_vol = 0.0  # cumulative volume
@@ -203,15 +212,13 @@ def generate_vwap_signals(
     active_session = None
 
     for i in range(len(df)):
-        if not bool(in_rth.iloc[i]):
+        if not bool(in_rth_values[i]):
             vwap_vals.append(np.nan)
             continue
 
-        session_key = eastern_session.iloc[i]
-        vol = float(df["volume"].iloc[i])
-        tp = (
-            float(df["high"].iloc[i]) + float(df["low"].iloc[i]) + float(df["close"].iloc[i])
-        ) / 3.0
+        session_key = eastern_session_values[i]
+        vol = float(volumes[i])
+        tp = (float(highs[i]) + float(lows[i]) + float(closes[i])) / 3.0
 
         if session_key != active_session:
             # New session — reset
@@ -235,23 +242,29 @@ def generate_vwap_signals(
     df["vwap_lower"] = df["vwap"] - band_mult * df["atr"]
 
     # Signals
-    df["vwap_signal"] = ""
-    df["vwap_stop"] = np.nan
-    df["vwap_target_1"] = np.nan
-    df["vwap_target_2"] = np.nan
-    df["vwap_rr"] = np.nan
+    vwap_signals = np.full(len(df), "", dtype=object)
+    vwap_stops = np.full(len(df), np.nan, dtype=float)
+    vwap_target_1 = np.full(len(df), np.nan, dtype=float)
+    vwap_target_2 = np.full(len(df), np.nan, dtype=float)
+    vwap_rr = np.full(len(df), np.nan, dtype=float)
+
+    vwap_values = df["vwap"].to_numpy(dtype=float, copy=False)
+    upper_values = df["vwap_upper"].to_numpy(dtype=float, copy=False)
+    lower_values = df["vwap_lower"].to_numpy(dtype=float, copy=False)
+    atr_values = df["atr"].to_numpy(dtype=float, copy=False)
+    regime_ok_values = df["_regime_ok"].to_numpy(dtype=bool, copy=False)
 
     for i in range(1, len(df)):
-        bar_close = float(df["close"].iloc[i])
-        bar_hour = int(eastern_hour.iloc[i])
-        if not bool(signal_eligible.iloc[i]):
+        bar_close = float(closes[i])
+        bar_hour = int(eastern_hour_values[i])
+        if not bool(signal_eligible_values[i]):
             continue
 
-        vwap = float(df["vwap"].iloc[i])
-        upper = float(df["vwap_upper"].iloc[i])
-        lower = float(df["vwap_lower"].iloc[i])
-        atr = float(df["atr"].iloc[i])
-        prev_close = float(df["close"].iloc[i - 1])
+        vwap = float(vwap_values[i])
+        upper = float(upper_values[i])
+        lower = float(lower_values[i])
+        atr = float(atr_values[i])
+        prev_close = float(closes[i - 1])
 
         if np.isnan(atr) or np.isnan(vwap):
             continue
@@ -264,7 +277,7 @@ def generate_vwap_signals(
         reversal_short = bar_close < prev_close  # current bar closed down
 
         # Skip if regime filter is active and bar is trending
-        if regime_filter and not bool(df["_regime_ok"].iloc[i]):
+        if regime_filter and not bool(regime_ok_values[i]):
             continue
 
         # LONG entry: close below lower band (stretched below VWAP) with reversal
@@ -277,11 +290,11 @@ def generate_vwap_signals(
                 reward_t1 = t1 - bar_close
                 rr = reward_t1 / risk if risk > 0 else 0.0
 
-                df.at[df.index[i], "vwap_signal"] = "LONG_ENTRY"
-                df.at[df.index[i], "vwap_stop"] = round(stop, 4)
-                df.at[df.index[i], "vwap_target_1"] = round(t1, 4)
-                df.at[df.index[i], "vwap_target_2"] = round(t2, 4)
-                df.at[df.index[i], "vwap_rr"] = round(rr, 3)
+                vwap_signals[i] = "LONG_ENTRY"
+                vwap_stops[i] = round(stop, 4)
+                vwap_target_1[i] = round(t1, 4)
+                vwap_target_2[i] = round(t2, 4)
+                vwap_rr[i] = round(rr, 3)
 
         # SHORT entry: close above upper band with reversal
         elif bar_close > upper:
@@ -293,14 +306,20 @@ def generate_vwap_signals(
                 reward_t1 = bar_close - t1
                 rr = reward_t1 / risk if risk > 0 else 0.0
 
-                df.at[df.index[i], "vwap_signal"] = "SHORT_ENTRY"
-                df.at[df.index[i], "vwap_stop"] = round(stop, 4)
-                df.at[df.index[i], "vwap_target_1"] = round(t1, 4)
-                df.at[df.index[i], "vwap_target_2"] = round(t2, 4)
-                df.at[df.index[i], "vwap_rr"] = round(rr, 3)
+                vwap_signals[i] = "SHORT_ENTRY"
+                vwap_stops[i] = round(stop, 4)
+                vwap_target_1[i] = round(t1, 4)
+                vwap_target_2[i] = round(t2, 4)
+                vwap_rr[i] = round(rr, 3)
 
-    n_long = (df["vwap_signal"] == "LONG_ENTRY").sum()
-    n_short = (df["vwap_signal"] == "SHORT_ENTRY").sum()
+    df["vwap_signal"] = vwap_signals
+    df["vwap_stop"] = vwap_stops
+    df["vwap_target_1"] = vwap_target_1
+    df["vwap_target_2"] = vwap_target_2
+    df["vwap_rr"] = vwap_rr
+
+    n_long = int((vwap_signals == "LONG_ENTRY").sum())
+    n_short = int((vwap_signals == "SHORT_ENTRY").sum())
     logger.info(
         f"{symbol} VWAP signals: {n_long} LONG + {n_short} SHORT = {n_long + n_short} total "
         f"(band={band_mult}×ATR, stop={stop_mult}×ATR) over {len(df)} bars"
