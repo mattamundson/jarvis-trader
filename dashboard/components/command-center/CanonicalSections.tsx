@@ -98,7 +98,7 @@ export function CommandCenterStatusStrip({
   return (
     <section
       data-testid="command-center-status-strip"
-      className="mb-4 grid grid-cols-1 gap-2 rounded-md border border-slate-800 bg-slate-950/60 p-2 md:grid-cols-2 xl:grid-cols-4"
+      className="mb-4 grid grid-cols-2 gap-2 rounded-md border border-slate-800 bg-slate-950/60 p-2 xl:grid-cols-4"
       aria-label="Command Center independent status strip"
     >
       {rows.map((row) => (
@@ -449,7 +449,7 @@ export function CanonicalShellMap({ regions }: { regions: ShellRegion[] }) {
           {regions.filter((r) => r.tone === "live").length}/{regions.length} live
         </span>
       </div>
-      <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-6">
+      <div className="grid grid-cols-3 gap-1.5 md:grid-cols-3 md:gap-2 xl:grid-cols-6">
         {regions.map((region) => {
           const Icon = region.Icon;
           return (
@@ -457,18 +457,18 @@ export function CanonicalShellMap({ regions }: { regions: ShellRegion[] }) {
               key={region.label}
               data-testid={`canonical-shell-${region.label.toLowerCase().replace(/\s+/g, "-")}`}
               href={region.href}
-              className={`group min-h-[112px] rounded-md border p-3 transition-colors hover:border-cyan-700/70 ${shellToneClass(region.tone)}`}
+              className={`group min-h-[88px] rounded-md border p-2 transition-colors hover:border-cyan-700/70 md:min-h-[112px] md:p-3 ${shellToneClass(region.tone)}`}
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2">
                   <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                  <span className="truncate text-[11px] font-bold tracking-widest">
+                  <span className="truncate text-[10px] font-bold tracking-wider md:text-[11px] md:tracking-widest">
                     {region.label}
                   </span>
                 </div>
                 <ChevronRight className="h-3.5 w-3.5 shrink-0 opacity-40 transition-opacity group-hover:opacity-80" aria-hidden="true" />
               </div>
-              <div className="mt-3 font-mono text-lg font-bold leading-none text-white tabular-nums">
+              <div className="mt-2 font-mono text-base font-bold leading-none text-white tabular-nums md:mt-3 md:text-lg">
                 {region.metric}
               </div>
               <div className="mt-2 flex items-center justify-between gap-2">
@@ -476,7 +476,7 @@ export function CanonicalShellMap({ regions }: { regions: ShellRegion[] }) {
                   {region.status}
                 </span>
               </div>
-              <p className="mt-2 line-clamp-2 text-[11px] leading-snug text-slate-500">
+              <p className="mt-1.5 line-clamp-2 text-[10px] leading-snug text-slate-500 md:mt-2 md:text-[11px]">
                 {region.detail}
               </p>
             </a>
