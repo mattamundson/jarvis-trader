@@ -117,3 +117,55 @@ def test_empty_data_integrity_response_is_explicitly_not_green(monkeypatch):
     assert body["provider_tier"]["status"] == "unknown"
     assert body["source_parity"]["status"] == "not_wired"
     assert body["trade_enablement"]["status"] == "blocked"
+
+
+def test_openapi_exposes_expanded_data_integrity_contract(monkeypatch):
+    app = _client(monkeypatch, {}).app
+    schema = app.openapi()
+
+    response_schema = schema["paths"]["/system/data-integrity"]["get"]["responses"]["200"][
+        "content"
+    ]["application/json"]["schema"]
+    assert response_schema["$ref"] == "#/components/schemas/DataIntegrityResponse"
+
+    components = schema["components"]["schemas"]
+    properties = components["DataIntegrityResponse"]["properties"]
+    for field in [
+        "timestamp",
+        "status",
+        "stale_after_seconds",
+        "sources",
+        "count",
+        "cache_age",
+        "provider_tier",
+        "bar_freshness",
+        "source_parity",
+        "trade_enablement",
+        "error",
+    ]:
+        assert field in properties
+
+    assert (
+        properties["sources"]["items"]["$ref"]
+        == "#/components/schemas/DataIntegritySource"
+    )
+    assert (
+        properties["cache_age"]["$ref"]
+        == "#/components/schemas/DataIntegrityCacheAge"
+    )
+    assert (
+        properties["provider_tier"]["$ref"]
+        == "#/components/schemas/DataIntegrityProviderTier"
+    )
+    assert (
+        properties["bar_freshness"]["$ref"]
+        == "#/components/schemas/DataIntegrityBarFreshness"
+    )
+    assert (
+        properties["source_parity"]["$ref"]
+        == "#/components/schemas/DataIntegritySourceParity"
+    )
+    assert (
+        properties["trade_enablement"]["$ref"]
+        == "#/components/schemas/DataIntegrityTradeEnablement"
+    )
