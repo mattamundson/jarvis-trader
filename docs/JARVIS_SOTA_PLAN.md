@@ -1,5 +1,11 @@
 # JARVIS TRADER — State-of-the-Art ("Tony Stark Ready") Implementation Plan
 
+> **Supersession note (2026-09-01):** Use
+> [`docs/plans/master-implementation/README.md`](plans/master-implementation/README.md)
+> as the current master implementation entrypoint. This document remains a
+> historical SOTA planning reference and should be reconciled before new work is
+> treated as adopted.
+
 > Authored 2026-07-06. Grounded in a live, verified diagnosis of the running system
 > (not a summary). Every task cites a real file path. Phases are ordered by
 > dependency: reliability → data truth → experience → autonomy → hygiene → edge.

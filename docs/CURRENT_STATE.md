@@ -2,6 +2,12 @@
 
 **Status:** Paper Trading Validation | **Mode:** Paper only (IB Gateway 4002) | **Last Updated:** August 11, 2026
 
+> **Supersession note (2026-09-01):** For current implementation planning,
+> governance status, PR/issue disposition, and loop backlog, use
+> [`docs/plans/master-implementation/README.md`](plans/master-implementation/README.md).
+> This file remains historical/durable reference and may contain stale runtime
+> snapshots.
+
 > **Trading eligibility is no longer tracked in this file (PRB-25, 2026-07-30).** This
 > doc's old "Approved Instruments" table was a hand-maintained snapshot that repeatedly
 > went stale and contradicted live reality — most recently it showed MES/MGC "APPROVED —
@@ -222,4 +228,3 @@ All live trading changes require **Tier 3 confirmation** from the trader.
 ---
 
 **Document Version:** 1.1 (PRB-25 eligibility-pointer edit, 2026-07-30) | **Scope:** System snapshot, not development log. Trading eligibility specifically: not authoritative here — see the live Trading Eligibility dashboard page.
-

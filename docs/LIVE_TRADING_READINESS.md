@@ -2,6 +2,11 @@
 
 **Living doc.** Update the status markers as gates clear. Last revised: 2026-06-04.
 
+> **Supersession note (2026-09-01):** Live-trading gates remain binding, but the
+> active JARVIS implementation plan, backlog, and governance reset are tracked in
+> [`docs/plans/master-implementation/README.md`](plans/master-implementation/README.md).
+> Reconcile this readiness graph before relying on older status markers.
+
 ## Purpose
 
 `live_trading=true` is gated on **legal clearance AND a proven-safe technical state** —

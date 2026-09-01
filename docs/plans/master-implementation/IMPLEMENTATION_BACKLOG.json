@@ -296,25 +296,27 @@
     {
       "id": "P3-004",
       "title": "Rerun affected MES VWAP Gate-v2 certification under patched RTH semantics",
-      "status": "ready",
+      "status": "blocked",
       "roi_rank": 24,
       "program": "Validation",
       "blocked_by": ["P3-003"],
-      "acceptance": "New verdict artifact is compared against prior provenance and verdict flips are surfaced."
+      "acceptance": "New verdict artifact is compared against prior provenance and verdict flips are surfaced.",
+      "blocker": "Wait for a proven Python 3.12 engine venv; current active venv is Python 3.13.3."
     },
     {
       "id": "P3-005",
       "title": "Rerun affected IB validation under patched point-in-time semantics",
-      "status": "ready",
+      "status": "blocked",
       "roi_rank": 25,
       "program": "Validation",
       "blocked_by": ["P3-003"],
-      "acceptance": "Affected IB validation outputs are regenerated or marked not impacted with evidence."
+      "acceptance": "Affected IB validation outputs are regenerated or marked not impacted with evidence.",
+      "blocker": "Wait for a proven Python 3.12 engine venv; current active venv is Python 3.13.3."
     },
     {
       "id": "P3-006",
       "title": "Build exact PR #749 reproduction worktree without mutating current checkout",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 26,
       "program": "Feature Engineering",
       "blocked_by": [],
@@ -323,7 +325,7 @@
     {
       "id": "P3-007",
       "title": "Map Command Center pages to canonical operator workflows",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 27,
       "program": "Command Center",
       "blocked_by": [],
@@ -332,7 +334,7 @@
     {
       "id": "P3-008",
       "title": "Generate endpoint-to-dashboard dependency matrix",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 28,
       "program": "Platform and Infrastructure",
       "blocked_by": [],
@@ -341,7 +343,7 @@
     {
       "id": "P3-009",
       "title": "Create CI failure taxonomy for the master plan loop",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 29,
       "program": "CI",
       "blocked_by": [],
@@ -350,11 +352,101 @@
     {
       "id": "P3-010",
       "title": "Issue superseding doc note for legacy state documents",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 30,
       "program": "Documentation",
       "blocked_by": [],
       "acceptance": "Legacy docs point readers to the master implementation package without rewriting historical content."
+    },
+    {
+      "id": "P4-001",
+      "title": "Create and prove a parallel Python 3.12 engine venv",
+      "status": "ready",
+      "roi_rank": 31,
+      "program": "Platform and Infrastructure",
+      "blocked_by": [],
+      "acceptance": "A parallel .venv312-codex-loop installs requirements-core and passes focused loop tests without replacing engine/.venv."
+    },
+    {
+      "id": "P4-002",
+      "title": "Auto-fix PR #749 ruff-only findings inside the PR inspection worktree",
+      "status": "ready",
+      "roi_rank": 32,
+      "program": "CI",
+      "blocked_by": [],
+      "acceptance": "Ruff import/order and safe mechanical findings are fixed in the isolated PR worktree or explicitly deferred."
+    },
+    {
+      "id": "P4-003",
+      "title": "Split PR #749 scope into feature-integrity core versus dashboard/data artifacts",
+      "status": "ready",
+      "roi_rank": 33,
+      "program": "Feature Engineering",
+      "blocked_by": [],
+      "acceptance": "A file-level split plan identifies what to keep in PR #749 and what to move to separate work."
+    },
+    {
+      "id": "P4-004",
+      "title": "Run dashboard static quality check for touched Command Center dependency files",
+      "status": "ready",
+      "roi_rank": 34,
+      "program": "Command Center",
+      "blocked_by": [],
+      "acceptance": "Dashboard type/lint status is captured without starting engine runtime."
+    },
+    {
+      "id": "P4-005",
+      "title": "Create canonical Command Center information architecture spec",
+      "status": "ready",
+      "roi_rank": 35,
+      "program": "Command Center",
+      "blocked_by": ["P3-007", "P3-008"],
+      "acceptance": "Spec defines tabs/panels, data dependencies, empty states, and unsafe-action gating."
+    },
+    {
+      "id": "P4-006",
+      "title": "Create environment drift detector script plan",
+      "status": "ready",
+      "roi_rank": 36,
+      "program": "DevOps and CI/CD",
+      "blocked_by": [],
+      "acceptance": "Plan describes a lightweight script/check that fails on Python, Node, pnpm, and port drift."
+    },
+    {
+      "id": "P4-007",
+      "title": "Create recertification manifest for IB and VWAP changes",
+      "status": "ready",
+      "roi_rank": 37,
+      "program": "Validation",
+      "blocked_by": ["P4-001"],
+      "acceptance": "Manifest lists every artifact/verdict that must be regenerated after semantics changes."
+    },
+    {
+      "id": "P4-008",
+      "title": "Create PR queue action plan from master-plan disposition",
+      "status": "ready",
+      "roi_rank": 38,
+      "program": "Program Management",
+      "blocked_by": [],
+      "acceptance": "Plan names open PRs, next action, owner, and whether to keep/refactor/replace/retire."
+    },
+    {
+      "id": "P4-009",
+      "title": "Refresh loop heartbeat with current blocked and ready state",
+      "status": "ready",
+      "roi_rank": 39,
+      "program": "Loop Engineering",
+      "blocked_by": [],
+      "acceptance": "loopctl state reflects completed passes, blocked validation, and next ready item."
+    },
+    {
+      "id": "P4-010",
+      "title": "Write session handoff for master-plan loop state",
+      "status": "ready",
+      "roi_rank": 40,
+      "program": "Session Hygiene",
+      "blocked_by": [],
+      "acceptance": "Handoff exists under ~/.Codex/handoffs with required sections."
     }
   ]
 }

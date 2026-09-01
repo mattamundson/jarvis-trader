@@ -7,6 +7,12 @@
 **Dashboard:** Next.js — default port **3010**  
 **Related unified deployment:** `C:\Users\mattm\master-jarvis` (merged v2 + Trader; port **8009**)
 
+> **Supersession note (2026-09-01):** The active implementation plan and
+> governance-reset backlog now live at
+> [`docs/plans/master-implementation/README.md`](plans/master-implementation/README.md).
+> This canon remains historical architectural context until it is reconciled
+> against the master implementation package.
+
 This document is the **single canonical narrative** for JARVIS Trader. All merged sources are traced in [Appendix A](#appendix-a-source-map--completeness-checklist). Machine-readable provenance: [CANON_SOURCE_MAP.json](./CANON_SOURCE_MAP.json).
 
 ---
