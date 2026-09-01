@@ -807,6 +807,96 @@
       "blocked_by": ["P8-006", "P8-008", "P8-009"],
       "acceptance": "`/mission-control`, `/today`, and `/trust-pane` each have a concrete keep/merge/demote/redirect action with risk notes.",
       "evidence": "docs/plans/master-implementation/PASS31_ROUTE_CONSOLIDATION_PLAN_2026-09-01.md"
+    },
+    {
+      "id": "P9-001",
+      "title": "Implement expanded data-integrity backend contract",
+      "status": "ready",
+      "roi_rank": 77,
+      "program": "Engine API",
+      "blocked_by": ["P8-007"],
+      "acceptance": "`/system/data-integrity` returns cache age, provider tier, bar freshness, source parity, and trade-enable fields while preserving current clients."
+    },
+    {
+      "id": "P9-002",
+      "title": "Wire Command Center Data Integrity panel to backend contract",
+      "status": "blocked",
+      "roi_rank": 78,
+      "program": "Command Center",
+      "blocked_by": ["P9-001"],
+      "acceptance": "Command Center renders cache/provider/bar/parity states from backend fields and keeps unknown/not-wired fallbacks for older responses."
+    },
+    {
+      "id": "P9-003",
+      "title": "Update Data Integrity drilldown page for expanded contract",
+      "status": "blocked",
+      "roi_rank": 79,
+      "program": "Dashboard",
+      "blocked_by": ["P9-001"],
+      "acceptance": "`/data-integrity` remains backward-compatible and shows the expanded data-integrity state without false green claims."
+    },
+    {
+      "id": "P9-004",
+      "title": "Create normalized research-intake source rows",
+      "status": "ready",
+      "roi_rank": 80,
+      "program": "Research Intake",
+      "blocked_by": ["P8-009"],
+      "acceptance": "A checked-in source or endpoint fixture exposes normalized Research Intake rows from the disposition matrix."
+    },
+    {
+      "id": "P9-005",
+      "title": "Wire Command Center Research Intake panel to normalized rows",
+      "status": "blocked",
+      "roi_rank": 81,
+      "program": "Command Center",
+      "blocked_by": ["P9-004"],
+      "acceptance": "Command Center renders real Research Intake rows and does not imply production readiness."
+    },
+    {
+      "id": "P9-006",
+      "title": "Add Command Center drilldown navigation for route consolidation",
+      "status": "ready",
+      "roi_rank": 82,
+      "program": "Command Center",
+      "blocked_by": ["P8-010"],
+      "acceptance": "`/command-center` links explicitly to Operations, Daily Brief, and Trust Audit drilldowns."
+    },
+    {
+      "id": "P9-007",
+      "title": "Extract mission-control safety/status summary into Command Center",
+      "status": "blocked",
+      "roi_rank": 83,
+      "program": "Command Center",
+      "blocked_by": ["P9-006"],
+      "acceptance": "Mission-control unique safety/status facts are visible from Command Center before redirect planning advances."
+    },
+    {
+      "id": "P9-008",
+      "title": "Extract Today daily-brief summary into Command Center",
+      "status": "blocked",
+      "roi_rank": 84,
+      "program": "Command Center",
+      "blocked_by": ["P9-006"],
+      "acceptance": "Today route mode/session/market-context facts are reachable from Command Center without making `/today` a competing first screen."
+    },
+    {
+      "id": "P9-009",
+      "title": "Extract Trust Audit summary into Command Center",
+      "status": "blocked",
+      "roi_rank": 85,
+      "program": "Command Center",
+      "blocked_by": ["P9-006"],
+      "acceptance": "Trust-pane provenance and edge-ledger summaries are reachable from Command Center while deep audit detail remains on `/trust-pane`."
+    },
+    {
+      "id": "P9-010",
+      "title": "Add route-consolidation acceptance tests",
+      "status": "blocked",
+      "roi_rank": 86,
+      "program": "Command Center",
+      "blocked_by": ["P9-006", "P9-007", "P9-008", "P9-009"],
+      "acceptance": "Focused E2E verifies `/command-center` canonical entry and drilldown reachability for `/mission-control`, `/today`, and `/trust-pane`."
     }
   ]
 }
