@@ -287,7 +287,7 @@
     {
       "id": "P3-003",
       "title": "Prepare reversible Python 3.12 venv repair plan",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 23,
       "program": "Platform and Infrastructure",
       "blocked_by": [],
