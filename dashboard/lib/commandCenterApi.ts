@@ -88,7 +88,10 @@ export interface CommandCenterMacroData {
 }
 
 export interface CommandCenterPaperStatusRow {
+  symbol?: string;
   status?: string;
+  authorized?: boolean;
+  verdict?: string;
   wfe?: number;
   wfe_label?: string;
   reason?: string;

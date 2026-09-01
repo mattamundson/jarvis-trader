@@ -25,6 +25,10 @@ test("flagship /command-center survives degraded engine data without white-scree
   expect(body, "data status chip did not render").toContain("DATA");
   expect(body, "trade queue panel did not render").toContain("TRADE QUEUE PANEL");
   expect(body, "trade queue actions were not disabled").toContain("ORDER ACTIONS DISABLED");
+  expect(body, "eligibility panel did not render").toContain("ELIGIBILITY PANEL");
+  expect(body, "strategy ledger panel did not render").toContain("STRATEGY LEDGER PANEL");
+  expect(body, "data integrity panel did not render").toContain("DATA INTEGRITY PANEL");
+  expect(body, "research intake panel did not render").toContain("RESEARCH INTAKE PANEL");
   expect(body, "page white-screened to the route error fallback").not.toMatch(/something went wrong/i);
 });
 

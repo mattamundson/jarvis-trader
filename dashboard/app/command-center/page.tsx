@@ -465,6 +465,193 @@ function CommandCenterTradeQueuePanel({
   );
 }
 
+function stateBadgeClass(tone: StatusTone): string {
+  if (tone === "ok") return "border-emerald-800 bg-emerald-950/30 text-emerald-300";
+  if (tone === "warn") return "border-amber-800 bg-amber-950/30 text-amber-300";
+  if (tone === "bad") return "border-red-800 bg-red-950/30 text-red-300";
+  return "border-slate-700 bg-slate-950 text-slate-400";
+}
+
+function MiniStateBadge({ label, tone }: { label: string; tone: StatusTone }) {
+  return (
+    <span className={`rounded border px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-wider ${stateBadgeClass(tone)}`}>
+      {label}
+    </span>
+  );
+}
+
+function CommandCenterOperationsGrid({
+  liveInstruments,
+  paperStatus,
+  ledger,
+  ledgerReady,
+  integrity,
+  integrityReady,
+}: {
+  liveInstruments: Array<{ symbol: string; tf: string; status: "APPROVED" | "HALTED"; wfe: number }>;
+  paperStatus: Record<string, CommandCenterPaperStatusRow> | undefined;
+  ledger: LedgerResponse | undefined;
+  ledgerReady: boolean;
+  integrity: CommandCenterDataIntegrityResponse | undefined;
+  integrityReady: boolean;
+}) {
+  const eligibilityRows = liveInstruments.map((inst) => {
+    const row = paperStatus?.[`${inst.symbol}_${inst.tf}`];
+    const raw = (row?.status ?? "").toUpperCase();
+    const label = !paperStatus
+      ? "stale"
+      : raw === "ACTIVE" && inst.status === "APPROVED"
+        ? "adopted"
+        : raw === "NO-TRADE"
+          ? "paused"
+          : raw === "FAIL" || inst.status === "HALTED"
+            ? "failed"
+            : "research-only";
+    const tone: StatusTone =
+      label === "adopted" ? "ok" : label === "failed" ? "bad" : label === "paused" ? "warn" : "unknown";
+    return {
+      ...inst,
+      label,
+      tone,
+      detail: row?.reason ?? row?.verdict ?? `DSR ${inst.wfe}`,
+    };
+  });
+
+  const ledgerRows = Array.isArray(ledger?.entries) ? ledger.entries.slice(0, 4) : [];
+  const integritySources = Array.isArray(integrity?.sources) ? integrity.sources : [];
+  const staleSourceCount = integritySources.filter((src) => src.status === "stale").length;
+  const dataRows = [
+    {
+      label: "CACHE AGE",
+      state: integrityReady ? "reported" : "unknown",
+      tone: integrityReady ? "ok" as const : "unknown" as const,
+    },
+    {
+      label: "PROVIDER",
+      state: integrityReady ? `${integrity?.count ?? integritySources.length} streams` : "unknown",
+      tone: integrityReady ? "ok" as const : "unknown" as const,
+    },
+    {
+      label: "BAR FRESHNESS",
+      state: staleSourceCount > 0 ? `${staleSourceCount} stale` : integrityReady ? "current" : "unknown",
+      tone: staleSourceCount > 0 ? "warn" as const : integrityReady ? "ok" as const : "unknown" as const,
+    },
+    {
+      label: "SOURCE PARITY",
+      state: "not wired",
+      tone: "unknown" as const,
+    },
+  ];
+  const researchRows = [
+    { label: "PRS", state: "intake", detail: "keep / split / replace" },
+    { label: "ISSUES", state: "intake", detail: "acceptance before code" },
+    { label: "EXPERIMENTS", state: "research-only", detail: "no readiness promotion" },
+    { label: "SPIKES", state: "reference", detail: "retire-to-archive when superseded" },
+  ];
+
+  return (
+    <section
+      data-testid="command-center-operations-grid"
+      className="mb-4 grid grid-cols-1 gap-3 xl:grid-cols-4"
+      aria-label="Command Center operations panels"
+    >
+      <Card className="bg-slate-900/60 border border-cyan-900/50">
+        <CardHeader className="pb-2 pt-3 px-4">
+          <CardTitle className="text-xs font-mono text-cyan-400 tracking-widest flex items-center gap-1.5">
+            <CheckCircle className="w-3 h-3" />
+            ELIGIBILITY PANEL
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="px-4 pb-3 space-y-2.5">
+          <div className="flex flex-wrap gap-1">
+            <MiniStateBadge label="adopted" tone="ok" />
+            <MiniStateBadge label="paused" tone="warn" />
+            <MiniStateBadge label="failed" tone="bad" />
+            <MiniStateBadge label="stale" tone="unknown" />
+            <MiniStateBadge label="research-only" tone="unknown" />
+          </div>
+          {eligibilityRows.map((row) => (
+            <div key={`${row.symbol}-${row.tf}`} className="flex items-center justify-between gap-2">
+              <span className="font-mono text-xs text-white">{row.symbol} {row.tf}</span>
+              <MiniStateBadge label={row.label} tone={row.tone} />
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <Card className="bg-slate-900/60 border border-cyan-900/50">
+        <CardHeader className="pb-2 pt-3 px-4">
+          <CardTitle className="text-xs font-mono text-cyan-400 tracking-widest flex items-center gap-1.5">
+            <TrendingUp className="w-3 h-3" />
+            STRATEGY LEDGER PANEL
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="px-4 pb-3 space-y-2">
+          {!ledgerReady ? (
+            <p className="text-xs font-mono text-amber-300">Ledger unavailable.</p>
+          ) : ledgerRows.length === 0 ? (
+            <p className="text-xs font-mono text-slate-400">No strategy verdicts reported.</p>
+          ) : (
+            ledgerRows.map((row, index) => {
+              const verdict = row.verdict ?? "UNKNOWN";
+              const tone: StatusTone = verdict === "PASS" ? "ok" : verdict === "FAIL" ? "bad" : "unknown";
+              const nextGate = verdict === "PASS" ? "forward proof" : verdict === "FAIL" ? "repair thesis" : "gate-v2 rerun";
+              return (
+                <div key={`${row.symbol}-${row.family}-${index}`} className="rounded border border-slate-800 bg-slate-950/40 p-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-xs text-white">{row.symbol ?? "—"} {row.family ?? "unknown"}</span>
+                    <MiniStateBadge label={verdict} tone={tone} />
+                  </div>
+                  <p className="mt-1 text-[11px] font-mono text-slate-500">
+                    next gate: {nextGate}
+                  </p>
+                </div>
+              );
+            })
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="bg-slate-900/60 border border-cyan-900/50">
+        <CardHeader className="pb-2 pt-3 px-4">
+          <CardTitle className="text-xs font-mono text-cyan-400 tracking-widest flex items-center gap-1.5">
+            <Database className="w-3 h-3" />
+            DATA INTEGRITY PANEL
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="px-4 pb-3 space-y-2">
+          {dataRows.map((row) => (
+            <div key={row.label} className="flex items-center justify-between gap-2">
+              <span className="font-mono text-xs text-slate-500">{row.label}</span>
+              <MiniStateBadge label={row.state} tone={row.tone} />
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <Card className="bg-slate-900/60 border border-cyan-900/50">
+        <CardHeader className="pb-2 pt-3 px-4">
+          <CardTitle className="text-xs font-mono text-cyan-400 tracking-widest flex items-center gap-1.5">
+            <BookOpen className="w-3 h-3" />
+            RESEARCH INTAKE PANEL
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="px-4 pb-3 space-y-2">
+          {researchRows.map((row) => (
+            <div key={row.label} className="rounded border border-slate-800 bg-slate-950/40 p-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-mono text-xs text-white">{row.label}</span>
+                <MiniStateBadge label={row.state} tone="unknown" />
+              </div>
+              <p className="mt-1 text-[11px] font-mono text-slate-500">{row.detail}</p>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    </section>
+  );
+}
+
 function CanonicalShellMap({ regions }: { regions: ShellRegion[] }) {
   return (
     <section
@@ -995,6 +1182,15 @@ export default function CommandCenterPage() {
         trades={trades}
         tradesErr={tradesErr}
         honestSet={honestSet}
+      />
+
+      <CommandCenterOperationsGrid
+        liveInstruments={liveInstruments}
+        paperStatus={paperStatus}
+        ledger={ledger}
+        ledgerReady={ledgerReady}
+        integrity={integrity}
+        integrityReady={integrityReady}
       />
 
       {/* ═══════════════════════════════════════════════════════

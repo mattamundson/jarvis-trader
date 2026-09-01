@@ -27,4 +27,11 @@ test("command-center smoke: renders flagship header under mocked engine", async 
   await expect(queue.getByText("POSITIONS", { exact: true })).toBeVisible();
   await expect(queue.getByText("STOP REVIEW", { exact: true })).toBeVisible();
   await expect(queue.getByText("JOURNAL", { exact: true })).toBeVisible();
+  const operations = page.getByTestId("command-center-operations-grid");
+  await expect(operations.getByText("ELIGIBILITY PANEL")).toBeVisible();
+  await expect(operations.getByText("STRATEGY LEDGER PANEL")).toBeVisible();
+  await expect(operations.getByText("DATA INTEGRITY PANEL")).toBeVisible();
+  await expect(operations.getByText("RESEARCH INTAKE PANEL")).toBeVisible();
+  await expect(operations.getByText("SOURCE PARITY")).toBeVisible();
+  await expect(operations.getByText(/research-only/i).first()).toBeVisible();
 });
