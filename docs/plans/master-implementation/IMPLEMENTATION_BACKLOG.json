@@ -985,7 +985,8 @@
         "roi_rank": 94,
         "program": "Command Center",
         "blocked_by": ["P9-006"],
-        "acceptance": "Sidebar keeps `/command-center` primary and demotes `/mission-control`, `/today`, and `/trust-pane` according to the consolidation plan."
+        "acceptance": "Sidebar keeps `/command-center` primary and demotes `/mission-control`, `/today`, and `/trust-pane` according to the consolidation plan.",
+        "evidence": "docs/plans/master-implementation/PASS51_SIDEBAR_ROUTE_CONSOLIDATION_2026-09-01.md"
       },
       {
         "id": "P10-009",
@@ -994,7 +995,8 @@
         "roi_rank": 95,
         "program": "Command Center",
         "blocked_by": [],
-        "acceptance": "Redirect readiness checklist names remaining parity gaps before `/mission-control` can redirect."
+        "acceptance": "Redirect readiness checklist names remaining parity gaps before `/mission-control` can redirect.",
+        "evidence": "docs/plans/master-implementation/PASS52_MISSION_CONTROL_REDIRECT_READINESS_2026-09-01.md"
       },
       {
         "id": "P10-010",
@@ -1003,7 +1005,98 @@
         "roi_rank": 96,
         "program": "Testing",
         "blocked_by": [],
-        "acceptance": "Focused typecheck, guards, node tests, and isolated E2E suite pass after the P10 dashboard changes."
+        "acceptance": "Focused typecheck, guards, node tests, and isolated E2E suite pass after the P10 dashboard changes.",
+        "evidence": "docs/plans/master-implementation/PASS53_P10_COMMAND_CENTER_EVIDENCE_SUITE_2026-09-01.md"
+      },
+      {
+        "id": "P11-001",
+        "title": "Add Command Center operations view URL contract",
+        "status": "ready",
+        "roi_rank": 97,
+        "program": "Command Center",
+        "blocked_by": [],
+        "acceptance": "`/command-center?view=operations` renders a real operations view state with focused route tests."
+      },
+      {
+        "id": "P11-002",
+        "title": "Retarget Operations drilldowns to Command Center operations view",
+        "status": "blocked",
+        "roi_rank": 98,
+        "program": "Command Center",
+        "blocked_by": ["P11-001"],
+        "acceptance": "Command Center and sidebar Operations links point to `/command-center?view=operations` while `/mission-control` remains directly reachable until parity completes."
+      },
+      {
+        "id": "P11-003",
+        "title": "Mount risk and split-brain panels in operations view",
+        "status": "blocked",
+        "roi_rank": 99,
+        "program": "Command Center",
+        "blocked_by": ["P11-001"],
+        "acceptance": "Operations view renders `RiskSafetyPanel` and `TradingStatusReconciliation` with their degraded states preserved."
+      },
+      {
+        "id": "P11-004",
+        "title": "Mount positions and pipeline panels in operations view",
+        "status": "blocked",
+        "roi_rank": 100,
+        "program": "Command Center",
+        "blocked_by": ["P11-003"],
+        "acceptance": "Operations view renders `PositionsPerformancePanel` and `SignalsPipelinePanel` without weakening missing-data caveats."
+      },
+      {
+        "id": "P11-005",
+        "title": "Mount validation and engine diagnostics in operations view",
+        "status": "blocked",
+        "roi_rank": 101,
+        "program": "Command Center",
+        "blocked_by": ["P11-004"],
+        "acceptance": "Operations view renders `ValidationGatesPanel` and `EngineDataPanel` with existing unreachable states."
+      },
+      {
+        "id": "P11-006",
+        "title": "Mount local fleet state in operations view",
+        "status": "blocked",
+        "roi_rank": 102,
+        "program": "Command Center",
+        "blocked_by": ["P11-005"],
+        "acceptance": "Operations view renders `EnvironmentFleetPanel` and preserves `/api/fleet` empty and unreachable handling."
+      },
+      {
+        "id": "P11-007",
+        "title": "Add operations-view parity E2E coverage",
+        "status": "blocked",
+        "roi_rank": 103,
+        "program": "Testing",
+        "blocked_by": ["P11-006"],
+        "acceptance": "Focused E2E proves `/command-center?view=operations` exposes the migrated mission-control panels in populated and degraded states."
+      },
+      {
+        "id": "P11-008",
+        "title": "Redirect mission-control to Command Center operations view",
+        "status": "blocked",
+        "roi_rank": 104,
+        "program": "Command Center",
+        "blocked_by": ["P11-007"],
+        "acceptance": "`/mission-control` redirects to `/command-center?view=operations` after operations parity is test-proven."
+      },
+      {
+        "id": "P11-009",
+        "title": "Update route-consolidation tests for mission-control redirect",
+        "status": "blocked",
+        "roi_rank": 105,
+        "program": "Testing",
+        "blocked_by": ["P11-008"],
+        "acceptance": "Route-consolidation tests expect the mission-control redirect while preserving `/today` and `/trust-pane` drilldown reachability."
+      },
+      {
+        "id": "P11-010",
+        "title": "Run consolidated operations-view evidence suite",
+        "status": "blocked",
+        "roi_rank": 106,
+        "program": "Testing",
+        "blocked_by": ["P11-009"],
+        "acceptance": "Typecheck, guards, node tests, and focused isolated E2E pass after the operations-view migration."
       }
   ]
 }
