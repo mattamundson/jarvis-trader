@@ -990,7 +990,7 @@
       {
         "id": "P10-009",
         "title": "Plan mission-control redirect readiness checklist",
-        "status": "ready",
+        "status": "done",
         "roi_rank": 95,
         "program": "Command Center",
         "blocked_by": [],
