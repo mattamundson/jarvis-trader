@@ -278,7 +278,7 @@
     {
       "id": "P3-002",
       "title": "Create path-bounded local commits for plan package and implementation fixes",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 22,
       "program": "Git Hygiene",
       "blocked_by": ["P3-001"],
