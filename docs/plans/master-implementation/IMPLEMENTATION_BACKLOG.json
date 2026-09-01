@@ -901,11 +901,12 @@
     {
       "id": "P9-010",
       "title": "Add route-consolidation acceptance tests",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 86,
       "program": "Command Center",
       "blocked_by": ["P9-006", "P9-007", "P9-008", "P9-009"],
-      "acceptance": "Focused E2E verifies `/command-center` canonical entry and drilldown reachability for `/mission-control`, `/today`, and `/trust-pane`."
+      "acceptance": "Focused E2E verifies `/command-center` canonical entry and drilldown reachability for `/mission-control`, `/today`, and `/trust-pane`.",
+      "evidence": "docs/plans/master-implementation/PASS42_ROUTE_CONSOLIDATION_ACCEPTANCE_2026-09-01.md"
     }
   ]
 }
