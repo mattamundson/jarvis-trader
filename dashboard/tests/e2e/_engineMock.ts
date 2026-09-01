@@ -77,10 +77,10 @@ const SHAPES: Array<[RegExp, unknown]> = [
   [/\/wfe\/snapshots/, []],
   [/\/analytics\/mtf/, { timeframes: [] }],
 
-  // mission-control panels. These are list endpoints whose last path segment is
+  // Command Center operations panels. These are list endpoints whose last path segment is
   // singular ("ledger", "unrealized"), so the plural heuristic below cannot see
   // them and they fell through to `{}` -- which is what produced the
-  // "r.map is not a function" crash on /mission-control in iteration 2. This is
+  // "r.map is not a function" crash in the operations panels in iteration 2. This is
   // the heuristic's known blind spot, and declaring the contract is the fix.
   //
   // strategy/ledger is NOT a bare list -- it's `LedgerResponse { entries: [...] }`
@@ -90,7 +90,7 @@ const SHAPES: Array<[RegExp, unknown]> = [
   // real, truthy function) instead of undefined -- so `?? []` never fires and
   // the page tries to iterate a function, throwing "function is not iterable".
   // Found by iteration 7 (/strategy-ledger), which exercises this more directly
-  // than mission-control's panel does.
+  // than the Command Center operations panel does.
   [/\/strategy\/ledger/, {
     entries: [],
     total: 0,

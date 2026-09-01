@@ -1,15 +1,9 @@
 import { test, expect } from "@playwright/test";
 
-// P9-3: same TradingStatusReconciliation panel as
-// trading-eligibility-split-brain.spec.ts, mounted in a second, differently
-// laid-out context -- /mission-control panel 1b (full-width, directly under
-// RiskSafetyPanel, per P8-tradingstatus). Both mount points must independently
-// surface the same split-brain truth; this spec proves the mission-control
-// mount specifically, alongside the page's other five panels degrading
-// honestly (each shows its own "unreachable" note, per
-// app/mission-control/page.tsx's own doc comment) rather than white-screening
-// the whole page.
-test("mission-control renders the split-brain warn badge from the reconciliation panel without white-screening the rest of the page", async ({
+// Mission Control now redirects to the Command Center operations view. This
+// keeps the old split-brain regression focused on the user-facing route while
+// proving the reconciliation panel still renders after the redirect.
+test("mission-control redirect renders the operations split-brain warn badge without white-screening", async ({
   page,
 }) => {
   await page.route("**/api/engine/**", (route) => {
@@ -65,16 +59,18 @@ test("mission-control renders the split-brain warn badge from the reconciliation
   );
 
   await page.goto("/mission-control", { waitUntil: "networkidle" });
+  await expect(page).toHaveURL(/\/command-center\?view=operations$/);
 
   const body = (await page.textContent("body")) || "";
-  expect(body, "flagship header did not render").toContain("MISSION CONTROL");
+  expect(body, "flagship header did not render").toContain("JARVIS TRADER");
+  expect(body, "operations view did not render after redirect").toContain("Operations View");
   expect(body, "page white-screened to the route error fallback").not.toMatch(/something went wrong/i);
 
   const mnqRow = page.locator("div", { hasText: /^MNQ/ }).filter({ hasText: "SPLIT-BRAIN" }).first();
-  await expect(mnqRow, "MNQ's split-brain row did not render a SPLIT-BRAIN badge on mission-control").toBeVisible();
+  await expect(mnqRow, "MNQ's split-brain row did not render a SPLIT-BRAIN badge after mission-control redirect").toBeVisible();
   await expect(
     page.getByText("PAPER_CONFIGS.enabled=true but DO_NOT_TRADE_SYMBOLS blocks MNQ"),
-    "the specific disagreement reason was not rendered on mission-control"
+    "the specific disagreement reason was not rendered after mission-control redirect"
   ).toBeVisible();
   await expect(page.getByText("1 split-brain")).toBeVisible();
 });

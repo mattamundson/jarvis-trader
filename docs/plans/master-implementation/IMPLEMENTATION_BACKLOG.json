@@ -1111,92 +1111,102 @@
       {
         "id": "P12-001",
         "title": "Create neutral Command Center operations component ownership",
-        "status": "ready",
+        "status": "done",
         "roi_rank": 107,
         "program": "Command Center",
         "blocked_by": [],
-        "acceptance": "Reusable operations panels have a neutral `components/command-center/operations` home instead of living under the redirected `/mission-control` route."
+        "acceptance": "Reusable operations panels have a neutral `components/command-center/operations` home instead of living under the redirected `/mission-control` route.",
+        "evidence": "docs/plans/master-implementation/PASS66_OPERATIONS_COMPONENT_OWNERSHIP_MOVE_2026-09-01.md"
       },
       {
         "id": "P12-002",
         "title": "Move operations shared utilities out of mission-control route ownership",
-        "status": "blocked",
+        "status": "done",
         "roi_rank": 108,
         "program": "Command Center",
-        "blocked_by": ["P12-001"],
-        "acceptance": "Operations panel shared fetchers and formatting helpers live under the neutral operations component module."
+        "blocked_by": [],
+        "acceptance": "Operations panel shared fetchers and formatting helpers live under the neutral operations component module.",
+        "evidence": "docs/plans/master-implementation/PASS66_OPERATIONS_COMPONENT_OWNERSHIP_MOVE_2026-09-01.md"
       },
       {
         "id": "P12-003",
         "title": "Update Command Center imports to neutral operations components",
-        "status": "blocked",
+        "status": "done",
         "roi_rank": 109,
         "program": "Command Center",
-        "blocked_by": ["P12-002"],
-        "acceptance": "`dashboard/app/command-center/page.tsx` imports operations panels only from `@/components/command-center/operations`."
+        "blocked_by": [],
+        "acceptance": "`dashboard/app/command-center/page.tsx` imports operations panels only from `@/components/command-center/operations`.",
+        "evidence": "docs/plans/master-implementation/PASS66_OPERATIONS_COMPONENT_OWNERSHIP_MOVE_2026-09-01.md"
       },
       {
         "id": "P12-004",
         "title": "Retire stale mission-control component route ownership",
-        "status": "blocked",
+        "status": "done",
         "roi_rank": 110,
         "program": "Command Center",
-        "blocked_by": ["P12-003"],
-        "acceptance": "No reusable panel source remains under `dashboard/app/mission-control/components` after the neutral move."
+        "blocked_by": [],
+        "acceptance": "No reusable panel source remains under `dashboard/app/mission-control/components` after the neutral move.",
+        "evidence": "docs/plans/master-implementation/PASS66_OPERATIONS_COMPONENT_OWNERSHIP_MOVE_2026-09-01.md"
       },
       {
         "id": "P12-005",
         "title": "Add operation-panel ownership regression check",
-        "status": "blocked",
+        "status": "done",
         "roi_rank": 111,
         "program": "Testing",
-        "blocked_by": ["P12-004"],
-        "acceptance": "A focused regression check fails if Command Center imports reusable panels from `@/app/mission-control/components`."
+        "blocked_by": [],
+        "acceptance": "A focused regression check fails if Command Center imports reusable panels from `@/app/mission-control/components`.",
+        "evidence": "docs/plans/master-implementation/PASS67_OPERATIONS_OWNERSHIP_REGRESSION_2026-09-01.md"
       },
       {
         "id": "P12-006",
         "title": "Update route-consolidation docs for post-redirect ownership",
-        "status": "blocked",
+        "status": "done",
         "roi_rank": 112,
         "program": "Documentation",
-        "blocked_by": ["P12-004"],
-        "acceptance": "Route consolidation docs state that `/mission-control` is redirected and operations panels are owned by Command Center components."
+        "blocked_by": [],
+        "acceptance": "Route consolidation docs state that `/mission-control` is redirected and operations panels are owned by Command Center components.",
+        "evidence": "docs/plans/master-implementation/PASS68_ROUTE_CONSOLIDATION_POST_REDIRECT_AUDIT_2026-09-01.md"
       },
       {
         "id": "P12-007",
         "title": "Run ownership migration static evidence",
-        "status": "blocked",
+        "status": "done",
         "roi_rank": 113,
         "program": "Testing",
-        "blocked_by": ["P12-005"],
-        "acceptance": "Typecheck, test typecheck, guards, node tests, and the ownership regression check pass after the move."
+        "blocked_by": [],
+        "acceptance": "Typecheck, test typecheck, guards, node tests, and the ownership regression check pass after the move.",
+        "evidence": "docs/plans/master-implementation/PASS67_OPERATIONS_OWNERSHIP_REGRESSION_2026-09-01.md"
       },
       {
         "id": "P12-008",
         "title": "Run ownership migration route evidence",
-        "status": "blocked",
+        "status": "done",
         "roi_rank": 114,
         "program": "Testing",
-        "blocked_by": ["P12-007"],
-        "acceptance": "Focused isolated route-consolidation E2E still passes after the operations component ownership move."
+        "blocked_by": [],
+        "acceptance": "Focused isolated route-consolidation E2E still passes after the operations component ownership move.",
+        "evidence": "docs/plans/master-implementation/PASS69_P12_OWNERSHIP_ROUTE_EVIDENCE_2026-09-01.md"
       },
       {
         "id": "P12-009",
         "title": "Audit mission-control residual references",
-        "status": "blocked",
+        "status": "done",
         "roi_rank": 115,
         "program": "Command Center",
-        "blocked_by": ["P12-008"],
-        "acceptance": "Search results show only intentional `/mission-control` redirect/test/doc references remain."
+        "blocked_by": [],
+        "acceptance": "Search results show only intentional `/mission-control` redirect/test/doc references remain.",
+        "evidence": "docs/plans/master-implementation/PASS68_ROUTE_CONSOLIDATION_POST_REDIRECT_AUDIT_2026-09-01.md"
       },
       {
         "id": "P12-010",
         "title": "Run consolidated P12 ownership evidence suite",
-        "status": "blocked",
+        "status": "done",
         "roi_rank": 116,
         "program": "Testing",
-        "blocked_by": ["P12-009"],
-        "acceptance": "Focused static, ownership, and route suites pass and P12 evidence is recorded."
+        "blocked_by": [],
+        "acceptance": "Focused static, ownership, and route suites pass and P12 evidence is recorded.",
+        "evidence": "docs/plans/master-implementation/PASS70_P12_OWNERSHIP_EVIDENCE_SUITE_2026-09-01.md"
       }
   ]
 }

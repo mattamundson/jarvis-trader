@@ -13,8 +13,8 @@
 // services/trading_status.py, Phase 1c) already reconciles all three into
 // one per-symbol row and flags any disagreement -- this component is a
 // thin, honest render of that reconciliation, not a second implementation
-// of the split-brain logic. Mounted on both /trading-eligibility and
-// /mission-control so there is exactly one "what's actually trading" answer
+// of the split-brain logic. Mounted on /trading-eligibility and Command
+// Center operations so there is exactly one "what's actually trading" answer
 // visible from either entry point.
 import useSWR from "swr";
 import { AlertTriangle, RefreshCw, WifiOff } from "lucide-react";

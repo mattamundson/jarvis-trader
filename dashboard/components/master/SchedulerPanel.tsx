@@ -40,7 +40,7 @@ export function SchedulerPanel() {
   );
 
   // Both failing => the scheduler endpoints aren't deployed yet. Degrade quietly
-  // instead of sinking the mission-control page (its own SWR is independent).
+  // instead of sinking the surrounding page (its own SWR is independent).
   const unavailable = Boolean(statusErr && runsErr);
 
   return (

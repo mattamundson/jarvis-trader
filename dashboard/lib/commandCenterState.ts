@@ -273,7 +273,7 @@ export function deriveCommandCenterOperationsSummaryRows({
     {
       label: "Kill Switch",
       state: killState,
-      detail: safetyErr ? "safety endpoint unavailable" : "mission-control risk surface",
+      detail: safetyErr ? "safety endpoint unavailable" : "operations risk surface",
       tone: commandCenterOperationTone(killState),
     },
     {

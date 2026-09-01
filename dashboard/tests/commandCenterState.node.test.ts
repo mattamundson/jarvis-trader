@@ -235,7 +235,7 @@ test("operations summary rows preserve risk and execution states", () => {
   });
 
   assert.deepEqual(rows.map((row) => [row.label, row.state, row.detail, row.tone]), [
-    ["Kill Switch", "clear", "mission-control risk surface", "ok"],
+    ["Kill Switch", "clear", "operations risk surface", "ok"],
     ["Order Rate", "2/10", "orders per minute limit", "unknown"],
     ["Drawdown", "1.25%", "live safety drawdown", "unknown"],
     ["Broker Execution", "connected", "broker ack", "ok"],

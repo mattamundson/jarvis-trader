@@ -92,12 +92,12 @@ import {
 } from "@/components/command-center/SummarySections";
 import { TradingStatusReconciliation } from "@/components/TradingStatusReconciliation";
 import PipelineFunnelCard from "@/components/command-center/PipelineFunnelCard";
-import { EngineDataPanel } from "@/app/mission-control/components/EngineDataPanel";
-import { EnvironmentFleetPanel } from "@/app/mission-control/components/EnvironmentFleetPanel";
-import { PositionsPerformancePanel } from "@/app/mission-control/components/PositionsPerformancePanel";
-import { RiskSafetyPanel } from "@/app/mission-control/components/RiskSafetyPanel";
-import { SignalsPipelinePanel } from "@/app/mission-control/components/SignalsPipelinePanel";
-import { ValidationGatesPanel } from "@/app/mission-control/components/ValidationGatesPanel";
+import { EngineDataPanel } from "@/components/command-center/operations/EngineDataPanel";
+import { EnvironmentFleetPanel } from "@/components/command-center/operations/EnvironmentFleetPanel";
+import { PositionsPerformancePanel } from "@/components/command-center/operations/PositionsPerformancePanel";
+import { RiskSafetyPanel } from "@/components/command-center/operations/RiskSafetyPanel";
+import { SignalsPipelinePanel } from "@/components/command-center/operations/SignalsPipelinePanel";
+import { ValidationGatesPanel } from "@/components/command-center/operations/ValidationGatesPanel";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { useToast } from "@/lib/toast-context";
 import { useWebSocket, type WsEvent } from "@/hooks/useWebSocket";
@@ -534,6 +534,7 @@ export default function CommandCenterPage() {
   const approvedInstruments = liveInstruments.filter((inst) => inst.status === "APPROVED").length;
   const haltedInstruments = liveInstruments.length - approvedInstruments;
   const staleFeeds = (integrity?.sources ?? []).filter((src) => src.status === "stale").length;
+  const journalDiagnosis = journalStats?.diagnosis ?? "insufficient_data";
   const ledgerReady =
     Array.isArray(ledger?.entries) &&
     typeof ledger?.total === "number" &&
@@ -1690,7 +1691,7 @@ export default function CommandCenterPage() {
                       {/* Trades count from journalStats — LEGIT (not a P&L aggregate) */}
                       <div className="text-xs text-slate-500 mb-0.5">Trades</div>
                       <div className="font-mono text-sm text-white font-bold">
-                        {journalStats.total_trades}
+                        {journalStats.total_trades ?? "—"}
                       </div>
                     </div>
                     <div>
@@ -1735,14 +1736,14 @@ export default function CommandCenterPage() {
                       <div className="text-xs text-slate-500 mb-0.5">Diagnosis</div>
                       <Badge
                         className={`text-xs font-mono py-0 border ${
-                          journalStats.diagnosis === "solid"
+                          journalDiagnosis === "solid"
                             ? "bg-green-950 text-green-400 border-green-800"
-                            : journalStats.diagnosis === "insufficient_data"
+                            : journalDiagnosis === "insufficient_data"
                             ? "bg-slate-800 text-slate-400 border-slate-700"
                             : "bg-red-950 text-red-400 border-red-800"
                         }`}
                       >
-                        {journalStats.diagnosis.replace("_", " ").toUpperCase()}
+                        {journalDiagnosis.replace("_", " ").toUpperCase()}
                       </Badge>
                     </div>
                   </div>

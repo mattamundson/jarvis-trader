@@ -57,7 +57,7 @@ export const ROUTES: RouteSpec[] = [
   { path: "/trading-eligibility", name: "trading eligibility", kind: "page", criticality: "critical", landmark: /Trading Eligibility/i },
   { path: "/health", name: "system health", kind: "page", criticality: "critical", landmark: null },
   { path: "/trust-pane", name: "trust pane", kind: "page", criticality: "critical", landmark: /Trust Pane/i },
-  { path: "/mission-control", name: "mission control", kind: "page", criticality: "critical", landmark: /MISSION CONTROL/i },
+  { path: "/mission-control", name: "mission control", kind: "page", criticality: "critical", landmark: /JARVIS TRADER.*COMMAND CENTER/i },
   { path: "/options", name: "options", kind: "page", criticality: "critical", landmark: null },
   { path: "/trades", name: "trade history", kind: "page", criticality: "critical", landmark: /Trade History/i },
   { path: "/signals", name: "trade signals", kind: "page", criticality: "critical", landmark: /Trade Signals/i },

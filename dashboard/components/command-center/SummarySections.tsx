@@ -62,8 +62,8 @@ export function CommandCenterOperationsSummary({
         <span className="text-[10px] font-mono tracking-[0.2em] text-slate-500">
           OPERATIONS SUMMARY
         </span>
-        <a href="/mission-control" className="text-[10px] font-mono uppercase tracking-wider text-cyan-400 hover:text-cyan-300">
-          mission control
+        <a href="/command-center?view=operations" className="text-[10px] font-mono uppercase tracking-wider text-cyan-400 hover:text-cyan-300">
+          operations view
         </a>
       </div>
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">

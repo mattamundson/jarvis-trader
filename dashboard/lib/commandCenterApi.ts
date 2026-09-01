@@ -214,12 +214,20 @@ export function fetchCommandCenterPortfolio(): Promise<CommandCenterPortfolioDat
   return fetchEngine<CommandCenterPortfolioData>("/portfolio");
 }
 
-export function fetchCommandCenterDecisions(): Promise<CommandCenterDecision[]> {
-  return fetchEngine<CommandCenterDecision[]>("/decisions/recent?limit=5");
+export async function fetchCommandCenterDecisions(): Promise<CommandCenterDecision[]> {
+  const data = await fetchEngine<unknown>("/decisions/recent?limit=5");
+  return Array.isArray(data) ? (data as CommandCenterDecision[]) : [];
 }
 
-export function fetchCommandCenterScheduler(): Promise<CommandCenterSchedulerData> {
-  return fetchEngine<CommandCenterSchedulerData>("/scheduler/status");
+export async function fetchCommandCenterScheduler(): Promise<CommandCenterSchedulerData> {
+  const data = await fetchEngine<Partial<CommandCenterSchedulerData> | null>("/scheduler/status");
+  return {
+    running: Boolean(data?.running),
+    last_scan: data?.last_scan ?? undefined,
+    next_scan: data?.next_scan ?? undefined,
+    total_decisions_logged: data?.total_decisions_logged ?? 0,
+    jobs: Array.isArray(data?.jobs) ? data.jobs : [],
+  };
 }
 
 export function fetchCommandCenterMacro(): Promise<CommandCenterMacroData> {
@@ -250,8 +258,9 @@ export function fetchCommandCenterDataIntegrity(): Promise<CommandCenterDataInte
   return fetchEngine<CommandCenterDataIntegrityResponse>("/system/data-integrity");
 }
 
-export function fetchCommandCenterTrades(): Promise<CommandCenterTrade[]> {
-  return fetchEngine<CommandCenterTrade[]>("/portfolio/history/trades");
+export async function fetchCommandCenterTrades(): Promise<CommandCenterTrade[]> {
+  const data = await fetchEngine<unknown>("/portfolio/history/trades");
+  return Array.isArray(data) ? (data as CommandCenterTrade[]) : [];
 }
 
 export function fetchCommandCenterJournalStats(): Promise<JournalTradeStats> {
