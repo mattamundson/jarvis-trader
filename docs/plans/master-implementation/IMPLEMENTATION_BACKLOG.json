@@ -651,11 +651,12 @@
     {
       "id": "P7-005",
       "title": "Implement Trade Queue panel offline and empty states",
-      "status": "ready",
+      "status": "done",
       "roi_rank": 61,
       "program": "Command Center",
       "blocked_by": ["P7-003", "P7-004"],
-      "acceptance": "Approval, position, stale-stop, and journal states render with unsafe actions disabled until backend contracts are present."
+      "acceptance": "Approval, position, stale-stop, and journal states render with unsafe actions disabled until backend contracts are present.",
+      "evidence": "docs/plans/master-implementation/PASS18_COMMAND_CENTER_TRADE_QUEUE_PANEL_2026-09-01.md"
     },
     {
       "id": "P7-006",

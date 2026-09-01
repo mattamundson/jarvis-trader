@@ -341,6 +341,130 @@ function CommandCenterStatusStrip({
   );
 }
 
+function CommandCenterTradeQueuePanel({
+  decisions,
+  decisionsErr,
+  portfolio,
+  portfolioErr,
+  trades,
+  tradesErr,
+  honestSet,
+}: {
+  decisions: CommandCenterDecision[] | undefined;
+  decisionsErr: unknown;
+  portfolio: CommandCenterPortfolioData | undefined;
+  portfolioErr: unknown;
+  trades: CommandCenterTrade[] | undefined;
+  tradesErr: unknown;
+  honestSet: HonestTradeSet | undefined;
+}) {
+  const decisionRows = Array.isArray(decisions) ? decisions : [];
+  const positions = Array.isArray(portfolio?.positions) ? portfolio.positions : [];
+  const fillRows = Array.isArray(trades) ? trades : [];
+  const isDegraded = Boolean(decisionsErr || portfolioErr || tradesErr);
+  const isEmpty = !isDegraded && decisionRows.length === 0 && positions.length === 0 && fillRows.length === 0;
+  const stopState = portfolioErr
+    ? "unknown"
+    : positions.length > 0
+      ? "contract needed"
+      : "clear";
+  const stopTone: StatusTone = portfolioErr ? "unknown" : positions.length > 0 ? "warn" : "ok";
+  const journalLabel = honestSet ? dedupCaveat(honestSet) : "honest journal unavailable";
+
+  const cells = [
+    {
+      title: "DECISIONS",
+      label: decisionsErr ? "unknown" : `${decisionRows.length} recent`,
+      detail: decisionsErr ? "decision endpoint unavailable" : "latest directional verdict rows",
+      tone: decisionsErr ? "unknown" as const : "ok" as const,
+    },
+    {
+      title: "POSITIONS",
+      label: portfolioErr ? "unknown" : `${positions.length} open`,
+      detail: portfolioErr ? "portfolio endpoint unavailable" : "paper portfolio source",
+      tone: portfolioErr ? "unknown" as const : positions.length > 0 ? "warn" as const : "ok" as const,
+    },
+    {
+      title: "STOP REVIEW",
+      label: stopState,
+      detail: positions.length > 0
+        ? "stale-stop backend contract not mounted here"
+        : "no open position stop check required",
+      tone: stopTone,
+    },
+    {
+      title: "JOURNAL",
+      label: honestSet ? `${honestSet.trades.length} real` : "unknown",
+      detail: journalLabel,
+      tone: honestSet ? "ok" as const : "unknown" as const,
+    },
+  ];
+
+  return (
+    <section
+      data-testid="command-center-trade-queue-panel"
+      className="mb-4 rounded-md border border-slate-800 bg-slate-900/55 p-4"
+      aria-label="Command Center trade queue panel"
+    >
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Zap className="h-4 w-4 text-cyan-400" aria-hidden="true" />
+          <h2 className="text-sm font-bold tracking-widest text-white">TRADE QUEUE PANEL</h2>
+        </div>
+        <Badge className="border border-slate-700 bg-slate-950 text-[10px] font-mono text-slate-400">
+          ORDER ACTIONS DISABLED
+        </Badge>
+      </div>
+
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
+        {cells.map((cell) => (
+          <div key={cell.title} className={`rounded-md border px-3 py-2 ${statusToneClass(cell.tone)}`}>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[10px] font-mono font-bold tracking-widest text-slate-500">
+                {cell.title}
+              </span>
+              <span className="text-[10px] font-mono uppercase tracking-wider">
+                {cell.label}
+              </span>
+            </div>
+            <p className="mt-1 truncate text-[11px] font-mono text-slate-500" title={cell.detail}>
+              {cell.detail}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-3 rounded-md border border-slate-800 bg-slate-950/45 p-3">
+        {isDegraded ? (
+          <p className="text-xs font-mono text-amber-300">
+            Queue degraded: one or more queue sources are unavailable.
+          </p>
+        ) : isEmpty ? (
+          <p className="text-xs font-mono text-slate-400">
+            No directional queue items, open paper positions, or recent fills are present.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {decisionRows.slice(0, 3).map((decision, index) => (
+              <div
+                key={`${decision.timestamp}-${decision.symbol}-${index}`}
+                className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-slate-800/60 pb-2 last:border-b-0 last:pb-0"
+              >
+                <span className="font-mono text-xs font-bold text-white">{decision.symbol}</span>
+                <span className="font-mono text-xs text-cyan-300">{decision.action}</span>
+                <span className="min-w-0 flex-1 truncate text-[11px] text-slate-500">
+                  {decision.reason ?? decision.signal ?? "reason unavailable"}
+                </span>
+                <span className="font-mono text-[10px] text-slate-600">{fmtTime(decision.timestamp)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function CanonicalShellMap({ regions }: { regions: ShellRegion[] }) {
   return (
     <section
@@ -862,6 +986,16 @@ export default function CommandCenterPage() {
       />
 
       <CanonicalShellMap regions={shellRegions} />
+
+      <CommandCenterTradeQueuePanel
+        decisions={decisions}
+        decisionsErr={decisionsErr}
+        portfolio={portfolio}
+        portfolioErr={portfolioErr}
+        trades={trades}
+        tradesErr={tradesErr}
+        honestSet={honestSet}
+      />
 
       {/* ═══════════════════════════════════════════════════════
           TRADE APPROVALS — human-in-the-loop gate

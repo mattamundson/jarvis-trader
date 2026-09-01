@@ -197,6 +197,7 @@ const ENGINE_EMPTY: Array<[RegExp, unknown]> = [
   [/\/portfolio$/, { total_equity: 10000, daily_pnl: 0, cash: 10000, positions: [] }],
   [/\/decisions\/recent/, []],
   [/\/portfolio\/history\/trades/, []],
+  [/\/pipeline\/pending-approvals/, { pending: [], count: 0 }],
   [/\/scheduler\/status/, { running: false, jobs: [], total_decisions_logged: 0, last_scan: null, next_scan: null }],
   [/\/macro\/snapshot/, { vix: null, vix_regime: null, regime: null, timestamp: null }],
   [/\/backtest\/paper-status/, PAPER_STATUS_EMPTY],

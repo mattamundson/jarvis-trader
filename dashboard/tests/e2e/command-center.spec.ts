@@ -20,4 +20,11 @@ test("command-center smoke: renders flagship header under mocked engine", async 
   await expect(strip.getByText("BROKER", { exact: true })).toBeVisible();
   await expect(strip.getByText("SAFETY", { exact: true })).toBeVisible();
   await expect(strip.getByText("DATA", { exact: true })).toBeVisible();
+  const queue = page.getByTestId("command-center-trade-queue-panel");
+  await expect(queue).toBeVisible();
+  await expect(queue.getByText("ORDER ACTIONS DISABLED")).toBeVisible();
+  await expect(queue.getByText("DECISIONS", { exact: true })).toBeVisible();
+  await expect(queue.getByText("POSITIONS", { exact: true })).toBeVisible();
+  await expect(queue.getByText("STOP REVIEW", { exact: true })).toBeVisible();
+  await expect(queue.getByText("JOURNAL", { exact: true })).toBeVisible();
 });
