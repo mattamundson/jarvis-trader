@@ -29,9 +29,9 @@ ok = True
 # 1. cards.jsonl
 try:
     lines = [
-        l for l in CARDS.read_text(encoding="utf-8").splitlines() if l.strip()
+        line for line in CARDS.read_text(encoding="utf-8").splitlines() if line.strip()
     ]
-    cards = [json.loads(l) for l in lines]
+    cards = [json.loads(line) for line in lines]
     print(f"cards.jsonl: {len(cards)} cards, all valid JSON")
     for c in cards:
         impl = c["implementation_status"]

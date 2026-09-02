@@ -25,11 +25,12 @@ interface PositionSizingResponse {
   reasoning: string;
 }
 
-// Active pair (MES, MGC) first, then the halted symbols (MCL, MNQ) — this is
+// Active symbol (MES) first, then the halted symbols (MGC, MCL, MNQ) — this is
 // a purely informational what-if calculator (GET /position-sizing/calculate
 // doesn't execute trades or touch broker/execution paths), so keeping the
-// halted symbols selectable is fine; GT-46 was that MGC — half of the
-// actually-active MES/MGC pair — was missing entirely.
+// halted symbols selectable is fine. MGC is halted since PR #552/#691 but
+// stays listed here (with correct HALTED context) for what-if sizing; M2K
+// has no dashboard view and is intentionally excluded.
 const SYMBOLS: Symbol[] = [...ALL_TRACKED_SYMBOLS];
 
 const MULTIPLIER_LABELS: Record<Symbol, string> = {
@@ -37,7 +38,6 @@ const MULTIPLIER_LABELS: Record<Symbol, string> = {
   MGC: "$10/pt",
   MNQ: "$2/pt",
   MCL: "$100/pt",
-  M2K: "$5/pt",
 };
 
 // ── Component ──────────────────────────────────────────────────────────────

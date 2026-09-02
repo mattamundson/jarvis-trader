@@ -11,6 +11,9 @@ function loadCreds() {
   const p = path.resolve(__dirname, "../../.env.local");
   let user = "",
     pass = "";
+  // CI has no .env.local (auth is off there); skip gracefully instead of
+  // failing the whole funnel suite on a missing local-only file.
+  if (!fs.existsSync(p)) return { user, pass };
   for (const line of fs.readFileSync(p, "utf8").split("\n")) {
     const m = line.match(/^DASHBOARD_AUTH_USER=(.*)$/);
     if (m) user = m[1].trim();
@@ -92,9 +95,11 @@ test("command-center pipeline funnel card: 30d/90d stages, rates, and human lane
   browser,
 }) => {
   const { user, pass } = loadCreds();
-  const context = await browser.newContext({
-    httpCredentials: { username: user, password: pass },
-  });
+  const context = await browser.newContext(
+    // Only send HTTP basic creds when .env.local actually provided them
+    // (local dev has auth on; CI does not).
+    user || pass ? { httpCredentials: { username: user, password: pass } } : {}
+  );
   const page = await context.newPage();
 
   const pageErrors: string[] = [];
