@@ -13,9 +13,10 @@ The prototype accepted an arbitrary `--engine-url` while attaching the configure
 
 PR #769 changes the boundary to:
 
-- HTTP(S) loopback hosts only: `127.0.0.1`, `::1`, or `localhost`;
+- HTTP(S) loopback hosts only, with `localhost` normalized to the literal `127.0.0.1`;
+- proxy environment variables disabled for these requests and all redirects rejected;
 - no URL userinfo, path, query, or fragment;
-- only six allowlisted GET endpoints;
+- only six allowlisted GET endpoints, including canonical `/trading-status` eligibility;
 - no engine imports or mutation methods;
 - no API key, broker account identifier, DB path, or unallowlisted free text in the artifact;
 - exclusive create by default and explicit atomic `--force` replacement;
@@ -26,15 +27,16 @@ PR #769 changes the boundary to:
 1. Python byte compilation: PASS.
 2. Manual loopback URL allow/deny assertions: PASS.
 3. Manual health sanitization assertion: PASS.
-4. Source line-length check at 100 characters: PASS.
-5. Focused pytest coverage is committed for:
+4. Default endpoint timeout exceeds the engine's bounded 3-second IB health probe and is capped at 30 seconds: PASS.\n5. Source line-length check at 100 characters: PASS.
+6. Focused pytest coverage is committed for:
    - loopback-only URLs;
-   - GET-only allowlisted endpoints;
+   - proxy-free, non-redirecting, GET-only allowlisted endpoints;
+   - real health/safety and canonical trading-status schema preservation;
    - secret/account/path/free-text redaction;
    - API-key omission from serialized output;
    - overwrite refusal and explicit force;
    - stdlib-only/no-engine-import/no-mutation source invariants.
-6. The transient scratch runtime did not contain pytest, so no local pytest result is claimed. GitHub CI on PR #769 is the authoritative E1 receipt.
+7. The transient scratch runtime did not contain pytest, so no local pytest result is claimed. GitHub CI on PR #769 is the authoritative E1 receipt.
 
 ## Operator command after merge
 
