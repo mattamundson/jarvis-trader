@@ -4,10 +4,10 @@
 **Program:** O — DevOps / CI-CD  
 **Phase:** MIP-0  
 **Safety class:** S0  
-**State:** **IN PROGRESS — BASELINE TEST DEFECT IDENTIFIED**  
-**Repository baseline:** `master@e2a1006e3eb7d35a840487c80899b33103b52277`  
+**State:** **IN PROGRESS — BASELINE REPAIRED; ROADMAP RECEIPT PENDING**  
+**Repository baseline:** `master@20ce13ca07c34b5159f05518abe670f7f3c32d24`  
 **Ready-PR evidence head:** `PR #768@2203a7f797b245f329fd3fe356a5675bc53547b2`  
-**Repair PR:** `#773@8c1312d2de6ea6d965bde6b612bcd209c883bf14`  
+**Repair PR:** `#773@4c1f5006d50a4304d74f25385abde4ca898ea577` — merged as `20ce13c`  
 **Observed:** 2026-09-02
 
 ## Objective
@@ -80,8 +80,8 @@ This receipt supersedes the stale PR #760 baseline claims about 15 Ruff errors, 
 - [x] Observe final-head lint, type, dashboard, security, slow-test, safety, and review jobs.
 - [x] Record terminal fast-test failures and classify their deterministic cause.
 - [x] Open a narrowly scoped repair in PR #773.
-- [ ] Require PR #773 exact-head fast-suite and full-CI success.
-- [ ] Merge PR #773 only after all required checks pass.
+- [x] Require PR #773 exact-head fast-suite and full-CI success.
+- [x] Merge PR #773 only after all required checks pass (`master@20ce13c`).
 - [ ] Refresh PR #768 on the repaired baseline and obtain a complete exact-head receipt.
 - [ ] Merge PR #768 only after required contexts are green.
 - [ ] Record the post-merge master SHA and master workflow receipt.
