@@ -13,6 +13,7 @@ import json
 import math
 import sqlite3
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -298,7 +299,12 @@ class TestOutputJsonSchema:
     def _build_result(self, tmp_path: Path) -> dict:
         db = tmp_path / "schema_test.db"
         n = 60
-        timestamps = _make_ts_sequence(n, start="2025-09-01T00:00:00")
+        # This class validates output shape, not lookback expiry. Keep its
+        # synthetic bars inside the production 365-day window on every run.
+        start = (datetime.now(timezone.utc) - timedelta(days=30)).strftime(
+            "%Y-%m-%dT%H:%M:%S"
+        )
+        timestamps = _make_ts_sequence(n, start=start)
         closes = [3000.0 + i * 0.5 for i in range(n)]
         _create_minimal_db(db, {"FAKE": list(zip(timestamps, closes, strict=False))})
 
