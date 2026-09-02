@@ -39,7 +39,7 @@ lines accurate — they are the loop's only exit condition.
 - [ ] T6 — DONE=no BLOCKED=no — equity caches + QQQ/AAPL/TSLA certification
 - [ ] T7 — DONE=no BLOCKED=no — dashboard bundle split
 - [ ] T8 — DONE=no BLOCKED=yes — provider decision **(BLOCKED: decided out-of-band on 2026-08-24 → OrcaRouter. Needs Amo's confirmation this supersedes T8 rather than reopening it.)**
-- [ ] T9 — DONE=no BLOCKED=no — cron estate + state.db + memory hygiene
+- [ ] T9 — DONE=no BLOCKED=yes — cron estate + state.db + memory hygiene **(PARTIAL 2026-09-02: cron estate repaired — recurring roadmap loop v3, uptime-watchdog v2, and deterministic no_agent pr-auto-merger v2 are live; BLOCKED on (a) PM2 boot task creation needing elevated PowerShell, and (b) engine provider funding because DeepSeek now returns HTTP 402 Payment Required on live advisor calls.)**
 
 ## Current state (as of 21:30Z)
 
