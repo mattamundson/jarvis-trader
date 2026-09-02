@@ -118,6 +118,21 @@ export async function fetchEngine<T = any>(path: string, options?: RequestInit):
   });
 }
 
+/**
+ * Liveness-probe variant: single attempt, no retry, no 2s backoff.
+ *
+ * Health indicators (SystemFreshnessStrip, EngineOfflineBanner) must fail fast —
+ * if /health 503s, the engine is down NOW and the operator indicator should
+ * flip immediately, not after fetchWithRetry's 2s retry window. All data
+ * fetches keep using fetchEngine (retry is right for them).
+ */
+export async function fetchEngineNoRetry<T = any>(path: string, options?: RequestInit): Promise<T> {
+  return fetchWithTimeout<T>(`${ENGINE}${path}`, {
+    cache: "no-store",
+    ...options,
+  });
+}
+
 export async function postEngine<T = any>(path: string, body?: unknown): Promise<T> {
   return fetchWithRetry<T>(`${ENGINE}${path}`, {
     method: "POST",
