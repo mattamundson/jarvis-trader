@@ -23,7 +23,7 @@ def test_engine_url_is_loopback_only():
     script = _load_script()
 
     assert script._validate_engine_url("http://127.0.0.1:8010") == "http://127.0.0.1:8010"
-    assert script._validate_engine_url("http://localhost:8010/") == "http://localhost:8010"
+    assert script._validate_engine_url("http://localhost:8010/") == "http://127.0.0.1:8010"
     assert script._validate_engine_url("https://[::1]:8010") == "https://[::1]:8010"
 
     for unsafe in (
