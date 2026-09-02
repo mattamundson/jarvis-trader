@@ -76,6 +76,7 @@ test("trade history shows the honest-unavailable message, never a fabricated tot
 
   // The raw table below still renders independently (it's a different data
   // source), proving the honest-totals degradation didn't take the whole
-  // page down with it.
-  expect(body).toContain("Raw per-trade rows below");
+  // page down with it. Use a live locator: `body` was captured before the
+  // asynchronous closed-trades response was guaranteed to have rendered.
+  await expect(page.getByText(/Raw per-trade rows below/)).toBeVisible();
 });
