@@ -115,6 +115,7 @@ class BearResearcherAgent:
         # tracking like every other agent. NOTE: they now honor
         # JARVIS_LLM_PROVIDER (previously they were hard-wired to Anthropic).
         self._llm_client = JarvisLLMClient(api_key=self._api_key)
+        self._resolve_agent_model = resolve_agent_model
         self._reasoning_client = ReasoningChainClient(llm_client=self._llm_client)
         self._reasoning_enabled = os.getenv("REASONING_CHAINS_ENABLED", "False").lower() == "true"
 
@@ -162,7 +163,7 @@ class BearResearcherAgent:
                 response_text = result["decision"]
             else:
                 result_obj = await self._llm_client.call(
-                    model=resolve_agent_model(self._llm_client, self.MODEL),
+                    model=self._resolve_agent_model(self._llm_client, self.MODEL),
                     system=self.SYSTEM_PROMPT,
                     messages=[{"role": "user", "content": prompt}],
                     max_tokens=self.MAX_TOKENS,
@@ -249,7 +250,7 @@ class BearResearcherAgent:
         Falls back to raw text when no ASSESSMENT block is present.
         """
         result_obj = await self._llm_client.call(
-            model=resolve_agent_model(self._llm_client, self.MODEL),
+            model=self._resolve_agent_model(self._llm_client, self.MODEL),
             system="",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=800,
@@ -364,7 +365,7 @@ Respond with valid JSON in exactly this format (no text outside the JSON):
         """Generic LLM call used by DebateOrchestrator for adversarial scoring/rebuttals."""
         try:
             result_obj = await self._llm_client.call(
-                model=resolve_agent_model(self._llm_client, self.MODEL),
+                model=self._resolve_agent_model(self._llm_client, self.MODEL),
                 system="",
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=512,

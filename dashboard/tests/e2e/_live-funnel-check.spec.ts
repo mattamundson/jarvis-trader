@@ -19,8 +19,14 @@ function loadCreds() {
 }
 
 // LIVE verification: real engine (no mocks) — the funnel card must render
-// with the real /analytics/pipeline-funnel payload.
+// with the real /analytics/pipeline-funnel payload. Requires local engine
+// credentials (.env.local → ENGINE_API_KEY via the Next proxy); in CI there
+// is no engine and no key, so the endpoint 401s and this diagnostic would
+// only ever report a false negative. Skip gracefully instead.
+const hasEnv = fs.existsSync(path.resolve(__dirname, "../../.env.local"));
+
 test("LIVE command-center shows real pipeline funnel data", async ({ browser }) => {
+  test.skip(!hasEnv, "no .env.local — CI/clean checkout: live engine diagnostic cannot run");
   const { user, pass } = loadCreds();
   const context = await browser.newContext({ httpCredentials: { username: user, password: pass } });
   const page = await context.newPage();
