@@ -23,6 +23,17 @@ from typing import Optional
 
 import numpy as np
 
+from strategies.rl_config import (
+    ACTION_NAMES,
+    PPO_CONFIG,
+    RL_MODELS_DIR,
+    VALIDATION_GATES,
+    Action,
+)
+from strategies.rl_environment import TradingEnvironment
+
+logger = logging.getLogger(__name__)
+
 # ── Lazy SB3/torch import ─────────────────────────────────────────────────────
 # stable-baselines3 pulls in torch, whose first import compiles bytecode for
 # minutes and holds the GIL. Importing it eagerly at module load (this module is
@@ -49,17 +60,16 @@ def _ensure_sb3() -> bool:
         return True
     try:
         from stable_baselines3 import PPO as _PPO  # type: ignore[import]
-        from stable_baselines3.common.callbacks import BaseCallback as _BaseCallback  # type: ignore[import]
+        from stable_baselines3.common.callbacks import (  # type: ignore[import]
+            BaseCallback as _BaseCallback,
+        )
 
         PPO = _PPO
         BaseCallback = _BaseCallback
         SB3_AVAILABLE = True
 
         class TrainingProgressCallback(BaseCallback):  # noqa: F811
-            """
-            Logs episode reward and action distribution at each checkpoint interval.
-            Stores progress for retrieval via the API.
-            """
+            """Log episode reward and action distribution at each checkpoint interval."""
 
             def __init__(self, log_interval: int = 1000, verbose: int = 0):
                 super().__init__(verbose=verbose)
@@ -69,13 +79,11 @@ def _ensure_sb3() -> bool:
                 self._last_log_step = 0
 
             def _on_step(self) -> bool:
-                # Track actions
                 if hasattr(self, "locals") and "actions" in self.locals:
                     for act in np.atleast_1d(self.locals["actions"]):
                         name = ACTION_NAMES.get(int(act), "UNKNOWN")
                         self.action_counts[name] = self.action_counts.get(name, 0) + 1
 
-                # Log at interval
                 if self.num_timesteps - self._last_log_step >= self.log_interval:
                     self._last_log_step = self.num_timesteps
                     if self.model.ep_info_buffer:
@@ -92,9 +100,10 @@ def _ensure_sb3() -> bool:
                 total = sum(self.action_counts.values()) or 1
                 return {
                     "timesteps": self.num_timesteps,
-                    "episode_rewards": self.episode_rewards[-20:],  # last 20 checkpoints
+                    "episode_rewards": self.episode_rewards[-20:],
                     "action_distribution": {
-                        k: round(v / total, 4) for k, v in self.action_counts.items()
+                        key: round(value / total, 4)
+                        for key, value in self.action_counts.items()
                     },
                 }
 
@@ -111,17 +120,6 @@ class TrainingProgressCallback:  # noqa
 
     def __init__(self, *args, **kwargs):
         pass
-
-from strategies.rl_config import (
-    ACTION_NAMES,
-    PPO_CONFIG,
-    RL_MODELS_DIR,
-    VALIDATION_GATES,
-    Action,
-)
-from strategies.rl_environment import TradingEnvironment
-
-logger = logging.getLogger(__name__)
 
 
 # ── Agent ─────────────────────────────────────────────────────────────────────
@@ -177,20 +175,8 @@ class RLTradingAgent:
                 verbose=PPO_CONFIG["verbose"],
             )
 
-    # ── Training ──────────────────────────────────────────────────────────
-
     def train(self, total_timesteps: int = 100_000) -> dict:
-        """
-        Train the PPO agent.
-
-        Parameters
-        ----------
-        total_timesteps : Number of environment steps for training
-
-        Returns
-        -------
-        Training summary dict with action distribution and reward history
-        """
+        """Train the PPO agent and return its training summary."""
         if not SB3_AVAILABLE:
             raise ImportError("stable-baselines3 required")
 
@@ -198,7 +184,6 @@ class RLTradingAgent:
         start = datetime.now(timezone.utc)
 
         self._callback = TrainingProgressCallback(log_interval=max(1000, total_timesteps // 100))
-
         self.model.learn(
             total_timesteps=total_timesteps,
             callback=self._callback,
@@ -208,7 +193,6 @@ class RLTradingAgent:
 
         elapsed = (datetime.now(timezone.utc) - start).total_seconds()
         self._is_trained = True
-
         summary = self._callback.get_summary()
         summary["elapsed_seconds"] = round(elapsed, 1)
         summary["total_timesteps"] = total_timesteps
@@ -216,28 +200,11 @@ class RLTradingAgent:
         self._training_metadata = summary
 
         hold_rate = summary["action_distribution"].get("HOLD", 0.0)
-        logger.info(f"[RL] Training complete in {elapsed:.0f}s | " f"HOLD rate: {hold_rate:.1%}")
+        logger.info(f"[RL] Training complete in {elapsed:.0f}s | HOLD rate: {hold_rate:.1%}")
         return summary
 
-    # ── Inference ─────────────────────────────────────────────────────────
-
     def predict(self, obs: np.ndarray, kill_switch_active: bool = False) -> int:
-        """
-        Get next action for the given observation.
-
-        Safety rules:
-        - If kill_switch_active is True → always return HOLD
-        - If model not trained → return HOLD
-
-        Parameters
-        ----------
-        obs                : Observation array of shape (N_FEATURES,)
-        kill_switch_active : Pass True when SafetyLayer.is_killed is True
-
-        Returns
-        -------
-        int action from Action enum
-        """
+        """Return the next Action enum value for an observation."""
         if kill_switch_active:
             logger.debug("[RL] Kill switch active — forced HOLD")
             return int(Action.HOLD)
@@ -249,28 +216,14 @@ class RLTradingAgent:
         action, _ = self.model.predict(np.array(obs, dtype=np.float32), deterministic=True)
         return int(action)
 
-    # ── Evaluation ────────────────────────────────────────────────────────
-
     def evaluate(self, test_env: TradingEnvironment, n_episodes: int = 1) -> dict:
-        """
-        Evaluate agent on a test environment.
-
-        Returns
-        -------
-        dict with episode metrics averaged over n_episodes
-        """
+        """Evaluate the agent on a test environment."""
         if not self._is_trained:
             raise RuntimeError("Train the agent before evaluating.")
 
         all_metrics: list[dict] = []
-        for i in range(n_episodes):
-            # Pass seed=i so each episode gets an independent random start when
-            # the test env has a windowed max_episode_bars < len(df).  For the
-            # full-dataset eval path (max_episode_bars == len(df)) the seed has
-            # no effect because latest_start == warm_up and the start is fixed,
-            # but seeding defensively ensures correct behaviour if the caller
-            # switches to a windowed test env.
-            obs, _ = test_env.reset(seed=i)
+        for episode in range(n_episodes):
+            obs, _ = test_env.reset(seed=episode)
             done = False
             while not done:
                 action = self.predict(obs)
@@ -278,35 +231,35 @@ class RLTradingAgent:
                 done = terminated or truncated
             all_metrics.append(test_env.get_episode_metrics())
 
-        # Average across episodes — use union of all keys for forward/backward compat
-        keys = set().union(*[m.keys() for m in all_metrics])
-        averaged = {k: round(float(np.mean([m.get(k, 0.0) for m in all_metrics])), 4) for k in keys}
+        keys = set().union(*[metrics.keys() for metrics in all_metrics])
+        averaged = {
+            key: round(
+                float(np.mean([metrics.get(key, 0.0) for metrics in all_metrics])),
+                4,
+            )
+            for key in keys
+        }
 
-        # Explicitly surface flat_hold_rate (backward compat: default 0.0 if missing).
-        # flat_hold_rate = HOLD actions when flat / total flat bars.
-        # This is the meaningful overtrading signal — unlike the blended hold_rate from
-        # the PPO callback which includes HOLD-while-in-position.
         averaged["flat_hold_rate"] = round(
-            sum(m.get("flat_hold_rate", 0.0) for m in all_metrics) / max(len(all_metrics), 1),
+            sum(metrics.get("flat_hold_rate", 0.0) for metrics in all_metrics)
+            / max(len(all_metrics), 1),
             4,
         )
 
-        # Check validation gates
         gates = VALIDATION_GATES
-
-        # Action distribution from training callback (blended: includes HOLD-in-position)
         hold_rate = 0.0
         if self._training_metadata.get("action_distribution"):
             hold_rate = self._training_metadata["action_distribution"].get("HOLD", 0.0)
             averaged["hold_rate"] = hold_rate
             averaged["passes_hold_gate"] = hold_rate >= gates["min_hold_rate"]
 
-        # Compute Sharpe from per-episode trades (mirrors OOSEvaluator._compute_sharpe)
         sharpe_values = []
         for ep_env in [test_env]:
             trades = getattr(ep_env, "_episode_trades", [])
             if trades and len(trades) >= 2:
-                returns = np.array([t["pnl"] / ep_env.initial_capital for t in trades])
+                returns = np.array(
+                    [trade["pnl"] / ep_env.initial_capital for trade in trades]
+                )
                 mean_r = float(np.mean(returns))
                 std_r = float(np.std(returns))
                 if std_r >= 1e-9:
@@ -326,26 +279,10 @@ class RLTradingAgent:
             ]
         )
 
-        # TODO (recommendation): add flat_hold_rate validation gate once sufficient OOS data:
-        #   averaged["passes_flat_hold_gate"] = averaged["flat_hold_rate"] >= 0.50
-        # flat_hold_rate >= 0.50 is a stronger overtrading guard than the blended hold_rate
-        # because it isolates the decision quality when the agent has no open position.
-        # Suggested addition to VALIDATION_GATES in rl_config.py:
-        #   "min_flat_hold_rate": 0.50
-
         return averaged
 
-    # ── Persistence ───────────────────────────────────────────────────────
-
     def save(self, path: Optional[str] = None) -> str:
-        """
-        Save model to disk. Returns the saved model path.
-
-        Parameters
-        ----------
-        path : Optional save path (without .zip extension).
-               Defaults to data/rl_models/{SYMBOL}_{timestamp}
-        """
+        """Save the model to disk and return the model path."""
         if not self._is_trained:
             raise RuntimeError("Cannot save untrained model.")
 
@@ -355,28 +292,27 @@ class RLTradingAgent:
             path = str(RL_MODELS_DIR / f"{self.symbol}_{timestamp}")
 
         self.model.save(path)
-
-        # Save metadata alongside model
         meta_path = f"{path}.json"
-        with open(meta_path, "w") as f:
-            json.dump(self._training_metadata, f, indent=2, default=str)
+        with open(meta_path, "w") as file_handle:
+            json.dump(self._training_metadata, file_handle, indent=2, default=str)
 
         logger.info(f"[RL] Model saved to {path}.zip")
         return path
 
     @classmethod
-    def load(cls, symbol: str, model_path: str, env: TradingEnvironment) -> "RLTradingAgent":
+    def load(
+        cls,
+        symbol: str,
+        model_path: str,
+        env: TradingEnvironment,
+    ) -> "RLTradingAgent":
         """Load a previously saved agent."""
         agent = cls(symbol=symbol, env=env, model_path=model_path)
-
-        # Load metadata if available
         meta_path = f"{model_path}.json"
         if Path(meta_path).exists():
-            with open(meta_path) as f:
-                agent._training_metadata = json.load(f)
+            with open(meta_path) as file_handle:
+                agent._training_metadata = json.load(file_handle)
         return agent
-
-    # ── Status ────────────────────────────────────────────────────────────
 
     def get_status(self) -> dict:
         summary = self._callback.get_summary() if self._callback else {}
