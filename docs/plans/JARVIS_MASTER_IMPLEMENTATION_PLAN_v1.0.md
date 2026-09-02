@@ -1,11 +1,12 @@
 # JARVIS MASTER IMPLEMENTATION PLAN v1.0
 
 **Plan ID:** JARVIS-MIP-1.0  
-**Adopted:** 2026-09-01  
-**Formal implementation:** **STARTED — PHASE 0**  
-**Current WP:** `A-01` Runtime Truth Baseline & Contradiction Register  
+**Owner authorization:** 2026-09-02  
+**Repository adoption:** **PENDING MERGE OF PR #768**  
+**Formal implementation:** **NOT STARTED**  
+**First queued WP:** `A-01` Runtime Truth Baseline & Contradiction Register  
 **ISG-0:** **OPEN / NOT YET SATISFIED**  
-**Baseline:** `master@1d8f93992205d1dcacc05e0466d89247f2c789d1`
+**Reachable planning baseline:** `master@e2a1006e3eb7d35a840487c80899b33103b52277`
 
 > This is the canonical repository implementation plan for future JARVIS work. Historical roadmap/canon documents remain evidence but do not govern new implementation when they conflict with this plan. Pre-plan PRs #749, #754, #756 and RT-3 are technical spikes to harvest selectively, not completed implementation.
 
@@ -275,20 +276,27 @@ No calendar date authorizes live trading.
 - branch/PR/Codex governance enforced;
 - spike branches frozen except explicit harvest work.
 
-## 19. Phase-0 formal implementation queue
+## 19. Formal implementation queues
 
-1. `A-01` Runtime truth baseline & contradiction register — **IN_PROGRESS**
+### Phase 0 — ISG-0 prerequisites
+
+1. `A-01` Runtime truth baseline & contradiction register — **QUEUED FIRST**
 2. `O-01` CI baseline/debt classification
 3. `A-02` Source-of-truth hierarchy ADR
 4. `A-03` Target bounded-context architecture ADR
 5. `K-01` Operator product IA & wireframes/deprecation map
 6. `O-05` Branch/PR/Codex governance
-7. `B-01` Instrument Master
-8. `H-01` Versioned Risk Policy
-9. `M-01` Canonical Event/Audit schema
-10. `N-02` Environment/authorization matrix
-11. `A-04` Core domain contracts
-12. `O-02/O-03` verification/build foundations
+7. `O-02/O-03` Verification and build foundations required by ISG-0
+
+### Phase 1 — blocked until ISG-0
+
+These packages may be designed during Phase 0, but runtime implementation may not begin until ISG-0 is satisfied and their Definition of Ready evidence is approved.
+
+1. `B-01` Instrument Master
+2. `H-01` Versioned Risk Policy
+3. `M-01` Canonical Event/Audit schema
+4. `N-02` Environment/authorization matrix
+5. `A-04` Core domain contracts
 
 ## 20. Known research blockers
 
@@ -341,17 +349,18 @@ Production/Capital Impact:
 
 ## 25. Current formal status
 
-**Plan adopted:** 2026-09-01.  
-**Formal implementation:** STARTED.  
-**Current phase:** 0.  
-**Current WP:** A-01.  
+**Owner authorization:** GRANTED 2026-09-02.  
+**Repository adoption:** pending merge of PR #768.  
+**Formal implementation:** NOT STARTED.  
+**Current phase:** pre-Phase-0 adoption.  
+**First queued WP:** A-01.  
 **ISG-0:** open but not satisfied.  
 **Live/canary authorization:** NOT GRANTED.
 
-See:
+The following are planned Phase-0 deliverables and do not exist until their work packages land:
 
-- `docs/plans/JARVIS_PLAN_ADOPTION_2026-09-01.md`
+- `docs/plans/JARVIS_PLAN_ADOPTION_2026-09-02.md`
 - `docs/plans/JARVIS_PHASE_0_STATUS.md`
 - `docs/plans/phase0/A-01_RUNTIME_TRUTH_BASELINE.md`
 
-The detailed PlanLife work-package hierarchy is governed by the adopted JARVIS-MIP v1.0 artifact and will be materialized/updated in repository registers as Phase 0 governance lands.
+The detailed PlanLife work-package hierarchy is governed by JARVIS-MIP v1.0 after repository adoption and will be materialized and updated in repository registers as Phase 0 governance lands.
