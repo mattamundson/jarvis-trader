@@ -129,3 +129,37 @@ def test_no_persistence_remains_explicitly_not_configured(mock_settings):
     assert status["safety_state"] == SafetyState.NOT_CONFIGURED.value
     assert status["safety_state_verified"] is False
     assert status["is_killed"] is False
+
+
+def test_unknown_state_propagates_to_parallel_disabled_account_status(
+    mock_settings, tmp_path
+):
+    path = tmp_path / "missing-table.db"
+    sqlite3.connect(path).close()
+    safety = SafetyLayer(mock_settings, db_path=str(path))
+
+    state = safety.get_per_account_kill_state("paper-account")
+
+    assert state["active"] is True
+    assert state["reason"] == "persisted safety state unknown"
+
+
+def test_bracket_submission_rejects_unknown_before_gateway(mock_settings, tmp_path):
+    path = tmp_path / "missing-table.db"
+    sqlite3.connect(path).close()
+    safety = SafetyLayer(mock_settings, db_path=str(path))
+
+    result = asyncio.run(
+        safety.submit_paper_bracket_order(
+            symbol="MES",
+            action="BUY",
+            quantity=1,
+            price=5000.0,
+            stop_loss=4990.0,
+            take_profit=5020.0,
+        )
+    )
+
+    assert result["approved"] is False
+    assert "unknown" in result["reason"].lower()
+    assert result["routed_to_ib"] is False
