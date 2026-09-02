@@ -794,9 +794,17 @@ class SafetyLayer:
         if not self._parallel_paper_enabled():
             return {
                 "account_id": account_id,
-                "active": self._kill_switch_active,
+                "active": self.is_killed,
                 "triggered_at": None,
-                "reason": (self._kill_switch_reason.value if self._kill_switch_reason else None),
+                "reason": (
+                    self._kill_switch_reason.value
+                    if self._kill_switch_reason
+                    else (
+                        "persisted safety state unknown"
+                        if self._safety_state == SafetyState.STATE_UNKNOWN
+                        else None
+                    )
+                ),
                 "trigger_metric": None,
                 "trigger_value": None,
                 "cleared_at": None,
@@ -1996,11 +2004,12 @@ class SafetyLayer:
         Runs safety checks for the entry order. If approved, exit legs are
         automatically linked in the paper simulator.
         """
-        # ── 0. Kill switch check ──────────
-        if self._kill_switch_active:
+        # ── 0. Global safety-state check ──────────
+        kill_result = self._check_kill_switch()
+        if not kill_result.approved:
             return {
                 "approved": False,
-                "reason": "Kill switch active",
+                "reason": kill_result.rejection_reason or "Safety state blocks orders",
                 "order_id": None,
                 "routed_to_ib": False,
             }
@@ -2505,7 +2514,10 @@ class SafetyLayer:
             "drawdown_pct": drawdown_pct,
             "drawdown_limit_pct": drawdown_limit_pct,
             "drawdown_breached": drawdown_breached,
-            "kill_switch_active": self._kill_switch_active,
+            "kill_switch_active": self.is_killed,
+            "safety_state": self._safety_state.value,
+            "safety_state_verified": self._safety_state
+            in {SafetyState.VERIFIED_SAFE, SafetyState.VERIFIED_HALTED},
             "kill_switch_reason": (
                 self._kill_switch_reason.value if self._kill_switch_reason else None
             ),
