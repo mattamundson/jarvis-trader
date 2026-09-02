@@ -1,0 +1,117 @@
+{
+  "plan": "JARVIS-MIP-1.0",
+  "work_package": "O-01",
+  "baseline_ref": "master@1d8f93992205d1dcacc05e0466d89247f2c789d1",
+  "evidence_pr": 760,
+  "observed_at": "2026-09-02T00:11:32Z",
+  "classification": {
+    "master_push_actions": {
+      "state": "CI-INFRA",
+      "example_run_id": 32893084295,
+      "conclusion": "startup_failure",
+      "jobs": 0,
+      "meaning": "No code-quality conclusion can be drawn from this run."
+    },
+    "pull_request_actions": {
+      "state": "RUNNER_AVAILABLE",
+      "jarvis_ci_run_id": 33574230222,
+      "safety_run_id": 33574230314,
+      "meaning": "PR-triggered jobs did obtain hosted runners and execute steps."
+    }
+  },
+  "safety_invariant_check": {
+    "result": "PASS",
+    "scope": "Source-code invariant literals in engine/config.py plus safety-file change detection; not loaded runtime .env values.",
+    "source_default_expectations": {
+      "MAX_POSITION_SIZE_PCT": 0.10,
+      "MAX_DAILY_LOSS_PCT": 0.06,
+      "MAX_DAILY_LOSS_USD": 100.0,
+      "MAX_TRADE_LOSS_USD": 50.0,
+      "MAX_DRAWDOWN_PCT": 0.20,
+      "MAX_ORDERS_PER_MINUTE": 10,
+      "MAX_CORRELATED_EXPOSURE_PCT": 0.50,
+      "PRICE_COLLAR_PCT": 0.05,
+      "MAX_SINGLE_ORDER_VALUE": 100000.0,
+      "MAX_MARGIN_UTILIZATION": 0.40,
+      "MAX_CONTRACTS_PER_INSTRUMENT": 2,
+      "MAX_OVERNIGHT_CONTRACTS": 1,
+      "CORRELATED_PAIR_MAX_CONTRACTS": 1,
+      "CONSECUTIVE_LOSS_HALF_SIZE": 3,
+      "CONSECUTIVE_LOSS_QUARTER_SIZE": 5,
+      "CONSECUTIVE_LOSS_HALT": 7,
+      "CONSECUTIVE_LOSS_HALT_HOURS": 24,
+      "MAX_CONTRACTS_HARD_CAP": 20
+    }
+  },
+  "engine_draft_check": {
+    "result": "FAIL",
+    "classification": "BASELINE-LINT",
+    "reason": "Planning PR changed only Markdown; engine Ruff ran on merge with unchanged master engine files.",
+    "ruff_version": "0.8.0",
+    "python": "3.12.14",
+    "error_count": 15,
+    "byte_compile": "NOT_RUN_AFTER_RUFF_FAILURE",
+    "errors": [
+      {"path":"engine/analytics/trade_analytics.py","line":116,"code":"F841","summary":"daily_returns assigned but never used"},
+      {"path":"engine/backtest/composite_strategies.py","line":207,"code":"F841","summary":"entry_bar_close assigned but never used"},
+      {"path":"engine/backtest/composite_strategies.py","line":373,"code":"F841","summary":"direction assigned but never used"},
+      {"path":"engine/backtest/iterate.py","line":51,"code":"F401","summary":"numpy imported but unused"},
+      {"path":"engine/backtest/iterate.py","line":194,"code":"B904","summary":"exception chaining required"},
+      {"path":"engine/e7f_validate_outputs.py","line":32,"code":"E741","summary":"ambiguous variable name l"},
+      {"path":"engine/e7f_validate_outputs.py","line":34,"code":"E741","summary":"ambiguous variable name l"},
+      {"path":"engine/e7f_verify_caches.py","line":63,"code":"F841","summary":"added assigned but never used"},
+      {"path":"engine/strategies/rl_agent.py","line":51,"code":"I001","summary":"import block unsorted/unformatted"},
+      {"path":"engine/strategies/rl_agent.py","line":115,"code":"E402","summary":"module import not at top of file"},
+      {"path":"engine/strategies/rl_agent.py","line":122,"code":"E402","summary":"module import not at top of file"},
+      {"path":"engine/tests/test_latency_fixes_20260818.py","line":226,"code":"SyntaxError","summary":"Unexpected indentation"},
+      {"path":"engine/tests/test_latency_fixes_20260818.py","line":226,"code":"SyntaxError","summary":"Expected a statement"},
+      {"path":"engine/tests/test_latency_fixes_20260818.py","line":226,"code":"SyntaxError","summary":"Expected a statement"},
+      {"path":"engine/tests/test_latency_fixes_20260818.py","line":244,"code":"SyntaxError","summary":"Expected a statement"}
+    ],
+    "notes": [
+      "The syntax error is higher severity than ordinary lint debt because it prevents parsing/collection of the affected test module.",
+      "GitHub checkout post-cleanup also warns that tradingview-mcp is tracked as a submodule path without a corresponding .gitmodules URL; classify separately as repository hygiene debt."
+    ]
+  },
+  "dashboard_quality": {
+    "result": "FAIL",
+    "classification": "BASELINE-TEST",
+    "static_guards": "PASS",
+    "typecheck": "PASS",
+    "unit_tests": {
+      "total": 225,
+      "passed": 220,
+      "failed": 5,
+      "failed_tests": [
+        {"file":"dashboard/tests/instrument-validation-scope-gap.node.test.ts","test":"PREFERRED_BASELINE_LABEL renders the active symbol(s), not a halted one","summary":"expected MES, actual APPROVED"},
+        {"file":"dashboard/tests/instrument-validation-scope-gap.node.test.ts","test":"HALTED_SYMBOLS never overlaps DEFAULT_BRIEFING_SYMBOLS","summary":"MGC appears in both active/default briefing and halted assumptions"},
+        {"file":"dashboard/tests/instrument-validation-scope-gap.node.test.ts","test":"ALL_TRACKED_SYMBOLS is the active symbol(s) followed by the halted symbols, no duplicates","summary":"actual list includes duplicate MGC and M2K vs stale expected list"},
+        {"file":"dashboard/tests/scorecard-baseline-active-pair.node.test.ts","test":"matchesPreferredBaseline is true for the active symbol, false for halted symbols","summary":"halted/active baseline assumption disagreement"},
+        {"file":"dashboard/tests/scorecard-baseline-active-pair.node.test.ts","test":"PREFERRED_BASELINE_SYMBOL_SUBSTRINGS never overlaps engine DO_NOT_TRADE_SYMBOLS and tracks DEFAULT_BRIEFING_SYMBOLS","summary":"MGC is both preferred baseline and halted"}
+      ]
+    },
+    "interpretation": "These failures are direct evidence of the same trading-eligibility/source-of-truth drift identified by A-01; they are not caused by Phase-0 Markdown changes."
+  },
+  "draft_skipped_jobs": [
+    "Dashboard Build (Next.js)",
+    "Engine Type Check (mypy)",
+    "Security Scan",
+    "Engine Tests (pytest, fast)",
+    "Engine Tests (pytest, slow)",
+    "Engine Tests (coverage merge)",
+    "Engine Lint (Python)"
+  ],
+  "branch_protection_required_contexts": [
+    "Engine Tests (pytest, fast)",
+    "Engine Lint (Python)",
+    "Safety-critical config gate",
+    "Dashboard Build (Next.js)",
+    "Dashboard Quality (typecheck + unit tests)"
+  ],
+  "o01_exit_blockers": [
+    "Full required ready-for-review suite has not been observed on the formal planning PR because it is intentionally draft.",
+    "Master push workflow startup_failure remains unresolved even though PR-triggered hosted runners currently work.",
+    "Exact baseline Ruff and dashboard debts must be placed under a governed ratchet/cleanup work package before ISG-0 closes.",
+    "The test syntax error should be repaired under an explicit baseline-cleanup WP, not silently folded into unrelated implementation."
+  ]
+}
