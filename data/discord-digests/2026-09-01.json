@@ -1,0 +1,334 @@
+{
+  "date": "2026-09-01",
+  "session_bias": {
+    "session_type": "trend_day",
+    "directional_bias": "bearish",
+    "conviction": 0.7,
+    "ib_bias": "not_mentioned",
+    "data_quality": "fresh",
+    "message_count": 13
+  },
+  "sentiment_score": null,
+  "sentiment_label": null,
+  "top_signals": [],
+  "corey_quote": "The big level today is 7685 for the downside.",
+  "commentary_health": [
+    {
+      "date": "2026-09-02",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.5,
+      "message_count": 13
+    },
+    {
+      "date": "2026-09-01",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.7,
+      "message_count": 13
+    },
+    {
+      "date": "2026-08-31",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.65,
+      "message_count": 13
+    },
+    {
+      "date": "2026-08-30",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 5
+    },
+    {
+      "date": "2026-08-29",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 5
+    },
+    {
+      "date": "2026-08-28",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.4,
+      "message_count": 5
+    },
+    {
+      "date": "2026-08-27",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.6,
+      "message_count": 5
+    },
+    {
+      "date": "2026-08-26",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 5
+    },
+    {
+      "date": "2026-08-25",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 5
+    }
+  ],
+  "calibration_integrity": {
+    "total_outcomes": 6,
+    "rows_excluded_corrupt": 0,
+    "rows_excluded_duplicate": 0,
+    "alert": false,
+    "window_days": 30
+  },
+  "llm_provider_health": {
+    "engine_reachable": false,
+    "active_provider": null,
+    "primary_provider": null,
+    "primary_healthy": null,
+    "providers_available": null,
+    "google_fallback_count": null,
+    "vertex_failover_count": null,
+    "llm_path_healthy": null,
+    "alert": false
+  },
+  "task_health": {
+    "present": true,
+    "stale": false,
+    "age_hours": 0.5,
+    "scanned": 108,
+    "failing_enabled": 34,
+    "failing_disabled": 1,
+    "failing_tasks": [
+      {
+        "name": "Hermes-Nightly-Sync",
+        "result": "0x1"
+      },
+      {
+        "name": "Hermes-Snapshot-Weekly",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-AlertSelfTest",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-CalendarPaperTrack",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-DailyLiveReadiness",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Jarvis-DailyPostTradeReport",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Jarvis-DiscordGitDigest",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-DiscordObsidianSync",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-DiskWatch",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-DR-Weekly",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-FinanceSync",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-GbrainKeepWarm",
+        "result": "0x40"
+      },
+      {
+        "name": "jarvis-heartbeat-gapfill-papertrack",
+        "result": "0x1"
+      },
+      {
+        "name": "jarvis-heartbeat-options-signals",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-IBGateway-RAMWatchdog",
+        "result": "0x7F"
+      },
+      {
+        "name": "Jarvis-LLMWatchdog",
+        "result": "0x41306"
+      },
+      {
+        "name": "jarvis-morning-brief",
+        "result": "0x3"
+      },
+      {
+        "name": "Jarvis-PM2RestartWatch-15min",
+        "result": "0x1"
+      },
+      {
+        "name": "jarvis-preclose-framing-brief",
+        "result": "0x3"
+      },
+      {
+        "name": "Jarvis-PreHolidayPaperTrack",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-ScanCredentials",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-ScanHistorySecrets",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-Sentinel",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Jarvis-StrategyC-Weekly",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Jarvis-SystemStatus",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-TomPaperTrack",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-VaultBackup",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-VaultDriftCheck",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-VaultIngest-All",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-VaultIngest-Files",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Jarvis-VaultIngest-Files-Guarded",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-VaultIngest-XBookmarks",
+        "result": "0xFFFD0000"
+      },
+      {
+        "name": "Jarvis-VaultMOCRegen",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-VerdictRefresh-Weekly",
+        "result": "0x41306"
+      }
+    ],
+    "alert": true
+  },
+  "gate_verdict_freshness": {
+    "active_symbols": [
+      "MES",
+      "MGC"
+    ],
+    "max_age_days": 7.0,
+    "symbols": {
+      "AAPL": {
+        "age_days": 15.2,
+        "newest": "2026-08-18T10:11:50.980568+00:00",
+        "files": 3,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "M2K": {
+        "age_days": 37.4,
+        "newest": "2026-07-27T04:22:26.852950+00:00",
+        "files": 5,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "MCL": {
+        "age_days": 11.3,
+        "newest": "2026-08-22T06:00:05.351575+00:00",
+        "files": 4,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "MES": {
+        "age_days": 0.9,
+        "newest": "2026-09-01T16:53:00.912565+00:00",
+        "files": 44,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": true
+      },
+      "MGC": {
+        "age_days": 1.1,
+        "newest": "2026-09-01T10:33:00.545856+00:00",
+        "files": 23,
+        "latest_verdict": "FAIL",
+        "active": true
+      },
+      "MNQ": {
+        "age_days": 11.3,
+        "newest": "2026-08-22T06:00:07.196071+00:00",
+        "files": 13,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "QQQ": {
+        "age_days": 14.7,
+        "newest": "2026-08-18T20:37:30.818561+00:00",
+        "files": 5,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "SPY": {
+        "age_days": 14.7,
+        "newest": "2026-08-18T20:37:23.164689+00:00",
+        "files": 5,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "TSLA": {
+        "age_days": 15.2,
+        "newest": "2026-08-18T09:38:18.712883+00:00",
+        "files": 4,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "ZB": {
+        "age_days": 76.4,
+        "newest": "2026-06-18T04:00:05.645209+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "ZN": {
+        "age_days": 76.4,
+        "newest": "2026-06-18T03:59:30.450756+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      }
+    },
+    "stale_active": [],
+    "missing_active": [],
+    "alert": false
+  }
+}
