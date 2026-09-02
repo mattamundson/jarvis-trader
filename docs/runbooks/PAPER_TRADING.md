@@ -1,5 +1,10 @@
 # JARVIS TRADER — Paper Trading Runbook
 
+> [!CAUTION]
+> Paper trading is not live authorization. Any legacy Phase 3 or live-transition
+> section in this document is retired and cannot satisfy JARVIS-MIP-1.0 M10/M11,
+> enable live trading, or replace explicit Tier 3 owner authorization.
+
 **Target Launch:** April-May 2026 | **Duration:** 30-day forward test | **Mode:** Interactive Brokers Gateway (Paper Account)
 
 ---
