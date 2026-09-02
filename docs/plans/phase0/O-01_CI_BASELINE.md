@@ -4,9 +4,10 @@
 **Program:** O — DevOps / CI-CD  
 **Phase:** MIP-0  
 **Safety class:** S0  
-**State:** **IN PROGRESS**  
+**State:** **IN PROGRESS — BASELINE TEST DEFECT IDENTIFIED**  
 **Repository baseline:** `master@e2a1006e3eb7d35a840487c80899b33103b52277`  
 **Ready-PR evidence head:** `PR #768@2203a7f797b245f329fd3fe356a5675bc53547b2`  
+**Repair PR:** `#773@8c1312d2de6ea6d965bde6b612bcd209c883bf14`  
 **Observed:** 2026-09-02
 
 ## Objective
@@ -37,10 +38,19 @@ PR #768 final-head workflow evidence:
 | Dashboard Quality | 33681768981 | PASS |
 | Dashboard Build + Playwright E2E | 33681768981 | PASS |
 | Engine Tests (pytest, slow) | 33681768981 | PASS |
-| Engine Tests (pytest, fast) | 33681768981 | **RUNNING — NO CONCLUSION YET** |
-| Coverage merge/floor | 33681768981 | **NOT YET AVAILABLE** |
+| Engine Tests (pytest, fast), attempt 1 | 33681768981 | **FAIL — 3 failed, 9,215 passed** |
+| Engine Tests (pytest, fast), fresh-process attempt 2 | 33681768981 | **FAIL — 3 failed, 9,214 passed** |
+| Coverage merge/floor | 33681768981 | **SKIPPED because fast tests failed** |
 
-This receipt supersedes the stale PR #760 baseline claims about 15 Ruff errors, a syntax error, and five dashboard failures: those defects were addressed by merged PR #757 and are not present in the final-head jobs already completed above. O-01 remains open until the fast suite and any dependent coverage job finish conclusively and the resulting master receipt is recorded.
+The three failures are:
+
+- `test_calibrate_kronos_threshold.py::TestOutputJsonSchema::test_per_instrument_ok_keys`
+- `test_calibrate_kronos_threshold.py::TestOutputJsonSchema::test_percentile_keys`
+- `test_calibrate_kronos_threshold.py::TestOutputJsonSchema::test_json_serialisable`
+
+Both clean-process attempts failed identically. This is therefore not classified as a flake. The schema-only fixture hard-coded bars beginning 2025-09-01 while production calibration applies a 365-day lookback; on 2026-09-02 the fixture aged outside the valid window. PR #773 moves the synthetic fixture relative to the execution clock while retaining explicit insufficient-data coverage elsewhere.
+
+This receipt supersedes the stale PR #760 baseline claims about 15 Ruff errors, a syntax error, and five dashboard failures: those defects were addressed by merged PR #757 and are not present in the completed jobs above. O-01 remains open until PR #773 passes on its exact head, the repair is merged, PR #768 is refreshed against that baseline, and one complete current-master receipt is recorded.
 
 ## Classification contract
 
@@ -68,8 +78,11 @@ This receipt supersedes the stale PR #760 baseline claims about 15 Ruff errors, 
 - [x] Pin a reachable repository baseline.
 - [x] Record advertised required contexts.
 - [x] Observe final-head lint, type, dashboard, security, slow-test, safety, and review jobs.
-- [ ] Record a terminal final-head fast-test result.
-- [ ] Record a terminal coverage result when the workflow creates it.
+- [x] Record terminal fast-test failures and classify their deterministic cause.
+- [x] Open a narrowly scoped repair in PR #773.
+- [ ] Require PR #773 exact-head fast-suite and full-CI success.
+- [ ] Merge PR #773 only after all required checks pass.
+- [ ] Refresh PR #768 on the repaired baseline and obtain a complete exact-head receipt.
 - [ ] Merge PR #768 only after required contexts are green.
 - [ ] Record the post-merge master SHA and master workflow receipt.
 - [ ] Verify required contexts are actually enforced by branch protection.
