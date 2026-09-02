@@ -51,7 +51,12 @@ def _observed_annualization_trades_per_year(trades: list[dict]) -> float:
     """
     parsed = []
     for trade in trades:
-        raw = trade.get("exit_time") or trade.get("entry_time") or trade.get("timestamp") or trade.get("date")
+        raw = (
+            trade.get("exit_time")
+            or trade.get("entry_time")
+            or trade.get("timestamp")
+            or trade.get("date")
+        )
         if not raw:
             continue
         try:
@@ -113,7 +118,6 @@ def calculate_analytics(trades: list[dict]) -> TradeAnalytics:
     win_rate = (len(wins) / total_trades * 100) if total_trades > 0 else 0.0
     expectancy = (total_pnl / total_trades) if total_trades > 0 else 0.0
 
-    daily_returns = _calculate_daily_returns(trades)
     # C3 metric-honesty pass: annualize by the OBSERVED trade frequency, not a
     # fixed 252. A strategy that closes trades on ~60 days a year was
     # previously overstated by sqrt(252/60) ≈ 2.05x.
@@ -124,7 +128,10 @@ def calculate_analytics(trades: list[dict]) -> TradeAnalytics:
     # mixed denominators that inflated the live record (88 trades on ~40
     # distinct days): engine 2.59 vs honest 1.63 (2026-08-18 verification).
     trade_returns = [t.get("pnl", 0) for t in trades]
-    sharpe = calculate_sharpe_ratio(trade_returns, annualization_trades_per_year=ann_tpy)
+    sharpe = calculate_sharpe_ratio(
+        trade_returns,
+        annualization_trades_per_year=ann_tpy,
+    )
 
     # Honest CAGR over the actual elapsed calendar span of the trade record.
     # Compounding uses (1 + total_return)^(1/years) - 1 with years derived from
@@ -171,7 +178,11 @@ def _calculate_cagr(trades: list[dict], annualization_trades_per_year: float) ->
     if total_return <= -1.0:
         return 0.0
     n = len(trades)
-    years = n / annualization_trades_per_year if annualization_trades_per_year > 0 else 0.0
+    years = (
+        n / annualization_trades_per_year
+        if annualization_trades_per_year > 0
+        else 0.0
+    )
     if years <= 0:
         return 0.0
     cagr = (1.0 + total_return) ** (1.0 / years) - 1.0
@@ -199,14 +210,20 @@ def calculate_sharpe_ratio(
     # Sample variance (ddof=1) — matches backtest/metrics.py (`std(ddof=1)`)
     # and dashboard/lib/honestAnnualized.ts, so engine and display agree on
     # the same trade series (C3 metric-honesty pass).
-    variance = sum((r - mean_return) ** 2 for r in daily_returns) / (len(daily_returns) - 1)
+    variance = sum((r - mean_return) ** 2 for r in daily_returns) / (
+        len(daily_returns) - 1
+    )
     std_dev = math.sqrt(variance)
 
     if std_dev == 0.0:
         # float("inf") is not JSON-serializable via FastAPI's JSONResponse; use sentinel 9999.0
         return 9999.0 if mean_return > 0 else 0.0
 
-    periods = annualization_trades_per_year if annualization_trades_per_year > 0 else DEFAULT_ANNUALIZATION_TRADES_PER_YEAR
+    periods = (
+        annualization_trades_per_year
+        if annualization_trades_per_year > 0
+        else DEFAULT_ANNUALIZATION_TRADES_PER_YEAR
+    )
     per_period_sharpe = (mean_return - risk_free_rate) / std_dev
     annualized_sharpe = per_period_sharpe * math.sqrt(periods)
     return annualized_sharpe
@@ -323,7 +340,7 @@ def _calculate_daily_returns(trades: list[dict]) -> list[float]:
         )
         if date_key:
             if isinstance(date_key, str) and len(date_key) > 10:
-                date_key = date_key[:10]  # "2026-04-03T22:12:52+00:00" → "2026-04-03"
+                date_key = date_key[:10]  # ISO datetime -> YYYY-MM-DD
             daily_pnl[date_key] = daily_pnl.get(date_key, 0.0) + trade.get("pnl", 0)
 
     return list(daily_pnl.values())
