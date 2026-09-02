@@ -9,7 +9,7 @@
 | `app/layout.tsx` | Root layout — theme, nav, providers |
 | `lib/api.ts` | `fetchEngine` / `postEngine` — ALL API calls go through here |
 | `components/` | Shared UI components |
-| `app/` | App Router pages (14 pages total) |
+| `app/` | App Router pages (50 routes total — see `tests/e2e/_routes.ts`, the single source of truth for route coverage) |
 
 ## Critical Rule: Never Hardcode URLs
 
@@ -26,15 +26,12 @@ engine host or port.
 - Build check: `./node_modules/.bin/tsc --noEmit` (NOT `npx tsc`)
 - Dev: `pnpm dev` | Build: `pnpm run build` | If Windows fails with missing `.next/**/page.js.nft.json`, run `pnpm run build:clean` (wipes `.next` then builds)
 
-## Dashboard Pages (14 total)
+## Dashboard Pages (50 routes total)
 
-```
-/ (overview)       /pipeline          /backtest
-/positions         /risk              /portfolio
-/options           /crypto            /performance
-/settings          /agents            /market-analysis
-/walk-forward      /polymarket (stub)
-```
+The page/redirect/dynamic-route list has grown well past any hand-maintained
+snapshot and gone stale here more than once. Do not re-list routes in this
+file — read `tests/e2e/_routes.ts` (`ROUTES`), which `tests/routeManifest.node.test.ts`
+enforces against the actual `app/**/page.tsx` tree, so it cannot drift.
 
 ## Component Conventions
 

@@ -118,6 +118,21 @@ export async function fetchEngine<T = any>(path: string, options?: RequestInit):
   });
 }
 
+/**
+ * Liveness-probe variant: single attempt, no retry, no 2s backoff.
+ *
+ * Health indicators (SystemFreshnessStrip, EngineOfflineBanner) must fail fast —
+ * if /health 503s, the engine is down NOW and the operator indicator should
+ * flip immediately, not after fetchWithRetry's 2s retry window. All data
+ * fetches keep using fetchEngine (retry is right for them).
+ */
+export async function fetchEngineNoRetry<T = any>(path: string, options?: RequestInit): Promise<T> {
+  return fetchWithTimeout<T>(`${ENGINE}${path}`, {
+    cache: "no-store",
+    ...options,
+  });
+}
+
 export async function postEngine<T = any>(path: string, body?: unknown): Promise<T> {
   return fetchWithRetry<T>(`${ENGINE}${path}`, {
     method: "POST",
@@ -480,6 +495,13 @@ export interface ActionableBoardResponse {
   count: number;
   available: boolean;
   note?: string;
+  // Diagnostics for the empty state: raw_count = rows fetched from the queue
+  // before filters (buy/sell only, rejected/error dropped, deduped to newest
+  // per symbol+side); shown = items actually displayed. raw_count > 0 with
+  // shown == 0 means the queue has decisions but all were filtered out (e.g.
+  // every recent one was rejected) — a different "why" than "no decisions".
+  raw_count?: number;
+  shown?: number;
 }
 
 export async function fetchActionableBoard(): Promise<ActionableBoardResponse> {
@@ -1386,6 +1408,60 @@ export interface ResearchCandidatesResponse {
 /** GET /strategy/research-candidates — X-bookmark edge-scan research candidates. */
 export async function fetchResearchCandidates(): Promise<ResearchCandidatesResponse> {
   return fetchEngine<ResearchCandidatesResponse>("/strategy/research-candidates");
+}
+
+// ── Equity SMA-trend certification + forward evidence (GET /strategy/equity-research) ────
+// Daily SMA-trend WFO certs (SPY/QQQ/AAPL/TSLA) and forward evidence from closed-trades ledger.
+// Non-authorizing: these never route capital.
+
+export interface EquityCertRow {
+  symbol: string | null;
+  fast: number | null;
+  slow: number | null;
+  atr_mult: number | null;
+  verdict: string | null; // PASS | FAIL
+  passed_via: string | null;
+  n_windows: number | null;
+  pf_ci_lower: number | null;
+  p_edge: number | null;
+  dsr: number | null;
+  mc_95th_dd_pct: number | null;
+  total_oos_trades: number | null;
+  created_at: string | null;
+  source_file: string | null;
+  note: string | null;
+}
+
+export interface ForwardCandidateRow {
+  id: string | null;
+  symbol: string | null;
+  graduated: boolean | null;
+  forward_n_windows: number | null;
+  forward_p_edge: number | null;
+  forward_pf_ci_lower: number | null;
+  forward_total_trades: number | null;
+  forward_total_pnl: number | null;
+  shuffle_p_value: number | null;
+  shuffle_passes: boolean | null;
+  dsr: number | null;
+  stat_gate: any; // dict {enforced, ab..., passes, reasons}
+  survives_family_fdr: boolean | null;
+  reason: string | null;
+}
+
+export interface EquityResearchResponse {
+  equity_certs: EquityCertRow[];
+  forward_evidence: ForwardCandidateRow[];
+  forward_generated_at: string | null;
+  forward_window_days: number | null;
+  forward_graduation_rule: any;
+  total: number;
+  generated_at: string;
+}
+
+/** GET /strategy/equity-research — Equity SMA-trend WFO certs + forward evidence. */
+export async function fetchEquityResearch(): Promise<EquityResearchResponse> {
+  return fetchEngine<EquityResearchResponse>("/strategy/equity-research");
 }
 
 // ── Macro trend regime (GET /macro/regime) — X-bookmark trend edges on SPX ────
@@ -3266,4 +3342,226 @@ export interface AuctionBiasResponse {
 
 export async function fetchAuctionBias(symbol: string): Promise<AuctionBiasResponse> {
   return fetchEngine<AuctionBiasResponse>(`/auction/bias/${symbol}`);
+}
+
+// Pipeline Funnel Analytics
+export interface PipelineFunnelResponse {
+  period: string;
+  days: number;
+  timestamp: string;
+  funnel: {
+    runs: number;
+    signals: number;
+    approved: number;
+    executed: number;
+    filled: number;
+  };
+  conversion_rates: {
+    runs_to_signals: number;
+    signals_to_approved: number;
+    approved_to_executed: number;
+    executed_to_filled: number;
+    overall_conversion: number;
+  };
+  details: {
+    window_days: number;
+    cutoff: string;
+    runs: number;
+    signals: number;
+    approved: number;
+    executed: number;
+    filled: number;
+    human_approved: number;
+    human_rejected: number;
+    runs_to_signals_pct: number;
+    signals_to_approved_pct: number;
+    approved_to_executed_pct: number;
+    executed_to_filled_pct: number;
+    overall_conversion_pct: number;
+    cache_hit?: boolean;
+  };
+}
+
+export async function fetchPipelineFunnel(
+  days: number = 30
+): Promise<PipelineFunnelResponse> {
+  return fetchEngine<PipelineFunnelResponse>(
+    `/analytics/pipeline-funnel?days=${days}`
+  );
+}
+
+// ── ThinkScript registry + generation (engine/routers/thinkscript_router.py) ──
+// Registry is a read-only catalog of the JARVIS-authored .ts studies backed by
+// thinkorswim-scripts/registry.yaml (engine/utils/thinkscript_registry_loader.py).
+// Generation calls the LLM-backed ThinkScriptGeneratorAgent. IMPORTANT: see the
+// honesty note on ThinkScriptGenerateResponse below before trusting a generated
+// script's "signals_included" as evidence of real technical analysis.
+
+export type ThinkScriptStatus =
+  | "ported"
+  | "orphan"
+  | "deprecated"
+  | "reference_only"
+  | "active"
+  | "experimental";
+
+export interface ThinkScriptRegistryEntry {
+  id: string;
+  /** Single .ts file, or a list for consolidated entries. */
+  file: string | string[];
+  docs: string;
+  author: string;
+  /** 0 = supporting, 1-5 = JARVIS layers. */
+  layer: number;
+  layer_name: string;
+  status: ThinkScriptStatus;
+  python_counterpart: string | null;
+  panel: "upper" | "lower" | null;
+  jarvis_signals: string[];
+  tos_inputs: Record<string, unknown>;
+}
+
+export interface ThinkScriptRegistryResponse {
+  version: number;
+  generated: string;
+  source_of_truth: Record<string, string>;
+  duplicates_to_skip: string[];
+  scripts: ThinkScriptRegistryEntry[];
+}
+
+export interface ThinkScriptWithDocs {
+  entry: ThinkScriptRegistryEntry;
+  doc_markdown: string;
+}
+
+/** GET /thinkscript/registry — full catalog of ThinkScript studies wired into JARVIS. */
+export async function fetchThinkScriptRegistry(): Promise<ThinkScriptRegistryResponse> {
+  return fetchEngine<ThinkScriptRegistryResponse>("/thinkscript/registry");
+}
+
+/** GET /thinkscript/registry/{script_id} — one entry plus its full markdown doc body. */
+export async function fetchThinkScriptRegistryEntry(
+  scriptId: string
+): Promise<ThinkScriptWithDocs> {
+  return fetchEngine<ThinkScriptWithDocs>(
+    `/thinkscript/registry/${encodeURIComponent(scriptId)}`
+  );
+}
+
+export interface ThinkScriptGenerateRequest {
+  symbol: string;
+  timeframe?: string;
+  is_futures?: boolean;
+}
+
+/**
+ * Response from POST /thinkscript/generate.
+ *
+ * HONESTY NOTE (load-bearing — do not remove without fixing the engine first):
+ * `engine/routers/thinkscript_router.py`'s `generate_thinkscript` handler wraps
+ * its call to the technical analyst in a bare `except Exception: pass`. If that
+ * call fails, generation proceeds anyway with `technical_report=None`, and this
+ * response type has NO field indicating that happened — a script can come back
+ * with a confident-looking title/description/code and zero real TA behind it,
+ * indistinguishable from a fully-grounded generation. Every caller must treat
+ * generation output as exploratory (see ExploratoryBanner on /thinkscript) until
+ * the engine ships a `technical_report_available` boolean
+ * (see docs/backlog/DASHBOARD_PUNCHLIST.md, "Engine follow-ups" section).
+ */
+export interface ThinkScriptGenerateResponse {
+  symbol: string;
+  timeframe: string;
+  title: string;
+  code: string;
+  description: string;
+  usage_instructions: string;
+  signals_included: string[];
+  timestamp: string;
+}
+
+/** POST /thinkscript/generate — LLM-backed ThinkScript study generation. */
+export async function generateThinkScript(
+  body: ThinkScriptGenerateRequest
+): Promise<ThinkScriptGenerateResponse> {
+  return postEngine<ThinkScriptGenerateResponse>("/thinkscript/generate", body);
+}
+
+// ── MES forward experiment (GET /experiments/mes-forward/summary) ───────────
+// Mirrors engine routers/experiments_router.py. Aggregate metrics for the
+// mes_session_hypothesis forward-recorder table -- hit-rate by hypothesis
+// side plus totals. HONESTY NOTE (load-bearing): `overall_non_skip.n` /
+// `n_with_outcome` is almost always a tiny fraction of `n_rows` early in the
+// experiment's life (one row/day). Any consumer of `hit_rate` MUST render it
+// beside its own denominator (n wins of n rows with a recorded outcome) --
+// never as a bare percentage -- so a 100% hit rate over 4 rows reads as
+// exactly what it is: statistically meaningless, not a validated edge.
+export interface MesForwardSideStats {
+  n: number;
+  wins: number;
+  losses: number;
+  hit_rate: number; // 0..1 fraction
+  avg_delta: number;
+}
+
+export interface MesForwardOverallStats {
+  n: number;
+  wins: number;
+  hit_rate: number; // 0..1 fraction
+  avg_delta: number;
+}
+
+export interface MesForwardSummaryResponse {
+  n_rows: number;
+  n_with_outcome: number;
+  n_pending_outcome: number;
+  first_date: string | null;
+  last_date: string | null;
+  by_side: Record<string, MesForwardSideStats>;
+  overall_non_skip: MesForwardOverallStats;
+}
+
+/** GET /experiments/mes-forward/summary -- MES session forward-recorder aggregate. */
+export async function fetchMesForwardSummary(): Promise<MesForwardSummaryResponse> {
+  return fetchEngine<MesForwardSummaryResponse>("/experiments/mes-forward/summary");
+}
+
+// ── Engine cache stats (GET /cache/stats) ────────────────────────────────────
+// Mirrors engine routers/cache_router.py -> cache.get_cache_stats(). Read-only
+// display of the 30-minute signal-cache hit/miss counters. The router also
+// exposes POST /cache/invalidate[/{symbol}] -- intentionally never called from
+// here, this wave is read-only display only.
+export interface CacheStatsResponse {
+  cache_hits: number;
+  cache_misses: number;
+  total_accesses: number;
+  hit_rate_percent: number;
+  redis_connected: boolean;
+}
+
+/** GET /cache/stats -- signal-cache hit/miss statistics (read-only). */
+export async function fetchCacheStats(): Promise<CacheStatsResponse> {
+  return fetchEngine<CacheStatsResponse>("/cache/stats");
+}
+
+// ── Feature flags registry (GET /flags/) ─────────────────────────────────────
+// Mirrors engine routers/flags_router.py -> flags/registry.py FeatureFlags.
+// Full two-layer flag registry (config default + runtime SQLite override) with
+// per-flag metadata. READ-ONLY here by design: PUT /flags/{name} and
+// DELETE /flags/{name} exist on the engine but plan decision D9 explicitly
+// excludes any toggle/mutate UI this wave -- a toggle would lie for any flag
+// with requires_restart=true, since the change is persisted immediately but
+// inert until the engine process restarts. Do not add a write path against
+// these types without re-reading D9.
+export interface FeatureFlagInfo {
+  name: string;
+  enabled: boolean;
+  description: string;
+  category: string;
+  requires_restart: boolean;
+  source: "config" | "runtime" | string;
+}
+
+/** GET /flags/ -- full feature-flag registry (read-only; never PUT/DELETE from here). */
+export async function fetchFeatureFlags(): Promise<FeatureFlagInfo[]> {
+  return fetchEngine<FeatureFlagInfo[]>("/flags/");
 }

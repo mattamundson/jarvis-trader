@@ -225,24 +225,20 @@ MNQ_15M_CONFIG = {
 }
 
 MES_TREND_PAPER_CONFIG = {
-    #  Instrument — SMA(50,200) trend-following, 1h bars
-    #  Deep validation (2026-08-17, 7.3y MES_2015-01-01_2026-08-16_1h cache, 82 WFO windows):
-    #    - MES_trend_rank11 (NO RV filter, MIN_RV_ANNUALIZED=0.0): PASS via core —
-    #      p_edge=0.9924, pf_ci_lower=1.1402, DSR=0.9704, 69 OOS trades.
-    #    - MES_trend_rv_filter_rank1 (min_rv_annualized=9.0): FAIL —
-    #      p_edge=0.551, pf_ci_lower=1.99, DSR=0.73, 58 OOS trades.
-    #  The RV>=9% filter DEGRADES edge on deep data (0.992 -> 0.551); the live vehicle
-    #  previously ran the RV-filtered variant (min_rv_annualized=9.0 via paper_config +
-    #  MES_MIN_RV_ANNUALIZED=9.0 in engine/.env). This config now matches the
-    #  deep-validated champion (RV filter OFF).
-    #  Verdict files: engine/data/gate_v2_verdicts/MES_trend_rank11.json (PASS, deep)
-    #                 engine/data/gate_v2_verdicts/MES_trend_rv_filter_rank1.json (FAIL, deep)
-    #  NOTE: engine/.env MES_MIN_RV_ANNUALIZED must also be removed/0.0 for full alignment
-    #  (signals.py env default is 0.0; paper_runner kwargs override beats env anyway).
+    #  Instrument — SMA(50,200)+RV9 trend-following, 1h bars
+    #  Gate v2 verdict: INSUFFICIENT_SAMPLE (2026-06-04) -- rank2 re-run with correct trade-level
+    #  metrics shows mc_95th_dd=2.65% (was 1.53% on window-level), alt gate PASSES on all 5 criteria
+    #  but GATE_V2_ENFORCE_SAMPLE_ADEQUACY=True in .env triggers INSUFFICIENT_SAMPLE (16 OOS < 30 floor).
+    #  Verdict file: engine/data/gate_v2_verdicts/MES_trend_rv_filter_rank2.json
+    #  To re-authorize: collect 30+ OOS trades OR set GATE_V2_ENFORCE_SAMPLE_ADEQUACY=False (Amo-gated).
+    #  rank11 verdict also INSUFFICIENT_SAMPLE (same 16 OOS < 30 floor).
+    #  WFO champion params: SMA(fast=50, slow=200, atr_trail_mult=2.0, min_rv_annualized=9.0)
+    #  rank2 grid [50,55,60]x[200]x[2.0] with RV>=9% filter: PF=[1.46,1.86,2.32] (22/22/16 trades)
+    #  RV filter: activated via MES_MIN_RV_ANNUALIZED=9.0 in engine/.env (env var path in signals.py)
     "symbol": "MES",
     "interval": "1h",
     "strategy": "sma_trend",  # Routes to generate_instrument_signals() -> trend_signals path
-    "enabled": True,  # MES is exempt from gate v2 verdict check per Amo 2026-06-26 directive
+    "enabled": True,  # gate_v2_policy blocks trades (INSUFFICIENT_SAMPLE); runner still polls for data
     #  Capital & Sizing
     "initial_capital": 50_000.0,  # ALT routing requires $50K+ account for DD ceiling compliance
     "risk_per_trade": 0.0025,  # 0.25% risk per trade
@@ -257,14 +253,7 @@ MES_TREND_PAPER_CONFIG = {
         "fast": 50,
         "slow": 200,
         "atr_trail_mult": 2.0,
-        "min_rv_annualized": 0.0,  # RV filter OFF — matches deep-validated rank11 champion (2026-08-17)
-        # VIX percentile-tier regime blocking — WIRED but DISABLED (2026-08-17).
-        # Certified gate v2 PASS-ALT (82-window deep, DSR 0.975, PF CI 2.26).
-        # Best per-trade variant: block HighVol → PF 1.74 / 99 trades vs baseline
-        # PF 1.71 / 122 trades. Leave unset (= trading through all VIX regimes)
-        # until a deliberate enablement decision; setting vix_regime_block to
-        # ("HighVol",) or ("Crisis", "HighVol") suppresses trend entries in
-        # those percentile tiers (trailing 252d VIX, point-in-time).
+        "min_rv_annualized": 9.0,  # active via MES_MIN_RV_ANNUALIZED env var; validated in rank2
     },
     #  Kill Thresholds -- calibrated to ALT routing 7% MC DD ceiling
     "kill_threshold": {
