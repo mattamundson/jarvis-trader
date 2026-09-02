@@ -31,76 +31,111 @@ CACHES = [
 
 # Known-good reference: NYSE holiday closures 2015-2018 (incl. special closes)
 REF_2015_2018 = {
-    (2015, 1, 1), (2015, 1, 19), (2015, 2, 16), (2015, 4, 3), (2015, 5, 25),
-    (2015, 7, 3), (2015, 9, 7), (2015, 11, 26), (2015, 12, 25),
-    (2016, 1, 1), (2016, 1, 18), (2016, 2, 15), (2016, 3, 25), (2016, 5, 30),
-    (2016, 7, 4), (2016, 9, 5), (2016, 11, 24), (2016, 12, 26),
-    (2017, 1, 2), (2017, 1, 16), (2017, 2, 20), (2017, 4, 14), (2017, 5, 29),
-    (2017, 7, 4), (2017, 9, 4), (2017, 11, 23), (2017, 12, 25),
-    (2018, 1, 1), (2018, 1, 15), (2018, 2, 19), (2018, 3, 30), (2018, 5, 28),
-    (2018, 7, 4), (2018, 9, 3), (2018, 11, 22), (2018, 12, 5), (2018, 12, 25),
+    (2015, 1, 1),
+    (2015, 1, 19),
+    (2015, 2, 16),
+    (2015, 4, 3),
+    (2015, 5, 25),
+    (2015, 7, 3),
+    (2015, 9, 7),
+    (2015, 11, 26),
+    (2015, 12, 25),
+    (2016, 1, 1),
+    (2016, 1, 18),
+    (2016, 2, 15),
+    (2016, 3, 25),
+    (2016, 5, 30),
+    (2016, 7, 4),
+    (2016, 9, 5),
+    (2016, 11, 24),
+    (2016, 12, 26),
+    (2017, 1, 2),
+    (2017, 1, 16),
+    (2017, 2, 20),
+    (2017, 4, 14),
+    (2017, 5, 29),
+    (2017, 7, 4),
+    (2017, 9, 4),
+    (2017, 11, 23),
+    (2017, 12, 25),
+    (2018, 1, 1),
+    (2018, 1, 15),
+    (2018, 2, 19),
+    (2018, 3, 30),
+    (2018, 5, 28),
+    (2018, 7, 4),
+    (2018, 9, 3),
+    (2018, 11, 22),
+    (2018, 12, 5),
+    (2018, 12, 25),
 }
 
 
 def missing_weekdays(df: pd.DataFrame) -> set[date]:
-    """All Mon-Fri dates in [min,max] absent from the index."""
+    """Return all Mon-Fri dates in [min,max] absent from the index."""
     idx = pd.to_datetime(df.index).normalize()
     present = set(idx.date)
     start, end = idx.min().date(), idx.max().date()
     missing: set[date] = set()
-    d = start
-    while d <= end:
-        if d.weekday() < 5 and d not in present:
-            missing.add(d)
-        d += timedelta(days=1)
+    current = start
+    while current <= end:
+        if current.weekday() < 5 and current not in present:
+            missing.add(current)
+        current += timedelta(days=1)
     return missing
 
 
 def main() -> int:
     whitelist = US_MARKET_HOLIDAYS | US_MARKET_EARLY_CLOSES
 
-    # 1. Verify 2015-2018 additions against the reference closure calendar.
-    added = US_MARKET_HOLIDAYS - frozenset(
-        date(y, m, d) for y in range(2019, 2031)
-        for m, d in [(1, 1)]
-    )
-    missing_from_ref = [d for d in whitelist if d.year in (2015, 2016, 2017, 2018)
-                        and (d.year, d.month, d.day) not in REF_2015_2018]
-    print("=== whitelist 2015-2018 vs NYSE reference ===")
-    print("whitelist entries 2015-2018 not in reference calendar:",
-          missing_from_ref or "NONE (all genuine closures)")
-    ref_not_in_wl = [
-        date(*ymd) for ymd in sorted(REF_2015_2018)
-        if date(*ymd) not in whitelist
+    # 1. Verify 2015-2018 whitelist entries against the reference closure calendar.
+    missing_from_ref = [
+        day
+        for day in whitelist
+        if day.year in (2015, 2016, 2017, 2018)
+        and (day.year, day.month, day.day) not in REF_2015_2018
     ]
-    print("reference closures 2015-2018 missing from whitelist:",
-          ref_not_in_wl or "NONE (complete)")
+    print("=== whitelist 2015-2018 vs NYSE reference ===")
+    print(
+        "whitelist entries 2015-2018 not in reference calendar:",
+        missing_from_ref or "NONE (all genuine closures)",
+    )
+    ref_not_in_wl = [
+        date(*ymd) for ymd in sorted(REF_2015_2018) if date(*ymd) not in whitelist
+    ]
+    print(
+        "reference closures 2015-2018 missing from whitelist:",
+        ref_not_in_wl or "NONE (complete)",
+    )
 
     ok = True
     for path in CACHES:
         print(f"\n=== {path.name} ===")
-        rep = inspect_cache_file(path, holiday_dates=whitelist)
-        print(f"trustworthy={rep['trustworthy']} "
-              f"n_suspicious_gaps={rep['n_suspicious_gaps']}")
+        report = inspect_cache_file(path, holiday_dates=whitelist)
+        print(
+            f"trustworthy={report['trustworthy']} "
+            f"n_suspicious_gaps={report['n_suspicious_gaps']}"
+        )
         df = pd.read_csv(path)
-        df.columns = [c.lower() for c in df.columns]
+        df.columns = [column.lower() for column in df.columns]
         ts_col = "timestamp" if "timestamp" in df.columns else "datetime"
         ts = pd.to_datetime(df[ts_col])
         if getattr(ts.dt, "tz", None) is not None:
             ts = ts.dt.tz_localize(None)
         df[ts_col] = ts
         df = df.set_index(ts_col).sort_index()
-        print(f"bars={len(df)} span={df.index.min().date()} -> "
-              f"{df.index.max().date()}")
+        print(f"bars={len(df)} span={df.index.min().date()} -> {df.index.max().date()}")
 
-        miss = missing_weekdays(df)
-        unexplained = sorted(d for d in miss if d not in whitelist)
-        # Explicable-only check: every missing weekday must be a whitelist day
-        print(f"missing weekdays total={len(miss)}")
-        print(f"  whitelist-covered (holidays/early closes)={len(miss) - len(unexplained)}")
+        missing = missing_weekdays(df)
+        unexplained = sorted(day for day in missing if day not in whitelist)
+        print(f"missing weekdays total={len(missing)}")
+        print(
+            "  whitelist-covered (holidays/early closes)="
+            f"{len(missing) - len(unexplained)}"
+        )
         print(f"  UNEXPLAINED (genuine holes): {len(unexplained)}")
-        for d in unexplained[:20]:
-            print(f"    HOLE {d} ({d.strftime('%A')})")
+        for day in unexplained[:20]:
+            print(f"    HOLE {day} ({day.strftime('%A')})")
         if unexplained:
             ok = False
     print("\n=== RESULT:", "ALL CLEAN" if ok else "HOLES FOUND", "===")
