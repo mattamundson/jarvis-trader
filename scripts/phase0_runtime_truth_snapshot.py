@@ -26,6 +26,9 @@ ENGINE_ENV = REPO_ROOT / "engine" / ".env"
 DEFAULT_ENGINE_URL = "http://127.0.0.1:8010"
 DEFAULT_OUTPUT = REPO_ROOT / "phase0_runtime_truth_snapshot.json"
 LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
+SAFE_VERDICTS = frozenset(
+    {"PASS", "FAIL", "INSUFFICIENT_SAMPLE", "INSUFFICIENT_DATA", "PENDING", "NO_VERDICT"}
+)
 
 SAFE_CONFIG_KEYS = {
     "MAX_POSITION_SIZE_PCT",
@@ -189,6 +192,8 @@ def _validate_engine_url(value: str) -> str:
     host = (parsed.hostname or "").lower()
     if host not in LOOPBACK_HOSTS:
         raise ValueError("engine URL must use localhost, 127.0.0.1, or ::1")
+    if host == "localhost":
+        host = "127.0.0.1"
     if parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
         raise ValueError("engine URL must not contain a path, query, or fragment")
     try:
@@ -268,6 +273,16 @@ def _flatten_config(payload: Any) -> dict[str, Any]:
                 continue
             if key == "JARVIS_LLM_PROVIDER" and isinstance(value, str):
                 value = value.strip().lower()[:40]
+            if key in {"FUTURES_WATCHLIST", "OPTIONS_WATCHLIST"}:
+                if not isinstance(value, list):
+                    continue
+                value = [
+                    item.upper()
+                    for item in value
+                    if isinstance(item, str)
+                    and 0 < len(item) <= 20
+                    and item.replace(".", "").replace("/", "").isalnum()
+                ]
             if isinstance(value, (dict, list)) and key not in {
                 "FUTURES_WATCHLIST",
                 "OPTIONS_WATCHLIST",
@@ -328,8 +343,14 @@ def _safe_endpoint_result(result: dict[str, Any], kind: str) -> dict[str, Any]:
                 if not isinstance(row, dict):
                     continue
                 symbol = row.get("symbol")
-                if not isinstance(symbol, str) or not symbol or len(symbol) > 20:
+                if (
+                    not isinstance(symbol, str)
+                    or not symbol
+                    or len(symbol) > 20
+                    or not symbol.replace(".", "").replace("/", "").isalnum()
+                ):
                     continue
+                verdict = str(row["verdict"]).upper() if row.get("verdict") is not None else None
                 rows.append(
                     {
                         "symbol": symbol.upper(),
@@ -337,11 +358,7 @@ def _safe_endpoint_result(result: dict[str, Any], kind: str) -> dict[str, Any]:
                         "authorized": bool(row.get("authorized", False)),
                         "tradeable": bool(row.get("tradeable", False)),
                         "config_agrees": bool(row.get("config_agrees", False)),
-                        "verdict": (
-                            str(row["verdict"]).upper()[:40]
-                            if row.get("verdict") is not None
-                            else None
-                        ),
+                        "verdict": verdict if verdict in SAFE_VERDICTS else None,
                         "verdict_age_days": (
                             row.get("verdict_age_days")
                             if isinstance(row.get("verdict_age_days"), (int, float))
@@ -457,7 +474,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        snapshot = build_snapshot(args.engine_url, max(args.timeout, 0.1))
+        snapshot = build_snapshot(args.engine_url, min(max(args.timeout, 0.1), 30.0))
         output = args.output if args.output.is_absolute() else REPO_ROOT / args.output
         _write_snapshot(output, snapshot, force=args.force)
     except (FileExistsError, ValueError) as exc:
