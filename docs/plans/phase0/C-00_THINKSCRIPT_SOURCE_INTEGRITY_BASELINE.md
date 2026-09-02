@@ -4,12 +4,18 @@
 **Program:** C — Feature Engineering  
 **Phase:** 0 evidence inventory for Phase 2 work  
 **Safety class:** S0 research documentation  
-**State:** BASELINED / NO DEPLOYMENT AUTHORITY  
+**State:** IN REVIEW / NO DEPLOYMENT AUTHORITY  
+**Objective:** Preserve and classify the exact owner-supplied source corpus before parity work.  
+**Non-goals:** Compilation certification, Python parity, edge validation, or trading authorization.  
+**Dependencies:** JARVIS-MIP-1.0 adoption; the 16-file owner-supplied corpus.  
+**Contracts:** Exact bytes, `SHA256SUMS`, immutable variant IDs, and explicit `known_at`.  
+**Owner mode:** Owner-supplied source; research engineer implementation; independent parity review.  
+**Required verification rung:** E1 deterministic hash-manifest test for source identity.  
 **Observed:** 2026-09-02
 
 ## Scope and evidence boundary
 
-This inventory covers the 16 files supplied by the project owner. SHA-256 hashes below identify the exact reviewed bytes. The files were inspected directly; they were not assumed correct because similarly named repository files exist.
+This inventory covers the 16 files supplied by the project owner. SHA-256 hashes below identify the exact reviewed bytes. The files were inspected directly; they were not assumed correct because similarly named repository files exist. The reviewed corpus is preserved under `research/source/thinkscript/supplied-2026-09-02/`; its manifest is `SHA256SUMS`, enforced by a deterministic unit test. Same-named files elsewhere in the repository are separate variants until byte differences are documented.
 
 This baseline does not certify Thinkorswim compilation, formula parity with Python, causal availability, statistical edge, or deployment eligibility. Those are separate gates:
 
@@ -27,7 +33,7 @@ No supplied study is authorized for execution by this document.
 | 1 | `shared_mtftrendbarSTUDY.ts` | `563f19e249cfb342213bc6f88074d12087b52a43355ca2ab73221ead5a4364f7` | Reads a selectable higher aggregation and recursively trails CCI/ATR state. The current higher-timeframe bar can revise until it closes. | Preserve as a visual/reference variant. An executable port must define closed-bar availability and golden-vector the CCI, ATR, transition, and crossover behavior. |
 | 2 | `NextSignalMomentumSTUDY.ts` | `aef21fe09c4374af1cb13a79bc69bf81d556e4f64be78dc2360cfdd2e74199af` | Contains Unicode en-dashes in arithmetic and curly quotes in labels, so native compilation is doubtful until tested. Its KAMA constants are `0.4` and `0.2222`, not standard 2/30-period KAMA constants. `InertiaAll` full-range modes and `HighestAll` are chart-wide constructs. | Quarantine from parity/deployment claims. First preserve the original bytes, create a compile-clean canonical source as a new version, and test exact nonstandard constants. Reject full-range regression modes as executable features. |
 | 3 | `ThinkScript_study_20221016STUDY.ts` | `13e196d621e95213527f35c7d46d50dc2dc2c1bd66645e427abeb64b2817af1c` | Static-date anchored VWAP using cumulative typical-price×volume after the anchor. Anchor date/time and timezone semantics are implicit. | Candidate reference only. Define timezone, session, zero-volume handling, anchor identity, and reset policy before parity or backtest use. |
-| 4 | `JARVIS_Calendar_Edges.ts` | `4fe2b218c089a0e1215c31ebc255a261641d26439b1e6caf0c334884626e4dba` | Historical last-day/pre-holiday classification reads the next bar with `[-1]`; live holiday eves are hard-coded only for 2026–2027. The source itself describes these limitations. | Visual overlay only. Live/research logic must use a versioned exchange calendar known as of `decision_at`; do not port the future-bar classification or hard-coded list as production authority. |
+| 4 | `JARVIS_Calendar_Edges.ts` | `4fe2b218c089a0e1215c31ebc255a261641d26439b1e6caf0c334884626e4dba` | Historical last-day/pre-holiday classification reads the next bar with `[-1]`; live holiday eves are hard-coded only for 2026–2027. Its 2027 Juneteenth eve is also wrong: it uses Friday 2027-06-18, the observed holiday, instead of Thursday 2027-06-17, the actionable prior session. | Visual overlay only. Live/research logic must use a versioned exchange calendar known as of `decision_at`; do not port the future-bar classification or hard-coded list as production authority. |
 | 5 | `AA_CoreyIBv1STUDY.ts` | `e05e75da18a9b41618c18db27bde1101c99cde908ae186b9cdcef27eab87a61a` | Builds the opening range recursively from 09:30 for a configurable duration, then plots completed levels and extensions. Several clouds reference developing daily highs/lows and are presentation logic. | High-priority causal reference for OR/IB. Golden-vector capture, freeze, first-known timestamp, session/timezone, and post-range extension behavior. Keep visual clouds out of executable features unless separately specified. |
 | 6 | `shared_AA_CoreyTPOScorev2STUDY.ts` | `99c78b6bc2296db5d4452a83d2cb258ce9c072d8d6c3e4e3680ca3b143da055c` | Uses a developing `timeprofile` object for POC/VAH/VAL/profile extremes and derives targets/scores from those changing values. | Research/advisory until a point-in-time incremental profile implementation proves values as known on each bar. Never backfill final-session profile values onto earlier decisions. |
 | 7 | `JARVIS_Calendar_Edges_README.md` | `89252257ee255d5077e137960482f7e316009aae77327b183992f10c23eeda32` | Usage documentation, not executable source. It repeats performance claims and the annual hard-coded-calendar maintenance requirement. | Retain as historical/source documentation. Validate every metric against immutable evidence bundles; do not treat prose as a verdict. |
@@ -54,15 +60,16 @@ No supplied study is authorized for execution by this document.
 | Priority | Variant | First acceptance target |
 |---:|---|---|
 | 1 | Corey Initial Balance / OR | No pre-range final values; developing and frozen states match controlled source bars. |
-| 2 | RTH/session VWAP and anchored VWAP | Explicit calendar/anchor semantics; no Globex contamination; exact controlled-bar cumulative values. |
-| 3 | Saty Phase oscillator | EMA(21) pivot + ATR normalization + EMA(3) output parity; compression kept separate until canonical source compiles. |
-| 4 | COHEN STC | Alpha `1/3` recursion, seeds, zero-range branches, clamp, and crossovers match golden vectors. |
-| 5 | NextSignal KAMA variant | Compile-clean source version; exact `0.4/0.2222` constants; no standard-KAMA relabeling. |
-| 6 | TPO POC/VAH/VAL | Incremental profile values only; final values unavailable before session completion. |
-| 7 | TRIN/VIX/VVIX context | All input timestamps/provenance aligned and stale/unavailable states fail closed. |
-| 8 | MTF trend/Keltner | Closed higher-timeframe bars only; displacement/right-edge projection excluded. |
-| 9 | Singlefinder | One-bar delayed `known_at` enforced in replay and live feature APIs. |
-| 10 | Corey gap / traditional pivots | Explicit session boundaries and finalized source bars. |
+| 2 | RTH/session VWAP | Explicit exchange calendar and RTH reset; premarket/Globex bars excluded; exact controlled-bar cumulative values. |
+| 3 | Static anchored VWAP | Explicit anchor/timezone and per-variant inclusion/reset policy; include every valid post-anchor bar selected by that policy, including overnight bars when specified. |
+| 4 | Saty Phase oscillator | EMA(21) pivot + ATR normalization + EMA(3) output parity; compression kept separate until canonical source compiles. |
+| 5 | COHEN STC | Alpha `1/3` recursion, seeds, zero-range branches, clamp, and crossovers match golden vectors. |
+| 6 | NextSignal KAMA variant | Compile-clean source version; exact `0.4/0.2222` constants; no standard-KAMA relabeling. |
+| 7 | TPO POC/VAH/VAL | Incremental profile values only; final values unavailable before session completion. |
+| 8 | TRIN/VIX/VVIX context | All input timestamps/provenance aligned and stale/unavailable states fail closed. |
+| 9 | MTF trend/Keltner | Closed higher-timeframe bars only; displacement/right-edge projection excluded. |
+| 10 | Singlefinder | One-bar delayed `known_at` enforced in replay and live feature APIs. |
+| 11 | Corey gap / traditional pivots | Explicit session boundaries and finalized source bars. |
 
 ## Required evidence bundle per variant
 
@@ -80,4 +87,4 @@ No supplied study is authorized for execution by this document.
 
 ## Exit condition
 
-C-00 may be considered complete as a source inventory when the repository copies are matched byte-for-byte to these hashes or the differences are documented. It does not close any parity, causal-integrity, Judge, paper, canary, or live gate.
+C-00 may be considered complete as a source inventory when the E1 manifest test proves the preserved corpus matches every recorded hash and review confirms that same-named repository variants are not silently substituted. It does not close any parity, causal-integrity, Judge, paper, canary, or live gate.
