@@ -96,7 +96,7 @@ Consequences encoded in the pipeline (honest, documented in the module docstring
 
 `scripts/gate_v2_orchestrator.py --results-file <SPY/QQQ options results> --symbol SPY
 --family options --rank 1` → writes `data/gate_v2_verdicts/SPY_options_rank1.json`.
-Core gate: MBB PF CI lower ≥ 1.10, p_positive_edge ≥ 0.95, MC-95th DD ≤ 6%,
+Core gate: MBB PF CI lower ≥ 1.10, p_positive_edge ≥ 0.95, MC-95th DD ≤ 5%,
 DSR ≥ 0.10 (4/4). Alt gate: 5/5 with aux evidence (not produced here — UNSCORED).
 
 ## 6. Results
@@ -107,21 +107,21 @@ $5-rung universe-driven ladder).
 
 | Symbol | Trades | Net P&L | PF | WR | Gate v2 core (4) | DSR |
 |---|---|---|---|---|---|---|
-| SPY | 9 | **−$780.29** | 0.286 | 11.1% | **FAIL 1/4** | 0.189 (pass) |
-| QQQ | 8 | **−$275.35** | 0.671 | 25.0% | **FAIL 1/4** | 0.339 (pass) |
+| SPY | 12 | **−$1,242.86** | 0.201 | 8.3% | **FAIL 1/4** | 0.128 (pass) |
+| QQQ | 12 | **−$869.68** | 0.393 | 16.7% | **FAIL 1/4** | 0.153 (pass) |
 
 Gate v2 detail (`data/gate_v2_verdicts/{SPY,QQQ}_options_rank1.json`):
 
-- SPY: `mbb_pf_ci_lower=0.00 < 1.10` ✗ · `p_positive_edge=0.064 < 0.95` ✗ ·
-  `mc_95th_dd_pct=10.9 > 6.0` ✗ · `dsr=0.189 ≥ 0.10` ✓
-- QQQ: `mbb_pf_ci_lower=0.00 < 1.10` ✗ · `p_positive_edge=0.325 < 0.95` ✗ ·
-  `mc_95th_dd_pct=8.1 > 6.0` ✗ · `dsr=0.339 ≥ 0.10` ✓
+- SPY: `mbb_pf_ci_lower=0.00 < 1.10` ✗ · `p_positive_edge=0.0125 < 0.95` ✗ ·
+  `mc_95th_dd_pct=15.55 > 5.0` ✗ · `dsr=0.128 ≥ 0.10` ✓
+- QQQ: `mbb_pf_ci_lower=0.00 < 1.10` ✗ · `p_positive_edge=0.0752 < 0.95` ✗ ·
+  `mc_95th_dd_pct=13.30 > 5.0` ✗ · `dsr=0.153 ≥ 0.10` ✓
 - Alt path UNSCORED (no rolling-WFO / fixed-params / cost-sweep reports produced;
   the single-config claim makes the core gate the appropriate path).
 
 **Honest conclusion: the data pipeline is delivered and verified end-to-end, but the
 a-priori RSI mean-reversion debit-spread overlay has NO tradable edge on SPY/QQQ in
-this window.** 7/9 SPY spreads and 6/8 QQQ spreads expired worthless; both DSRs pass
+this window.** 11/12 SPY spreads and 10/12 QQQ spreads expired worthless; both DSRs pass
 only because n_combos=1 removes the selection-bias penalty — the PF/p_edge/DD gates
 decisively reject the strategy. **No options strategy is certified in this pass.**
 
