@@ -36,7 +36,7 @@ def test_engine_url_is_loopback_only():
             script._validate_engine_url(unsafe)
 
 
-def test_get_json_uses_get_and_allowlisted_endpoint(monkeypatch):
+def test_get_json_uses_proxy_free_non_redirecting_get(monkeypatch):
     script = _load_script()
     observed = {}
 
@@ -53,23 +53,32 @@ def test_get_json_uses_get_and_allowlisted_endpoint(monkeypatch):
         def read():
             return b'{"status":"ok"}'
 
-    def fake_urlopen(request, timeout):
-        observed["method"] = request.get_method()
-        observed["url"] = request.full_url
-        observed["api_key"] = request.headers.get("X-api-key")
-        observed["timeout"] = timeout
-        return _Response()
+    class _Opener:
+        @staticmethod
+        def open(request, timeout):
+            observed["method"] = request.get_method()
+            observed["url"] = request.full_url
+            observed["api_key"] = request.headers.get("X-api-key")
+            observed["timeout"] = timeout
+            return _Response()
 
-    monkeypatch.setattr(script.urllib.request, "urlopen", fake_urlopen)
+    def fake_build_opener(*handlers):
+        observed["handlers"] = handlers
+        return _Opener()
+
+    monkeypatch.setattr(script.urllib.request, "build_opener", fake_build_opener)
     result = script._get_json("http://127.0.0.1:8010", "/health", "synthetic-secret", 1.25)
 
     assert result["body"] == {"status": "ok"}
-    assert observed == {
-        "method": "GET",
-        "url": "http://127.0.0.1:8010/health",
-        "api_key": "synthetic-secret",
-        "timeout": 1.25,
-    }
+    assert observed["method"] == "GET"
+    assert observed["url"] == "http://127.0.0.1:8010/health"
+    assert observed["api_key"] == "synthetic-secret"
+    assert observed["timeout"] == 1.25
+    assert any(
+        isinstance(handler, script.urllib.request.ProxyHandler) and handler.proxies == {}
+        for handler in observed["handlers"]
+    )
+    assert any(isinstance(handler, script._RejectRedirects) for handler in observed["handlers"])
     with pytest.raises(ValueError):
         script._get_json("http://127.0.0.1:8010", "/safety/kill-switch", None, 1.0)
 
@@ -100,13 +109,73 @@ def test_sanitizers_drop_secrets_accounts_paths_and_free_text():
     }
     assert script._sanitize_health(
         {
+            "overall": "degraded",
+            "subsystems": {
+                "ib_gateway": {"status": "unhealthy", "account": "SYNTHETIC-ACCOUNT"}
+            },
             "status": "healthy",
             "source": "ibkr",
+            "kill_switch_active": True,
+            "daily_pnl_pct": -0.01,
             "account": "SYNTHETIC-ACCOUNT",
             "detail": "contains private operator text",
             "database": {"source": "sqlite", "path": "C:/Users/example/private.db"},
         }
-    ) == {"status": "healthy", "source": "ibkr", "database": {"source": "sqlite"}}
+    ) == {
+        "overall": "degraded",
+        "subsystems": {"ib_gateway": {"status": "unhealthy"}},
+        "status": "healthy",
+        "source": "ibkr",
+        "kill_switch_active": True,
+        "daily_pnl_pct": -0.01,
+        "database": {"source": "sqlite"},
+    }
+
+
+def test_eligibility_uses_canonical_trading_status_schema():
+    script = _load_script()
+
+    result = script._safe_endpoint_result(
+        {
+            "reachable": True,
+            "http_status": 200,
+            "json": True,
+            "body": {
+                "summary": {"total": 2, "tradeable": 1, "enabled": 1, "disagreements": 0},
+                "symbols": [
+                    {
+                        "symbol": "MES",
+                        "enabled": True,
+                        "authorized": True,
+                        "tradeable": True,
+                        "config_agrees": True,
+                        "verdict": "PASS",
+                        "verdict_age_days": 1.5,
+                        "disagreements": ["free text is intentionally dropped"],
+                    }
+                ],
+            },
+        },
+        "eligibility",
+    )
+
+    assert result["summary"] == {
+        "total": 2,
+        "tradeable": 1,
+        "enabled": 1,
+        "disagreements": 0,
+    }
+    assert result["symbols"] == [
+        {
+            "symbol": "MES",
+            "enabled": True,
+            "authorized": True,
+            "tradeable": True,
+            "config_agrees": True,
+            "verdict": "PASS",
+            "verdict_age_days": 1.5,
+        }
+    ]
 
 
 def test_build_snapshot_never_serializes_api_key(monkeypatch):
