@@ -2,8 +2,8 @@
 
 **Plan ID:** JARVIS-MIP-1.0  
 **Owner authorization:** 2026-09-02  
-**Repository adoption:** **PENDING MERGE OF PR #768**  
-**Formal implementation:** **NOT STARTED**  
+**Repository adoption:** **EFFECTIVE ON MERGE OF PR #768**  
+**Formal implementation:** **PHASE 0 STARTS ON MERGE**  
 **First queued WP:** `A-01` Runtime Truth Baseline & Contradiction Register  
 **ISG-0:** **OPEN / NOT YET SATISFIED**  
 **Reachable planning baseline:** `master@e2a1006e3eb7d35a840487c80899b33103b52277`
@@ -27,7 +27,7 @@ Capital-path milestones such as `$3k → $10k → $25k → $100k → $300k` are 
 5. Hard risk, sizing, limits and halts are deterministic and non-LLM.
 6. AI may research/classify/explain/criticize; it may not enable live, raise risk or send broker orders.
 7. Zero quantity is a valid NO TRADE result.
-8. Stale/unavailable/ambiguous state is explicit and blocks safety-critical mutations.
+8. Stale/unavailable/ambiguous state is explicit and blocks exposure-increasing mutations; authenticated cancel, reduce and flatten paths remain available when their required command and broker state is verified.
 9. One operator product; do not proliferate permanent V2/V3 dashboards.
 10. Paper/canary/live are evidence states, not convenience flags.
 11. Failures and rejected trials remain recorded.
@@ -48,11 +48,13 @@ Financial numbers require independent value-level assertions in addition to the 
 
 ## 4. Source-of-truth hierarchy
 
+This table describes the target state. Until `H-01` lands, the implemented Phase-0 risk authorities remain `engine/.env`/`engine/config.py` for loaded configuration and `engine/risk/safety_layer.py` for enforcement; contradictions or unverifiable runtime values are blocking, not silently resolved in favor of a future artifact.
+
 | Domain | Authority |
 |---|---|
 | Broker account/positions/orders/fills | verified broker API + staleness state |
 | JARVIS intents/decisions/risk/audit/operator actions | durable operational ledger (SQLite through paper) |
-| Runtime risk policy | versioned Risk Policy artifact + active hash |
+| Runtime risk policy | target: versioned Risk Policy artifact + active hash; Phase-0 interim: loaded `engine/.env`/`engine/config.py` values enforced by `engine/risk/safety_layer.py` |
 | Trading eligibility | Judge lifecycle registry keyed by strategy+instrument+TF+version |
 | Research datasets | immutable manifest + content hashes |
 | Research attempts | preregistered Trial Ledger |
@@ -247,21 +249,23 @@ Credentials, broker accounts/ports, permissions and mutation rights are isolated
 
 ## 17. Delivery phases / gates
 
-| Phase | Objective | Gate |
+MIP phase labels are version-qualified (`MIP-0` through `MIP-12`). They do not satisfy legacy references to a generic phase number. Live capital requires `JARVIS-MIP-1.0` milestone `M11` plus explicit owner authorization.
+
+| MIP phase | Objective | Gate |
 |---|---|---|
-| 0 | Plan adoption, runtime truth, CI baseline, source hierarchy, architecture, IA, governance | ISG-0 |
-| 1 | Core contracts, Instrument/Risk/Event/Environment foundations | M1 |
-| 2 | PIT data, Feature Store, parity, trial ledger | M2 |
-| 3 | Deterministic strategies + Judge V3 | M3 |
-| 4 | One Risk/OMS/Broker/Reconciliation execution core | M4 |
-| 5 | Read-only trustworthy operator product | M5 |
-| 6 | Integrated paper control plane | M6 |
-| 7 | Capital Path + robust risk frontier | M7 |
-| 8 | Evaluated contextual AI intelligence | M8 |
-| 9 | Frozen integrated paper campaign | M9 |
-| 10 | Canary readiness only; no live order yet | M10 |
-| 11 | Tiny explicitly authorized live canary | M11 |
-| 12 | Controlled evidence-banded production/research cycle | M12 |
+| MIP-0 | Plan adoption, runtime truth, CI baseline, source hierarchy, architecture, IA, governance | ISG-0 |
+| MIP-1 | Core contracts, Instrument/Risk/Event/Environment foundations | M1 |
+| MIP-2 | PIT data, Feature Store, parity, trial ledger | M2 |
+| MIP-3 | Deterministic strategies + Judge V3 | M3 |
+| MIP-4 | One Risk/OMS/Broker/Reconciliation execution core | M4 |
+| MIP-5 | Read-only trustworthy operator product | M5 |
+| MIP-6 | Integrated paper control plane | M6 |
+| MIP-7 | Capital Path + robust risk frontier | M7 |
+| MIP-8 | Evaluated contextual AI intelligence | M8 |
+| MIP-9 | Frozen integrated paper campaign | M9 |
+| MIP-10 | Canary readiness only; no live order yet | M10 |
+| MIP-11 | Tiny explicitly authorized live canary | M11 |
+| MIP-12 | Controlled evidence-banded production/research cycle | M12 |
 
 No calendar date authorizes live trading.
 
@@ -350,9 +354,9 @@ Production/Capital Impact:
 ## 25. Current formal status
 
 **Owner authorization:** GRANTED 2026-09-02.  
-**Repository adoption:** pending merge of PR #768.  
-**Formal implementation:** NOT STARTED.  
-**Current phase:** pre-Phase-0 adoption.  
+**Repository adoption:** effective when PR #768 merges.  
+**Formal implementation:** PHASE 0 STARTED by repository adoption; individual work packages retain their own status.  
+**Current phase:** MIP-0.  
 **First queued WP:** A-01.  
 **ISG-0:** open but not satisfied.  
 **Live/canary authorization:** NOT GRANTED.
