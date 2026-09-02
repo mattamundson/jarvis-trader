@@ -298,6 +298,65 @@ class PendingApprovalsMixin:
                 conn.close()
         return merkle_root([r["audit_hash"] for r in rows])
 
+    def get_recent_queue_decisions(self, limit: int = 25) -> Optional[List[Dict[str, Any]]]:
+        """Return recent autonomous-pipeline decisions (``pipeline_approval_queue``),
+        newest first, with ``verdict_json`` parsed into ``verdict``.
+
+        Returns ``None`` when the table does not exist (DBs created before the
+        autonomous queue landed) so callers can fall back to the legacy
+        ``pending_trade_approvals`` path. All queue statuses are returned —
+        filtering by direction/resolution belongs to the derivation layer, not
+        the reader.
+        """
+        limit = min(max(1, limit), 50)
+        sql = """
+            SELECT id, created_at, symbol, direction, confidence, verdict_json,
+                   expires_at, status, reviewed_at, order_id
+            FROM pipeline_approval_queue
+            ORDER BY created_at DESC, id DESC
+            LIMIT ?
+        """
+        with self._lock:
+            conn = self._connect()
+            try:
+                try:
+                    rows = conn.execute(sql, (limit,)).fetchall()
+                except sqlite3.OperationalError:
+                    return None  # table absent — caller falls back to legacy
+            finally:
+                conn.close()
+        out: List[Dict[str, Any]] = []
+        for r in rows:
+            d = dict(r)
+            raw = d.pop("verdict_json", None)
+            if isinstance(raw, str):
+                try:
+                    d["verdict"] = json.loads(raw)
+                except json.JSONDecodeError:
+                    d["verdict"] = {}
+            else:
+                d["verdict"] = {}
+            out.append(d)
+        return out
+
+    def get_last_pipeline_run_at(self) -> Optional[str]:
+        """Created_at of the newest ``pipeline_runs`` row (any source/status),
+        or None if the table is empty/absent. Lets the actionable board tell
+        'queue empty' apart from 'engine not running the pipeline'."""
+        with self._lock:
+            conn = self._connect()
+            try:
+                try:
+                    row = conn.execute(
+                        "SELECT created_at FROM pipeline_runs "
+                        "ORDER BY created_at DESC, id DESC LIMIT 1"
+                    ).fetchone()
+                except sqlite3.OperationalError:
+                    return None
+            finally:
+                conn.close()
+        return row["created_at"] if row else None
+
     def _row_to_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
         d = dict(row)
         raw = d.pop("pipeline_snapshot_json", None)

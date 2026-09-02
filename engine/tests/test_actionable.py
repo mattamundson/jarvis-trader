@@ -13,6 +13,7 @@ from analytics.actionable import (
     derive_actionable_board,
     derive_actionable_item,
     derive_status,
+    queue_row_to_board_row,
 )
 
 NOW = date(2026, 7, 16)
@@ -48,6 +49,156 @@ def _row(
             }
         },
     }
+
+
+# ── queue_row_to_board_row (autonomous queue normalization, T8) ──────────────
+
+
+def _queue_row(
+    *,
+    symbol: str = "MES",
+    direction: str = "LONG",
+    status: str = "approved",
+    entry: float = 5000.0,
+    stop: float = 4980.0,
+    target: float = 5020.0,
+    target_2: float = 5030.0,
+    atr: float = 10.0,
+    confidence: float = 0.7,
+    final_action: str | None = None,
+    td_action: str | None = None,
+) -> dict:
+    verdict: dict = {
+        "final_quantity": 2,
+        "timeframe": "1h",
+        "trade_decision": {
+            "action": td_action if td_action is not None else ("buy" if direction == "LONG" else "sell"),
+            "entry_price": entry,
+            "stop_price": stop,
+            "target_1": target,
+            "target_2": target_2,
+            "atr_used": atr,
+            "confidence": confidence,
+        },
+    }
+    if final_action is not None:
+        verdict["final_action"] = final_action
+    return {
+        "id": 7,
+        "symbol": symbol,
+        "direction": direction,
+        "status": status,
+        "confidence": confidence,
+        "created_at": "2026-07-16T10:00:00+00:00",
+        "verdict": verdict,
+    }
+
+
+def test_queue_row_maps_long_to_buy():
+    row = queue_row_to_board_row(_queue_row(direction="LONG"))
+    assert row["action"] == "buy"
+    assert row["queue_id"] == 7
+    assert row["symbol"] == "MES"
+    assert row["status"] == "approved"
+    assert row["pipeline_snapshot"]["trade_decision"]["entry_price"] == 5000.0
+
+
+def test_queue_row_maps_short_to_sell():
+    row = queue_row_to_board_row(_queue_row(direction="SHORT"))
+    assert row["action"] == "sell"
+
+
+def test_queue_row_final_action_wins_over_direction():
+    # final_action=buy with direction=SHORT (weird but possible) → buy wins.
+    row = queue_row_to_board_row(
+        _queue_row(direction="SHORT", final_action="buy", td_action="buy")
+    )
+    assert row["action"] == "buy"
+
+
+def test_queue_row_falls_back_to_trade_decision_action():
+    # No final_action, no direction match (e.g. direction="FLAT") → td.action.
+    row = queue_row_to_board_row(
+        _queue_row(direction="FLAT", final_action=None, td_action="sell")
+    )
+    assert row["action"] == "sell"
+
+
+def test_queue_row_missing_verdict_degrades_not_crashes():
+    row = queue_row_to_board_row({"id": 9, "symbol": "MES", "direction": "LONG",
+                                  "status": "approved", "created_at": "x"})
+    assert row["action"] == "buy"  # direction still maps
+    assert row["pipeline_snapshot"] == {}
+
+
+def test_queue_row_garbage_verdict_degrades_to_empty_snapshot():
+    row = queue_row_to_board_row({"id": 10, "symbol": "MES", "direction": "SHORT",
+                                  "status": "approved", "verdict": "not-a-dict"})
+    assert row["action"] == "sell"
+    assert row["pipeline_snapshot"] == {}
+
+
+def test_queue_row_expired_status_passes_through():
+    # Queue "expired" = 30-min approval window lapsed — NOT a dead-setup claim;
+    # the derivation must keep the row (status chip stays price-derived).
+    row = queue_row_to_board_row(_queue_row(status="expired"))
+    assert row["status"] == "expired"
+
+
+def test_queue_row_feeds_derive_actionable_item():
+    row = queue_row_to_board_row(_queue_row(direction="LONG", target_2=5030.0))
+    item = derive_actionable_item(row, 5000.0, None, now=NOW)
+    assert item["symbol"] == "MES"
+    assert item["direction"] == "long"
+    assert item["entry_price"] == 5000.0
+    assert item["stop_loss"] == 4980.0
+    assert item["target_1"] == 5020.0
+    assert item["target_2"] == 5030.0
+    assert item["atr"] == 10.0
+    assert item["status"] == "triggerable"  # at the entry zone
+
+
+# ── target_2 threading ───────────────────────────────────────────────────────
+
+
+def test_item_target_2_present_and_zero_sentinel_handled():
+    row = _row(target=5020.0)
+    row["pipeline_snapshot"]["trade_decision"]["target_2"] = 5030.0
+    item = derive_actionable_item(row, 4990.0, None, now=NOW)
+    assert item["target_2"] == 5030.0
+
+    zero = _row(target=5020.0)
+    zero["pipeline_snapshot"]["trade_decision"]["target_2"] = 0.0
+    item = derive_actionable_item(zero, 4990.0, None, now=NOW)
+    assert item["target_2"] is None  # 0.0 sentinel → missing, not a real level
+
+
+# ── raw_count / shown diagnostics ────────────────────────────────────────────
+
+
+def test_board_reports_raw_count_and_shown():
+    rows = [
+        _row(symbol="MES"),                               # qualifies
+        {**_row(symbol="MGC"), "action": "hold"},          # filtered (hold)
+        _row(symbol="MNQ", status="rejected"),             # filtered (rejected)
+        _row(symbol="SPY", entry=5001.0),                  # deduped? no — different symbol
+    ]
+    board = derive_actionable_board(rows, _prices(MES=4990.0, SPY=5001.0), now=NOW, now_ts=NOW_TS)
+    assert board["raw_count"] == 4
+    assert board["shown"] == 2
+    assert board["count"] == 2
+
+
+def test_board_raw_count_counts_rows_after_dedup_source_removal():
+    # raw_count = rows fetched from the decision source BEFORE the board's own
+    # filters — dedup happens inside, so two same-symbol rows still count twice.
+    rows = [
+        _row(symbol="MES", entry=5002.0),
+        _row(symbol="MES", entry=4900.0),  # same (symbol, action) — deduped out
+    ]
+    board = derive_actionable_board(rows, _prices(MES=5000.0), now=NOW, now_ts=NOW_TS)
+    assert board["raw_count"] == 2
+    assert board["shown"] == 1
 
 
 # ── derive_status priority ladder ────────────────────────────────────────────

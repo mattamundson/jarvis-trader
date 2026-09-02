@@ -92,6 +92,59 @@ def _parse_created_at(raw: Any) -> Optional[date]:
     return None
 
 
+# ── Row-shape normalization ───────────────────────────────────────────────────
+# The board has two decision sources: the autonomous approval queue
+# (pipeline_approval_queue — the live write path since 2026-07-20, rows carry
+# the full pipeline verdict in verdict_json) and the legacy human-gated table
+# (pending_trade_approvals — already in the board's row shape). The queue's
+# rows are normalized into the same shape so one pure derivation serves both.
+
+_DIRECTION_ACTION = {"long": "buy", "short": "sell"}
+
+
+def queue_row_to_board_row(row: dict) -> dict:
+    """Normalize one pipeline_approval_queue row (parsed ``verdict``) into the
+    board row shape consumed by ``derive_actionable_board``.
+
+    Pure and defensive: a queue row with a missing/corrupt verdict still maps
+    (geometry degrades to nulls downstream — never invented). Action comes from
+    ``verdict.final_action`` first, then the row's ``direction`` (LONG/SHORT),
+    then ``trade_decision.action``. Queue statuses (pending/approved/rejected/
+    expired) pass through untouched: ``expired`` here means the 30-minute
+    approval window lapsed — it is NOT a claim the setup is dead, so the
+    derivation must not filter it (the chip stays price-derived).
+    """
+    verdict = row.get("verdict")
+    if not isinstance(verdict, dict):
+        verdict = {}
+    td = verdict.get("trade_decision")
+    if not isinstance(td, dict):
+        td = {}
+
+    action = str(verdict.get("final_action") or "").lower()
+    if action not in ("buy", "sell"):
+        action = _DIRECTION_ACTION.get(str(row.get("direction") or "").lower(), "")
+    if action not in ("buy", "sell"):
+        action = str(td.get("action") or "").lower()
+
+    return {
+        # Queue rows have an integer id, not a UUID approval_id; the widget
+        # only uses approval_id as a dedup key component (nullable is fine).
+        "approval_id": None,
+        "queue_id": row.get("id"),
+        "symbol": row.get("symbol"),
+        "action": action,
+        "status": str(row.get("status") or "").lower(),
+        "quantity": verdict.get("final_quantity"),
+        "entry_price": td.get("entry_price"),
+        "created_at": row.get("created_at"),
+        "timeframe": verdict.get("timeframe"),
+        # The verdict IS the snapshot: derive_actionable_item reads
+        # snapshot.trade_decision.{entry_price,stop_price,target_1,...}.
+        "pipeline_snapshot": verdict,
+    }
+
+
 def derive_status(
     *,
     latest_close: Optional[float],
@@ -160,6 +213,7 @@ def derive_actionable_item(
     )
     stop = _pos(td.get("stop_price"))
     target = _pos(td.get("target_1"))
+    target_2 = _pos(td.get("target_2"))
     atr = _pos(td.get("atr_used"))
 
     age_days: Optional[int] = None
@@ -207,6 +261,7 @@ def derive_actionable_item(
         "entry_price": entry,
         "stop_loss": stop,
         "target_1": target,
+        "target_2": target_2,
         "atr": atr,
         "latest_price": latest_close,
         "price_as_of": price_as_of,
@@ -287,11 +342,12 @@ def derive_actionable_board(
         "items": items,
         "count": len(items),
         "available": True,
-        # raw_count = rows fetched before the buy/sell + rejected/error +
-        # per-(symbol, direction) dedup filters; shown = what the board
-        # displays. The delta tells the UI WHY an otherwise-populated queue
-        # shows an empty board (e.g. every recent decision was rejected)
-        # instead of a misleading "no opportunities" claim.
+        # raw_count = rows fetched from the decision source before the
+        # buy/sell + rejected/error + per-(symbol, direction) dedup filters;
+        # shown = what the board actually displays. The delta lets the UI
+        # explain WHY an otherwise-populated queue shows an empty board
+        # (e.g. every recent decision was rejected/HOLD) instead of a
+        # misleading "no opportunities" claim.
         "raw_count": len(rows),
         "shown": len(items),
     }
