@@ -24,6 +24,7 @@ except ImportError:
     ta = None
     PANDAS_TA_AVAILABLE = False
 
+from llm.client import resolve_agent_model
 from utils.llm_json import parse_llm_json
 
 logger = logging.getLogger(__name__)
@@ -897,7 +898,7 @@ Respond with JSON in exactly this format:
             # models, yielding unparseable half-JSON that degrades health.
             # Matches the trader/fund_manager decision tier (2026-08-17).
             llm_result = await self._llm.call(
-                model="claude-sonnet-4-6",
+                model=resolve_agent_model(self._llm, "claude-sonnet-4-6"),
                 system=self.SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=1600,
