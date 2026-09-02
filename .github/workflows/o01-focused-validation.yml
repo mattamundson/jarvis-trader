@@ -1,0 +1,35 @@
+name: O-01 Focused Validation
+
+on:
+  pull_request:
+    paths:
+      - "engine/tests/test_latency_fixes_20260818.py"
+      - "engine/routers/trades_router.py"
+      - ".github/workflows/o01-focused-validation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  latency-journal-regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: engine/requirements-core.txt
+      - name: Install engine core dependencies
+        run: python -m pip install -r engine/requirements-core.txt
+      - name: Byte-compile repaired regression test
+        run: python -m py_compile engine/tests/test_latency_fixes_20260818.py
+      - name: Run focused latency/journal regression suite
+        env:
+          TESTING: "1"
+          API_KEY: phase0-ci-test-key
+        run: |
+          cd engine
+          python -m pytest tests/test_latency_fixes_20260818.py -q
