@@ -181,12 +181,20 @@ def build_focused_bands(
     signals: list[Signal],
     target_dte: int = 30,
     step: float = 5.0,
+    atm_margin_rungs: int = 2,
+    otm_margin_rungs: int = 8,
 ) -> dict[date, tuple[float, float]]:
     """Per-signal strike band centered on the theoretical 30-delta strike.
 
-    Band = [K_target - 2 rungs, K_target + 3 rungs]: margin on the ATM side
-    for delta drift, extension OTM for the short leg. No outcome data is used
-    — the rule is purely mechanical from closes (a-priori).
+    Band = [K - atm_margin*rungs, K + otm_margin*rungs] for LONG (bull calls,
+    OTM = higher strikes) and mirrored for SHORT (bear puts, OTM = lower).
+
+    The OTM margin is deliberately WIDE: option IV systematically exceeds
+    20-day realized vol (vol risk premium), so the true 30-delta strike sits
+    further OTM than the realized-vol formula predicts. A narrow band pushed
+    the scaffold's strike selection onto the edge rung with no short leg
+    (observed on SPY 2025-02-27 / 2025-07-25). No outcome data is used — the
+    rule is purely mechanical from closes (a-priori).
     """
     bands: dict[date, tuple[float, float]] = {}
     for sig in signals:
@@ -194,8 +202,12 @@ def build_focused_bands(
         spot = bars[d]["close"]
         sigma = _realized_vol(bars, d)
         k = _target_delta_strike(spot, sigma, target_dte / 365.0, sig.side)
-        lo = max(k - 2 * step, 0.9 * spot)
-        hi = min(k + 3 * step, 1.15 * spot)
+        if sig.side.upper() == "LONG":
+            lo = max(k - atm_margin_rungs * step, 0.9 * spot)
+            hi = min(k + otm_margin_rungs * step, 1.15 * spot)
+        else:
+            lo = max(k - otm_margin_rungs * step, 0.9 * spot)
+            hi = min(k + atm_margin_rungs * step, 1.15 * spot)
         bands[d] = (lo, hi)
     return bands
 
