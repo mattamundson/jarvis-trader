@@ -28,6 +28,16 @@ function fmtNum(v: number | null, digits = 2): string {
   return v != null ? v.toFixed(digits) : "—";
 }
 
+function fmtAge(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "";
+  const hours = (Date.now() - then) / 3_600_000;
+  if (hours < 0) return "in the future?";
+  if (hours < 24) return `${Math.max(1, Math.round(hours))}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}
+
 function ItemCard({ it }: { it: ActionableItem }) {
   const meta = STATUS_META[it.status] ?? STATUS_META.unknown;
   const dead = it.status === "invalidated" || it.status === "expired";
@@ -59,7 +69,7 @@ function ItemCard({ it }: { it: ActionableItem }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1 text-[11px] font-mono text-muted-foreground">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-x-4 gap-y-1 text-[11px] font-mono text-muted-foreground">
         <span>
           entry <span className="text-foreground">{fmtNum(it.entry_price)}</span>
         </span>
@@ -68,6 +78,9 @@ function ItemCard({ it }: { it: ActionableItem }) {
         </span>
         <span>
           T1 <span className="text-foreground">{fmtNum(it.target_1)}</span>
+        </span>
+        <span>
+          T2 <span className="text-foreground">{fmtNum(it.target_2)}</span>
         </span>
         <span>
           last <span className="text-foreground">{fmtNum(it.latest_price)}</span>
@@ -139,25 +152,47 @@ export function ActionableBoardWidget() {
           there are no opportunities.
         </p>
       ) : data.items.length === 0 ? (
-        <div className="space-y-1">
-          <p className="text-xs text-muted-foreground">
-            Nothing on the board right now.
-          </p>
+        <div className="space-y-1.5" data-testid="actionable-empty">
           {typeof data.raw_count === "number" && data.raw_count > 0 ? (
-            <p className="text-[11px] text-muted-foreground/80">
-              The decision queue has {data.raw_count} recent row
-              {data.raw_count === 1 ? "" : "s"}, but none qualify as
-              actionable — every recent decision was rejected, errored, or a
-              HOLD. This is the queue state, not a claim that the market is
-              offering nothing.
-            </p>
+            <>
+              <p className="text-xs text-muted-foreground">
+                Nothing on the board right now.
+              </p>
+              <p className="text-[11px] text-muted-foreground/80">
+                The decision queue has {data.raw_count} recent row
+                {data.raw_count === 1 ? "" : "s"}, but none qualify as
+                actionable — every recent decision was rejected, errored, or a
+                HOLD. This is the queue state, not a claim that the market is
+                offering nothing.
+              </p>
+            </>
           ) : (
-            <p className="text-[11px] text-muted-foreground/80">
-              The decision queue has no recent directional decisions (or the
-              engine has not run the pipeline recently). A new pipeline pass
-              that emits a buy/sell decision will populate this board within
-              one refresh.
-            </p>
+            <>
+              <p className="text-xs text-muted-foreground">
+                No recent directional decisions.
+              </p>
+              <p className="text-[11px] text-muted-foreground/80">
+                {data.last_pipeline_run_at ? (
+                  <>
+                    The pipeline last ran {fmtAge(data.last_pipeline_run_at)}
+                    {" "}
+                    {data.source === "queue" ? (
+                      "but emitted no qualifying buy/sell decisions since the queue's newest row."
+                    ) : data.source === "legacy" ? (
+                      "but no qualifying decisions landed in the legacy approval table."
+                    ) : (
+                      "but no qualifying decisions were recorded."
+                    )}
+                  </>
+                ) : (
+                  <>
+                    The engine has not recorded a pipeline run — this usually
+                    means the pipeline is not running, not that the market has
+                    no setups.
+                  </>
+                )}
+              </p>
+            </>
           )}
         </div>
       ) : (

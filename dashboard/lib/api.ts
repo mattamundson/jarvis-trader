@@ -475,6 +475,7 @@ export interface ActionableItem {
   entry_price: number | null;
   stop_loss: number | null;
   target_1: number | null;
+  target_2: number | null;
   atr: number | null;
   latest_price: number | null;
   price_as_of: number | null;
@@ -502,6 +503,12 @@ export interface ActionableBoardResponse {
   // every recent one was rejected) — a different "why" than "no decisions".
   raw_count?: number;
   shown?: number;
+  // Decision source ("queue" = autonomous pipeline_approval_queue, "legacy" =
+  // human-gated pending_trade_approvals fallback) and the newest pipeline run
+  // timestamp — lets the UI distinguish "queue empty but pipeline running"
+  // from "engine not running the pipeline at all".
+  source?: "queue" | "legacy" | "none" | string;
+  last_pipeline_run_at?: string | null;
 }
 
 export async function fetchActionableBoard(): Promise<ActionableBoardResponse> {
