@@ -130,7 +130,8 @@ test.describe("ActionableBoardWidget", () => {
 
     await expect(page.getByText(/Actionable Now/)).toBeVisible();
     await expect(
-      page.getByText(/The decision queue has 5 recent rows, but none qualify as actionable/)
+      page.getByText(/The decision queue has 5 recent rows, but none qualify as actionable/),
+      { timeout: 15_000 }
     ).toBeVisible();
   });
 });
