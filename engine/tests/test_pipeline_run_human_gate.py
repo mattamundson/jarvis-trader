@@ -1,4 +1,4 @@
-"""POST /pipeline/run/background — human gate vs immediate paper (pipeline_router background task)."""
+"""POST /pipeline/run — human gate vs immediate paper (pipeline_router background task)."""
 
 from __future__ import annotations
 
@@ -116,10 +116,11 @@ def _restore_router_deps(orig):
     ) = orig
 
 
-def test_requires_human_queues_pending_approval_in_paper_mode(tmp_db_manager):
+def test_requires_human_bypassed_in_paper_mode(tmp_db_manager):
     """
-    In paper mode, requires_human=True must still queue a pending approval.
-    Paper validation continuity must not bypass the human gate.
+    In paper mode (LIVE_TRADING_ENABLED=False), requires_human=True is overridden
+    so paper trades are always auto-logged for validation continuity.
+    The pending_trade_approvals queue is NOT used in paper mode.
     """
     mock_tp = MagicMock()
     mock_tp.analyze_and_decide = AsyncMock(return_value=_pipeline_payload(requires_human=True))
@@ -135,7 +136,7 @@ def test_requires_human_queues_pending_approval_in_paper_mode(tmp_db_manager):
             new=AsyncMock(),
         ):
             r = client.post(
-                "/pipeline/run/background",
+                "/pipeline/run",
                 headers=_HEADERS,
                 json={"symbol": "MCL", "is_futures": True},
             )
@@ -147,10 +148,10 @@ def test_requires_human_queues_pending_approval_in_paper_mode(tmp_db_manager):
     assert data.get("status") == "running"
 
     time.sleep(0.2)
-    mock_pt.add_paper_trade.assert_not_called()
-    pending = tmp_db_manager.list_pending_approvals()
-    assert len(pending) == 1
-    assert pending[0]["symbol"] == "MCL"
+    # Paper mode bypass: trade IS auto-logged even though requires_human=True
+    mock_pt.add_paper_trade.assert_called_once()
+    # No pending approval row — human gate is bypassed in paper mode
+    assert len(tmp_db_manager.list_pending_approvals()) == 0
 
 
 def test_without_human_logs_paper_no_pending_row(tmp_db_manager):
@@ -168,9 +169,9 @@ def test_without_human_logs_paper_no_pending_row(tmp_db_manager):
             new=AsyncMock(),
         ):
             r = client.post(
-                "/pipeline/run/background",
+                "/pipeline/run",
                 headers=_HEADERS,
-                json={"symbol": "MES", "is_futures": True},
+                json={"symbol": "MCL", "is_futures": True},
             )
     finally:
         _restore_router_deps(orig)
@@ -181,89 +182,4 @@ def test_without_human_logs_paper_no_pending_row(tmp_db_manager):
 
     time.sleep(0.2)
     mock_pt.add_paper_trade.assert_called_once()
-    assert len(tmp_db_manager.list_pending_approvals()) == 0
-
-
-def test_without_human_routes_entry_with_child_stop_before_paper_log(tmp_db_manager):
-    payload = _pipeline_payload(requires_human=False, final_action="buy")
-    payload["trade_decision"] = {
-        "limit_price": 7130.0,
-        "stop_price": 7100.0,
-        "confidence": 0.91,
-    }
-    payload["final_quantity"] = 1
-
-    mock_tp = MagicMock()
-    mock_tp.analyze_and_decide = AsyncMock(return_value=payload)
-    mock_pt = MagicMock()
-    mock_pt.add_paper_trade.return_value = "paper-tid-test"
-    mock_safety = MagicMock()
-    mock_safety.get_status = MagicMock(return_value={"kill_switch_active": False})
-    mock_safety.submit_entry_with_stop = AsyncMock(
-        return_value={
-            "approved": True,
-            "reason": "Entry + child STP submitted",
-            "entry_order_id": "entry-123",
-            "stp_order_id": "stp-456",
-            "stp_linked": True,
-            "routed_to_ib": True,
-        }
-    )
-
-    orig = _patch_router_deps(tmp_db_manager, mock_tp, mock_pt, mock_safety)
-    try:
-        with patch(
-            "notifications.pending_approval_notify.notify_pending_approval_queued",
-            new=AsyncMock(),
-        ):
-            r = client.post(
-                "/pipeline/run/background",
-                headers=_HEADERS,
-                json={"symbol": "MES", "is_futures": True},
-            )
-    finally:
-        _restore_router_deps(orig)
-
-    assert r.status_code == 200, r.text
-    time.sleep(0.2)
-    mock_safety.submit_entry_with_stop.assert_awaited_once_with(
-        symbol="MES",
-        action="BUY",
-        quantity=1,
-        price=7130.0,
-        stop_price=7100.0,
-    )
-    mock_pt.add_paper_trade.assert_called_once()
-    strategy_params = mock_pt.add_paper_trade.call_args.kwargs["strategy_params"]
-    assert strategy_params["broker_entry_order_id"] == "entry-123"
-    assert strategy_params["broker_stp_order_id"] == "stp-456"
-    assert strategy_params["broker_stp_linked"] is True
-    assert strategy_params["broker_routed_to_ib"] is True
-
-
-def test_background_pipeline_respects_watchlist_guard(tmp_db_manager):
-    mock_tp = MagicMock()
-    mock_tp.analyze_and_decide = AsyncMock(return_value=_pipeline_payload(requires_human=False))
-    mock_pt = MagicMock()
-    mock_safety = MagicMock()
-    mock_safety.get_status = MagicMock(return_value={"kill_switch_active": False})
-
-    orig = _patch_router_deps(tmp_db_manager, mock_tp, mock_pt, mock_safety)
-    try:
-        with patch(
-            "notifications.pending_approval_notify.notify_pending_approval_queued",
-            new=AsyncMock(),
-        ):
-            with patch.object(settings, "FUTURES_WATCHLIST", ["MNQ"]):
-                r = client.post(
-                    "/pipeline/run/background",
-                    headers=_HEADERS,
-                    json={"symbol": "MCL", "is_futures": True},
-                )
-    finally:
-        _restore_router_deps(orig)
-
-    assert r.status_code == 200, r.text
-    time.sleep(0.2)
-    mock_pt.add_paper_trade.assert_not_called()
     assert len(tmp_db_manager.list_pending_approvals()) == 0

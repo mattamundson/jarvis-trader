@@ -20,7 +20,7 @@ All 5 critical infrastructure bugs fixed before doing any integration work:
 
 1. **Voice-call plugin warning removed** — plugin was logging false "mock mode" warning on every gateway start
 2. **CLI WebSocket 1006 crash fixed** — run `openclaw gateway install --force` to reinstall; symptom was gateway dying on first agent turn
-3. **Real API key discovered** — `jarvis-dev-key-change-me` was placeholder; real key is `${JARVIS_API_KEY}` from `engine/.env`. Updated in ALL WSL skill files.
+3. **Real API key discovered** — `jarvis-dev-key-change-me` was placeholder; real key is `xPRdYjkyUP20r29jrhAlgefneE1oYGSvFn3ri5C1OGc` from `engine/.env`. Updated in ALL WSL skill files.
 4. **IBKR paper-mode confirmed** — engine only runs paper trading (port 4002), no live account needed
 5. **OpenAI fallback configured** — `model.primary=anthropic/claude-sonnet-4-6`, fallback to `openai/gpt-4o` on 400/429 errors
 
@@ -120,7 +120,7 @@ All 5 critical infrastructure bugs fixed before doing any integration work:
 ```
 Engine API:        http://localhost:8010
 Dashboard:         http://localhost:3010
-X-API-Key:         ${JARVIS_API_KEY}
+X-API-Key:         xPRdYjkyUP20r29jrhAlgefneE1oYGSvFn3ri5C1OGc
 OpenClaw gateway:  http://localhost:18789
 WhatsApp number:   +16128771189
 WSL distro:        Ubuntu

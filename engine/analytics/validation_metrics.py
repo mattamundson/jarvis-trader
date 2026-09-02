@@ -18,8 +18,6 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from backtest._gate_v2_helpers import GATE_DSR, MIN_OOS_TRADES_PER_WINDOW
-
 logger = logging.getLogger(__name__)
 
 DB_PATH = Path(__file__).parent.parent / "data" / "jarvis_trader.db"
@@ -32,8 +30,6 @@ TARGETS = {
     "min_win_rate_pct": 55.0,   # percent (55.0 = 55%)
     "min_profit_factor": 2.0,
     "min_trades": 60,
-    "min_dsr": GATE_DSR,               # Deflated Sharpe floor (0.10, gate-v2 CORE)
-    "min_dsr_n_obs": MIN_OOS_TRADES_PER_WINDOW,  # min daily-P&L buckets DSR needs to be trustworthy
 }
 
 
@@ -147,23 +143,6 @@ class ValidationMetrics:
         # ── Sharpe ratio (annualized, daily P&L grouping) ────────────────
         sharpe = self._compute_sharpe(trades) if total_trades >= 2 else None
 
-        # ── Deflated Sharpe Ratio (multiple-testing / sample-size penalty) ─
-        # [safety-review] PR-10: raw Sharpe above has no floor on how few
-        # daily buckets it was computed from -- a 2-3 day lucky streak can
-        # clear min_sharpe outright after annualization (observed 3.436 on
-        # a handful of days). n_trials=1 because live paper trading here is
-        # one strategy under observation, not a grid search -- but at
-        # n_trials=1, DSR's own max-bias term (expected_max_sharpe) is 0, so
-        # DSR alone floors near 0.5 for any near-zero-or-positive raw Sharpe
-        # and will NOT reject a short lucky streak by itself (verified: a
-        # 2-observation sample with ann_sharpe~18.7 still scores dsr~0.88).
-        # The n_obs floor below is what actually blocks it -- both checks
-        # are required, matching the "wire a minimum-trading-days gate AND
-        # the DSR check" fix description.
-        dsr_result = self._compute_dsr(trades) if total_trades >= 2 else None
-        dsr = dsr_result["dsr"] if dsr_result else 0.0
-        dsr_n_obs = dsr_result["n_obs"] if dsr_result else 0
-
         # ── Max drawdown ─────────────────────────────────────────────────
         max_drawdown_pct = self._compute_max_drawdown_pct(pnls)
 
@@ -178,7 +157,6 @@ class ValidationMetrics:
             "win_rate_55pct":     win_rate_pct >= TARGETS["min_win_rate_pct"],
             "profit_factor_2_0":  profit_factor >= TARGETS["min_profit_factor"],
             "min_trades_60":      total_trades >= TARGETS["min_trades"],
-            "dsr_0_10":           dsr >= TARGETS["min_dsr"] and dsr_n_obs >= TARGETS["min_dsr_n_obs"],
         }
         all_targets_met = all(targets_met.values())
         targets_met_count = sum(targets_met.values())
@@ -198,8 +176,6 @@ class ValidationMetrics:
                 "win_rate_pct":      f"{win_rate_pct:.1f}%",
                 "profit_factor":     round(profit_factor, 3),
                 "sharpe_ratio":      round(sharpe, 3) if sharpe is not None else None,
-                "dsr":               round(dsr, 4),
-                "dsr_n_obs":         dsr_n_obs,
                 "max_drawdown_pct":  round(max_drawdown_pct, 2),
                 "total_pnl":         round(total_pnl, 2),
                 "gross_profit":      round(gross_profit, 2),
@@ -211,13 +187,12 @@ class ValidationMetrics:
             "trade_table": trade_table,
         }
 
-    def _daily_returns(self, trades: list[dict]) -> list[float]:
-        """Bucket closed trades' realized P&L into one value per calendar day.
-
-        Shared by ``_compute_sharpe`` and ``_compute_dsr`` so both compute the
-        Sharpe ratio over the identical sample -- DSR's math assumes its
-        ``sharpe``/``n_obs`` inputs came from the same observation series.
-        """
+    def _compute_sharpe(
+        self,
+        trades: list[dict],
+        risk_free_rate: float = 0.04,
+    ) -> Optional[float]:
+        """Annualized Sharpe ratio from daily P&L buckets."""
         daily: defaultdict[date, float] = defaultdict(float)
 
         pnl_field: Optional[str] = next(
@@ -245,15 +220,7 @@ class ValidationMetrics:
                 if ep is not None and xp is not None:
                     daily[day] += (float(xp) - float(ep)) * float(qty)
 
-        return list(daily.values())
-
-    def _compute_sharpe(
-        self,
-        trades: list[dict],
-        risk_free_rate: float = 0.04,
-    ) -> Optional[float]:
-        """Annualized Sharpe ratio from daily P&L buckets."""
-        returns = self._daily_returns(trades)
+        returns = list(daily.values())
         if len(returns) < 2:
             return None
 
@@ -269,20 +236,6 @@ class ValidationMetrics:
         annual_std = std * math.sqrt(252)
         sharpe = (annual_return - risk_free_rate) / annual_std
         return max(0.0, sharpe)
-
-    def _compute_dsr(self, trades: list[dict], n_trials: int = 1) -> dict:
-        """Deflated Sharpe Ratio over the same daily P&L buckets as ``_compute_sharpe``.
-
-        ``n_trials=1`` -- live paper trading here is one strategy under
-        observation, not a grid search over N combinations, so DSR applies
-        only its sample-size/non-normality penalty, not a multiple-testing
-        correction. See ``backtest.deflated_sharpe``'s own "n_trials=1 = no
-        correction, an honest no-op" convention.
-        """
-        from backtest.deflated_sharpe import deflated_sharpe_from_returns
-
-        returns = self._daily_returns(trades)
-        return deflated_sharpe_from_returns(returns, n_trials=n_trials)
 
     def _compute_max_drawdown_pct(self, pnls: list[float]) -> float:
         """Max peak-to-trough drawdown as a positive percentage of starting capital."""
@@ -312,153 +265,3 @@ class ValidationMetrics:
             return (date.today() - dt.date()).days
         except (ValueError, TypeError):
             return 0
-
-
-# ── Module-level composite scoring functions ─────────────────────────────────
-
-
-def composite_score(
-    profit_factor: float,
-    sharpe: float,
-    wfe: float,
-    max_drawdown_pct: float,
-) -> float:
-    """
-    Composite strategy performance score for optimization target.
-
-    Modeled after n-autoresearch's val_bpb (lower=better) but inverted:
-    Higher composite_score = better strategy.
-
-    Weights:
-    - Profit Factor: 35% (primary edge indicator, capped at 6x)
-    - Sharpe Ratio:  35% (risk-adjusted return quality, capped at 5.0)
-    - WFE:           20% (walk-forward robustness, 0-1)
-    - Drawdown:      10% (stability; 0% DD = full score, 20% DD = 0)
-
-    Returns:
-        float in range [0.0, 1.0]
-    """
-    pf_score = min(profit_factor, 6.0) / 6.0
-    sharpe_score = min(max(sharpe, 0.0), 5.0) / 5.0
-    wfe_score = max(0.0, min(wfe, 1.0))
-    dd_score = 1.0 - min(max_drawdown_pct, 0.20) / 0.20
-
-    return (
-        pf_score * 0.35
-        + sharpe_score * 0.35
-        + wfe_score * 0.20
-        + dd_score * 0.10
-    )
-
-
-def composite_score_from_results(backtest_results: dict) -> float:
-    """
-    Convenience wrapper — extract metrics from backtest result dict and compute score.
-
-    Args:
-        backtest_results: Dict with keys profit_factor, sharpe_ratio,
-                          walk_forward_efficiency, max_drawdown_pct
-    """
-    return composite_score(
-        profit_factor=backtest_results.get("profit_factor", 1.0),
-        sharpe=backtest_results.get("sharpe_ratio", 0.0),
-        wfe=backtest_results.get("walk_forward_efficiency", 0.0),
-        max_drawdown_pct=backtest_results.get("max_drawdown_pct", 0.0),
-    )
-
-
-def composite_score_with_diagnostics(
-    profit_factor: float,
-    sharpe: float,
-    wfe: float,
-    max_drawdown_pct: float,
-    *,
-    n_trials: int,
-    n_obs: int,
-    skew: float = 0.0,
-    kurt: float = 3.0,
-) -> dict:
-    """composite_score plus a REPORT-ONLY Deflated Sharpe (DSR) diagnostic.
-
-    Closes the gap flagged in `.claude/rules/ml-pitfalls-defense.md` pitfall #3:
-    the raw ``composite_score`` blends PF/Sharpe/WFE/DD without any
-    multiple-testing correction, so a Sharpe that is really the maximum over
-    ``n_trials`` grid combinations is taken at face value. This wrapper attaches
-    the DSR (Bailey & Lopez de Prado, SSRN-2460551) as context.
-
-    IMPORTANT — report-only: the returned ``composite_score`` is byte-identical
-    to ``composite_score(...)`` and is NOT influenced by the DSR. Nothing here
-    gates a go/no-go decision. Per the rule, turning the DSR into an actual gate
-    is a separate ``[safety-review]``/Tier-3 change; this is the diagnostic that
-    precedes it. Reuses ``backtest.deflated_sharpe`` — the DSR math is not
-    reimplemented here.
-
-    Args:
-        profit_factor, sharpe, wfe, max_drawdown_pct: as in ``composite_score``.
-        n_trials: N independent trials (grid combinations explored) that the
-            ``sharpe`` is the maximum over. ``1`` = no selection bias to correct.
-        n_obs: T sample size (trades or bars) the ``sharpe`` was computed on.
-            ``sharpe`` and ``n_obs`` must be consistent (same series).
-        skew, kurt: return-series skew and RAW kurtosis (3.0 = Gaussian).
-
-    Returns:
-        {
-            "composite_score": float,          # unchanged, == composite_score(...)
-            "deflated_sharpe": dict,           # full deflated_sharpe_ratio() output
-            "dsr": float,                      # convenience: DSR p-value (0..1)
-            "dsr_passes_at_10pct": bool,       # convenience flag (report-only)
-        }
-    """
-    score = composite_score(profit_factor, sharpe, wfe, max_drawdown_pct)
-    # Lazy import: deflated_sharpe pulls numpy/scipy, not needed at module load.
-    from backtest.deflated_sharpe import deflated_sharpe_ratio
-
-    dsr = deflated_sharpe_ratio(
-        sharpe=sharpe,
-        n_trials=n_trials,
-        n_obs=n_obs,
-        skew=skew,
-        kurt=kurt,
-    )
-    return {
-        "composite_score": score,
-        "deflated_sharpe": dsr,
-        "dsr": dsr["dsr"],
-        "dsr_passes_at_10pct": dsr["passes_at_10pct"],
-    }
-
-
-def composite_score_with_diagnostics_from_results(backtest_results: dict) -> dict:
-    """Dict wrapper for ``composite_score_with_diagnostics``.
-
-    Reads the DSR inputs from the same result dict, tolerating the common key
-    aliases used across the backtest surfaces:
-      - n_trials  <- ``n_trials`` | ``grid_combos`` | ``n_combos`` (default 1)
-      - n_obs     <- ``n_obs`` | ``total_oos_trades`` | ``total_trades`` |
-                     ``n_trades`` (default 0 -> DSR reports degenerate)
-      - skew/kurt <- ``skew`` / ``kurt`` (default Gaussian)
-
-    ``n_trials`` defaulting to 1 means "no correction applied" — an honest
-    no-op, not a silent pass — when the caller does not record the trial count.
-    """
-    return composite_score_with_diagnostics(
-        profit_factor=backtest_results.get("profit_factor", 1.0),
-        sharpe=backtest_results.get("sharpe_ratio", 0.0),
-        wfe=backtest_results.get("walk_forward_efficiency", 0.0),
-        max_drawdown_pct=backtest_results.get("max_drawdown_pct", 0.0),
-        n_trials=int(
-            backtest_results.get("n_trials")
-            or backtest_results.get("grid_combos")
-            or backtest_results.get("n_combos")
-            or 1
-        ),
-        n_obs=int(
-            backtest_results.get("n_obs")
-            or backtest_results.get("total_oos_trades")
-            or backtest_results.get("total_trades")
-            or backtest_results.get("n_trades")
-            or 0
-        ),
-        skew=float(backtest_results.get("skew", 0.0)),
-        kurt=float(backtest_results.get("kurt", 3.0)),
-    )

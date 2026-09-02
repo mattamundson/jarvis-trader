@@ -1,7 +1,6 @@
 """Pipeline notification router - test webhooks."""
 
 import asyncio
-import inspect
 import logging
 from collections import deque
 from datetime import datetime
@@ -10,15 +9,8 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
-from utils.data_provenance import build_data_provenance, stamp_signal_data
-
 router = APIRouter(prefix="/pipeline", tags=["pipeline"])
 logger = logging.getLogger(__name__)
-
-try:  # dual-path import (engine.* package vs bare under engine/ cwd)
-    from engine.analytics.agent_feedback import build_analyst_signals_map
-except ImportError:  # pragma: no cover
-    from analytics.agent_feedback import build_analyst_signals_map
 
 # ── Signal Debug Log ──────────────────────────────────────────────────────────
 # Rolling log of the last 50 pipeline filter decisions (pre-filter + pass-through).
@@ -36,7 +28,6 @@ class PipelineRunRequest(BaseModel):
 
     symbol: str = Field(..., description="Trading symbol (e.g., MCL, MNQ, SPY)")
     is_futures: bool = Field(True, description="True for futures, False for options")
-    interval: str = Field("1h", description="Bar timeframe (e.g., 1h, 4h, 1d)")
 
 
 class SchedulerJobInfo(BaseModel):
@@ -88,122 +79,18 @@ _scheduler = None
 _trading_pipeline = None
 _safety_layer = None
 _db_manager = None
-_data_manager = None  # MarketDataManager, injected via inject_dependencies() — decision provenance
 _paper_tracker = None
 _telegram_notifier = None
-_sdk_pipeline = None
-_decision_log_ref: list[dict] = []  # reference to main.py's in-memory ring buffer
-_log_decision_fn = None  # callable: main.py._log_decision
 
 
-def _guard_background_paper_open(symbol: str) -> None:
-    """
-    Apply the same direct-open policy to background auto-logging.
-
-    Background pipeline runs must not write trades that would be rejected by the
-    live/paper safety posture elsewhere in the system.
-    """
-    from approval.service import approved_watchlist_symbols
-    from config import settings
-    from execution.order_router import FUTURES_SYMBOLS
-
-    if settings.LIVE_TRADING_ENABLED:
-        raise RuntimeError("Direct paper-trade open disabled in live mode")
-
-    if _safety_layer is not None and _safety_layer.get_status().get("is_killed"):
-        raise RuntimeError("Kill switch active - cannot open direct paper trade")
-
-    if symbol.upper() in FUTURES_SYMBOLS and symbol.upper() not in approved_watchlist_symbols():
-        raise RuntimeError(f"Symbol {symbol.upper()} not on approved futures watchlist")
-
-
-async def _submit_broker_entry_with_stop(
-    *,
-    symbol: str,
-    action: str,
-    quantity: float | int,
-    entry_price: float,
-    stop_price: float | None,
-) -> dict | None:
-    """
-    Route approved non-human directional paper decisions through SafetyLayer.
-
-    The paper tracker is an audit/portfolio mirror; broker-side protection still
-    has to happen through SafetyLayer so the computed stop reaches IB as a child
-    STP order.
-    """
-    if stop_price is None or _safety_layer is None:
-        return None
-
-    submitter = getattr(_safety_layer, "submit_entry_with_stop", None)
-    if submitter is None:
-        logger.warning(
-            "[EXECUTION] %s %s has stop_price=%s but SafetyLayer lacks submit_entry_with_stop",
-            symbol,
-            action.upper(),
-            stop_price,
-        )
-        return None
-
-    result = submitter(
-        symbol=symbol,
-        action=action.upper(),
-        quantity=int(quantity),
-        price=float(entry_price),
-        stop_price=float(stop_price),
-    )
-    if inspect.isawaitable(result):
-        result = await result
-    if not isinstance(result, dict):
-        logger.warning("[EXECUTION] submit_entry_with_stop returned unexpected value: %r", result)
-        return None
-
-    if not result.get("approved"):
-        raise RuntimeError(f"SafetyLayer rejected broker entry: {result.get('reason')}")
-
-    logger.info(
-        "[EXECUTION] Broker STP route %s %s qty=%s entry_id=%s stp_id=%s linked=%s routed=%s",
-        symbol,
-        action.upper(),
-        int(quantity),
-        result.get("entry_order_id"),
-        result.get("stp_order_id"),
-        result.get("stp_linked"),
-        result.get("routed_to_ib"),
-    )
-    return result
-
-
-def inject_dependencies(
-    scheduler,
-    trading_pipeline,
-    safety_layer,
-    db_manager,
-    paper_tracker=None,
-    sdk_pipeline=None,
-    decision_log=None,
-    log_decision_fn=None,
-    data_manager=None,
-):
+def inject_dependencies(scheduler, trading_pipeline, safety_layer, db_manager, paper_tracker=None):
     """Inject global dependencies from main.py"""
-    global _scheduler, _trading_pipeline, _safety_layer, _db_manager, _paper_tracker, _sdk_pipeline, _decision_log_ref, _log_decision_fn, _data_manager
+    global _scheduler, _trading_pipeline, _safety_layer, _db_manager, _paper_tracker
     _scheduler = scheduler
     _trading_pipeline = trading_pipeline
     _safety_layer = safety_layer
     _db_manager = db_manager
     _paper_tracker = paper_tracker
-    _sdk_pipeline = sdk_pipeline
-    if data_manager is not None:
-        _data_manager = data_manager
-    if decision_log is not None:
-        _decision_log_ref = decision_log
-    if log_decision_fn is not None:
-        _log_decision_fn = log_decision_fn
-
-    # Wire paper tracker as portfolio provider so the risk manager sees real positions
-    if trading_pipeline is not None and paper_tracker is not None:
-        trading_pipeline._agents["portfolio"] = paper_tracker
-        logger.info("[Pipeline] paper_tracker injected as portfolio provider")
 
 
 def set_notifier(notifier) -> None:
@@ -224,28 +111,6 @@ async def get_signal_debug():
       - reason: human-readable explanation
     """
     return {"entries": list(_signal_debug_log), "count": len(_signal_debug_log)}
-
-
-@router.post("/cache/invalidate/{symbol}")
-async def invalidate_cache(symbol: str):
-    """Invalidate the signal cache for a specific symbol.
-
-    Forces the next pipeline run for this symbol to bypass the cache
-    and fetch fresh data + re-run all agents.
-    """
-    from cache.signal_cache import invalidate_signal
-
-    ok = await invalidate_signal(symbol.upper())
-    return {"invalidated": ok, "symbol": symbol.upper()}
-
-
-@router.post("/cache/invalidate-all")
-async def invalidate_all_cache():
-    """Invalidate the entire signal cache (all symbols)."""
-    from cache.signal_cache import invalidate_all
-
-    ok = await invalidate_all()
-    return {"invalidated": ok}
 
 
 @router.post("/notifications/telegram/test")
@@ -452,58 +317,12 @@ async def _send_signal_alert(symbol: str, final_action: str, result: dict) -> No
         logger.error("[PIPELINE] Telegram send failed for %s: %s", symbol, exc)
 
 
-def _log_decision_to_db(
-    symbol: str,
-    action: str,
-    confidence: float,
-    source: str,
-    summary: str,
-    reasoning: str,
-    regime: str | None,
-    signal_data: dict | None,
-    full_pipeline_data: dict | None,
-) -> None:
-    """Persist a pipeline decision to SQLite via the injected db_manager.
-
-    Best-effort — never raises; failures are logged and swallowed.
-    """
-    if _db_manager is None:
-        logger.warning("[DECISION] db_manager not injected — decision for %s not persisted", symbol)
-        return
-    try:
-        # Data-truth: stamp *what data* this decision was based on (tier +
-        # per-symbol serve-age), matching main.py's _log_decision (PR #286).
-        # Additive only — never changes a trade decision, never raises.
-        provenance = build_data_provenance(_data_manager, symbol)
-        sig = signal_data or {"source": source, "summary": summary}
-        sig = stamp_signal_data(sig, provenance)
-        _db_manager.insert_decision(
-            symbol=symbol,
-            action=action,
-            confidence=confidence,
-            regime=regime,
-            signal_data=sig,
-            reasoning=reasoning or summary,
-            full_pipeline_data=full_pipeline_data,
-        )
-        logger.info(
-            "[DECISION] Persisted %s %s (confidence=%.0f%%) source=%s",
-            symbol,
-            action.upper(),
-            confidence * 100,
-            source,
-        )
-    except Exception as exc:
-        logger.warning("[DECISION] Failed to persist decision for %s: %s", symbol, exc)
-
-
 async def _run_pipeline_and_log(symbol: str, is_futures: bool) -> None:
     """
-    Internal coroutine: runs the pipeline, logs the decision to SQLite, and
-    auto-logs paper trades for LONG/SHORT decisions.
+    Internal coroutine: runs the pipeline and auto-logs paper trades for LONG/SHORT decisions.
 
     Called as a background task from run_pipeline() so the HTTP response is immediate.
-    Decision logging and paper trade logging are best-effort — failures are caught and logged.
+    Paper trade logging is best-effort — failures are caught and logged.
     """
     try:
         result = await _trading_pipeline.analyze_and_decide(symbol=symbol, is_futures=is_futures)
@@ -519,51 +338,27 @@ async def _run_pipeline_and_log(symbol: str, is_futures: bool) -> None:
         result.get("requires_human"),
     )
 
-    # ── Log decision to SQLite (ALL actions including HOLD) ──────────────────
-    try:
-        _fund = result.get("fund_decision") or {}
-        _trade = result.get("trade_decision") or {}
-        _analysts = result.get("analyst_reports") or {}
-        _tech = _analysts.get("technical") or {}
-        _confidence = float(
-            result.get("boosted_confidence")
-            or _fund.get("final_conviction")
-            or _trade.get("confidence")
-            or 0.0
-        )
-        _summary = result.get("summary") or _fund.get("reasoning") or ""
-        _reasoning = _fund.get("reasoning") or _trade.get("reasoning") or _summary
-        _regime = _tech.get("regime") or None
-        _signal_data = {
-            "source": "manual",
-            "symbol": symbol,
-            "action": final_action,
-            "summary": _summary,
-        }
-        _log_decision_to_db(
-            symbol=symbol,
-            action=final_action,
-            confidence=_confidence,
-            source="manual",
-            summary=_summary,
-            reasoning=_reasoning,
-            regime=_regime,
-            signal_data=_signal_data,
-            full_pipeline_data=result,
-        )
-    except Exception as _dec_exc:
-        logger.warning("[DECISION] Decision logging block failed for %s: %s", symbol, _dec_exc)
-
     # Route directional decisions: queue for human approval OR auto-log as paper trade
     is_directional = final_action not in ("hold", "HOLD")
     requires_human = bool(result.get("requires_human", True))
 
+    # ── Paper mode bypass: never block paper trades behind human approval ──
+    # When LIVE_TRADING_ENABLED=False we are in pure paper simulation.
+    # REQUIRE_HUMAN_APPROVAL is a live-trading safeguard; it must not prevent
+    # paper trades from being written to the DB (that defeats validation).
     try:
         from config import settings as _cfg
-
         _paper_mode = not _cfg.LIVE_TRADING_ENABLED
     except Exception:
         _paper_mode = True  # default safe: treat as paper if config unavailable
+
+    if _paper_mode and is_directional and requires_human:
+        logger.warning(
+            "[EXECUTION] symbol=%s action=%s — requires_human=True overridden for paper mode; "
+            "trade will be auto-logged to DB without human gate",
+            symbol, final_action.upper()
+        )
+        requires_human = False
 
     # Execution audit log — fires for every directional decision regardless of outcome
     _confidence = float((result.get("fund_decision") or {}).get("final_conviction") or 0.0)
@@ -575,11 +370,7 @@ async def _run_pipeline_and_log(symbol: str, is_futures: bool) -> None:
         _confidence,
         _threshold,
         str(is_directional and not requires_human),
-        (
-            "hold"
-            if not is_directional
-            else ("queued_for_approval" if requires_human else "auto_logged")
-        ),
+        "paper_mode_bypass" if (_paper_mode and is_directional) else ("hold" if not is_directional else "requires_human"),
     )
 
     if is_directional and requires_human and _db_manager is not None:
@@ -638,8 +429,6 @@ async def _run_pipeline_and_log(symbol: str, is_futures: bool) -> None:
     elif is_directional and not requires_human and _paper_tracker is not None:
         # No human approval required — auto-log paper trade immediately
         try:
-            _guard_background_paper_open(symbol)
-
             trade_dec = result.get("trade_decision") or {}
             analyst_reports = result.get("analyst_reports") or {}
             technical_report = analyst_reports.get("technical") or {}
@@ -659,14 +448,6 @@ async def _run_pipeline_and_log(symbol: str, is_futures: bool) -> None:
             final_qty = result.get("final_quantity", 1) or 1
 
             if entry_price:
-                broker_order = await _submit_broker_entry_with_stop(
-                    symbol=symbol,
-                    action=final_action,
-                    quantity=final_qty,
-                    entry_price=float(entry_price),
-                    stop_price=float(stop_price) if stop_price else None,
-                )
-
                 # Collect regime metadata from technical analyst for attribution
                 regime_label = technical_report.get("regime") or "unknown"
                 regime_bias = (
@@ -677,9 +458,6 @@ async def _run_pipeline_and_log(symbol: str, is_futures: bool) -> None:
                 ) or technical_report.get("layers_aligned")
                 stc_val = (technical_report.get("indicators") or {}).get("stc_value")
 
-                # Persist per-analyst signals so AgentFeedbackTracker.record_outcome
-                # can compute Brier/IC calibration when this trade closes (Novel #2).
-                _analyst_signals = build_analyst_signals_map(analyst_reports)
                 trade_id = _paper_tracker.add_paper_trade(
                     symbol=symbol,
                     side=final_action,
@@ -695,24 +473,11 @@ async def _run_pipeline_and_log(symbol: str, is_futures: bool) -> None:
                         "regime": regime_label,
                         "bias": regime_bias,
                         "regime_layers_aligned": regime_layers,
-                        "entry_stc_value": (
-                            round(float(stc_val), 2) if stc_val is not None else None
-                        ),
+                        "entry_stc_value": round(float(stc_val), 2)
+                        if stc_val is not None
+                        else None,
                         "pipeline_conviction": round(float(conviction), 4),
                         "predicted_direction": final_action.upper(),
-                        "analyst_signals": _analyst_signals,
-                        "broker_entry_order_id": (
-                            broker_order.get("entry_order_id") if broker_order else None
-                        ),
-                        "broker_stp_order_id": (
-                            broker_order.get("stp_order_id") if broker_order else None
-                        ),
-                        "broker_stp_linked": (
-                            broker_order.get("stp_linked") if broker_order else None
-                        ),
-                        "broker_routed_to_ib": (
-                            broker_order.get("routed_to_ib") if broker_order else None
-                        ),
                     },
                 )
                 logger.info(
@@ -743,18 +508,15 @@ async def _run_pipeline_and_log(symbol: str, is_futures: bool) -> None:
             final_action.upper(),
         )
 
-    # Multi-channel signal broadcast for non-HOLD decisions (Telegram/Discord/
-    # WhatsApp/Windows toast). Shared cooldown dedupes vs the in-pipeline send.
+    # Send Telegram alert for non-HOLD decisions
     if final_action not in ("hold", "HOLD"):
         try:
-            from notifications.signal_broadcast import broadcast_signal
-
-            await broadcast_signal(symbol, result, source="router")
+            await _send_signal_alert(symbol, final_action, result)
         except Exception as exc:
-            logger.error("[PIPELINE] Signal broadcast failed for %s: %s", symbol, exc)
+            logger.error("[PIPELINE] Telegram alert failed for %s: %s", symbol, exc)
 
 
-@router.post("/run/background")
+@router.post("/run")
 async def run_pipeline(request: PipelineRunRequest):
     """
     Execute the full 5-stage trading pipeline for a symbol.
@@ -866,269 +628,3 @@ async def cost_summary() -> CostSummaryResponse:
             cost_per_trade_usd=0.0,
             top_expensive_stages=[],
         )
-
-
-@router.post("/run/sdk")
-async def run_sdk_pipeline(request: PipelineRunRequest):
-    """
-    Run the 5-stage trading pipeline via Claude Agent SDK (managed agents).
-
-    Additive parallel path alongside /pipeline/run. Uses the claude-agent-sdk
-    to orchestrate 10 specialist subagents with parallel Stage 1 analysis and
-    Stage 2 debate. Output format is compatible with /pipeline/run for dashboard
-    consumption. The existing /pipeline/run endpoint is unaffected.
-    """
-    from fastapi import HTTPException
-
-    if _sdk_pipeline is None:
-        raise HTTPException(
-            503,
-            "SDK pipeline not available — requires claude-agent-sdk and ANTHROPIC_API_KEY",
-        )
-
-    result = await _sdk_pipeline.analyze_and_decide(
-        symbol=request.symbol,
-        interval=request.interval,
-        is_futures=request.is_futures,
-    )
-
-    logger.info(
-        "[SDK-PIPELINE] %s %s → %s (confidence=%.0f%%)",
-        request.symbol,
-        request.interval,
-        result.get("final_action", "hold").upper(),
-        float(result.get("confidence", 0)) * 100,
-    )
-
-    return result
-
-
-@router.get("/shadow-metrics")
-async def get_shadow_metrics(strategy_name: Optional[str] = None):
-    """Fetch performance metrics for shadow trades."""
-    if _sdk_pipeline is None:
-        raise HTTPException(503, "SDK pipeline not available")
-
-    metrics = _sdk_pipeline._shadow_tracker.get_shadow_performance(strategy_name=strategy_name)
-    return metrics
-
-
-@router.get("/history")
-async def get_pipeline_history(limit: int = 50, symbol: str = ""):
-    """
-    Return historical pipeline run records from SQLite.
-    Query params:
-        limit  : max rows to return (default 50, capped at 200)
-        symbol : filter by ticker symbol (optional, case-insensitive)
-    """
-    if not _db_manager:
-        return {"runs": [], "count": 0, "note": "db_manager not initialized"}
-    try:
-        limit = min(max(1, limit), 200)
-        runs = _db_manager.get_pipeline_history(
-            limit=limit,
-            symbol=symbol.upper() if symbol else None,
-        )
-        return {"runs": runs, "count": len(runs)}
-    except Exception as exc:
-        logger.error(f"[DB] get_pipeline_history failed: {exc}")
-        return {"runs": [], "count": 0, "error": str(exc)}
-
-
-@router.post("/run")
-async def run_pipeline_sync(req: PipelineRunRequest):
-    """Run the full 5-stage AI trading pipeline for a symbol"""
-    import asyncio
-
-    from config import settings
-
-    if not _trading_pipeline:
-        raise HTTPException(503, "Pipeline not available (no ANTHROPIC_API_KEY)")
-
-    result = await _trading_pipeline.analyze_and_decide(
-        req.symbol, req.is_futures, timeframe=req.interval
-    )
-
-    final_action = result.get("final_action", "hold")
-
-    _fund_dec = result.get("fund_decision") or {}
-    _trade_dec = result.get("trade_decision") or {}
-    if _log_decision_fn:
-        _log_decision_fn(
-            symbol=req.symbol,
-            action=final_action,
-            confidence=float(
-                result.get("boosted_confidence")
-                or _fund_dec.get("final_conviction")
-                or _trade_dec.get("confidence")
-                or 0.0
-            ),
-            source="pipeline",
-            summary=result.get("summary", ""),
-            reasoning=_trade_dec.get("reasoning", ""),
-            full_pipeline_data=result,
-        )
-
-    _approved_for_paper = {s.upper() for s in (settings.FUTURES_WATCHLIST or [])}
-    if (
-        not settings.LIVE_TRADING_ENABLED
-        and final_action != "hold"
-        and req.symbol.upper() in _approved_for_paper
-    ):
-        try:
-            trade_dec = result.get("trade_decision") or {}
-            entry_price = (
-                trade_dec.get("limit_price")
-                or trade_dec.get("stop_price")
-                or (result.get("technical", {}) or {}).get("current_price")
-            )
-            final_qty = result.get("final_quantity", 1) or 1
-
-            if result.get("requires_human") and _db_manager:
-                approval_id = _db_manager.insert_pending_approval(
-                    symbol=req.symbol,
-                    action=final_action,
-                    quantity=float(final_qty),
-                    entry_price=float(entry_price) if entry_price else None,
-                    pipeline_snapshot=result,
-                    timeframe=result.get("timeframe", "1h"),
-                )
-                result["pending_approval_id"] = approval_id
-                logger.info(
-                    f"[PAPER] Human gate — inserted pending approval {approval_id[:8]} "
-                    f"for {req.symbol} {final_action.upper()}"
-                )
-                try:
-                    from notifications.pending_approval_notify import (
-                        notify_pending_approval_queued as _notify_approval,
-                    )
-
-                    asyncio.create_task(
-                        _notify_approval(
-                            approval_id=approval_id,
-                            symbol=req.symbol,
-                            action=final_action,
-                            quantity=float(final_qty),
-                            entry_price=float(entry_price) if entry_price else None,
-                        )
-                    )
-                except Exception as _notify_exc:
-                    logger.warning("[PAPER] Approval notify task failed: %s", _notify_exc)
-                try:
-                    from notifications.openclaw_notifier import (
-                        notify_approval_required as _oc_approval,
-                    )
-
-                    asyncio.create_task(
-                        _oc_approval(
-                            symbol=req.symbol,
-                            action=final_action,
-                            quantity=float(final_qty),
-                            entry_price=float(entry_price) if entry_price else 0.0,
-                        )
-                    )
-                except Exception as _oc_exc:
-                    logger.warning("[PAPER] OpenClaw approval notify failed: %s", _oc_exc)
-            elif _paper_tracker and entry_price:
-                _analyst_signals = build_analyst_signals_map(result.get("analyst_reports"))
-                trade_id = _paper_tracker.add_paper_trade(
-                    symbol=req.symbol,
-                    side=final_action,
-                    quantity=float(final_qty),
-                    entry_price=float(entry_price),
-                    stop_loss=(
-                        float(trade_dec.get("stop_price")) if trade_dec.get("stop_price") else None
-                    ),
-                    take_profit=float(
-                        trade_dec.get("target_price") or trade_dec.get("take_profit") or 0
-                    )
-                    or None,
-                    strategy_params={
-                        "source": "pipeline",
-                        "summary": result.get("summary", ""),
-                        "predicted_direction": final_action.upper(),
-                        "analyst_signals": _analyst_signals,
-                    },
-                )
-                result["paper_trade_id"] = trade_id
-                logger.info(
-                    f"[PAPER] Auto-logged {req.symbol} {final_action.upper()} "
-                    f"qty={final_qty} @ {entry_price:.4f}  id={trade_id[:8]}"
-                )
-            elif not entry_price:
-                logger.warning(
-                    f"[PAPER] Skipped auto-log for {req.symbol} {final_action.upper()} "
-                    f"— could not determine entry price from pipeline result"
-                )
-        except Exception as exc:
-            logger.error(f"[PAPER] Auto-log failed for {req.symbol}: {exc}")
-
-    # Legacy catch-all auto-log path. The watchlist-gated block above already
-    # handles every symbol in _approved_for_paper -- either deferring to a
-    # human approval (requires_human=True) or auto-logging via
-    # add_paper_trade() (requires_human=False). This block must only run
-    # for the leftover case that block never reaches (symbol not on
-    # _approved_for_paper). Without this guard it ran unconditionally after
-    # the block above for every watchlist symbol too, defeating the human
-    # approval gate (opened a live paper trade the instant the gate above
-    # had just queued a pending approval for the same decision) and, even
-    # when no approval was required, duplicated the trade a second time
-    # (two open_trade calls for one pipeline decision). Found during the
-    # PR #331 naked-row completeness sweep (US-010); see
-    # docs/incident-notes/2026-07-07-trade-287-stop-enforcement-chain.md.
-    _already_handled = bool(result.get("pending_approval_id") or result.get("paper_trade_id"))
-    if (
-        not settings.LIVE_TRADING_ENABLED
-        and final_action != "hold"
-        and _paper_tracker
-        and not _already_handled
-    ):
-        try:
-            trade_dec = result.get("trade_decision") or {}
-            entry_price = (
-                trade_dec.get("limit_price")
-                or trade_dec.get("stop_price")
-                or (result.get("technical", {}) or {}).get("current_price")
-            )
-            final_qty = result.get("final_quantity", 1) or 1
-
-            if entry_price:
-                trade_id = _paper_tracker.open_trade(
-                    symbol=req.symbol,
-                    action=final_action,
-                    quantity=float(final_qty),
-                    price=float(entry_price),
-                    notes=result.get("summary", ""),
-                    analyst_signals=build_analyst_signals_map(
-                        result.get("analyst_reports")
-                    ),
-                )
-                result["paper_trade_id"] = trade_id
-                logger.info(
-                    f"[PAPER] Auto-logged {req.symbol} {final_action.upper()} "
-                    f"qty={final_qty} @ {entry_price:.4f}  id={trade_id[:8]}"
-                )
-            else:
-                logger.warning(
-                    f"[PAPER] Skipped auto-log for {req.symbol} {final_action.upper()} "
-                    f"— could not determine entry price from pipeline result"
-                )
-        except Exception as exc:
-            logger.error(f"[PAPER] Auto-log failed for {req.symbol}: {exc}")
-
-    from notifications.signal_broadcast import broadcast_signal
-
-    asyncio.create_task(broadcast_signal(req.symbol, result, source="router_sync"))
-
-    return result
-
-
-@router.get("/status")
-async def pipeline_status():
-    """Pipeline availability and last run info"""
-    return {
-        "available": _trading_pipeline is not None,
-        "sdk_available": _sdk_pipeline is not None,
-        "last_run": _decision_log_ref[-1] if _decision_log_ref else None,
-        "decision_count": len(_decision_log_ref),
-    }

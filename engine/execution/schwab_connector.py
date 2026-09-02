@@ -260,19 +260,9 @@ class SchwabConnector:
         is_futures=False,
         is_options=False,
     ):
-        """
-        Run safety layer check.
-
-        Returns (approved, rejection_reason, warnings, adjusted_order). The
-        4th element is the risk-layer's post-adjustment OrderRequest (e.g.
-        loss-tracker de-risking after consecutive losses) or None when no
-        adjustment was applied -- callers MUST use it to build the actual
-        broker order, not the pre-check `quantity` (PRB-01, 2026-07-29
-        prod-readiness audit: this helper used to drop adjusted_order
-        entirely, so a computed size reduction never reached the fill).
-        """
+        """Run safety layer check. Returns (approved, rejection_reason, warnings)."""
         if self._safety_layer is None:
-            return True, None, [], None
+            return True, None, []
         from risk.safety_layer import OrderRequest  # noqa: PLC0415
 
         req = OrderRequest(
@@ -284,12 +274,7 @@ class SchwabConnector:
             is_options=is_options,
         )
         result = self._safety_layer.check_order(req, portfolio_equity)
-        return (
-            result.approved,
-            getattr(result, "rejection_reason", ""),
-            result.warnings,
-            result.adjusted_order,
-        )
+        return result.approved, getattr(result, "rejection_reason", ""), result.warnings
 
     # ── Account ───────────────────────────────────────────────────────────────
 
@@ -643,21 +628,6 @@ class SchwabConnector:
             for w in result.warnings:
                 logger.warning("SchwabConnector: options warning | %s", w)
             warnings = result.warnings
-            # PRB-01: use the risk-layer's adjusted (e.g. loss-tracker
-            # de-risked) quantity for the actual order below, not the
-            # pre-check request -- same defect class as the equity path.
-            if result.adjusted_order is not None:
-                adjusted_quantity = abs(int(result.adjusted_order.quantity))
-                if adjusted_quantity != quantity:
-                    logger.warning(
-                        "SchwabConnector.submit_options_order: risk-adjusted size "
-                        "%d -> %d for %s %s",
-                        quantity,
-                        adjusted_quantity,
-                        symbol,
-                        option_symbol,
-                    )
-                quantity = adjusted_quantity
         else:
             warnings = []
 
@@ -736,80 +706,6 @@ class SchwabConnector:
             )
             return {"status": "error", "reason": str(exc)}
 
-    async def submit_options_spread_order(self, order: dict, portfolio_equity: float) -> dict:
-        """
-        Submit a two-leg vertical spread order (Credit/Debit).
-        order keys: symbol, type (BULL_PUT_SPREAD|BEAR_CALL_SPREAD),
-                    short_option_symbol, long_option_symbol,
-                    quantity, limit_price.
-        """
-        symbol = order.get("symbol", "UNKNOWN")
-        spread_type = order.get("type", "")
-        short_opt_sym_str = order.get("short_option_symbol", "")
-        long_opt_sym_str = order.get("long_option_symbol", "")
-        quantity = int(order.get("quantity", 0))
-        limit_price = order.get("limit_price")
-
-        logger.info(
-            "SchwabConnector.submit_options_spread_order | %s %s qty=%d limit=%s",
-            symbol,
-            spread_type,
-            quantity,
-            limit_price,
-        )
-
-        if not self.is_connected:
-            return {"status": "error", "reason": "Schwab not connected"}
-
-        try:
-            from schwab.orders.generic import OrderBuilder  # noqa: PLC0415
-            from schwab.orders.options import OptionSymbol  # noqa: PLC0415
-
-            short_opt_sym = OptionSymbol.parse_symbol(short_opt_sym_str)
-            long_opt_sym = OptionSymbol.parse_symbol(long_opt_sym_str)
-
-            # Build a multi-leg vertical spread order
-            # (Note: simpler to use OrderBuilder directly for multi-leg)
-            builder = OrderBuilder()
-            builder.set_order_strategy_type(OrderBuilder.OrderStrategyType.SINGLE)
-            builder.set_order_type(OrderBuilder.OrderType.NET_CREDIT if limit_price > 0 else OrderBuilder.OrderType.NET_DEBIT)
-            builder.set_price(abs(limit_price))
-            builder.set_session(OrderBuilder.Session.NORMAL)
-            builder.set_duration(OrderBuilder.Duration.DAY)
-
-            if spread_type == "BULL_PUT_SPREAD":
-                # Sell Short Put, Buy Long Put
-                builder.add_option_leg(OrderBuilder.Instruction.SELL_TO_OPEN, short_opt_sym, quantity)
-                builder.add_option_leg(OrderBuilder.Instruction.BUY_TO_OPEN, long_opt_sym, quantity)
-            elif spread_type == "BEAR_CALL_SPREAD":
-                # Sell Short Call, Buy Long Call
-                builder.add_option_leg(OrderBuilder.Instruction.SELL_TO_OPEN, short_opt_sym, quantity)
-                builder.add_option_leg(OrderBuilder.Instruction.BUY_TO_OPEN, long_opt_sym, quantity)
-            else:
-                return {"status": "error", "reason": f"Unsupported spread type: {spread_type}"}
-
-            spec = builder.build()
-            response = self._client.place_order(account_hash=self._account_hash, order_spec=spec)
-
-            if response.status_code in (200, 201):
-                order_id = response.headers.get("Location", "").split("/")[-1] or str(uuid.uuid4())
-                return {
-                    "status": "placed",
-                    "order_id": order_id,
-                    "symbol": symbol,
-                    "type": spread_type,
-                    "quantity": quantity,
-                    "limit_price": limit_price,
-                }
-
-            body = getattr(response, "text", str(getattr(response, "content", "")))
-            logger.error("SchwabConnector: spread FAILED | HTTP %s | %s", response.status_code, body)
-            return {"status": "error", "reason": f"HTTP {response.status_code}", "body": body}
-
-        except Exception as exc:
-            logger.error("SchwabConnector.submit_options_spread_order exception: %s", exc, exc_info=True)
-            return {"status": "error", "reason": str(exc)}
-
     async def place_paper_order(self, order: dict) -> dict:
         """
         Safety-integrated entry point — primary method for the order router.
@@ -830,10 +726,9 @@ class SchwabConnector:
         )
 
         # Equity-path safety check (options path runs its own inside submit_options_order)
-        final_quantity = int(order.get("quantity", 0))
         if not is_options and self._safety_layer is not None:
             quantity = int(order.get("quantity", 0))
-            approved, reason, warnings, adjusted_order = self._run_safety_check(
+            approved, reason, warnings = self._run_safety_check(
                 symbol=symbol,
                 quantity=quantity,
                 order_type=order.get("order_type", "market").lower(),
@@ -845,18 +740,6 @@ class SchwabConnector:
                 return {"status": "rejected", "reason": reason, "warnings": warnings}
             for w in warnings:
                 logger.warning("SchwabConnector: equity warning | %s", w)
-            # PRB-01: use the risk-layer's adjusted (e.g. loss-tracker
-            # de-risked) quantity for the actual order, not the caller's
-            # pre-check request.
-            if adjusted_order is not None:
-                final_quantity = int(adjusted_order.quantity)
-                if abs(final_quantity) != abs(quantity):
-                    logger.warning(
-                        "SchwabConnector.place_paper_order: risk-adjusted size %d -> %d for %s",
-                        quantity,
-                        final_quantity,
-                        symbol,
-                    )
 
         # Route
         if is_options:
@@ -864,7 +747,7 @@ class SchwabConnector:
         else:
             result = await self.submit_equity_order(
                 symbol=symbol,
-                quantity=final_quantity,
+                quantity=int(order.get("quantity", 0)),
                 side=order.get("side", "BUY"),
                 order_type=order.get("order_type", "MARKET"),
                 limit_price=order.get("limit_price"),
@@ -873,7 +756,7 @@ class SchwabConnector:
         # Mirror to portfolio tracker
         if result.get("status") == "placed" and self._portfolio_tracker is not None:
             try:
-                signed_qty = final_quantity if not is_options else int(order.get("quantity", 0))
+                signed_qty = int(order.get("quantity", 0))
                 if not is_options and order.get("side", "BUY").upper() == "SELL":
                     signed_qty = -abs(signed_qty)
                 await self._get_paper_trade_logger().log_trade(
@@ -946,45 +829,26 @@ class SchwabConnector:
                 order_id = order.get("order_id")
                 if not order_id:
                     continue
-                res = await self.cancel_order(order_id)
-                if res.get("status") == "cancelled":
-                    cancelled += 1
+                try:
+                    response = self._client.cancel_order(
+                        account_hash=self._account_hash, order_id=order_id
+                    )
+                    if response.status_code == 200:
+                        cancelled += 1
+                        logger.info("SchwabConnector: cancelled order %s", order_id)
+                    else:
+                        logger.warning(
+                            "SchwabConnector: cancel failed %s — HTTP %s",
+                            order_id,
+                            response.status_code,
+                        )
+                except Exception as exc:
+                    logger.error("SchwabConnector: error cancelling %s: %s", order_id, exc)
         except Exception as exc:
             logger.error("SchwabConnector.cancel_all_orders failed: %s", exc, exc_info=True)
 
         logger.info("SchwabConnector.cancel_all_orders: %d cancelled", cancelled)
         return cancelled
-
-    async def cancel_order(self, order_id: str) -> dict:
-        """Cancel a specific order by ID."""
-        if not self.is_connected:
-            return {"status": "error", "reason": "Not connected"}
-        try:
-            response = self._client.cancel_order(
-                account_hash=self._account_hash, order_id=order_id
-            )
-            if response.status_code == 200:
-                logger.info("SchwabConnector: cancelled order %s", order_id)
-                return {"status": "cancelled", "order_id": order_id}
-            return {"status": "error", "reason": f"HTTP {response.status_code}"}
-        except Exception as e:
-            return {"status": "error", "reason": str(e)}
-
-    async def modify_order(self, order_id: str, new_price: float) -> dict:
-        """Modify (replace) an existing order with a new price."""
-        if not self.is_connected:
-            return {"status": "error", "reason": "Not connected"}
-        try:
-            # Note: Schwab requires sending the full order spec for a replace.
-            # For Phase 5 implementation, we fetch the existing order first.
-            # This is a bit complex for a stateless connector, so we'll start
-            # by noting that 'modify' is a 'replace' in Schwab.
-            # In a real production run, we'd pull order details from get_orders.
-
-            logger.warning("SchwabConnector: modify_order (replace) requires full spec. Not fully implemented.")
-            return {"status": "error", "reason": "Full-spec replace not yet implemented"}
-        except Exception as e:
-            return {"status": "error", "reason": str(e)}
 
     # ── Auth Helper ───────────────────────────────────────────────────────────
 
