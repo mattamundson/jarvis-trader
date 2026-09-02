@@ -1,10 +1,11 @@
 {
   "plan": "JARVIS-MIP-1.0",
   "work_package": "O-01",
-  "state": "IN_PROGRESS",
+  "state": "IN_PROGRESS_BASELINE_TEST_DEFECT_IDENTIFIED",
   "observed_at": "2026-09-02",
   "repository_baseline": "master@e2a1006e3eb7d35a840487c80899b33103b52277",
   "evidence_head": "PR#768@2203a7f797b245f329fd3fe356a5675bc53547b2",
+  "repair_pr": "PR#773@8c1312d2de6ea6d965bde6b612bcd209c883bf14",
   "required_contexts": [
     "Engine Tests (pytest, fast)",
     "Engine Lint (Python)",
@@ -26,16 +27,27 @@
     "dashboard_quality": "PASS",
     "dashboard_build_e2e": "PASS",
     "engine_tests_slow": "PASS",
-    "engine_tests_fast": "RUNNING",
-    "coverage": "NOT_YET_AVAILABLE"
+    "engine_tests_fast_attempt_1": "FAIL_3_FAILED_9215_PASSED",
+    "engine_tests_fast_attempt_2": "FAIL_3_FAILED_9214_PASSED",
+    "coverage": "SKIPPED_DUE_TO_FAST_TEST_FAILURE"
+  },
+  "classification": {
+    "class": "BASELINE-DEBT",
+    "flaky": false,
+    "cause": "Schema-only fixture began 2025-09-01 and aged outside production's 365-day lookback on 2026-09-02.",
+    "failed_tests": [
+      "TestOutputJsonSchema::test_per_instrument_ok_keys",
+      "TestOutputJsonSchema::test_percentile_keys",
+      "TestOutputJsonSchema::test_json_serialisable"
+    ]
   },
   "supersedes": {
     "pr": 760,
     "reason": "PR #757 fixed the stale syntax, Ruff, and dashboard baseline failures recorded there."
   },
   "blockers": [
-    "Fast pytest has no terminal conclusion.",
-    "Coverage merge/floor has no receipt.",
+    "PR #773 has not yet produced a complete exact-head green CI receipt.",
+    "PR #768 has not yet been refreshed and revalidated on the repaired baseline.",
     "Post-merge master SHA and master run are not yet recorded.",
     "Branch-protection enforcement has not been independently verified."
   ],
