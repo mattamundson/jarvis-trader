@@ -1,11 +1,11 @@
 {
   "plan": "JARVIS-MIP-1.0",
   "work_package": "O-01",
-  "state": "IN_PROGRESS_BASELINE_TEST_DEFECT_IDENTIFIED",
+  "state": "IN_PROGRESS_BASELINE_REPAIRED_ROADMAP_RECEIPT_PENDING",
   "observed_at": "2026-09-02",
-  "repository_baseline": "master@e2a1006e3eb7d35a840487c80899b33103b52277",
+  "repository_baseline": "master@20ce13ca07c34b5159f05518abe670f7f3c32d24",
   "evidence_head": "PR#768@2203a7f797b245f329fd3fe356a5675bc53547b2",
-  "repair_pr": "PR#773@8c1312d2de6ea6d965bde6b612bcd209c883bf14",
+  "repair_pr": "PR#773@4c1f5006d50a4304d74f25385abde4ca898ea577",
   "required_contexts": [
     "Engine Tests (pytest, fast)",
     "Engine Lint (Python)",
@@ -39,17 +39,29 @@
       "TestOutputJsonSchema::test_per_instrument_ok_keys",
       "TestOutputJsonSchema::test_percentile_keys",
       "TestOutputJsonSchema::test_json_serialisable"
-    ]
+    ],
+    "dashboard_e2e_race": "Stale body snapshot asserted before asynchronous raw-trade rendering; fixed with a waiting locator."
   },
   "supersedes": {
     "pr": 760,
     "reason": "PR #757 fixed the stale syntax, Ruff, and dashboard baseline failures recorded there."
   },
   "blockers": [
-    "PR #773 has not yet produced a complete exact-head green CI receipt.",
-    "PR #768 has not yet been refreshed and revalidated on the repaired baseline.",
-    "Post-merge master SHA and master run are not yet recorded.",
+    "PR #768 refreshed final-head CI has not yet completed.",
+    "PR #768 requires independent human S3 safety review before merge.",
+    "Post-adoption master workflow receipt is not yet recorded.",
     "Branch-protection enforcement has not been independently verified."
   ],
-  "claim_boundary": "Completed jobs are E0/E1 evidence only; runtime and broker state remain unverified."
+  "claim_boundary": "Completed jobs are E0/E1 evidence only; runtime and broker state remain unverified.",
+  "repair_merge": "master@20ce13ca07c34b5159f05518abe670f7f3c32d24",
+  "repair_receipt": {
+    "automated_review": 33685801245,
+    "safety_invariant": 33685816137,
+    "jarvis_ci": 33685801250,
+    "result": "PASS",
+    "fast_tests": "PASS",
+    "slow_tests": "PASS",
+    "coverage": "PASS",
+    "dashboard_build_e2e": "PASS"
+  }
 }
