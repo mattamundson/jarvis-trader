@@ -1,9 +1,15 @@
-# Phase 3 — live trading transition (runbook)
+# Phase 3 — live trading transition (RETIRED)
 
-## Programmatic Check (run before this runbook)
+> [!CAUTION]
+> **Do not execute this runbook.** Legacy Phase 3 criteria are historical
+> paper-evidence diagnostics only. They cannot authorize live trading or satisfy
+> JARVIS-MIP-1.0 M10/M11. Any future canary requires a separately implemented
+> M10/M11 gate, independent safety review, and explicit Tier 3 owner authorization.
 
-The readiness criteria are now codified. Get the GO/WAIT/NO-GO verdict before
-starting any transition work:
+## Legacy diagnostic reference only
+
+The legacy criteria remain readable for historical diagnostics. Do not begin
+transition work from any result; the CLI is retired and always exits nonzero:
 
 ```bash
 # With engine running:
@@ -11,7 +17,7 @@ curl -H "X-API-Key: <key>" http://127.0.0.1:8010/readiness/phase3
 
 # Standalone CLI (engine not required):
 engine/.venv/Scripts/python scripts/phase3_readiness_report.py
-# Exit 0=GO, 1=WAIT, 2=NO-GO
+# Exit 2=RETIRED/NO-GO (always)
 ```
 
 The 10 codified criteria (all must pass or be waived by Matt):
@@ -29,7 +35,8 @@ The 10 codified criteria (all must pass or be waived by Matt):
 | C9 | `engine_uptime_stability` | WARNING | Engine restarts < 1/day avg (last 30 days) |
 | C10 | `safety_layer_test_coverage` | BLOCKER | test_safety_layer.py >= 95% line coverage |
 
-The programmatic check is **necessary but not sufficient** — see manual checklist below.
+The programmatic check is **not an authorization gate**. The checklist below is
+retained as historical evidence only and is not an executable transition procedure.
 
 See `docs/runbooks/PHASE3_READINESS_CRITERIA.md` for full detail.
 
