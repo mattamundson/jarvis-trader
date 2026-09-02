@@ -1,0 +1,43 @@
+{
+  "plan": "JARVIS-MIP-1.0",
+  "work_package": "O-01",
+  "state": "IN_PROGRESS",
+  "observed_at": "2026-09-02",
+  "repository_baseline": "master@e2a1006e3eb7d35a840487c80899b33103b52277",
+  "evidence_head": "PR#768@2203a7f797b245f329fd3fe356a5675bc53547b2",
+  "required_contexts": [
+    "Engine Tests (pytest, fast)",
+    "Engine Lint (Python)",
+    "Safety-critical config gate",
+    "Dashboard Build (Next.js)",
+    "Dashboard Quality (typecheck + unit tests)"
+  ],
+  "runs": {
+    "jarvis_ci": 33681768981,
+    "safety_invariant": 33681867123,
+    "automated_review": 33681768887
+  },
+  "jobs": {
+    "automated_review": "PASS",
+    "safety_invariant": "PASS",
+    "engine_lint": "PASS",
+    "engine_type_check": "PASS",
+    "security_scan": "PASS",
+    "dashboard_quality": "PASS",
+    "dashboard_build_e2e": "PASS",
+    "engine_tests_slow": "PASS",
+    "engine_tests_fast": "RUNNING",
+    "coverage": "NOT_YET_AVAILABLE"
+  },
+  "supersedes": {
+    "pr": 760,
+    "reason": "PR #757 fixed the stale syntax, Ruff, and dashboard baseline failures recorded there."
+  },
+  "blockers": [
+    "Fast pytest has no terminal conclusion.",
+    "Coverage merge/floor has no receipt.",
+    "Post-merge master SHA and master run are not yet recorded.",
+    "Branch-protection enforcement has not been independently verified."
+  ],
+  "claim_boundary": "Completed jobs are E0/E1 evidence only; runtime and broker state remain unverified."
+}
