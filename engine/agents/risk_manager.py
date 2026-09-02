@@ -27,6 +27,7 @@ from typing import Optional
 import httpx
 
 from config import settings
+from llm.client import resolve_agent_model
 from utils.llm_json import parse_llm_json
 
 try:
@@ -86,7 +87,7 @@ class RiskManagerAgent:
     Soft layer: Claude Opus reviews the trade in portfolio context for qualitative risk.
     """
 
-    MODEL = "claude-sonnet-4-6"
+    MODEL = "claude-sonnet-4-6"  # fallback; live model resolved via resolve_agent_model (T1)
     MAX_TOKENS = 1600
 
     # Hard-coded ceiling regardless of config — last line of defence
@@ -417,7 +418,7 @@ class RiskManagerAgent:
             # fallback chain applies (B2, 2026-06-10: a raw httpx POST straight
             # at the Anthropic REST endpoint failed 400 on credit exhaustion).
             result_llm = await self._llm.call(
-                model=self.MODEL,
+                model=resolve_agent_model(self._llm, self.MODEL),
                 system=self.SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=self.MAX_TOKENS,
