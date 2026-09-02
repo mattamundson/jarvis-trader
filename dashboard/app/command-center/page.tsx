@@ -1091,7 +1091,7 @@ export default function CommandCenterPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-3">
-            {!decisions || decisions.length === 0 ? (
+            {!Array.isArray(decisions) || decisions.length === 0 ? (
               <div className="text-xs text-slate-500 font-mono py-6 text-center">
                 No recent decisions from /decisions/recent
               </div>
@@ -1179,7 +1179,7 @@ export default function CommandCenterPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-3">
-            {!trades || trades.length === 0 ? (
+            {!Array.isArray(trades) || trades.length === 0 ? (
               <div className="text-xs text-slate-500 font-mono py-6 text-center">
                 No trade history from /portfolio/history/trades
               </div>
@@ -1556,7 +1556,7 @@ export default function CommandCenterPage() {
                     <div>
                       {/* EV / Trade — migrated to honest deduped source (net / trade count) */}
                       <div className="text-xs text-slate-500 mb-0.5">EV / Trade</div>
-                      {honestSet && honestSet.trades.length > 0 ? (
+                      {honestSet && Array.isArray(honestSet.trades) && honestSet.trades.length > 0 ? (
                         <div
                           className={`font-mono text-sm font-bold ${
                             honestSet.net / honestSet.trades.length >= 0
@@ -1583,11 +1583,11 @@ export default function CommandCenterPage() {
                             : "bg-red-950 text-red-400 border-red-800"
                         }`}
                       >
-                        {journalStats.diagnosis.replace("_", " ").toUpperCase()}
+                        {(journalStats.diagnosis ?? "unknown").replace("_", " ").toUpperCase()}
                       </Badge>
                     </div>
                   </div>
-                  {honestSet && (
+                  {honestSet && Array.isArray(honestSet.trades) && (
                     <p className="mt-2 text-[10px] text-slate-600 font-mono">
                       {dedupCaveat(honestSet)} · win rate + EV sourced from deduped record
                     </p>
