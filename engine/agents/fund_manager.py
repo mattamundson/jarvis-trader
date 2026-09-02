@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from config import settings
+from llm.client import resolve_agent_model
 from utils.llm_json import parse_llm_json
 
 logger = logging.getLogger(__name__)
@@ -78,7 +79,7 @@ class FundManagerAgent:
     to Matt but the pipeline does NOT forward it to execution.
     """
 
-    MODEL = "claude-sonnet-4-6"
+    MODEL = "claude-sonnet-4-6"  # fallback; live model resolved via resolve_agent_model (T1)
     MAX_TOKENS = 1600
 
     SYSTEM_PROMPT_LIVE = (
@@ -217,7 +218,7 @@ class FundManagerAgent:
             # fallback chain applies (B2, 2026-06-10: a raw httpx POST straight
             # at the Anthropic REST endpoint failed 400 on credit exhaustion).
             result_llm = await self._llm.call(
-                model=self.MODEL,
+                model=resolve_agent_model(self._llm, self.MODEL),
                 system=system_prompt,
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=self.MAX_TOKENS,

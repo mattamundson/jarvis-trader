@@ -25,7 +25,7 @@ function loadCreds() {
 // only ever report a false negative. Skip gracefully instead.
 const hasEnv = fs.existsSync(path.resolve(__dirname, "../../.env.local"));
 
-test("LIVE command-center shows real pipeline funnel data", async ({ browser }, testInfo) => {
+test("LIVE command-center shows real pipeline funnel data", async ({ browser }) => {
   test.skip(!hasEnv, "no .env.local — CI/clean checkout: live engine diagnostic cannot run");
   const { user, pass } = loadCreds();
   const context = await browser.newContext({ httpCredentials: { username: user, password: pass } });
