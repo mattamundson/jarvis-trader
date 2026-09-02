@@ -54,6 +54,8 @@ SAFE_CONFIG_KEYS = {
 }
 
 SAFE_HEALTH_KEYS = {
+    "overall",
+    "subsystems",
     "status",
     "mode",
     "live_trading",
@@ -80,6 +82,23 @@ SAFE_HEALTH_KEYS = {
     "healthy",
     "reachable",
     "verified",
+    "kill_switch_active",
+    "paper_mode",
+    "daily_pnl",
+    "daily_pnl_pct",
+    "daily_limit",
+    "daily_limit_pct",
+    "daily_limit_breached",
+    "drawdown_pct",
+    "drawdown_limit_pct",
+    "drawdown_limit_breached",
+    "consecutive_losses",
+    "orders_last_minute",
+    "orders_last_minute_limit",
+    "hard_halt",
+    "halted",
+    "safety_state",
+    "safety_state_verified",
 }
 
 SAFE_STRING_VALUES = {
@@ -104,6 +123,11 @@ SAFE_STRING_VALUES = {
     "connected",
     "disconnected",
     "unavailable",
+    "verified_safe",
+    "verified_halted",
+    "state_unknown",
+    "not_configured",
+    "circuit_breaker_tripped",
 }
 
 ENDPOINTS = {
@@ -111,9 +135,16 @@ ENDPOINTS = {
     "health": ("/health", "health"),
     "health_full": ("/health/full", "health"),
     "safety_status": ("/safety/status", "health"),
-    "eligibility": ("/paper/validation/approved-paper-gates", "eligibility"),
+    "eligibility": ("/trading-status", "eligibility"),
     "backup_status": ("/health/backup-status", "health"),
 }
+
+
+class _RejectRedirects(urllib.request.HTTPRedirectHandler):
+    """Never forward an authenticated loopback request to a redirect target."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
 
 
 def _parse_env_value(path: Path, name: str) -> str | None:
@@ -178,8 +209,12 @@ def _get_json(base_url: str, path: str, api_key: str | None, timeout: float) -> 
     if api_key:
         headers["X-API-Key"] = api_key
     request = urllib.request.Request(url=url, headers=headers, method="GET")
+    opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler({}),
+        _RejectRedirects(),
+    )
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with opener.open(request, timeout=timeout) as response:
             raw = response.read().decode("utf-8", errors="replace")
             try:
                 body = json.loads(raw)
@@ -255,6 +290,16 @@ def _sanitize_health(value: Any) -> Any:
         for key, item in value.items():
             if key not in SAFE_HEALTH_KEYS:
                 continue
+            if key == "subsystems" and isinstance(item, dict):
+                subsystems: dict[str, Any] = {}
+                for label, subsystem in item.items():
+                    if not isinstance(label, str) or not label.replace("_", "").isalnum():
+                        continue
+                    clean = _sanitize_health(subsystem)
+                    if clean not in (None, {}, []):
+                        subsystems[label[:50]] = clean
+                result[key] = subsystems
+                continue
             clean = _sanitize_health(item)
             if clean is not None:
                 result[str(key)] = clean
@@ -277,9 +322,9 @@ def _safe_endpoint_result(result: dict[str, Any], kind: str) -> dict[str, Any]:
         base["safe_config"] = _flatten_config(body)
     elif kind == "eligibility":
         rows: list[dict[str, Any]] = []
-        instruments = body.get("instruments")
-        if isinstance(instruments, list):
-            for row in instruments:
+        symbols = body.get("symbols")
+        if isinstance(symbols, list):
+            for row in symbols:
                 if not isinstance(row, dict):
                     continue
                 symbol = row.get("symbol")
@@ -288,12 +333,30 @@ def _safe_endpoint_result(result: dict[str, Any], kind: str) -> dict[str, Any]:
                 rows.append(
                     {
                         "symbol": symbol.upper(),
-                        "overall_pass": bool(row.get("overall_pass", False)),
+                        "enabled": bool(row.get("enabled", False)),
+                        "authorized": bool(row.get("authorized", False)),
+                        "tradeable": bool(row.get("tradeable", False)),
+                        "config_agrees": bool(row.get("config_agrees", False)),
+                        "verdict": (
+                            str(row["verdict"]).upper()[:40]
+                            if row.get("verdict") is not None
+                            else None
+                        ),
+                        "verdict_age_days": (
+                            row.get("verdict_age_days")
+                            if isinstance(row.get("verdict_age_days"), (int, float))
+                            else None
+                        ),
                     }
                 )
-        base["instruments"] = rows
-        if isinstance(body.get("total"), int):
-            base["total"] = body["total"]
+        base["symbols"] = rows
+        summary = body.get("summary")
+        if isinstance(summary, dict):
+            base["summary"] = {
+                key: summary[key]
+                for key in ("total", "tradeable", "enabled", "disagreements")
+                if isinstance(summary.get(key), int)
+            }
     else:
         base["safe_health"] = _sanitize_health(body)
     return base
@@ -379,7 +442,12 @@ def main(argv: list[str] | None = None) -> int:
         description="Capture a read-only, redacted JARVIS A-01 snapshot."
     )
     parser.add_argument("--engine-url", default=DEFAULT_ENGINE_URL)
-    parser.add_argument("--timeout", type=float, default=3.0)
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=5.0,
+        help="Per-endpoint timeout in seconds; defaults above the engine's 3s IB health budget.",
+    )
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument(
         "--force",
