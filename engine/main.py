@@ -13,6 +13,7 @@ import json
 import logging
 import logging.handlers
 import os
+import signal
 import sqlite3
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -378,6 +379,11 @@ async def lifespan(app: FastAPI):
         pnl_monitor._ib = data_manager.ibkr
         logger.info("✅ PnL Monitor: IB Gateway wired (live account data source active)")
 
+    # Wire Schwab into MarketDataManager as Tier 2 price source (equities/options quotes)
+    if schwab_connector is not None and schwab_connector.is_connected:
+        data_manager.inject_schwab(schwab_connector)
+        logger.info("✅ Schwab wired into MarketDataManager as Tier 2 price source")
+
     # Agents (need LLM client)
     if settings.ANTHROPIC_API_KEY:
         llm_client = JarvisLLMClient(api_key=settings.ANTHROPIC_API_KEY)
@@ -394,7 +400,17 @@ async def lifespan(app: FastAPI):
 
         # Stage 1: Analysts
         technical_analyst = TechnicalAnalystAgent(llm_client, data_manager)
-        news_agent = NewsAnalystAgent(llm_client, data_manager)
+
+        # Wire Brave Search into news analyst if key is configured
+        _brave_client = None
+        if getattr(settings, "BRAVE_API_KEY", None):
+            from data.brave_search import BraveSearchClient
+            _brave_client = BraveSearchClient(api_key=settings.BRAVE_API_KEY)
+            logger.info("✅ Brave Search wired into news analyst")
+        else:
+            logger.warning("BRAVE_API_KEY not set — news analyst running without live web search")
+
+        news_agent = NewsAnalystAgent(llm_client, data_manager, brave_client=_brave_client)
         social_agent = SocialAnalystAgent(llm_client)
         fundamental_agent = FundamentalistAgent(llm_client, data_manager)
 
@@ -451,7 +467,7 @@ async def lifespan(app: FastAPI):
         symbols_to_scan = (
             [
                 (sym, True)
-                for sym in settings.FUTURES_WATCHLIST[:2]  # Top 2 futures
+                for sym in settings.FUTURES_WATCHLIST  # All configured futures (MES, MNQ, MCL)
             ]
             + [
                 (sym, False)
@@ -947,9 +963,31 @@ async def lifespan(app: FastAPI):
     safety_layer._loss_tracker = loss_tracker
     logger.info("✅ ConsecutiveLossTracker wired into SafetyLayer (3→0.5x, 5→0.25x, 7→halt)")
 
+    # AlertManager — push WhatsApp alerts when P&L thresholds are crossed
+    _pnl_alert_manager = None
+    try:
+        from risk.alert_manager import AlertManager as _AlertManager
+        from notifications.openclaw_notifier import send_raw as _oc_send_raw
+
+        _pnl_alert_manager = _AlertManager(notify_fn=_oc_send_raw)
+        _pnl_alert_manager.start()
+        safety_layer.inject_alert_manager(_pnl_alert_manager)
+        logger.info(
+            "✅ AlertManager started — P&L push alerts active via OpenClaw WhatsApp"
+        )
+    except Exception as _am_err:
+        logger.warning("AlertManager init failed (non-fatal — no P&L push alerts): %s", _am_err)
+
     # Wire router dependencies now that all singletons are ready
     inject_portfolio_deps(paper_tracker, db_manager, data_manager)
     inject_safety_router_deps(safety_layer, loss_tracker)
+    # Inject AlertManager into safety router for /safety/alerts/history
+    try:
+        from routers.safety_router import inject_alert_manager as _inject_am
+        if _pnl_alert_manager is not None:
+            _inject_am(_pnl_alert_manager)
+    except Exception as _am_inject_err:
+        logger.warning("Failed to inject AlertManager into safety_router: %s", _am_inject_err)
     inject_phase3_readiness_deps(safety_layer)
     inject_health_router_deps(
         _health_server_start,
@@ -973,13 +1011,22 @@ async def lifespan(app: FastAPI):
     try:
         from scanner.signal_scanner import SignalScanner
 
+        # Use FUTURES_WATCHLIST from settings so MCL, MNQ, MES are all included.
+        # Fallback to ["MCL", "MNQ"] if setting is empty.
+        _scan_symbols = list(settings.FUTURES_WATCHLIST) if settings.FUTURES_WATCHLIST else ["MCL", "MNQ"]
         signal_scanner = SignalScanner(
             trading_pipeline=trading_pipeline,
             db_manager=db_manager,
+            symbols=_scan_symbols,
         )
+        # Inject paper tracker so the scanner can auto-log paper trades
+        # when it fires a BUY/SELL signal in paper mode.
+        if paper_tracker is not None:
+            signal_scanner.set_paper_tracker(paper_tracker)
+            logger.info("Signal scanner: paper_tracker injected")
         inject_scanner_deps(signal_scanner)
         await signal_scanner.start()
-        logger.info("Signal scanner started (MCL + MNQ, 60-min interval)")
+        logger.info("Signal scanner started (symbols=%s, 60-min interval)", _scan_symbols)
     except Exception as e:
         logger.warning("Signal scanner failed to start: %s (non-fatal)", e)
 
@@ -1284,9 +1331,37 @@ async def lifespan(app: FastAPI):
     logger.info("JARVIS TRADER ready. Dashboard: http://localhost:3010")
     logger.info("   API docs: http://localhost:8010/docs")
 
+    # ── Signal handlers for clean crash detection ──────────────────────────────
+    # Log reason before exit so watchdog.log can distinguish crash vs intentional stop.
+    def _make_signal_handler(sig_name: str):
+        def _handler(signum, frame):
+            logger.warning(
+                "ENGINE SHUTTING DOWN — reason: %s (signal %d)",
+                sig_name,
+                signum,
+            )
+            # Re-raise as KeyboardInterrupt so uvicorn's normal shutdown path runs
+            raise KeyboardInterrupt(f"Signal {sig_name} received")
+        return _handler
+
+    try:
+        # SIGINT = Ctrl-C / manual stop; SIGTERM = Task Scheduler / OS shutdown
+        signal.signal(signal.SIGINT, _make_signal_handler("SIGINT"))
+        signal.signal(signal.SIGTERM, _make_signal_handler("SIGTERM"))
+        logger.info("✅ Signal handlers registered (SIGINT, SIGTERM)")
+    except (OSError, ValueError) as _sig_err:
+        # On Windows, SIGTERM is not always supported; log and continue
+        logger.warning("Signal handler registration incomplete: %s", _sig_err)
+
     yield  # Server runs here
 
     # Teardown
+    # Stop AlertManager worker gracefully
+    if _pnl_alert_manager is not None:
+        try:
+            await _pnl_alert_manager.stop()
+        except Exception:
+            pass
     try:
         from orchestrator.multi_market import get_orchestrator
 
@@ -1313,6 +1388,12 @@ async def lifespan(app: FastAPI):
         pass
     if scheduler and scheduler.running:
         scheduler.shutdown(wait=False)
+    # Close Brave Search client if it was initialised
+    try:
+        if _brave_client is not None:
+            await _brave_client.close()
+    except Exception:
+        pass
     logger.info("JARVIS TRADER shutdown complete")
 
 
@@ -2728,7 +2809,7 @@ async def trigger_scan_now():
     if safety.get("kill_switch_active"):
         return {"status": "skipped", "reason": "kill_switch_active"}
 
-    symbols_to_scan = [(sym, True) for sym in settings.FUTURES_WATCHLIST[:2]] + [
+    symbols_to_scan = [(sym, True) for sym in settings.FUTURES_WATCHLIST] + [
         (sym, False) for sym in settings.OPTIONS_WATCHLIST[:3]
     ]
 

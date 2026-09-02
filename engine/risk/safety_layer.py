@@ -1,5 +1,5 @@
 """
-JARVIS TRADER — Safety Layer
+JARVIS TRADER - Safety Layer
 ================================
 CRITICAL: This module is HARDCODED in Python. NO LLM reasoning in the safety path.
 All risk controls are enforced here before any order reaches a broker.
@@ -44,6 +44,14 @@ except ImportError:
         PnLMonitor = None  # type: ignore[assignment,misc]
 
 try:
+    from risk.alert_manager import AlertManager
+except ImportError:
+    try:
+        from engine.risk.alert_manager import AlertManager
+    except ImportError:
+        AlertManager = None  # type: ignore[assignment,misc]
+
+try:
     from risk.loss_tracker import ConsecutiveLossTracker
 except ImportError:
     try:
@@ -65,7 +73,7 @@ def _schedule_background_coro(factory: Callable[[], Coroutine[Any, Any, Any]]) -
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
-        logger.debug("No running event loop — background coroutine not scheduled")
+        logger.debug("No running event loop - background coroutine not scheduled")
         return
     loop.create_task(factory())
 
@@ -106,15 +114,15 @@ class SafetyLayer:
     Instantiated once at startup and shared across all agents.
     """
 
-    def __init__(self, config, ib_gateway=None, pnl_monitor=None, loss_tracker=None, db_path: Optional[str] = None):
+    def __init__(self, config, ib_gateway=None, pnl_monitor=None, loss_tracker=None, db_path: Optional[str] = None, db_manager=None):
         """
         Parameters
         ----------
         config:
-            JARVIS settings object (LIVE_TRADING_ENABLED, MAX_DAILY_LOSS_PCT, …).
+            JARVIS settings object (LIVE_TRADING_ENABLED, MAX_DAILY_LOSS_PCT, ...).
         ib_gateway : IBGatewayManager | None
             Optional IB Gateway handle used by submit_paper_order().
-            Passing None keeps the SafetyLayer fully backward-compatible — all
+            Passing None keeps the SafetyLayer fully backward-compatible - all
             existing callers that construct ``SafetyLayer(config)`` continue to
             work without changes.  The gateway is NEVER used by check_order()
             or any other existing method.
@@ -132,13 +140,18 @@ class SafetyLayer:
             Absolute path to the SQLite file used by the engine. When omitted or
             empty, kill-switch state is **not** persisted (tests, one-off scripts).
             ``main.py`` passes ``db_manager``'s path so restarts re-arm a latched kill switch.
+        db_manager : DatabaseManager | None
+            Optional DatabaseManager instance for P&L snapshot persistence.
+            When provided, daily_pnl state is saved to SQLite on every sync
+            and restored on startup so restarts don't reset intraday drawdown to 0.
         """
         self._config = config
         self._ib_gateway = ib_gateway  # used only by submit_paper_order()
         self._pnl_monitor: Optional[object] = pnl_monitor  # PnLMonitor | None
         self._loss_tracker: Optional[object] = loss_tracker  # ConsecutiveLossTracker | None
+        self._db_manager = db_manager  # DatabaseManager | None - for P&L snapshot persistence
         self.schwab = (
-            None  # SchwabConnector | None — injected after construction via attach_schwab()
+            None  # SchwabConnector | None - injected after construction via attach_schwab()
         )
         self._kill_switch_active = False
         self._kill_switch_reason: KillSwitchReason | None = None
@@ -158,14 +171,20 @@ class SafetyLayer:
         # Tilt detector (optional — injected after construction)
         self.tilt_detector = None
 
+        # Alert manager (optional — injected after construction via inject_alert_manager())
+        self._alert_manager: Optional[object] = None  # AlertManager | None
+
         # Re-entry lockouts: symbol -> lockout_until datetime
         self._reentry_lockouts: dict[str, datetime] = {}
 
         # Resolve DB path for kill switch persistence
         self._db_path: Optional[str] = self._resolve_db_path(db_path)
 
-        # Load persisted kill switch state — must be last in __init__
+        # Load persisted kill switch state
         self._load_kill_switch_state()
+
+        # Restore today's P&L snapshot from SQLite if available - must be last in __init__
+        self._load_pnl_snapshot()
 
     def attach_ib_gateway(self, gateway) -> None:
         """Wire in an IB gateway after construction (called after paper connector connects)."""
@@ -176,6 +195,16 @@ class SafetyLayer:
         self.schwab = connector
         logger.info("SafetyLayer: Schwab connector attached")
 
+    def inject_alert_manager(self, manager: object) -> None:
+        """
+        Wire in an AlertManager after construction.
+
+        Called from main.py lifespan after both the WhatsApp notifier and
+        SafetyLayer are initialised.  Passing None is a no-op (disables alerts).
+        """
+        self._alert_manager = manager
+        logger.info("SafetyLayer: AlertManager injected — P&L push alerts active")
+
     # ── Kill Switch DB Persistence ────────────────────────────────────────
 
     def _resolve_db_path(self, db_path: Optional[str]) -> Optional[str]:
@@ -184,16 +213,72 @@ class SafetyLayer:
             return str(db_path)
         return None
 
+    def _load_pnl_snapshot(self) -> None:
+        """
+        Restore today's P&L state from SQLite on startup.
+
+        If a snapshot exists for today, restores daily_pnl, current_equity,
+        and equity_peak so the safety layer doesn't reset drawdown to 0 on
+        engine restarts mid-session.
+        """
+        if self._db_manager is None:
+            logger.debug("SafetyLayer: no db_manager - skipping P&L snapshot load")
+            return
+        try:
+            today = date.today().isoformat()
+            snap = self._db_manager.get_pnl_snapshot(today)
+            if snap:
+                self._daily_realized_pnl = float(snap.get("daily_pnl", 0.0))
+                self._current_equity = float(snap.get("portfolio_equity", 0.0))
+                peak = float(snap.get("peak_equity", 0.0))
+                if peak > self._equity_peak:
+                    self._equity_peak = peak
+                logger.info(
+                    "SafetyLayer: restored P&L snapshot for %s - daily_pnl=%+.2f equity=%.2f peak=%.2f",
+                    today,
+                    self._daily_realized_pnl,
+                    self._current_equity,
+                    self._equity_peak,
+                )
+            else:
+                logger.debug("SafetyLayer: no P&L snapshot for %s - starting fresh", today)
+        except Exception as exc:
+            logger.warning("SafetyLayer: failed to load P&L snapshot from DB: %s", exc)
+
+    def _persist_pnl_snapshot(self) -> None:
+        """
+        Write current daily P&L state to SQLite.
+
+        Called synchronously after in-memory state is updated in sync_from_broker().
+        DB failure is non-fatal - logged as a warning.
+        """
+        if self._db_manager is None:
+            return
+        try:
+            today = date.today().isoformat()
+            consecutive_losses = 0
+            if self._loss_tracker is not None and hasattr(self._loss_tracker, "get_consecutive_losses"):
+                consecutive_losses = self._loss_tracker.get_consecutive_losses()
+            self._db_manager.upsert_pnl_snapshot(
+                date=today,
+                daily_pnl=self._daily_realized_pnl,
+                portfolio_equity=self._current_equity,
+                peak_equity=self._equity_peak,
+                consecutive_losses=consecutive_losses,
+            )
+        except Exception as exc:
+            logger.warning("SafetyLayer: failed to persist P&L snapshot to DB: %s", exc)
+
     def _load_kill_switch_state(self) -> None:
         """
         Read persisted kill switch state from SQLite on startup.
 
         If the DB is unavailable or the table does not yet exist, the kill
         switch remains inactive (fail-safe to trading paused, not trading
-        enabled).  DB failure here is non-fatal — logged as a warning.
+        enabled).  DB failure here is non-fatal - logged as a warning.
         """
         if self._db_path is None:
-            logger.debug("SafetyLayer: no DB path — skipping kill switch state load")
+            logger.debug("SafetyLayer: no DB path - skipping kill switch state load")
             return
         try:
             import sqlite3
@@ -217,12 +302,12 @@ class SafetyLayer:
                     else:
                         self._kill_switch_reason = KillSwitchReason.MANUAL
                     logger.critical(
-                        "SafetyLayer: kill switch restored from DB (reason=%s) — "
+                        "SafetyLayer: kill switch restored from DB (reason=%s) - "
                         "trading remains HALTED until human deactivates",
                         self._kill_switch_reason.value if self._kill_switch_reason else "unknown",
                     )
                 else:
-                    logger.debug("SafetyLayer: kill switch not active in DB — starting clean")
+                    logger.debug("SafetyLayer: kill switch not active in DB - starting clean")
             finally:
                 conn.close()
         except Exception as exc:
@@ -233,7 +318,7 @@ class SafetyLayer:
         Write kill switch state to SQLite.
 
         Called synchronously after in-memory state is updated.  DB failure is
-        non-fatal — logged as a warning, the in-memory state change still takes
+        non-fatal - logged as a warning, the in-memory state change still takes
         effect immediately.
         """
         if self._db_path is None:
@@ -342,11 +427,11 @@ class SafetyLayer:
                     f"Drawdown {drawdown:.1%} exceeded max {self._config.MAX_DRAWDOWN_PCT:.1%} (source: pnl_monitor)",
                 )
                 return RiskCheckResult(
-                    approved=False, rejection_reason="Max drawdown breached — kill switch activated"
+                    approved=False, rejection_reason="Max drawdown breached - kill switch activated"
                 )
             elif drawdown >= self._config.MAX_DRAWDOWN_PCT * 0.8:
                 warnings.append(
-                    f"Drawdown at {drawdown:.1%} — approaching {self._config.MAX_DRAWDOWN_PCT:.1%} limit"
+                    f"Drawdown at {drawdown:.1%} - approaching {self._config.MAX_DRAWDOWN_PCT:.1%} limit"
                 )
         elif self._equity_peak > 0:
             drawdown = (self._equity_peak - portfolio_equity) / self._equity_peak
@@ -356,11 +441,11 @@ class SafetyLayer:
                     f"Drawdown {drawdown:.1%} exceeded max {self._config.MAX_DRAWDOWN_PCT:.1%}",
                 )
                 return RiskCheckResult(
-                    approved=False, rejection_reason="Max drawdown breached — kill switch activated"
+                    approved=False, rejection_reason="Max drawdown breached - kill switch activated"
                 )
             elif drawdown >= self._config.MAX_DRAWDOWN_PCT * 0.8:
                 warnings.append(
-                    f"Drawdown at {drawdown:.1%} — approaching {self._config.MAX_DRAWDOWN_PCT:.1%} limit"
+                    f"Drawdown at {drawdown:.1%} - approaching {self._config.MAX_DRAWDOWN_PCT:.1%} limit"
                 )
         return RiskCheckResult(approved=True, warnings=warnings)
 
@@ -391,7 +476,7 @@ class SafetyLayer:
             )
             consecutive_losses = self._loss_tracker.get_consecutive_losses()
             warnings.append(
-                f"Consecutive losses: {consecutive_losses} — "
+                f"Consecutive losses: {consecutive_losses} - "
                 f"position size reduced by {(1.0 - multiplier):.0%} "
                 f"(qty: {order.quantity} → {adjusted_order.quantity})"
             )
@@ -424,7 +509,7 @@ class SafetyLayer:
         if self._config.REQUIRE_HUMAN_APPROVAL:
             return RiskCheckResult(
                 approved=False,
-                rejection_reason="Human approval required (REQUIRE_HUMAN_APPROVAL=True) — this is normal in initial deployment",
+                rejection_reason="Human approval required (REQUIRE_HUMAN_APPROVAL=True) - this is normal in initial deployment",
             )
         return RiskCheckResult(approved=True)
 
@@ -439,7 +524,7 @@ class SafetyLayer:
                 f"Daily loss {daily_pnl:.2f} exceeded limit",
             )
             return RiskCheckResult(
-                approved=False, rejection_reason="Daily loss limit breached — kill switch activated"
+                approved=False, rejection_reason="Daily loss limit breached - kill switch activated"
             )
         return RiskCheckResult(approved=True)
 
@@ -473,7 +558,7 @@ class SafetyLayer:
             )
             return (
                 RiskCheckResult(
-                    approved=False, rejection_reason="Anomalous order rate — kill switch activated"
+                    approved=False, rejection_reason="Anomalous order rate - kill switch activated"
                 ),
                 now,
             )
@@ -542,7 +627,7 @@ class SafetyLayer:
             return loss_result
         adjusted_order, warnings = loss_result
 
-        # All checks passed — log which broker will handle this order
+        # All checks passed - log which broker will handle this order
         self._recent_order_timestamps.append(now)
         if adjusted_order.is_futures:
             broker_target = "IBKR (futures)"
@@ -558,7 +643,7 @@ class SafetyLayer:
             else int(adjusted_order.estimated_value)
         )
         logger.info(
-            "Order approved: %s qty=%d est_value=$%d — routing to %s",
+            "Order approved: %s qty=%d est_value=$%d - routing to %s",
             adjusted_order.symbol,
             adjusted_order.quantity,
             _est_val_display,
@@ -586,13 +671,13 @@ class SafetyLayer:
         Gateway in paper-trading mode (port 4002).
 
         This is the ONLY approved path from the SafetyLayer to the broker.
-        No LLM reasoning happens here — pure deterministic gate.
+        No LLM reasoning happens here - pure deterministic gate.
 
         Parameters
         ----------
         symbol      : Ticker / futures root (e.g. "MES", "AAPL").
         action      : "BUY" or "SELL" (case-insensitive).
-        quantity    : Positive integer — always pass the absolute lot size.
+        quantity    : Positive integer - always pass the absolute lot size.
                       Direction is expressed via *action*.
         price       : Estimated execution price (used for value checks).
         order_type  : "MKT" (default) or "LMT".
@@ -601,12 +686,12 @@ class SafetyLayer:
         Returns
         -------
         dict with keys:
-            approved    (bool)   — True only when every safety check passed.
-            reason      (str)    — Human-readable outcome (approval or rejection message).
-            order_id    (str|None) — IB order ID string if the order was placed, else None.
-            routed_to_ib (bool)  — True only when the order reached IB Gateway.
+            approved    (bool)   - True only when every safety check passed.
+            reason      (str)    - Human-readable outcome (approval or rejection message).
+            order_id    (str|None) - IB order ID string if the order was placed, else None.
+            routed_to_ib (bool)  - True only when the order reached IB Gateway.
         """
-        # ── 0. Kill switch — checked first, before anything else ──────────
+        # ── 0. Kill switch - checked first, before anything else ──────────
         if self._kill_switch_active:
             reason = (
                 f"Kill switch active: {self._kill_switch_reason.value}"
@@ -614,7 +699,7 @@ class SafetyLayer:
                 else "Kill switch active"
             )
             logger.warning(
-                "submit_paper_order BLOCKED by kill switch — symbol=%s action=%s qty=%d: %s",
+                "submit_paper_order BLOCKED by kill switch - symbol=%s action=%s qty=%d: %s",
                 symbol,
                 action,
                 quantity,
@@ -674,7 +759,7 @@ class SafetyLayer:
 
         if not risk_result.approved:
             logger.warning(
-                "submit_paper_order REJECTED by SafetyLayer — symbol=%s action=%s qty=%d: %s",
+                "submit_paper_order REJECTED by SafetyLayer - symbol=%s action=%s qty=%d: %s",
                 symbol,
                 action,
                 quantity,
@@ -694,7 +779,7 @@ class SafetyLayer:
         # ── 3. Route to IB Gateway if available ───────────────────────────
         if self._ib_gateway is None:
             logger.info(
-                "submit_paper_order: safety checks PASSED — no IB gateway attached "
+                "submit_paper_order: safety checks PASSED - no IB gateway attached "
                 "(dry-run mode). symbol=%s action=%s qty=%d",
                 symbol,
                 action,
@@ -702,7 +787,7 @@ class SafetyLayer:
             )
             return {
                 "approved": True,
-                "reason": "Safety checks passed — IB gateway not attached (dry-run)",
+                "reason": "Safety checks passed - IB gateway not attached (dry-run)",
                 "order_id": None,
                 "routed_to_ib": False,
             }
@@ -717,7 +802,7 @@ class SafetyLayer:
             )
             return {
                 "approved": True,
-                "reason": "Safety checks passed — IB gateway not connected",
+                "reason": "Safety checks passed - IB gateway not connected",
                 "order_id": None,
                 "routed_to_ib": False,
             }
@@ -731,7 +816,7 @@ class SafetyLayer:
                 limit_price=limit_price,
             )
             logger.info(
-                "submit_paper_order ROUTED to IB Gateway (paper) — symbol=%s action=%s "
+                "submit_paper_order ROUTED to IB Gateway (paper) - symbol=%s action=%s "
                 "qty=%d order_type=%s order_id=%s",
                 symbol,
                 action_upper,
@@ -747,7 +832,7 @@ class SafetyLayer:
             }
         except Exception as exc:
             logger.error(
-                "submit_paper_order: IB Gateway place_paper_order raised — symbol=%s: %s",
+                "submit_paper_order: IB Gateway place_paper_order raised - symbol=%s: %s",
                 symbol,
                 exc,
                 exc_info=True,
@@ -772,33 +857,60 @@ class SafetyLayer:
         if equity > self._equity_peak:
             self._equity_peak = equity
 
+        # Persist P&L snapshot to SQLite so restarts don't lose intraday state
+        self._persist_pnl_snapshot()
+
         # Auto-trigger daily loss check
         if daily_pnl < -(equity * self._config.MAX_DAILY_LOSS_PCT):
             self.activate_kill_switch(
                 KillSwitchReason.DAILY_LOSS_LIMIT, f"Intraday sync: daily PnL {daily_pnl:.2f}"
             )
 
+        # Push P&L alerts via AlertManager (deduped — each threshold fires once per day)
+        if self._alert_manager is not None:
+            try:
+                daily_pnl_pct = (daily_pnl / equity) if equity > 0 else 0.0
+                drawdown_pct = 0.0
+                if self._pnl_monitor is not None and hasattr(self._pnl_monitor, "get_drawdown_pct"):
+                    drawdown_pct = self._pnl_monitor.get_drawdown_pct()  # already negative (e.g. -0.08 = 8% down)
+                elif self._equity_peak > 0:
+                    drawdown_pct = -(self._equity_peak - equity) / self._equity_peak  # negative fraction
+                consecutive_losses = 0
+                if self._loss_tracker is not None and hasattr(
+                    self._loss_tracker, "get_consecutive_losses"
+                ):
+                    consecutive_losses = self._loss_tracker.get_consecutive_losses()
+                self._alert_manager.check_and_alert(
+                    daily_pnl=daily_pnl,
+                    daily_pnl_pct=daily_pnl_pct,
+                    drawdown_pct=drawdown_pct,
+                    consecutive_losses=consecutive_losses,
+                    portfolio_equity=equity,
+                )
+            except Exception as _alert_exc:
+                logger.warning("SafetyLayer: AlertManager.check_and_alert failed: %s", _alert_exc)
+
     def check_circuit_breakers(self) -> dict:
         """
         Return the current status of all circuit breakers as a single dict.
 
-        This method is safe to call at any time — it does NOT activate the kill
+        This method is safe to call at any time - it does NOT activate the kill
         switch.  Use it for dashboard polling and the /safety/circuit-breakers
         API endpoint.
 
         Returns
         -------
         dict with keys:
-            daily_pnl            (float)  — today's realized + unrealized P&L in $
-            daily_limit          (float)  — maximum allowed daily loss in $ (negative)
-            daily_pnl_pct        (float)  — daily P&L as fraction of starting balance
-            daily_limit_pct      (float)  — configured daily loss limit (negative fraction)
-            daily_limit_breached (bool)  — if daily loss limit has been breached
-            drawdown_pct         (float)  — current drawdown from peak (negative)
-            drawdown_limit_pct   (float)  — configured max drawdown (negative)
-            drawdown_breached    (bool)  — if drawdown limit has been breached
-            kill_switch_active   (bool)  — if emergency halt is engaged
-            kill_switch_reason   (str)   — reason for kill switch if active
+            daily_pnl            (float)  - today's realized + unrealized P&L in $
+            daily_limit          (float)  - maximum allowed daily loss in $ (negative)
+            daily_pnl_pct        (float)  - daily P&L as fraction of starting balance
+            daily_limit_pct      (float)  - configured daily loss limit (negative fraction)
+            daily_limit_breached (bool)  - if daily loss limit has been breached
+            drawdown_pct         (float)  - current drawdown from peak (negative)
+            drawdown_limit_pct   (float)  - configured max drawdown (negative)
+            drawdown_breached    (bool)  - if drawdown limit has been breached
+            kill_switch_active   (bool)  - if emergency halt is engaged
+            kill_switch_reason   (str)   - reason for kill switch if active
         """
         # Use PnLMonitor when available; fall back to in-memory values
         if self._pnl_monitor is not None:
@@ -887,7 +999,7 @@ class SafetyLayer:
         """
         Reset in-memory daily realized PnL counters (human / ops / testing).
 
-        Does not modify PnLMonitor or broker snapshots — only SafetyLayer counters.
+        Does not modify PnLMonitor or broker snapshots - only SafetyLayer counters.
         """
         self._daily_realized_pnl = 0.0
         self._daily_order_count = 0
@@ -929,7 +1041,7 @@ class SafetyLayer:
         """
         Calculate recommended position size using ATR-based risk framework.
 
-        ADVISORY ONLY — does not override hardcoded safety limits.
+        ADVISORY ONLY - does not override hardcoded safety limits.
         If position_sizer recommends LESS than hardcoded max, use recommendation.
         If position_sizer recommends MORE than hardcoded max, use hardcoded max.
 
@@ -1033,7 +1145,7 @@ class SafetyLayer:
         """
         Log a safety event to PostgreSQL.
 
-        Gracefully handles database unavailability — never blocks execution.
+        Gracefully handles database unavailability - never blocks execution.
 
         Args:
             event_type: Type of event (kill_switch_activate, kill_switch_deactivate, etc.)

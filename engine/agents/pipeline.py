@@ -310,6 +310,67 @@ class TradingPipeline:
         final_action, final_quantity, requires_human = self._resolve_final_action(
             trade_decision, risk_decision, fund_decision
         )
+
+        # ── Futures confidence boost + minimum confidence gate ─────────────
+        # Apply futures-specific tuning before committing the final action.
+        # Futures (MCL, MNQ, MES) have cleaner technical signals but fewer
+        # available analyst inputs (no fundamentals/social), so:
+        #   1. Apply a small additive confidence boost to compensate
+        #   2. Gate directional signals on instrument-specific min-confidence
+        # This prevents low-data HOLDs from leaking through as weak directional
+        # signals while also catching genuinely low-confidence reads.
+        if final_action not in ("hold", "HOLD"):
+            try:
+                from config import settings as _cfg
+                raw_confidence = float(trade_decision.get("confidence", 0.0))
+                if is_futures:
+                    boosted = raw_confidence + float(_cfg.FUTURES_CONFIDENCE_BOOST)
+                    min_thresh = float(_cfg.FUTURES_MIN_CONFIDENCE_TO_TRADE)
+                else:
+                    boosted = raw_confidence  # no boost for equities
+                    min_thresh = float(_cfg.EQUITY_MIN_CONFIDENCE_TO_TRADE)
+
+                # Also skip zero-weight technical reports (no_price_data abstentions)
+                tech_weight = (
+                    analyst_reports.get("technical", {})
+                    .get("indicators", {})
+                    .get("weight", 1.0)  # default 1.0 = normal weight
+                )
+                if tech_weight == 0.0:
+                    logger.warning(
+                        "[Pipeline] %s: technical analyst abstained (no_price_data) — "
+                        "confidence computed without technical input",
+                        symbol,
+                    )
+                    # Without technical signal, drop below threshold to force HOLD
+                    boosted = 0.0
+
+                pipeline_result["raw_confidence"] = round(raw_confidence, 4)
+                pipeline_result["boosted_confidence"] = round(boosted, 4)
+                pipeline_result["confidence_threshold"] = round(min_thresh, 4)
+
+                if boosted < min_thresh:
+                    logger.info(
+                        "[Pipeline] %s: confidence %.2f (boosted from %.2f) below threshold %.2f "
+                        "— downgrading %s → HOLD",
+                        symbol, boosted, raw_confidence, min_thresh, final_action.upper(),
+                    )
+                    final_action = "hold"
+                    final_quantity = 0
+                    pipeline_result["confidence_gate_triggered"] = True
+                    pipeline_result["confidence_gate_reason"] = (
+                        f"boosted_confidence={boosted:.3f} < threshold={min_thresh:.3f}"
+                    )
+                else:
+                    pipeline_result["confidence_gate_triggered"] = False
+                    logger.debug(
+                        "[Pipeline] %s: confidence %.2f (boosted %.2f) ≥ threshold %.2f — "
+                        "%s passes gate",
+                        symbol, raw_confidence, boosted, min_thresh, final_action.upper(),
+                    )
+            except Exception as _cg_err:
+                logger.warning("[Pipeline] Confidence gate error (non-fatal): %s", _cg_err)
+
         pipeline_result["final_action"] = final_action
         pipeline_result["final_quantity"] = final_quantity
         pipeline_result["requires_human"] = requires_human
@@ -371,13 +432,12 @@ class TradingPipeline:
         # Publish pipeline result event
         try:
             from events.bus import publish as publish_event
-            symbol_val = kwargs.get('symbol', 'UNKNOWN')
-            action = pipeline_result.get('action', 'HOLD').upper() if pipeline_result else 'HOLD'
-            conviction = pipeline_result.get('conviction', 0) if pipeline_result else 0
+            _ev_action = pipeline_result.get('final_action', 'HOLD').upper()
+            _ev_conviction = pipeline_result.get('boosted_confidence', 0.0)
             publish_event(
                 'pipeline_run',
-                f'{symbol_val} → {action} conviction={conviction:.0%}',
-                symbol=symbol_val,
+                f'{symbol} → {_ev_action} confidence={_ev_conviction:.0%}',
+                symbol=symbol,
                 severity='info'
             )
         except Exception as e:
@@ -401,15 +461,26 @@ class TradingPipeline:
                 report = await coro
                 # Support both dataclasses with to_dict() and plain dicts
                 if hasattr(report, "to_dict"):
-                    return report.to_dict()
+                    result = report.to_dict()
                 elif isinstance(report, dict):
-                    return report
+                    result = report
                 else:
-                    return {
+                    result = {
                         "signal": 0.0,
                         "confidence": 0.0,
                         "summary": f"{name} returned unexpected type",
                     }
+                # Detect and log zero-weight abstentions
+                # (e.g. technical analyst returning no_price_data)
+                indicators = result.get("indicators", {})
+                if isinstance(indicators, dict) and indicators.get("weight") == 0.0:
+                    reason = indicators.get("reason", "unknown")
+                    logger.warning(
+                        "[Pipeline] %s analyst abstained (weight=0.0, reason=%s) — "
+                        "excluded from confidence computation",
+                        name, reason,
+                    )
+                return result
             except Exception as e:
                 err = f"{name} analyst failed: {e}"
                 logger.warning(f"[Pipeline] {err}")

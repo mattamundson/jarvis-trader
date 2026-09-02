@@ -116,10 +116,16 @@ def _restore_router_deps(orig):
     ) = orig
 
 
-def test_requires_human_inserts_pending_skips_paper(tmp_db_manager):
+def test_requires_human_bypassed_in_paper_mode(tmp_db_manager):
+    """
+    In paper mode (LIVE_TRADING_ENABLED=False), requires_human=True is overridden
+    so paper trades are always auto-logged for validation continuity.
+    The pending_trade_approvals queue is NOT used in paper mode.
+    """
     mock_tp = MagicMock()
     mock_tp.analyze_and_decide = AsyncMock(return_value=_pipeline_payload(requires_human=True))
     mock_pt = MagicMock()
+    mock_pt.add_paper_trade.return_value = "paper-tid-bypass"
     mock_safety = MagicMock()
     mock_safety.get_status = MagicMock(return_value={"kill_switch_active": False})
 
@@ -142,8 +148,10 @@ def test_requires_human_inserts_pending_skips_paper(tmp_db_manager):
     assert data.get("status") == "running"
 
     time.sleep(0.2)
-    mock_pt.add_paper_trade.assert_not_called()
-    assert len(tmp_db_manager.list_pending_approvals()) == 1
+    # Paper mode bypass: trade IS auto-logged even though requires_human=True
+    mock_pt.add_paper_trade.assert_called_once()
+    # No pending approval row — human gate is bypassed in paper mode
+    assert len(tmp_db_manager.list_pending_approvals()) == 0
 
 
 def test_without_human_logs_paper_no_pending_row(tmp_db_manager):

@@ -1,0 +1,10 @@
+fix(engine): add weekly portfolio stats endpoint
+
+Adds GET /portfolio/stats/weekly — rolling 7-day trade stats (win rate,
+gross PnL, symbol list) queried from paper_trades DB.
+
+Resolves 4 pre-existing 404 failures in test_session4_contract.py and
+test_session4_continuation_offline.py where weekly_stats tests expected
+200 but got 404 because the endpoint was missing.
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>

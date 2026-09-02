@@ -826,6 +826,30 @@ def migration_017(conn: sqlite3.Connection) -> None:
     logger.info("Migration 017 applied — system_state table created.")
 
 
+def migration_018(conn: sqlite3.Connection) -> None:
+    """
+    018 — P&L snapshots table for safety layer state persistence.
+
+    Stores daily P&L state so the safety layer can restore its position
+    after an engine restart mid-session without resetting drawdown to 0.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pnl_snapshots (
+            date             TEXT    NOT NULL,
+            daily_pnl        REAL    NOT NULL DEFAULT 0.0,
+            portfolio_equity REAL    NOT NULL DEFAULT 0.0,
+            peak_equity      REAL    NOT NULL DEFAULT 0.0,
+            consecutive_losses INTEGER NOT NULL DEFAULT 0,
+            updated_at       TEXT    NOT NULL DEFAULT (datetime('now', 'utc')),
+            PRIMARY KEY (date)
+        )
+        """
+    )
+    conn.commit()
+    logger.info("Migration 018 applied — pnl_snapshots table created.")
+
+
 # ── Migration registry ─────────────────────────────────────────────────────────
 # Add new migrations here in order.  The list index + 1 = migration version.
 
@@ -847,6 +871,7 @@ MIGRATIONS: List[Callable[[sqlite3.Connection], None]] = [
     migration_015,  # version 15
     migration_016,  # version 16
     migration_017,  # version 17
+    migration_018,  # version 18
 ]
 
 MIGRATION_DESCRIPTIONS: List[str] = [
@@ -867,6 +892,7 @@ MIGRATION_DESCRIPTIONS: List[str] = [
     "Pipeline confidence monitoring: confidence and final_decision columns for hold-rate detection",
     "WFE divergence flag: divergence_flag column for wfe_snapshots table to track performance divergence",
     "System state persistence: system_state key/value table for kill switch and engine state across restarts",
+    "P&L snapshots: pnl_snapshots table for safety layer daily P&L persistence across engine restarts",
 ]
 
 

@@ -1054,6 +1054,68 @@ STALE_SYMBOL = "MES"
 STALE_ENTRY_PRICE = 5800.0
 
 
+@router.get(
+    "/pnl-snapshot",
+    description="Current daily P&L snapshot from SQLite persistence layer (survives engine restarts).",
+)
+async def get_pnl_snapshot():
+    """
+    Return today’s P&L snapshot from the pnl_snapshots SQLite table.
+
+    This reflects the last state persisted by the SafetyLayer’s sync_from_broker()
+    call, which runs every 60 seconds. The snapshot survives engine restarts so
+    intraday drawdown tracking is not lost on restart.
+    """
+    today_str = date.today().isoformat()
+
+    if db_manager is None:
+        return {
+            "date": today_str,
+            "daily_pnl": 0.0,
+            "portfolio_equity": 0.0,
+            "peak_equity": 0.0,
+            "drawdown_pct": 0.0,
+            "consecutive_losses": 0,
+            "last_updated": None,
+            "source": "no_db",
+        }
+
+    try:
+        snap = db_manager.get_pnl_snapshot(today_str)
+    except Exception as exc:
+        logger.warning("get_pnl_snapshot: DB read failed: %s", exc)
+        snap = None
+
+    if snap is None:
+        return {
+            "date": today_str,
+            "daily_pnl": 0.0,
+            "portfolio_equity": 0.0,
+            "peak_equity": 0.0,
+            "drawdown_pct": 0.0,
+            "consecutive_losses": 0,
+            "last_updated": None,
+            "source": "no_snapshot",
+        }
+
+    portfolio_equity = float(snap.get("portfolio_equity", 0.0))
+    peak_equity = float(snap.get("peak_equity", 0.0))
+    drawdown_pct = 0.0
+    if peak_equity > 0 and portfolio_equity < peak_equity:
+        drawdown_pct = round((portfolio_equity - peak_equity) / peak_equity * 100, 4)
+
+    return {
+        "date": snap.get("date", today_str),
+        "daily_pnl": round(float(snap.get("daily_pnl", 0.0)), 4),
+        "portfolio_equity": round(portfolio_equity, 4),
+        "peak_equity": round(peak_equity, 4),
+        "drawdown_pct": drawdown_pct,
+        "consecutive_losses": int(snap.get("consecutive_losses", 0)),
+        "last_updated": snap.get("updated_at"),
+        "source": "sqlite",
+    }
+
+
 @router.post("/paper/admin/close-stale")
 async def close_stale_positions():
     """

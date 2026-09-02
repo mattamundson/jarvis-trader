@@ -1,0 +1,47 @@
+[
+  {
+    "id": "MES-TEST-001",
+    "stc_os": 15,
+    "stc_ob": 83,
+    "stc_cycle_length": 10,
+    "atr_stop": 0.7,
+    "atr_target": 1.5,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-TEST-002",
+    "stc_os": 12,
+    "stc_ob": 85,
+    "stc_cycle_length": 12,
+    "atr_stop": 0.6,
+    "atr_target": 1.8,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-TEST-003",
+    "stc_os": 18,
+    "stc_ob": 80,
+    "stc_cycle_length": 8,
+    "atr_stop": 0.8,
+    "atr_target": 1.2,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-TEST-004",
+    "stc_os": 10,
+    "stc_ob": 90,
+    "stc_cycle_length": 15,
+    "atr_stop": 0.5,
+    "atr_target": 2.0,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-TEST-005",
+    "stc_os": 20,
+    "stc_ob": 75,
+    "stc_cycle_length": 10,
+    "atr_stop": 0.7,
+    "atr_target": 1.5,
+    "interval": "1h"
+  }
+]

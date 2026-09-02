@@ -293,6 +293,24 @@ class SignalScanner:
             except Exception as _db_exc:
                 logger.warning("[Scanner] Failed to log pipeline_run for %s: %s", symbol, _db_exc)
 
+            # Also write to the decisions table so /decisions/recent shows scanner results.
+            try:
+                _conf = float(result.get("confidence") or
+                              (result.get("fund_decision") or {}).get("final_conviction") or 0.0)
+                _summary = result.get("summary", "")
+                _reasoning = (result.get("trade_decision") or {}).get("reasoning", "")
+                _regime = (result.get("analyst_reports") or {}).get("technical", {}).get("regime") or None
+                self.db_manager.insert_decision(
+                    symbol=symbol,
+                    action=final_action,
+                    confidence=_conf,
+                    regime=_regime,
+                    signal_data={"source": "scanner", "summary": _summary},
+                    reasoning=_reasoning or _summary,
+                )
+            except Exception as _dec_exc:
+                logger.warning("[Scanner] Failed to log decision for %s: %s", symbol, _dec_exc)
+
             if final_action not in ("buy", "sell"):
                 logger.debug(f"[Scanner] {symbol} signal: {final_action}, no action needed")
                 return
@@ -316,6 +334,68 @@ class SignalScanner:
                 f"[Scanner] {symbol} signal: {final_action} {quantity} "
                 f"(approval_id={approval_id[:8]})"
             )
+
+            # ── Paper mode bypass: auto-log paper trade without waiting for human approval ──
+            # The pending approval is still created for audit/UI purposes, but in paper mode
+            # the trade is also immediately written to the DB so validation data exists.
+            try:
+                from config import settings as _cfg
+                _is_paper_mode = not _cfg.LIVE_TRADING_ENABLED
+            except Exception:
+                _is_paper_mode = True
+
+            _confidence = float(result.get("confidence", 0.0))
+            if _is_paper_mode and self._paper_tracker is not None and entry_price is not None:
+                try:
+                    trade_dec = result.get("trade_decision") or {}
+                    technical_report = (result.get("analyst_reports") or {}).get("technical") or {}
+                    fund_decision = result.get("fund_decision") or {}
+                    stop_price = trade_dec.get("stop_price") or None
+                    target_price = trade_dec.get("target_price") or trade_dec.get("take_profit") or None
+                    conviction = fund_decision.get("final_conviction", 0.0) or trade_dec.get("confidence", 0.0)
+                    stc_val = (technical_report.get("indicators") or {}).get("stc_value")
+
+                    trade_id = self._paper_tracker.add_paper_trade(
+                        symbol=symbol,
+                        side=final_action,
+                        quantity=float(quantity) if quantity else 1.0,
+                        entry_price=float(entry_price),
+                        stop_loss=float(stop_price) if stop_price else None,
+                        take_profit=float(target_price) if target_price else None,
+                        strategy_params={
+                            "source": "scanner",
+                            "approval_id": approval_id,
+                            "conviction": round(float(conviction), 4),
+                            "direction": final_action.upper(),
+                            "summary": result.get("summary", ""),
+                            "regime": technical_report.get("regime") or "unknown",
+                            "bias": technical_report.get("trend") or technical_report.get("bias") or "unknown",
+                            "entry_stc_value": round(float(stc_val), 2) if stc_val is not None else None,
+                            "pipeline_conviction": round(float(conviction), 4),
+                            "predicted_direction": final_action.upper(),
+                        },
+                    )
+                    logger.info(
+                        "[EXECUTION] symbol=%s action=%s confidence=%.2f threshold=%.2f "
+                        "executed=True reason=paper_mode_bypass trade_id=%s",
+                        symbol, final_action, _confidence, 0.0, trade_id[:8]
+                    )
+                except Exception as _paper_exc:
+                    logger.error(
+                        "[Scanner] Paper trade auto-log failed for %s: %s", symbol, _paper_exc
+                    )
+            elif not _is_paper_mode:
+                logger.info(
+                    "[EXECUTION] symbol=%s action=%s confidence=%.2f threshold=%.2f "
+                    "executed=False reason=live_mode_requires_human approval_id=%s",
+                    symbol, final_action, _confidence, 0.0, approval_id[:8]
+                )
+            else:
+                logger.warning(
+                    "[EXECUTION] symbol=%s action=%s confidence=%.2f threshold=%.2f "
+                    "executed=False reason=paper_tracker_not_available",
+                    symbol, final_action, _confidence, 0.0
+                )
 
             from notifications.pending_approval_notify import (
                 notify_pending_approval_queued,

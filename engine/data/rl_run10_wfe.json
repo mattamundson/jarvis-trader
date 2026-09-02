@@ -1,0 +1,15 @@
+{
+  "run": 10,
+  "model_checkpoint": "MES_20260402_102553",
+  "timesteps_trained": 501760,
+  "episodes_trained": 20,
+  "wfe": 0.38,
+  "pf": 0.95,
+  "sharpe": 1.8,
+  "wr": 0.42,
+  "n_trades": 45,
+  "return_pct": 2.1,
+  "max_dd": -8.2,
+  "gate_passed": false,
+  "notes": "RL Run 10 WFE=0.38 is close to gate (0.40) but below threshold. Model shows promise with Sharpe=1.8 and WR=0.42. Recommend Run 11 with increased training epochs and refined action space."
+}

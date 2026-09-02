@@ -1,0 +1,122 @@
+{
+  "experiment_date": "2026-04-04",
+  "total_configs_tested": 50,
+  "gate_passes": 50,
+  "top_5_configs": [
+    {
+      "rank": 1,
+      "config_id": "MES-022",
+      "config": {
+        "id": "MES-022",
+        "stc_os": 10,
+        "stc_ob": 80,
+        "stc_cycle_length": 8,
+        "atr_stop": 0.7,
+        "atr_target": 1.8,
+        "interval": "4h"
+      },
+      "metrics": {
+        "pf": 0.891,
+        "sharpe": 2.29,
+        "wr": 0.396,
+        "n_trades": 46,
+        "return_pct": 11.72,
+        "max_dd": -7.39,
+        "wfe": 0.09
+      },
+      "wfe_gate_passed": true
+    },
+    {
+      "rank": 2,
+      "config_id": "MES-044",
+      "config": {
+        "id": "MES-044",
+        "stc_os": 10,
+        "stc_ob": 80,
+        "stc_cycle_length": 10,
+        "atr_stop": 0.6,
+        "atr_target": 1.5,
+        "interval": "4h"
+      },
+      "metrics": {
+        "pf": 0.864,
+        "sharpe": 2.38,
+        "wr": 0.352,
+        "n_trades": 56,
+        "return_pct": 6.74,
+        "max_dd": -15.01,
+        "wfe": 0.09
+      },
+      "wfe_gate_passed": true
+    },
+    {
+      "rank": 3,
+      "config_id": "MES-045",
+      "config": {
+        "id": "MES-045",
+        "stc_os": 10,
+        "stc_ob": 80,
+        "stc_cycle_length": 10,
+        "atr_stop": 0.6,
+        "atr_target": 1.8,
+        "interval": "1h"
+      },
+      "metrics": {
+        "pf": 0.857,
+        "sharpe": 1.19,
+        "wr": 0.38,
+        "n_trades": 37,
+        "return_pct": -7.31,
+        "max_dd": -8.71,
+        "wfe": 0.09
+      },
+      "wfe_gate_passed": true
+    },
+    {
+      "rank": 4,
+      "config_id": "MES-010",
+      "config": {
+        "id": "MES-010",
+        "stc_os": 10,
+        "stc_ob": 80,
+        "stc_cycle_length": 8,
+        "atr_stop": 0.6,
+        "atr_target": 1.2,
+        "interval": "4h"
+      },
+      "metrics": {
+        "pf": 0.848,
+        "sharpe": 1.0,
+        "wr": 0.463,
+        "n_trades": 16,
+        "return_pct": 14.74,
+        "max_dd": -11.92,
+        "wfe": 0.09
+      },
+      "wfe_gate_passed": true
+    },
+    {
+      "rank": 5,
+      "config_id": "MES-043",
+      "config": {
+        "id": "MES-043",
+        "stc_os": 10,
+        "stc_ob": 80,
+        "stc_cycle_length": 10,
+        "atr_stop": 0.6,
+        "atr_target": 1.5,
+        "interval": "1h"
+      },
+      "metrics": {
+        "pf": 0.834,
+        "sharpe": 0.96,
+        "wr": 0.365,
+        "n_trades": 58,
+        "return_pct": 9.91,
+        "max_dd": -13.97,
+        "wfe": 0.09
+      },
+      "wfe_gate_passed": true
+    }
+  ]
+}

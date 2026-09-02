@@ -15,6 +15,7 @@ import os
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Optional
 
 import httpx
 
@@ -88,15 +89,17 @@ Your task:
 Respond with valid JSON only. Do not add any explanation outside the JSON.
 """
 
-    def __init__(self, llm_client, data_manager=None):
+    def __init__(self, llm_client, data_manager=None, brave_client=None):
         """
         Args:
             llm_client: Object with .api_key attribute (Anthropic key) and
                         optionally .finnhub_key for Finnhub API access.
             data_manager: Optional data manager that may expose a news feed.
+            brave_client: Optional BraveSearchClient for live web news search.
         """
         self._llm = llm_client
         self._data = data_manager
+        self._brave: Optional[object] = brave_client
 
     async def analyze(self, symbol: str) -> "NewsReport":
         """Full news analysis pipeline for a symbol"""
@@ -156,6 +159,25 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
             except Exception as e:
                 logger.warning(f"Finnhub news fetch failed for {symbol}: {e}")
 
+        # --- Brave Search live web news ---
+        if self._brave is not None:
+            try:
+                brave_results = await self._brave.get_market_news(symbol)
+                for item in brave_results:
+                    headlines.append(
+                        {
+                            "headline": item.get("title", ""),
+                            "source": item.get("published") or item.get("source", "brave"),
+                            "datetime": item.get("age", ""),
+                            "summary": item.get("description", "")[:200],
+                        }
+                    )
+                logger.info(f"Brave Search added {len(brave_results)} headlines for {symbol}")
+            except Exception as e:
+                logger.warning(f"Brave Search news fetch failed for {symbol}: {e}")
+        else:
+            logger.debug(f"Brave Search not available for {symbol} — skipping live web search")
+
         # --- Optional data manager news feed ---
         if self._data and hasattr(self._data, "get_news"):
             try:
@@ -192,9 +214,11 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
             ts = h.get("datetime", "")
             if isinstance(ts, int) and ts > 0:
                 ts = datetime.utcfromtimestamp(ts).strftime("%Y-%m-%d %H:%M")
-            headlines_text += f"{i}. [{ts}] {h['headline']}\n"
+            source = h.get("source", "")
+            source_tag = f" ({source}, {ts})".rstrip(", ").rstrip("(").rstrip() if source or ts else ""
+            headlines_text += f"{i}. {h['headline']}{source_tag}\n"
             if h.get("summary"):
-                headlines_text += f"   Summary: {h['summary']}\n"
+                headlines_text += f"   {h['summary']}\n"
 
         prompt = f"""Analyze these {len(headlines)} recent news items for {symbol}:
 

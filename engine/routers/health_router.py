@@ -418,6 +418,120 @@ async def health_backup_status():
         raise HTTPException(status_code=500, detail=f"Backup status failed: {str(e)}") from None
 
 
+@router.get(
+    "/health/watchdog",
+    description="Minimal liveness ping for the engine watchdog. No auth required, no heavy computation.",
+    include_in_schema=True,
+)
+async def health_watchdog():
+    """
+    Lightweight liveness endpoint polled by watchdog_engine.ps1 every 60 seconds.
+
+    Returns minimal status so the watchdog can distinguish:
+      - Engine process alive and responsive  -> status="ok"
+      - Engine process dead / port not bound -> HTTP connection error (watchdog treats as DOWN)
+
+    No authentication required. No database queries. No external calls.
+    """
+    now = datetime.now(timezone.utc)
+    uptime = (now - _start_time).total_seconds() if _start_time else 0.0
+    return {
+        "status": "ok",
+        "timestamp": now.isoformat(),
+        "uptime_seconds": round(uptime, 1),
+        "engine_version": "1.1.0",
+    }
+
+
+@router.get(
+    "/health/apis",
+    description="Check connectivity to all external data APIs (Polygon, Finnhub, Brave, Anthropic, IBKR). Cached 60s.",
+)
+async def api_health():
+    """Check connectivity to all external data APIs."""
+    import httpx
+
+    results = {}
+
+    # Polygon
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            r = await client.get(
+                "https://api.polygon.io/v2/aggs/ticker/CL/range/1/day/2026-04-03/2026-04-04",
+                params={"limit": 1, "apiKey": settings.POLYGON_API_KEY},
+            )
+            d = r.json()
+            if d.get("resultsCount", 0) > 0:
+                close = d["results"][0]["c"]
+                results["polygon"] = {"status": "ok", "test": f"CL close: ${close:.2f}"}
+            else:
+                results["polygon"] = {
+                    "status": "no_data",
+                    "error": d.get("error", d.get("status", "unknown")),
+                }
+    except Exception as e:
+        results["polygon"] = {"status": "error", "error": str(e)[:100]}
+
+    # Finnhub
+    try:
+        import finnhub as _fh
+
+        fh_client = _fh.Client(api_key=settings.FINNHUB_API_KEY)
+        news = fh_client.general_news("general", min_id=0)
+        results["finnhub"] = {"status": "ok", "test": f"{len(news)} news items"}
+    except Exception as e:
+        results["finnhub"] = {"status": "error", "error": str(e)[:100]}
+
+    # Brave
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            r = await client.get(
+                "https://api.search.brave.com/res/v1/news/search",
+                params={"q": "crude oil futures", "count": 3, "country": "us"},
+                headers={
+                    "Accept": "application/json",
+                    "X-Subscription-Token": settings.BRAVE_API_KEY,
+                },
+            )
+            d = r.json()
+            count = len(d.get("results", []))
+            results["brave"] = {
+                "status": "ok" if count > 0 else "no_data",
+                "test": f"{count} results",
+            }
+    except Exception as e:
+        results["brave"] = {"status": "error", "error": str(e)[:100]}
+
+    # Anthropic (just check key is set)
+    results["anthropic"] = {
+        "status": "ok" if settings.ANTHROPIC_API_KEY else "not_configured",
+        "note": "key present" if settings.ANTHROPIC_API_KEY else "missing",
+    }
+
+    # IBKR
+    try:
+        from main import app as _app
+
+        ibkr = getattr(_app.state, "ibkr_connector", None)
+        if ibkr and getattr(ibkr, "is_connected", False):
+            results["ibkr"] = {"status": "ok"}
+        else:
+            results["ibkr"] = {"status": "disconnected", "note": "normal outside market hours"}
+    except Exception:
+        results["ibkr"] = {"status": "unknown"}
+
+    overall = (
+        "ok"
+        if all(v["status"] == "ok" for v in results.values() if v["status"] != "disconnected")
+        else "degraded"
+    )
+    return {
+        "status": overall,
+        "apis": results,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 @router.post(
     "/health/backup-now",
     description="Trigger an immediate database backup outside the nightly schedule.",

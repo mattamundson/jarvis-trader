@@ -139,6 +139,17 @@ class SchwabConnector:
             if self._heartbeat_task is None or self._heartbeat_task.done():
                 self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
 
+            # Warn if token is close to expiry
+            days_left = self.token_expires_in_days()
+            if days_left is not None and days_left < 2:
+                logger.warning(
+                    "SchwabConnector: token expires in %d day(s) — re-auth required soon. "
+                    "Run: .venv/Scripts/python.exe -c \"import schwab; "
+                    "schwab.auth.easy_client(api_key='...', app_secret='...', "
+                    "callback_url='https://127.0.0.1', token_path='.schwab_token.json')\"",
+                    days_left,
+                )
+
             logger.info("SchwabConnector: state=%s", self._state.value)
             return True
 
@@ -858,3 +869,44 @@ class SchwabConnector:
     def get_auth_instructions(self) -> str:
         """Public alias — backward compat."""
         return self._auth_instructions()
+
+    def token_expires_in_days(self) -> Optional[int]:
+        """
+        Read .schwab_token.json and return the number of days until the token expires.
+        Returns None if the token file does not exist or cannot be parsed.
+        """
+        if not _TOKEN_PATH.exists():
+            return None
+        try:
+            import json  # noqa: PLC0415
+
+            raw = _TOKEN_PATH.read_text(encoding="utf-8")
+            data = json.loads(raw)
+
+            # schwab-py stores the token under various keys depending on version.
+            # Try the most common locations for the access-token expiry.
+            expiry_ts: Optional[float] = None
+
+            # Format 1: top-level 'expires_at' (epoch float)
+            if "expires_at" in data:
+                expiry_ts = float(data["expires_at"])
+
+            # Format 2: nested token dict
+            elif "token" in data and "expires_at" in data["token"]:
+                expiry_ts = float(data["token"]["expires_at"])
+
+            # Format 3: 'creation_timestamp' + 'expires_in' seconds
+            elif "creation_timestamp" in data and "expires_in" in data:
+                expiry_ts = float(data["creation_timestamp"]) + float(data["expires_in"])
+
+            if expiry_ts is None:
+                logger.warning("SchwabConnector.token_expires_in_days: could not find expiry in token file")
+                return None
+
+            now = datetime.now(timezone.utc).timestamp()
+            days_remaining = int((expiry_ts - now) / 86400)
+            return days_remaining
+
+        except Exception as exc:
+            logger.warning("SchwabConnector.token_expires_in_days: failed to parse token: %s", exc)
+            return None

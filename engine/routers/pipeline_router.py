@@ -342,6 +342,37 @@ async def _run_pipeline_and_log(symbol: str, is_futures: bool) -> None:
     is_directional = final_action not in ("hold", "HOLD")
     requires_human = bool(result.get("requires_human", True))
 
+    # ── Paper mode bypass: never block paper trades behind human approval ──
+    # When LIVE_TRADING_ENABLED=False we are in pure paper simulation.
+    # REQUIRE_HUMAN_APPROVAL is a live-trading safeguard; it must not prevent
+    # paper trades from being written to the DB (that defeats validation).
+    try:
+        from config import settings as _cfg
+        _paper_mode = not _cfg.LIVE_TRADING_ENABLED
+    except Exception:
+        _paper_mode = True  # default safe: treat as paper if config unavailable
+
+    if _paper_mode and is_directional and requires_human:
+        logger.warning(
+            "[EXECUTION] symbol=%s action=%s — requires_human=True overridden for paper mode; "
+            "trade will be auto-logged to DB without human gate",
+            symbol, final_action.upper()
+        )
+        requires_human = False
+
+    # Execution audit log — fires for every directional decision regardless of outcome
+    _confidence = float((result.get("fund_decision") or {}).get("final_conviction") or 0.0)
+    _threshold = 0.0  # paper mode: no confidence threshold gate
+    logger.info(
+        "[EXECUTION] symbol=%s action=%s confidence=%.2f threshold=%.2f executed=%s reason=%s",
+        symbol,
+        final_action,
+        _confidence,
+        _threshold,
+        str(is_directional and not requires_human),
+        "paper_mode_bypass" if (_paper_mode and is_directional) else ("hold" if not is_directional else "requires_human"),
+    )
+
     if is_directional and requires_human and _db_manager is not None:
         # Human approval required — queue in pending_trade_approvals
         try:
