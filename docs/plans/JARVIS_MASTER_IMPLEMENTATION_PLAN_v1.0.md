@@ -136,8 +136,15 @@ Judge lifecycle:
 
 ```text
 RESEARCH_REJECT → RESEARCH_ONLY → PAPER_CANDIDATE → PAPER_VALIDATED
-→ CANARY_CANDIDATE → LIVE_ELIGIBLE → DEGRADED / RETIRED
+→ CANARY_CANDIDATE → LIVE_ELIGIBLE
+
+PAPER_CANDIDATE / PAPER_VALIDATED / CANARY_CANDIDATE / LIVE_ELIGIBLE
+→ DEGRADED / RETIRED
 ```
+
+Weakening, stale, invalidated, or unavailable evidence may move a strategy to
+`DEGRADED` or `RETIRED` from every deployed-evidence state; live eligibility
+is never required before risk-reducing lifecycle action.
 
 Lifecycle is strategy+instrument+TF+version specific. Judge checks causal integrity, preregistered trials, purged WFO/CPCV, honest DSR/PBO, parameter plateaus, costs, regimes, edge haircuts, ablation, placebos/falsification, locked holdout, paper evidence and canary evidence. Research code cannot self-write PASS.
 
@@ -220,7 +227,8 @@ Credentials, broker accounts/ports, permissions and mutation rights are isolated
 
 ## 15. Safety classes
 
-- **S0:** docs/research/non-runtime.
+- **S0:** non-authoritative docs/research/non-runtime work that does not alter safety, risk, eligibility, capital, credentials, or operator policy.
+- Classification follows policy/behavioral impact rather than file type: governing safety or authorization documentation is S3 even when it changes no executable code.
 - **S1:** read-only/runtime foundation.
 - **S2:** paper mutation/execution infrastructure.
 - **S3:** risk/eligibility/safety-critical.
@@ -269,10 +277,17 @@ MIP phase labels are version-qualified (`MIP-0` through `MIP-12`). They do not s
 
 No calendar date authorizes live trading.
 
+Legacy `/readiness/phase3` criteria are historical paper-evidence diagnostics only.
+The legacy `scripts/phase3_readiness_report.py` CLI and Phase-3 live-transition
+runbooks are retired from authorization and must fail nonzero or display an
+explicit retirement warning. They cannot satisfy M10/M11, enable live trading, or
+replace explicit Tier 3 owner authorization. A versioned M10/M11 gate must be
+implemented and independently reviewed before any canary decision.
+
 ## 18. ISG-0 exit criteria
 
 - runtime truth baseline completed;
-- safety/product-architecture contradictions resolved or explicitly blocking;
+- every safety/product-architecture contradiction resolved or superseded; any item classified `BLOCKING` prevents ISG-0 exit;
 - source hierarchy adopted;
 - target architecture ADR adopted;
 - operator IA/deprecation map adopted;
@@ -328,7 +343,7 @@ A WP is DONE only after acceptance, touched-code quality, required unit/property
 
 Decision classes:
 
-- D0 planning/docs — normal review.
+- D0 non-authoritative planning/docs with no safety, risk, eligibility, capital, credential, or operator-policy impact — normal review.
 - D1 read-only runtime/data — technical review + tests.
 - D2 paper mutation — independent review + E3/E4 evidence as specified.
 - D3 safety/eligibility/risk — human approval + safety review + adversarial evidence.
