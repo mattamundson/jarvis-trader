@@ -94,6 +94,15 @@ class KillSwitchReason(Enum):
     EMERGENCY_FLATTEN = "emergency_flatten"
 
 
+class SafetyState(Enum):
+    """Verification state for persisted global safety state at startup."""
+
+    NOT_CONFIGURED = "not_configured"
+    VERIFIED_SAFE = "verified_safe"
+    VERIFIED_HALTED = "verified_halted"
+    STATE_UNKNOWN = "state_unknown"
+
+
 class HaltLevel(Enum):
     """Ordered escalation tiers for trading halt state.
 
@@ -237,6 +246,8 @@ class SafetyLayer:
         self._kill_switch_active = False
         self._kill_switch_reason: KillSwitchReason | None = None
         self._emergency_flatten_activated: bool = False
+        self._safety_state = SafetyState.NOT_CONFIGURED
+        self._safety_state_error: str | None = None
         # A9: observability — when the kill switch last fired and why. Survives a
         # deactivate (so a post-mortem sees a recent trip) and a restart (hydrated
         # from system_state). NOT a safety-decision input — read-only reporting.
@@ -273,8 +284,11 @@ class SafetyLayer:
         # Re-entry lockouts: symbol -> lockout_until datetime
         self._reentry_lockouts: dict[str, datetime] = {}
 
-        # Resolve DB path for kill switch persistence
+        # Resolve DB path for kill switch persistence. Configuring persistence
+        # starts in STATE_UNKNOWN until the DB explicitly proves safe or halted.
         self._db_path: Optional[str] = self._resolve_db_path(db_path)
+        if self._db_path is not None:
+            self._safety_state = SafetyState.STATE_UNKNOWN
 
         # Load persisted kill switch state
         self._load_kill_switch_state()
@@ -441,15 +455,14 @@ class SafetyLayer:
             logger.warning("SafetyLayer: failed to persist P&L snapshot to DB: %s", exc)
 
     def _load_kill_switch_state(self) -> None:
-        """
-        Read persisted kill switch state from SQLite on startup.
+        """Read and verify persisted global safety state on startup.
 
-        If the DB is unavailable or the table does not yet exist, the kill
-        switch remains inactive (fail-safe to trading paused, not trading
-        enabled).  DB failure here is non-fatal - logged as a warning.
+        When persistence is configured, only an explicit true or false value
+        proves state. Missing, invalid, locked, corrupt, or unavailable storage
+        leaves STATE_UNKNOWN, which rejects new exposure.
         """
         if self._db_path is None:
-            logger.debug("SafetyLayer: no DB path - skipping kill switch state load")
+            logger.debug("SafetyLayer: no DB path - persistence not configured")
             return
         try:
             import sqlite3
@@ -460,12 +473,25 @@ class SafetyLayer:
                 row = conn.execute(
                     "SELECT value FROM system_state WHERE key = 'kill_switch_active'"
                 ).fetchone()
-                if row and row["value"] == "true":
+                if row is None:
+                    raise RuntimeError("kill_switch_active state is missing")
+                active_value = str(row["value"]).strip().lower()
+                if active_value not in {"true", "false"}:
+                    raise ValueError("kill_switch_active state is invalid")
+
+                self._kill_switch_active = active_value == "true"
+                self._safety_state = (
+                    SafetyState.VERIFIED_HALTED
+                    if self._kill_switch_active
+                    else SafetyState.VERIFIED_SAFE
+                )
+                self._safety_state_error = None
+
+                if self._kill_switch_active:
                     reason_row = conn.execute(
                         "SELECT value FROM system_state WHERE key = 'kill_switch_reason'"
                     ).fetchone()
                     reason_str = reason_row["value"] if reason_row else None
-                    self._kill_switch_active = True
                     if reason_str:
                         try:
                             self._kill_switch_reason = KillSwitchReason(reason_str)
@@ -476,10 +502,11 @@ class SafetyLayer:
                     logger.critical(
                         "SafetyLayer: kill switch restored from DB (reason=%s) - "
                         "trading remains HALTED until human deactivates",
-                        self._kill_switch_reason.value if self._kill_switch_reason else "unknown",
+                        self._kill_switch_reason.value,
                     )
                     flatten_row = conn.execute(
-                        "SELECT value FROM system_state WHERE key = 'emergency_flatten_activated'"
+                        "SELECT value FROM system_state "
+                        "WHERE key = 'emergency_flatten_activated'"
                     ).fetchone()
                     if flatten_row and flatten_row["value"] == "true":
                         self._emergency_flatten_activated = True
@@ -488,24 +515,31 @@ class SafetyLayer:
                             "positions may still be open"
                         )
                 else:
-                    logger.debug("SafetyLayer: kill switch not active in DB - starting clean")
-                # A9: hydrate the last-activation stamp regardless of current
-                # active state, so a recent trip remains observable after a
-                # deactivate + restart.
+                    logger.info("SafetyLayer: persisted kill switch state verified safe")
+
                 ts_row = conn.execute(
                     "SELECT value FROM system_state WHERE key = 'last_kill_switch_ts'"
                 ).fetchone()
                 if ts_row and ts_row["value"]:
                     self._last_kill_switch_ts = ts_row["value"]
                 rsn_row = conn.execute(
-                    "SELECT value FROM system_state WHERE key = 'last_kill_switch_reason_value'"
+                    "SELECT value FROM system_state "
+                    "WHERE key = 'last_kill_switch_reason_value'"
                 ).fetchone()
                 if rsn_row and rsn_row["value"]:
                     self._last_kill_switch_reason_value = rsn_row["value"]
             finally:
                 conn.close()
         except Exception as exc:
-            logger.warning("SafetyLayer: failed to load kill switch state from DB: %s", exc)
+            self._kill_switch_active = False
+            self._kill_switch_reason = None
+            self._safety_state = SafetyState.STATE_UNKNOWN
+            self._safety_state_error = type(exc).__name__
+            logger.error(
+                "SafetyLayer: persisted safety state is UNKNOWN; "
+                "new exposure is blocked: %s",
+                exc,
+            )
 
     def _persist_kill_switch_state(self, active: bool, reason: Optional[KillSwitchReason]) -> None:
         """
@@ -590,6 +624,8 @@ class SafetyLayer:
         same_reason = already_active and self._kill_switch_reason == reason
         self._kill_switch_active = True
         self._kill_switch_reason = reason
+        self._safety_state = SafetyState.VERIFIED_HALTED
+        self._safety_state_error = None
 
         if same_reason:
             logger.debug(
@@ -664,6 +700,8 @@ class SafetyLayer:
         self._kill_switch_active = False
         self._kill_switch_reason = None
         self._emergency_flatten_activated = False
+        self._safety_state = SafetyState.VERIFIED_SAFE
+        self._safety_state_error = None
         logger.info(f"Kill switch deactivated by: {authorized_by}")
         # Persist cleared state to SQLite (non-fatal if DB unavailable)
         self._persist_kill_switch_state(False, None)
@@ -678,7 +716,7 @@ class SafetyLayer:
 
     @property
     def is_killed(self) -> bool:
-        return self._kill_switch_active
+        return self._kill_switch_active or self._safety_state == SafetyState.STATE_UNKNOWN
 
     # ── Halt Level / Tiered Escalation ────────────────────────────────────────
 
@@ -691,7 +729,7 @@ class SafetyLayer:
         """
         if self._emergency_flatten_activated:
             return HaltLevel.EMERGENCY_FLATTEN
-        if self._kill_switch_active:
+        if self.is_killed:
             return HaltLevel.HARD_HALT
         if self._loss_tracker is not None and hasattr(
             self._loss_tracker, "get_position_size_multiplier"
@@ -986,7 +1024,7 @@ class SafetyLayer:
 
         When ENABLE_PARALLEL_PAPER is not set, this is equivalent to ``is_killed``.
         """
-        if self._kill_switch_active:
+        if self.is_killed:
             return True
         if not self._parallel_paper_enabled():
             return False
@@ -1005,13 +1043,17 @@ class SafetyLayer:
         the redundancy is load-bearing. ``test_kill_switch_status_contract``
         enforces it; removing a key fails that test.
         """
-        killed = self._kill_switch_active
+        killed = self.is_killed
         return {
             "is_killed": killed,
             "kill_switch_active": killed,  # alias — see contract note above; keep in lock-step
             "kill_switch_reason": (
                 self._kill_switch_reason.value if self._kill_switch_reason else None
             ),
+            "safety_state": self._safety_state.value,
+            "safety_state_verified": self._safety_state
+            in {SafetyState.VERIFIED_SAFE, SafetyState.VERIFIED_HALTED},
+            "safety_state_error": self._safety_state_error,
             "daily_realized_pnl": self._daily_realized_pnl,
             "equity_peak": self._equity_peak,
             "current_equity": self._current_equity,
@@ -1093,7 +1135,15 @@ class SafetyLayer:
         return order, warnings
 
     def _check_kill_switch(self) -> RiskCheckResult:
-        """Check kill switch status."""
+        """Reject unknown persisted state or an active kill switch."""
+        if self._safety_state == SafetyState.STATE_UNKNOWN:
+            return RiskCheckResult(
+                approved=False,
+                rejection_reason=(
+                    "Safety state unknown: persisted kill-switch state "
+                    "could not be verified"
+                ),
+            )
         if self._kill_switch_active:
             return RiskCheckResult(
                 approved=False,
@@ -1689,21 +1739,23 @@ class SafetyLayer:
             order_id    (str|None) - IB order ID string if the order was placed, else None.
             routed_to_ib (bool)  - True only when the order reached IB Gateway.
         """
-        # â”€â”€ 0. Kill switch - checked first, before anything else â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        if self._kill_switch_active:
-            reason = (
-                f"Kill switch active: {self._kill_switch_reason.value}"
-                if self._kill_switch_reason
-                else "Kill switch active"
-            )
+        # Reject both an active latch and unverifiable persisted state.
+        kill_result = self._check_kill_switch()
+        if not kill_result.approved:
+            reason = kill_result.rejection_reason or "Safety state blocks orders"
             logger.warning(
-                "submit_paper_order BLOCKED by kill switch - symbol=%s action=%s qty=%d: %s",
+                "submit_paper_order BLOCKED - symbol=%s action=%s qty=%d: %s",
                 symbol,
                 action,
                 quantity,
                 reason,
             )
-            return {"approved": False, "reason": reason, "order_id": None, "routed_to_ib": False}
+            return {
+                "approved": False,
+                "reason": reason,
+                "order_id": None,
+                "routed_to_ib": False,
+            }
 
         # â”€â”€ 1. Build an OrderRequest so we can re-use check_order() fully â”€
         action_upper = action.upper()
