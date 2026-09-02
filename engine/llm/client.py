@@ -121,6 +121,23 @@ def _provider_from_model(model: str) -> str:
     return "anthropic"  # claude-* (direct or via Vertex — Vertex passes served_by)
 
 
+def resolve_agent_model(llm_client, fallback: str, fast: bool = False) -> str:
+    """Provider-aware model for agent call sites (T1, 2026-09-02).
+
+    Agents previously hardcoded claude-* model strings, so with
+    JARVIS_LLM_PROVIDER=deepseek (or kimi) every call still routed to
+    Anthropic — the configured provider was never reached. This returns the
+    client's provider-aware default/fast model when the client is a real
+    JarvisLLMClient; falls back to the class constant for mock/legacy clients
+    (keeps transport tests asserting Agent.MODEL intact).
+    """
+    attr = "fast_model" if fast else "default_model"
+    model = getattr(llm_client, attr, None)
+    if isinstance(model, str) and model:
+        return model
+    return fallback
+
+
 def get_llm_provider_summary() -> dict:
     """Provider-redundancy snapshot for /health.
 
@@ -541,10 +558,25 @@ class JarvisLLMClient:
                 logger.warning("vertex failover disabled — could not build Vertex client: %s", exc)
                 self.vertex_failover_enabled = False
         self.cost_tracker = CostTracker(db_path=db_path)
-        self.default_model = self.ollama_model if self.provider == "ollama" else "claude-sonnet-4-6"
-        self.fast_model = (
-            self.ollama_model if self.provider == "ollama" else "claude-haiku-4-5-20251001"
-        )
+        # Provider-aware default/fast model selection (T1, 2026-09-02).
+        # Previously this only branched on "ollama" — with JARVIS_LLM_PROVIDER
+        # set to deepseek (or kimi), agents that passed model=None or relied on
+        # default_model/fast_model still resolved to claude-* strings, so the
+        # configured provider was never actually called. The 8 agent files now
+        # route through these attributes instead of hardcoding claude-*.
+        if self.provider == "ollama":
+            self.default_model = self.ollama_model
+            self.fast_model = self.ollama_model
+        elif self.provider == "deepseek":
+            self.default_model = "deepseek-reasoner"
+            self.fast_model = "deepseek-reasoner"
+        elif self.provider == "kimi":
+            _kimi_primary = os.getenv("JARVIS_DECISION_PRIMARY", "kimi-k3").strip()
+            self.default_model = _kimi_primary or "kimi-k3"
+            self.fast_model = _kimi_primary or "kimi-k3"
+        else:
+            self.default_model = "claude-sonnet-4-6"
+            self.fast_model = "claude-haiku-4-5-20251001"
         self.compaction_count = 0
 
         # Phase 3 (2026-05-20): Google/Gemini provider — transparent fallback
