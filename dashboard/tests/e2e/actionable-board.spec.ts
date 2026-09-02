@@ -75,7 +75,7 @@ test.describe("ActionableBoardWidget", () => {
     await mockEngine(page, EMPTY_POPULATED);
     await page.goto("/paper", { waitUntil: "domcontentloaded" });
 
-    await expect(page.getByText(/Actionable Now/)).toBeVisible();
+    await expect(page.getByText(/Actionable Now/).first()).toBeVisible();
 
     // raw_count 5 + shown 0 must render the queue-state explanation, not a
     // bare "No actionable setups".
@@ -92,7 +92,7 @@ test.describe("ActionableBoardWidget", () => {
     await mockEngine(page, EMPTY_QUEUE);
     await page.goto("/paper", { waitUntil: "domcontentloaded" });
 
-    await expect(page.getByText(/Actionable Now/)).toBeVisible();
+    await expect(page.getByText(/Actionable Now/).first()).toBeVisible();
 
     const explanation = page.getByText(
       /The decision queue has no recent directional decisions/
@@ -128,7 +128,7 @@ test.describe("ActionableBoardWidget", () => {
     await mockEngine(page, EMPTY_POPULATED);
     await page.goto("/command-center", { waitUntil: "domcontentloaded" });
 
-    await expect(page.getByText(/Actionable Now/)).toBeVisible();
+    await expect(page.getByText(/Actionable Now/).first()).toBeVisible();
     await expect(
       page.getByText(/The decision queue has 5 recent rows, but none qualify as actionable/),
       { timeout: 15_000 }
