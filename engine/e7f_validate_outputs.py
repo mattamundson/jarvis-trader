@@ -29,17 +29,17 @@ ok = True
 # 1. cards.jsonl
 try:
     lines = [
-        l for l in CARDS.read_text(encoding="utf-8").splitlines() if l.strip()
+        line for line in CARDS.read_text(encoding="utf-8").splitlines() if line.strip()
     ]
-    cards = [json.loads(l) for l in lines]
+    cards = [json.loads(line) for line in lines]
     print(f"cards.jsonl: {len(cards)} cards, all valid JSON")
-    for c in cards:
-        impl = c["implementation_status"]
-        v = impl["gate_v2_verdict"][:60]
-        print("  " + c["hypothesis_id"] + ": verdict=" + v)
-except Exception as e:
+    for card in cards:
+        impl = card["implementation_status"]
+        verdict = impl["gate_v2_verdict"][:60]
+        print("  " + card["hypothesis_id"] + ": verdict=" + verdict)
+except Exception as exc:
     ok = False
-    print(f"cards.jsonl FAIL: {e}")
+    print(f"cards.jsonl FAIL: {exc}")
 
 # 2. Verdict schema
 try:
@@ -49,24 +49,24 @@ try:
         "SPY_options_vertical_sma_10_40_2.0.json",
         "QQQ_options_vertical_sma_8_40_2.5.json",
     ]:
-        p = VERDICTS / name
-        snap = VerdictSnapshot.from_dict(json.loads(p.read_text(encoding="utf-8")))
+        path = VERDICTS / name
+        snap = VerdictSnapshot.from_dict(json.loads(path.read_text(encoding="utf-8")))
         print(f"{name}: schema OK -> verdict={snap.verdict} family={snap.family}")
-except Exception as e:
+except Exception as exc:
     ok = False
-    print(f"verdict schema check FAIL: {e}")
+    print(f"verdict schema check FAIL: {exc}")
 
 # 3. Trades CSV <-> verdict total_pnl
 for name, expected in [
     ("SPY_vertical_sma_10_40_2.0_trades.csv", 7.73),
     ("QQQ_vertical_sma_8_40_2.5_trades.csv", 8.05),
 ]:
-    p = OPT_OUT / name
-    if not p.exists():
+    path = OPT_OUT / name
+    if not path.exists():
         ok = False
         print(f"{name}: MISSING")
         continue
-    df = pd.read_csv(p)
+    df = pd.read_csv(path)
     total = round(float(df["pnl"].sum()), 2)
     match = abs(total - expected) < 0.01
     ok = ok and match
