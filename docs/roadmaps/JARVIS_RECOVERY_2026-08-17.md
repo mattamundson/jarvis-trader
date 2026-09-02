@@ -2,7 +2,7 @@
 _Authoritative task graph — 2026-08-17_
 
 ## ⚠️ SUPERSEDED 2026-08-24 — provider changed to OrcaRouter
-⚠️ CRON ESTATE WIPE 2026-09-01 07:55 — the profile's cron store (jobs.json) was replaced; only 2 jobs remain. Recreated: JARVIS Roadmap Loop v2 (3f344ca0ccc8, 6h/36 ticks) and pr-auto-merger (41afce04f5c3, every 10m). QUEUE: 738, 744, 745, 746, 747, 757, 763 — all MERGEABLE, non-draft, non-safety.
+⚠️ CRON ESTATE WIPE 2026-09-01 07:55 — the profile's cron store (jobs.json) was replaced. Verified 2026-09-02 03:32Z: 6 jobs are currently present — `xbookmarks-daily-watchdog`, `obsidian-rag-daily-index`, `pr-auto-merger v2`, `jarvis-uptime-watchdog v2`, `JARVIS Roadmap Loop (6h) v3`, and restored `state-db-nightly-backup`. This tick repointed the two shell-backed jobs to Python wrappers (`run_xbookmarks_watchdog.py`, `run_obsidian_rag_index.py`) after Windows cron path handling broke `.sh` execution. QUEUE: 738, 744, 745, 746, 747, 757, 763 — all MERGEABLE, non-draft, non-safety.
 ⚠️ NEW BLOCKER 2026-08-24 — engine kill switch tripped 2026-08-18T20:45Z, **still stuck 2026-09-01 (14 days)**. `/safety/status` shows kill_switch_active=true, last_reason="daily_loss_limit". Current: daily_pnl=0, daily_limit_breached=false, drawdown_breached=false, equity=$13181.31, drawdown 16.2% (under 20%). Engine up, provider=kimi-k3, but **all trade exits blocked until cleared**. Requires human decision — do not reset automatically.
 
 The **Hermes agent** provider/model was switched on 2026-08-24 (verified live end-to-end):
@@ -36,23 +36,24 @@ lines accurate — they are the loop's only exit condition.
 - [x] T3 — DONE=yes BLOCKED=no — cost/quality report *(SUPERSEDED by provider change; re-run needed)*
 - [x] T4 — DONE=yes BLOCKED=no — persistent LLM spend tracking *(verified 2026-09-01: 212 rows live, PR #763 fixes $0.00 pricing bug — kimi-k3 rate was missing)*
 - [x] T5 — DONE=yes BLOCKED=no — lock MES-only live scope *(verified 2026-09-01: gate chain blocks MGC — paper_config.enabled=False; MES carved out per Amo 2026-06-26 directive)*
-- [ ] T6 — DONE=no BLOCKED=no — equity caches + QQQ/AAPL/TSLA certification
-- [ ] T7 — DONE=no BLOCKED=no — dashboard bundle split
+- [ ] T6 — DONE=no BLOCKED=yes — equity caches + QQQ/AAPL/TSLA certification **(BLOCKED 2026-09-02 06:31 CDT / 11:31Z: verified again that the only 1h caches on disk remain shallow (`QQQ/AAPL/TSLA_2023-09-19_2026-08-17_1h.csv`), and `engine/scripts/fetch_equity_1h.py` still hardcodes `yf.download(..., period="730d", interval="1h")`, so the current free fetch path is structurally capped at ~2 years. New narrowing this tick: `engine/config.py:645-652` shows `OPTIONS_WATCHLIST=["SPY", "QQQ"]`, with `AAPL/TSLA REMOVED` after daily SMA-trend cert FAILs; live operational urgency is therefore concentrated in QQQ deep 1h certification, not AAPL/TSLA routing. Existing real 1h gate-v2 verdicts still remain shallow-window FAILs only: QQQ `pf_ci_lower=0.3073, p_edge=0.3993, dsr=0.0`; AAPL `pf_ci_lower=0.8052, p_edge=0.9349, dsr=0.1495`; TSLA `pf_ci_lower=0.8632, p_edge=0.8437, dsr=0.0067`. Unblock now still requires a different 1h data source (likely paid) or explicit approval to accept shallow 1h + monthly-surrogate evidence as sufficient.)**
+- [ ] T7 — DONE=no BLOCKED=yes — dashboard bundle split **(BLOCKED 2026-09-02: T7 is downstream of T6 in the roadmap step chain.)**
 - [ ] T8 — DONE=no BLOCKED=yes — provider decision **(BLOCKED: decided out-of-band on 2026-08-24 → OrcaRouter. Needs Amo's confirmation this supersedes T8 rather than reopening it.)**
-- [ ] T9 — DONE=no BLOCKED=yes — cron estate + state.db + memory hygiene **(PARTIAL 2026-09-02: cron estate repaired — recurring roadmap loop v3, uptime-watchdog v2, and deterministic no_agent pr-auto-merger v2 are live; BLOCKED on (a) PM2 boot task creation needing elevated PowerShell, and (b) engine provider funding because DeepSeek now returns HTTP 402 Payment Required on live advisor calls.)**
+- [ ] T9 — DONE=no BLOCKED=yes — cron estate + state.db + memory hygiene **(PARTIAL 2026-09-02 13:05Z / 08:05 CDT: current cron store still has 6 jobs, not 29, with `updated_at=2026-09-02T08:04:12.442532-05:00`. `xbookmarks-daily-watchdog` remains clean (`last_run_at=2026-09-02T07:10:08.001511-05:00`, `last_status=ok`, `failure_streak=0`), `obsidian-rag-daily-index` remains `ok` (`last_run_at=2026-09-02T06:46:22.402664-05:00`), `pr-auto-merger v2` remains `ok` (`last_run_at=2026-09-02T07:59:01.672937-05:00`), `state-db-nightly-backup` remains `ok` (`last_run_at=2026-09-02T04:16:29.715067-05:00`), and `jarvis-uptime-watchdog v2` recovered on its next scheduled run (`last_run_at=2026-09-02T07:54:02.383443-05:00`, `last_status=ok`, `failure_streak=0`, `next_run_at=2026-09-02T08:09:02.383443-05:00`). Runtime state improved materially: `pm2 list --no-color` now shows `jarvis-dashboard` online on PID `134104`; `curl -I http://127.0.0.1:3010` returns `HTTP/1.1 200 OK`; and tailnet checks with the required `Host: amoszn.taild02579.ts.net` header return `HTTP/1.1 200 OK` for `/` and `/health`, while `/api/engine/health` returns `HTTP/1.1 405 Method Not Allowed` to HEAD (expected GET-only route reachability, i.e. no longer the prior 502). Engine `/health` at `2026-09-02T13:04:27Z` remains `status=ok` but degraded with `kill_switch_active=true`, `primary_provider=deepseek`, `providers_configured=["deepseek"]`, `ibkr_connected=true`, `ibkr_execution_connected=true`, `execution_connected_verified=false`, `ib_execution_stale=true`, `ibkr_data_connected=false`, `ibgateway_alive=false`, `tradingview_mcp_healthy=true`, `tv_mcp_status=healthy`, and `market_data_fresh=true`. New narrowing: interactive Obsidian RAG is responding again in-session (`rag_stats`: `14,061` chunks across `1,238` notes; `rag_search` succeeded). Remaining blocker: PM2 supervision is still partial because `pm2 describe jarvis-engine` shows `status=waiting restart` after 9 restarts while port `8010` is still served locally, so the live engine is up but not currently proven to be owned by the PM2 app record; runtime repair now belongs to the dedicated `runtime-recovery` workstream/worktree, and unattended memory pruning still needs a human decision.)**
 
-## Current state (as of 21:30Z)
+## Current state (as of 13:05Z)
 
 | Track | Status | Verified |
 |---|---|---|
 | Vision attachments (Hermes) | ✅ FIXED | `vision_analyze` on real image = success |
 | Engine boot crash-loop (#711) | ✅ MERGED | health=200, stable uptime |
-| LLM provider (Anthropic direct) | ✅ LIVE | pm2 logs: `[claude-sonnet-4-6] ... retries:0` |
-| Vertex Model Garden | ⚠️ ENABLED but quota-denied | gcloud alpha quotas preferences: all 6 Claude quota prefs show `grantedValue=0, stateDetail=Quota request denied` |
-| DeepSeek key + partial routing | ✅ KEY WIRED, ⚠️ PARTIAL ROUTE | `fundamental_analyst` hits deepseek; 8 more agents still hardcoded claude-* |
-| DeepSeek side-by-side test | ✅ COMPLETE | 5.1x cheaper ($0.00193 vs $0.0099), latency 33% faster, output structurally valid JSON |
+| Engine health / LLM path | ⚠️ MIXED | `/health` at `2026-09-02T13:04:27Z`: `status=ok`, `kill_switch_active=true`, `llm_path_healthy=true`, `primary_provider=deepseek`, `providers_configured=["deepseek"]`, `ibkr_connected=true`, `ibkr_execution_connected=true`, `execution_connected_verified=false`, `ib_execution_stale=true`, `ibkr_data_connected=false`, `ibgateway_alive=false`, `tradingview_mcp_healthy=true`, `tv_mcp_status=healthy`, and `market_data_fresh=true` |
+| Cron estate | ⚠️ PARTIAL | `jobs.json` `updated_at=2026-09-02T08:04:12.442532-05:00`; still only 6 jobs, but all 6 currently healthy: `xbookmarks-daily-watchdog` `ok` from `07:10:08`; `obsidian-rag-daily-index` `ok` from `06:46:22`; `pr-auto-merger v2` `ok` at `07:59:01`; `jarvis-uptime-watchdog v2` recovered to `ok` at `07:54:02` with `failure_streak=0`; `state-db-nightly-backup` `ok` at `04:16:29` |
+| Dashboard / PM2 | ⚠️ PARTIAL | `pm2 list --no-color` now shows `jarvis-dashboard` online (PID `134104`, uptime `9m`) and `curl -I http://127.0.0.1:3010` returns `HTTP/1.1 200 OK`; tailnet curls with `Host: amoszn.taild02579.ts.net` return `200` for `/` and `/health`; however `pm2 describe jarvis-engine` is still `waiting restart` after 9 restarts while port `8010` is simultaneously serving `/health`, so supervision of the live engine remains inconsistent |
+| RAG daily index | ✅ HEALTHY | cron store still records `last_run_at=2026-09-02T06:46:22.402664-05:00`, `last_status=ok` for `run_obsidian_rag_index.py`; `rag_stats` now returns `14,061` chunks across `1,238` notes, and interactive `rag_search` succeeded in-session |
+| X-bookmarks watchdog | ✅ SCHEDULED RERUN CLEAN | cron store now records `last_run_at=2026-09-02T07:10:08.001511-05:00`, `last_status=ok`, `failure_streak=0`, and `next_run_at=2026-09-03T07:10:00-05:00` for `run_xbookmarks_watchdog.py` |
 | TOS strategy inventory | ✅ DOCUMENTED | 21 studies, 3 param drifts recorded in rules-jarvis-trader skill |
-| Session coordination | ✅ COMPLETE | session_manifest.json + pr_queue_add.py + DASHBOARD_STATE.md |
+| Session coordination | ✅ REFRESHED | `session_manifest.json` tracks `recovery-roadmap-loop`; current repo state is still a dirty peer branch (`fix/ci-lint-baseline-20260901`), so this loop remains doc/ops-only, while runtime repair is isolated in the dedicated `runtime-recovery` worktree/branch |
 
 ## Kanban board
 
@@ -126,14 +127,32 @@ T0  JARVIS recovery + 5-step roadmap orchestrator  [default]
 - **Enforcement point:** `approval/service.py:ensure_approval_allowed()` already blocks non-approved symbols — verify it's wired to the live gate
 
 ### T6: Step 2 — Equity cache pipeline + QQQ/AAPL/TSLA certification
-- **Current state:** QQQ/AAPL/TSLA deep caches absent; no gate-v2 verdicts exist for any of them
-- **Plan:** fetch 1h deep data, run gate-v2 WFO, produce verdict files
-- **Dependency:** T5 gate must be enforced first (don't certify symbols that aren't approved for live)
+- **Current state (verified 2026-09-02 11:31Z):** free deep **daily** caches are refreshed through `2026-09-01` via `backtest.free_daily_export`, but the live 1h fetch path remains capped at 730 days and the current options watchlist is already narrowed to `SPY`/`QQQ`:
+  - `QQQ_1999-03-10_2026-09-01_1d.csv` (6,913 rows)
+  - `AAPL_1980-12-12_2026-09-01_1d.csv` (11,522 rows)
+  - `TSLA_2010-06-29_2026-09-01_1d.csv` (4,069 rows)
+- **Live-path verification (real 1h gate-v2 battery, verified from verdict JSONs 2026-09-02 03:11Z):**
+  - `QQQ_sma_1h_gate_v2.json` → FAIL — `pf_ci_lower=0.3073`, `p_edge=0.3993`, `mc_95th_dd_pct=3.9246`, `dsr=0.0`
+  - `AAPL_sma_1h_gate_v2.json` → FAIL — `pf_ci_lower=0.8052`, `p_edge=0.9349`, `mc_95th_dd_pct=1.1875`, `dsr=0.1495`
+  - `TSLA_sma_1h_gate_v2.json` → FAIL — `pf_ci_lower=0.8632`, `p_edge=0.8437`, `mc_95th_dd_pct=3.9975`, `dsr=0.0067`
+- **Cache scope behind those verdicts:** the only 1h caches on disk are shallow:
+  - `QQQ_2023-09-19_2026-08-17_1h.csv`
+  - `AAPL_2023-09-19_2026-08-17_1h.csv`
+  - `TSLA_2023-09-19_2026-08-17_1h.csv`
+- **Research-only monthly surrogate rerun (still not live-path certification):**
+  - QQQ FAIL — `pf_ci_lower=1.4829`, `mc_95th_dd_pct=33.6796`, `dsr=0.0`
+  - AAPL FAIL — `pf_ci_lower=1.3074`, `mc_95th_dd_pct=74.9346`, `dsr=0.0`
+  - TSLA FAIL — `pf_ci_lower=1.0824`, `mc_95th_dd_pct=86.825`, `dsr=0.0`
+- **Source-limit verification (2026-09-02 03:47Z):** live `yfinance.download(..., interval="1h", start="2015-01-01", end="2026-09-02")` for `QQQ`, `AAPL`, and `TSLA` returned 0 rows plus Yahoo's explicit error: `The requested range must be within the last 730 days.` This matches `engine/scripts/fetch_equity_1h.py`, which hardcodes `period="730d"`.
+- **Remaining blocker (re-verified 2026-09-02 11:31Z):** the current free 1h fetch path is structurally capped at ~2 years, so T6 cannot reach the deep-validation standard from Yahoo/yfinance alone. New nuance: `AAPL` and `TSLA` are already removed from `OPTIONS_WATCHLIST` in `engine/config.py`, while `QQQ` remains live alongside `SPY`; that reduces live routing urgency but does not solve the certification/data-depth gap. Unblock now hinges on either:
+  1. an approved alternate 1h equity source/caching path (likely paid), or
+  2. explicit approval to accept the existing shallow 1h + monthly-surrogate evidence as sufficient.
+- **Dependency:** T5 gate is enforced; no live routing/config changes were made here.
 
 ### T7: Step 3 — Dashboard bundle split
 - **Context:** Next.js 15 dashboard on `:3010`, 50 routes, build + Playwright smoke required after any change
-- **Plan:** `next/bundle-analyzer` run, identify lazy-loadable routes, implement safe defer/split
-- **Acceptance:** bundle report, Playwright smoke on all 50 routes, `tsc --noEmit` + `pnpm run build` clean
+- **Status:** BLOCKED by T6 per the roadmap step chain
+- **Acceptance (when unblocked):** bundle report, Playwright smoke on all 50 routes, `tsc --noEmit` + `pnpm run build` clean
 
 ### T8: Step 4 — LLM provider decision + failover hardening
 - **Depends on:** T1 (DeepSeek routing works) + T4 (spend tracking provides real data)
@@ -143,10 +162,20 @@ T0  JARVIS recovery + 5-step roadmap orchestrator  [default]
 - **Dead end:** Vertex — Google denied all Claude quota prefs twice, no CLI/API bypass; only re-enable if `gcloud alpha quotas preferences list` shows `grantedValue > "0"`
 
 ### T9: Step 5 — Cron estate audit + state.db backup + memory hygiene
-- **Cron:** 29 jobs active; audit for drift, orphaned jobs, missing failure alerts
-- **state.db:** nightly backup to `Archive/2026/session-restore-backups/cron/` — verify still running
-- **Memory:** MEMORY.md at 92% capacity (2,029/2,200 chars); prune stale entries before cap blocks writes
-- **session_manifest.json:** update workstream statuses to reflect today's completions
+- **Cron (re-verified 2026-09-02 13:05Z / 08:05 CDT):** current `C:/Users/mattm/AppData/Local/hermes/cron/jobs.json` still has 6 jobs, not 29, and `updated_at=2026-09-02T08:04:12.442532-05:00`:
+  - `xbookmarks-daily-watchdog` — scheduled (`10 7 * * *`), script `run_xbookmarks_watchdog.py`, scheduled rerun now landed clean with `last_run_at=2026-09-02T07:10:08.001511-05:00`, `last_status=ok`, `failure_streak=0`, `last_error=null`, `next_run_at=2026-09-03T07:10:00-05:00`
+  - `obsidian-rag-daily-index` — scheduled (`45 6 * * *`), script `run_obsidian_rag_index.py`, `last_run_at=2026-09-02T06:46:22.402664-05:00`, `last_status=ok`, `next_run_at=2026-09-03T06:45:00-05:00`
+  - `pr-auto-merger v2` — scheduled every 10m, `last_status=ok`, `last_run_at=2026-09-02T07:59:01.672937-05:00`, `next_run_at=2026-09-02T08:09:01.672937-05:00`
+  - `jarvis-uptime-watchdog v2` — scheduled every 15m, **recovered** to `last_status=ok` on `last_run_at=2026-09-02T07:54:02.383443-05:00`, `failure_streak=0`, `last_error=null`, `next_run_at=2026-09-02T08:09:02.383443-05:00`
+  - `JARVIS Roadmap Loop (6h) v3` — scheduled every 10m, `last_status=ok`, `last_run_at=2026-09-02T07:53:05.519848-05:00`, `next_run_at=2026-09-02T08:13:12.372111-05:00`
+  - `state-db-nightly-backup` — scheduled (`15 4 * * *`), script `backup_hermes_state.py`, `last_status=ok`, `last_run_at=2026-09-02T04:16:29.715067-05:00`, `next_run_at=2026-09-03T04:15:00-05:00`
+- **Daily-wrapper execution state:** the xbookmarks cron wrapper remains clean after its scheduled 07:10 rerun, RAG indexing remains healthy, and interactive `rag_search` is now responding again in-session. The previously failing uptime/tailnet watchdog has cleared on its next scheduled run.
+- **PM2/runtime regression (re-verified 2026-09-02 13:05Z):** `pm2 list --no-color` now shows both `jarvis-dashboard` and `jarvis-engine` app records, but they are not equally healthy: `jarvis-dashboard` is online and serving `3010` locally plus externally through the tailnet vhost, while `pm2 describe jarvis-engine` is still `waiting restart` after 9 restarts even though local `curl -fsS http://127.0.0.1:8010/health` returns `200`. Net: the dashboard/tailnet outage has recovered, but engine supervision is still inconsistent and remains in the dedicated `runtime-recovery` workstream.
+- **Tailnet verification (2026-09-02 13:05Z):** `curl -I -H 'Host: amoszn.taild02579.ts.net' http://100.68.247.106/` and `/health` now both return `HTTP/1.1 200 OK`; `curl -I -H 'Host: amoszn.taild02579.ts.net' http://100.68.247.106/api/engine/health` returns `HTTP/1.1 405 Method Not Allowed`, which is acceptable for a HEAD probe against a GET-only proxied route and confirms the prior 502 path is gone.
+- **Engine health delta (re-verified 2026-09-02 13:04:27Z):** `/health` returns `status=ok`, `kill_switch_active=true`, `llm_path_healthy=true`, `primary_provider=deepseek`, `providers_configured=["deepseek"]`, `ibkr_connected=true`, `ibkr_execution_connected=true`, `execution_connected_verified=false`, `ib_execution_stale=true`, `ibkr_data_connected=false`, `ibgateway_alive=false`, `tradingview_mcp_healthy=true`, `tv_mcp_status=healthy`, and `market_data_fresh=true`. The kill switch is still stuck active and must not be reset automatically.
+- **state.db backup (re-verified 2026-09-02 12:34Z):** latest trader snapshots on disk still include `trader-20260902-041626.db`, `trader-20260902-021913.db`, and `trader-20260901-222911.db` under `C:/Users/mattm/Archive/2026/session-restore-backups/cron/`.
+- **Memory:** no pruning done this tick; unattended pruning/expansion still needs a human decision.
+- **session_manifest.json:** this loop remains restricted to doc/ops updates because the current repo checkout is still a dirty peer branch (`fix/ci-lint-baseline-20260901`, unrelated modified/untracked files present); runtime repair ownership is explicitly separated into `runtime-recovery` on `fix/runtime-recovery-20260902` / `C:/Users/mattm/ThinkorSwim/jt-runtime-recovery`.
 
 ## 5-step forward summary
 
