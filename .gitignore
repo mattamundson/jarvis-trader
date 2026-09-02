@@ -384,3 +384,6 @@ engine/data/discovery_*/
 # Generated branch-review evidence (run scripts/audit/gather_branch_evidence.sh)
 docs/audit/branch-review/
 .vercel
+
+# A-01 runtime truth artifact (machine-local, redacted but operational)
+/phase0_runtime_truth_snapshot.json
