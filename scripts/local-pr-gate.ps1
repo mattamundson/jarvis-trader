@@ -455,6 +455,8 @@ try {
     $changed = @($headChanged + $unstagedChanged + $stagedChanged + $untrackedChanged + $renameChanged |
         Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
         Sort-Object -Unique)
+    $safetyPathPattern = '^engine/config\.py$|^engine/risk/|^engine/execution/|^engine/approval/|^engine/domain/(contracts|instruments)\.py$|^engine/routers/(trade_intents|approval_queue|health|phase3_readiness)_router\.py$|^engine/main\.py$|^engine/notifications/openclaw_notifier\.py$|^engine/agents/trader\.py$|^dashboard/lib/(controlPlane|runtimeSnapshot)\.ts$|^dashboard/app/(command-center-v2|mission-control)/|^scripts/(phase0_runtime_truth_snapshot|assess_phase0_runtime_snapshot|check_phase0_isg0|refresh_phase0_runtime_snapshot|install_phase0_runtime_snapshot_task)\.(py|ps1)$|^docs/plans/JARVIS_MASTER_IMPLEMENTATION_PLAN_v1\.0\.md$|^docs/plans/phase0/|^CLAUDE\.md$|^engine/CLAUDE\.md$|^\.claude/rules/safety\.md$|^\.github/workflows/(safety-invariant-check|pr-governance)\.yml$|^scripts/local-pr-gate\.ps1$'
+    $safetyFiles = @($changed | Where-Object { $_ -match $safetyPathPattern })
     $statusLines = @(Get-GitLines @("status", "--short", "--branch"))
 
     if ($Scope -eq "auto") {
@@ -518,7 +520,7 @@ try {
         Write-Host "[local-pr-gate] engine venv override: $explicitEngineVenv"
     }
 
-    $runSafety = $effectiveScope -in @("all", "engine", "safety")
+    $runSafety = $effectiveScope -in @("all", "engine", "safety") -or $safetyFiles.Count -gt 0
     $runSecurity = $effectiveScope -in @("all", "engine", "dashboard", "security")
     $runEngine = $effectiveScope -in @("all", "engine")
     $runDashboard = $effectiveScope -in @("all", "dashboard")
@@ -530,9 +532,6 @@ try {
     if ($runSafety) {
         $results.Add((Invoke-Step "Safety invariant values" $RepoRoot $python @("engine/scripts/check_safety_invariants.py") (& $log "safety-values"))) | Out-Null
 
-        $safetyFiles = @($changed | Where-Object {
-            $_ -match '^engine/config\.py$|^engine/risk/|^engine/execution/|^engine/approval/|^engine/domain/(contracts|instruments)\.py$|^engine/routers/(trade_intents|approval_queue|health|phase3_readiness)_router\.py$|^engine/main\.py$|^engine/notifications/openclaw_notifier\.py$|^engine/agents/trader\.py$|^dashboard/lib/(controlPlane|runtimeSnapshot)\.ts$|^dashboard/app/(command-center-v2|mission-control)/|^scripts/(phase0_runtime_truth_snapshot|assess_phase0_runtime_snapshot|check_phase0_isg0|refresh_phase0_runtime_snapshot|install_phase0_runtime_snapshot_task)\.(py|ps1)$|^docs/plans/JARVIS_MASTER_IMPLEMENTATION_PLAN_v1\.0\.md$|^docs/plans/phase0/|^CLAUDE\.md$|^engine/CLAUDE\.md$|^\.claude/rules/safety\.md$|^\.github/workflows/(safety-invariant-check|pr-governance)\.yml$|^scripts/local-pr-gate\.ps1$'
-        })
         $tagExit = 0
         $tagLines = New-Object System.Collections.Generic.List[string]
         $tagLines.Add("step: Safety changed-file tag check")
