@@ -193,7 +193,6 @@ export function killSwitchState(
   return "UNKNOWN";
 }
 
-
 export function executionCapability(snapshot: ControlPlaneSnapshot): {
   mode: "PAPER" | "LIVE" | "UNKNOWN";
   canApprovePaper: boolean;
