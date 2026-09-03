@@ -21,6 +21,7 @@ jobs:
             const pr = context.payload.pull_request;
             const body = pr.body || "";
             const title = pr.title || "";
+            const lines = body.split(/\r?\n/);
 
             const requiredSections = [
               "Plan",
@@ -38,13 +39,16 @@ jobs:
             ];
 
             function sectionBody(name) {
-              const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-              const re = new RegExp(
-                `^##\\s+${escaped}\\s*$([\\s\\S]*?)(?=^##\\s+|\\Z)`,
-                "mi",
-              );
-              const match = body.match(re);
-              return match ? match[1].trim() : null;
+              const heading = `## ${name}`.toLowerCase();
+              const start = lines.findIndex((line) => line.trim().toLowerCase() === heading);
+              if (start < 0) return null;
+
+              const section = [];
+              for (let i = start + 1; i < lines.length; i += 1) {
+                if (/^##\s+/.test(lines[i].trim())) break;
+                section.push(lines[i]);
+              }
+              return section.join("\n").trim();
             }
 
             const errors = [];
@@ -64,11 +68,14 @@ jobs:
             }
 
             const safetyText = sectionBody("Safety Class") || "";
-            const safetyMatch = safetyText.match(/\bS([0-4])\b/i);
-            if (!safetyMatch) {
+            const safetyMatches = [...safetyText.matchAll(/\bS([0-4])\b/gi)];
+            const declaredSafetyClasses = [...new Set(safetyMatches.map((m) => m[1]))];
+            if (declaredSafetyClasses.length !== 1) {
               errors.push("## Safety Class must declare exactly one class S0-S4.");
             }
-            const safetyLevel = safetyMatch ? Number(safetyMatch[1]) : -1;
+            const safetyLevel = declaredSafetyClasses.length === 1
+              ? Number(declaredSafetyClasses[0])
+              : -1;
 
             const { owner, repo } = context.repo;
             const files = await github.paginate(github.rest.pulls.listFiles, {
