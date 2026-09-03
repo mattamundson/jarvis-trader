@@ -16,7 +16,9 @@ class _Settings:
 
     def __init__(self, **overrides):
         self.PAPER_TRADING = True
+        self.LIVE_TRADING_ENABLED = False
         self.IB_PAPER_BROKER_ENABLED = False
+        self.IBKR_PAPER_MODE = True
         self.IBKR_HOST = "127.0.0.1"
         self.IBKR_PORT = 4002
         self.IBKR_CLIENT_ID = 244
@@ -40,17 +42,55 @@ def test_default_returns_simulator(monkeypatch):
     assert gw is sentinel
 
 
-def test_flag_on_but_paper_off_stays_simulator(monkeypatch):
-    """Real gateway requires BOTH the flag and paper mode; flag alone must not arm it."""
-    import execution.ib_gateway_connector as conn_mod
+def test_flag_on_but_paper_off_fails_closed():
+    """A contradictory real-broker request must fail instead of silently changing modes."""
     from execution.order_gateway_factory import build_order_gateway
 
-    sentinel = object()
-    monkeypatch.setattr(conn_mod, "IBGatewayConnector", lambda *a, **k: sentinel)
-    gw = build_order_gateway(
-        _Settings(IB_PAPER_BROKER_ENABLED=True, PAPER_TRADING=False), safety_layer=object()
-    )
-    assert gw is sentinel
+    with pytest.raises(ValueError, match="PAPER_TRADING=True"):
+        build_order_gateway(
+            _Settings(IB_PAPER_BROKER_ENABLED=True, PAPER_TRADING=False),
+            safety_layer=object(),
+        )
+
+
+def test_real_gateway_requires_live_trading_disabled():
+    from execution.order_gateway_factory import build_order_gateway
+
+    with pytest.raises(ValueError, match="LIVE_TRADING_ENABLED=False"):
+        build_order_gateway(
+            _Settings(IB_PAPER_BROKER_ENABLED=True, LIVE_TRADING_ENABLED=True),
+            safety_layer=object(),
+        )
+
+
+def test_real_gateway_requires_explicit_ibkr_paper_mode():
+    from execution.order_gateway_factory import build_order_gateway
+
+    with pytest.raises(ValueError, match="IBKR_PAPER_MODE=True"):
+        build_order_gateway(
+            _Settings(IB_PAPER_BROKER_ENABLED=True, IBKR_PAPER_MODE=False),
+            safety_layer=object(),
+        )
+
+
+def test_real_gateway_requires_approved_paper_port():
+    from execution.order_gateway_factory import build_order_gateway
+
+    with pytest.raises(ValueError, match="paper port 4002"):
+        build_order_gateway(
+            _Settings(IB_PAPER_BROKER_ENABLED=True, IBKR_PORT=7497),
+            safety_layer=object(),
+        )
+
+
+def test_real_gateway_requires_account_identity():
+    from execution.order_gateway_factory import build_order_gateway
+
+    with pytest.raises(ValueError, match="non-empty IB_ACCOUNT_ID"):
+        build_order_gateway(
+            _Settings(IB_PAPER_BROKER_ENABLED=True, IB_ACCOUNT_ID=""),
+            safety_layer=object(),
+        )
 
 
 def test_flag_on_returns_real_manager():
