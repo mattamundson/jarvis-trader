@@ -93,6 +93,16 @@ def test_real_gateway_requires_account_identity():
         )
 
 
+def test_real_gateway_rejects_non_paper_account_identity():
+    from execution.order_gateway_factory import build_order_gateway
+
+    with pytest.raises(ValueError, match="paper account ID"):
+        build_order_gateway(
+            _Settings(IB_PAPER_BROKER_ENABLED=True, IB_ACCOUNT_ID="U1234567"),
+            safety_layer=object(),
+        )
+
+
 def test_flag_on_returns_real_manager():
     """Flag on + paper → real IBGatewayManager, configured for the order leg."""
     from execution.ib_gateway import IBGatewayManager
