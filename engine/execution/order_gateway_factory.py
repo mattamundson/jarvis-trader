@@ -38,7 +38,33 @@ def build_order_gateway(
     real_enabled = bool(getattr(settings, "IB_PAPER_BROKER_ENABLED", False))
     paper = bool(getattr(settings, "PAPER_TRADING", True))
 
-    if real_enabled and paper:
+    if real_enabled:
+        if not paper:
+            raise ValueError(
+                "IB_PAPER_BROKER_ENABLED requires PAPER_TRADING=True; "
+                "refusing to construct a broker-mutating gateway"
+            )
+        if bool(getattr(settings, "LIVE_TRADING_ENABLED", False)):
+            raise ValueError(
+                "IB_PAPER_BROKER_ENABLED requires LIVE_TRADING_ENABLED=False"
+            )
+        if not bool(getattr(settings, "IBKR_PAPER_MODE", False)):
+            raise ValueError(
+                "IB_PAPER_BROKER_ENABLED requires IBKR_PAPER_MODE=True"
+            )
+
+        broker_port = int(getattr(settings, "IBKR_PORT", 0))
+        if broker_port != 4002:
+            raise ValueError(
+                "IB_PAPER_BROKER_ENABLED requires the approved IB Gateway paper port 4002"
+            )
+
+        account_id = str(getattr(settings, "IB_ACCOUNT_ID", "") or "").strip()
+        if not account_id:
+            raise ValueError(
+                "IB_PAPER_BROKER_ENABLED requires a non-empty IB_ACCOUNT_ID"
+            )
+
         # Import here so the default (simulator) path never pulls ib_async.
         from data.market_data import resolve_data_client_id
         from execution.ib_gateway import IBGatewayConfig, IBGatewayManager
@@ -54,9 +80,9 @@ def build_order_gateway(
 
         cfg = IBGatewayConfig(
             host=getattr(settings, "IBKR_HOST", "127.0.0.1"),
-            port=int(getattr(settings, "IBKR_PORT", 4002)),  # 4001/7496 rejected in __post_init__
+            port=broker_port,
             client_id=order_client_id,
-            account=getattr(settings, "IB_ACCOUNT_ID", "") or "",
+            account=account_id,
             timeout=float(getattr(settings, "IBKR_CONNECT_TIMEOUT_SECONDS", 10.0)),
         )
         logger.warning(
