@@ -76,6 +76,8 @@ def main() -> int:
 
         print(json.dumps(report, indent=2))
     else:
+        print(f"RETIRED / NO-GO: {_RETIREMENT_REASON}")
+        print()
         print(_render_markdown(report))
 
     return 2
