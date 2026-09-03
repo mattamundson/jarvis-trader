@@ -31,6 +31,12 @@ test("mission-control renders runtime snapshot findings even when engine routes 
           head_short: "abcdef123456",
           dirty_count: 5,
         },
+        contract: {
+          artifact: "JARVIS_A01_RUNTIME_TRUTH_SNAPSHOT",
+          schema_version: 1,
+          required_sections_present: true,
+          missing_sections: [],
+        },
         ports: {
           engine_8010_open: false,
           dashboard_3010_open: true,
@@ -60,6 +66,38 @@ test("mission-control renders runtime snapshot findings even when engine routes 
           enabled_not_tradeable: ["MES"],
           disagreeing_symbols: ["MES"],
         },
+        source_integrity: {
+          overall: "fail",
+          pass_count: 1,
+          fail_count: 1,
+          unknown_count: 0,
+          failing_labels: ["Canonical deploy"],
+          checks: [
+            {
+              label: "Active checkout",
+              repo_root: "C:/Users/mattm/ThinkorSwim/jarvis-runtime-panel-master-20260902",
+              status: "pass",
+              finding_count: 0,
+              required_path_failures: 0,
+              git_metadata_failures: 0,
+              workflow_action_failures: 0,
+              findings: [],
+            },
+            {
+              label: "Canonical deploy",
+              repo_root: "C:/Users/mattm/ThinkorSwim/jarvis-trader",
+              status: "fail",
+              finding_count: 4,
+              required_path_failures: 1,
+              git_metadata_failures: 3,
+              workflow_action_failures: 0,
+              findings: [
+                "required_path: AGENTS.md missing",
+                "git_metadata: .git missing or unreadable",
+              ],
+            },
+          ],
+        },
         findings: [
           "Engine HTTP health probe was unreachable at capture time.",
           "Dashboard port 3010 was open at capture time.",
@@ -79,5 +117,8 @@ test("mission-control renders runtime snapshot findings even when engine routes 
   await expect(page.getByText("feat/runtime-snapshot-cockpit")).toBeVisible();
   await expect(page.getByText("Enabled but not tradeable: MES")).toBeVisible();
   await expect(page.getByText("Kill switch was active at capture time.")).toBeVisible();
+  await expect(page.getByText("Source integrity")).toBeVisible();
+  await expect(page.getByText("Canonical deploy")).toBeVisible();
+  await expect(page.getByText("required_path: AGENTS.md missing")).toBeVisible();
   await expect(page.locator("body")).not.toContainText(/something went wrong/i);
 });

@@ -1,3 +1,5 @@
+import type { SourceIntegritySummary } from "./sourceIntegrity";
+
 export interface RawRuntimeSnapshot {
   artifact?: string;
   schema_version?: number;
@@ -64,6 +66,12 @@ export interface RuntimeSnapshotSummary {
     head_short: string | null;
     dirty_count: number | null;
   };
+  contract: {
+    artifact: string | null;
+    schema_version: number | null;
+    required_sections_present: boolean;
+    missing_sections: string[];
+  };
   ports: {
     engine_8010_open: boolean | null;
     dashboard_3010_open: boolean | null;
@@ -93,6 +101,7 @@ export interface RuntimeSnapshotSummary {
     enabled_not_tradeable: string[];
     disagreeing_symbols: string[];
   };
+  source_integrity?: SourceIntegritySummary;
   findings: string[];
   errors: {
     load: string | null;
@@ -145,6 +154,13 @@ export function summarizeRuntimeSnapshot(
       .map((row) => row.symbol as string)
   );
 
+  const missingSections = [
+    raw?.ports ? null : "ports",
+    raw?.api?.health ? null : "api.health",
+    raw?.api?.backup_status ? null : "api.backup_status",
+    raw?.api?.eligibility ? null : "api.eligibility",
+  ].filter((value): value is string => !!value);
+
   const summary: RuntimeSnapshotSummary = {
     available: !!raw && raw.artifact === "JARVIS_A01_RUNTIME_TRUTH_SNAPSHOT",
     source: "phase0_runtime_truth_snapshot",
@@ -155,6 +171,12 @@ export function summarizeRuntimeSnapshot(
       branch: typeof raw?.repository?.branch === "string" ? raw.repository.branch : null,
       head_short: toShortHead(raw?.repository?.head),
       dirty_count: toNum(raw?.repository?.status_porcelain_count),
+    },
+    contract: {
+      artifact: typeof raw?.artifact === "string" ? raw.artifact : null,
+      schema_version: toNum(raw?.schema_version),
+      required_sections_present: missingSections.length === 0,
+      missing_sections: missingSections,
     },
     ports: {
       engine_8010_open: toBool(raw?.ports?.engine_8010_open),
@@ -194,6 +216,9 @@ export function summarizeRuntimeSnapshot(
   const findings: string[] = [];
   if (!summary.available) findings.push("Runtime snapshot artifact is missing or invalid.");
   if (summary.freshness === "stale") findings.push("Runtime snapshot is older than 24h.");
+  if (!summary.contract.required_sections_present) {
+    findings.push(`Snapshot contract missing sections: ${summary.contract.missing_sections.join(", ")}.`);
+  }
   if (summary.engine.reachable === false) findings.push("Engine HTTP health probe was unreachable at capture time.");
   if (summary.ports.engine_8010_open === false) findings.push("Engine port 8010 was closed at capture time.");
   if (summary.ports.dashboard_3010_open === true) findings.push("Dashboard port 3010 was open at capture time.");
@@ -207,9 +232,7 @@ export function summarizeRuntimeSnapshot(
     );
   }
   if (summary.eligibility.enabled_not_tradeable.length > 0) {
-    findings.push(
-      `Enabled but not tradeable symbols: ${summary.eligibility.enabled_not_tradeable.join(", ")}.`
-    );
+    findings.push(`Enabled but not tradeable symbols: ${summary.eligibility.enabled_not_tradeable.join(", ")}.`);
   }
   if (summary.backup.reachable === false) findings.push("Backup-status endpoint was unreachable at capture time.");
   if (summary.backup.healthy === false) findings.push("Backup status was unhealthy at capture time.");

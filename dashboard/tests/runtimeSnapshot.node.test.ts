@@ -10,7 +10,9 @@ test("missing snapshot -> unavailable, unknown freshness, load error preserved",
   assert.equal(out.available, false);
   assert.equal(out.freshness, "unknown");
   assert.equal(out.errors.load, "missing_snapshot_file");
+  assert.equal(out.contract.required_sections_present, false);
   assert.match(out.findings.join("\n"), /missing or invalid/i);
+  assert.match(out.findings.join("\n"), /Snapshot contract missing sections/i);
 });
 
 test("fresh snapshot summarizes engine-down, dashboard-up, split-brain eligibility truth", () => {
@@ -67,6 +69,9 @@ test("fresh snapshot summarizes engine-down, dashboard-up, split-brain eligibili
   const out = summarizeRuntimeSnapshot(raw, Date.parse("2026-09-02T12:00:00Z"));
   assert.equal(out.available, true);
   assert.equal(out.freshness, "fresh");
+  assert.equal(out.contract.schema_version, 1);
+  assert.equal(out.contract.required_sections_present, true);
+  assert.deepEqual(out.contract.missing_sections, []);
   assert.equal(out.repository.branch, "feat/runtime-snapshot-cockpit");
   assert.equal(out.repository.head_short, "abcdef123456");
   assert.equal(out.repository.dirty_count, 5);
