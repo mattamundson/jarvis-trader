@@ -383,6 +383,7 @@ engine/data/discovery_*/
 
 # Generated branch-review evidence (run scripts/audit/gather_branch_evidence.sh)
 docs/audit/branch-review/
+docs/ci-reports/
 .vercel
 
 # A-01 runtime truth artifact (machine-local, redacted but operational)
