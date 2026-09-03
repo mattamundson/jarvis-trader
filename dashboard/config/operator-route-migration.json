@@ -20,6 +20,7 @@
     {"name": "Settings", "route": "/settings", "state": "ACTIVE"},
     {"name": "Audit", "route": "/audit", "state": "PLANNED"}
   ],
+  "transitional_targets": ["/performance"],
   "migrations": [
     {"source": "/", "target": "/command-center", "status": "REDIRECTED", "reason": "root already redirects to the flagship command center"},
     {"source": "/dashboard", "target": "/command-center", "status": "MAPPED"},
