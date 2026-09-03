@@ -1,5 +1,6 @@
 "use client";
 
+import { AlertTriangle, Clock3 } from "lucide-react";
 import useSWR from "swr";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +29,58 @@ function integrityVariant(status: "pass" | "fail" | "unknown" | undefined): "bul
   return "neutral";
 }
 
+function formatAgeSeconds(ageSeconds: number | null | undefined): string {
+  if (ageSeconds == null || Number.isNaN(ageSeconds)) return "—";
+  if (ageSeconds < 60) return `${ageSeconds}s`;
+  const ageMinutes = Math.floor(ageSeconds / 60);
+  if (ageMinutes < 60) return `${ageMinutes}m`;
+  const ageHours = ageSeconds / 3600;
+  if (ageHours < 24) return `${ageHours.toFixed(ageHours >= 10 ? 0 : 1)}h`;
+  const ageDays = ageHours / 24;
+  return `${ageDays.toFixed(ageDays >= 10 ? 0 : 1)}d`;
+}
+
+function freshnessState(data: RuntimeSnapshotSummary | undefined): {
+  level: "fresh" | "aging" | "stale" | "unknown";
+  label: string;
+  detail: string;
+  variant: "bull" | "warn" | "neutral";
+} {
+  if (!data || data.age_seconds == null || data.freshness === "unknown") {
+    return {
+      level: "unknown",
+      label: "SNAPSHOT AGE UNKNOWN",
+      detail: "The operator artifact does not include a trustworthy capture timestamp.",
+      variant: "neutral",
+    };
+  }
+
+  if (data.freshness === "stale") {
+    return {
+      level: "stale",
+      label: `STALE SNAPSHOT — ${formatAgeSeconds(data.age_seconds)} old`,
+      detail: "Refresh the runtime truth artifact before trusting Mission Control state.",
+      variant: "warn",
+    };
+  }
+
+  if (data.age_seconds >= 6 * 60 * 60) {
+    return {
+      level: "aging",
+      label: `AGING SNAPSHOT — ${formatAgeSeconds(data.age_seconds)} old`,
+      detail: "Still inside the 24h freshness window, but operator truth is aging.",
+      variant: "warn",
+    };
+  }
+
+  return {
+    level: "fresh",
+    label: `FRESH SNAPSHOT — ${formatAgeSeconds(data.age_seconds)} old`,
+    detail: "Runtime truth was captured recently enough to trust this panel at a glance.",
+    variant: "bull",
+  };
+}
+
 function Pill({
   label,
   value,
@@ -53,6 +106,7 @@ export function RuntimeSnapshotPanel() {
   );
 
   const badge = statusBadge(data);
+  const freshness = freshnessState(data);
 
   return (
     <Card>
@@ -72,12 +126,36 @@ export function RuntimeSnapshotPanel() {
           <UnreachableNote endpoint="/api/runtime-snapshot" />
         ) : data ? (
           <>
+            <div
+              className={
+                freshness.level === "fresh"
+                  ? "flex items-start gap-2 rounded-lg border border-bull/25 bg-bull/5 px-3 py-2"
+                  : freshness.level === "unknown"
+                    ? "flex items-start gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2"
+                    : "flex items-start gap-2 rounded-lg border border-warn/30 bg-warn/10 px-3 py-2"
+              }
+            >
+              {freshness.level === "fresh" ? (
+                <Clock3 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-bull" />
+              ) : freshness.level === "unknown" ? (
+                <Clock3 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              ) : (
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warn" />
+              )}
+              <div className="space-y-0.5">
+                <p className="text-[11px] font-semibold tracking-wide text-foreground">{freshness.label}</p>
+                <p className="text-[11px] text-muted-foreground">{freshness.detail}</p>
+              </div>
+            </div>
+
             <div className="flex flex-wrap items-center gap-2">
               <Pill
                 label="Captured"
                 value={data.generated_at ? relativeTime(data.generated_at) : "—"}
                 variant={data.freshness === "stale" ? "warn" : data.freshness === "fresh" ? "bull" : "neutral"}
               />
+              <Pill label="Age" value={formatAgeSeconds(data.age_seconds)} variant={freshness.variant} />
+              <Pill label="SLA" value="24h" variant="neutral" />
               <Pill label="Branch" value={data.repository.branch ?? "—"} variant="info" />
               <Pill
                 label="Dirty"
