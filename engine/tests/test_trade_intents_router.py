@@ -18,9 +18,20 @@ class FakeDB:
 
 
 class FakeGateway:
-    def __init__(self, positions=None, connected=True):
+    def __init__(
+        self,
+        positions=None,
+        connected=True,
+        *,
+        port=4002,
+        account="DU1234567",
+        managed_accounts=None,
+    ):
         self.positions = list(positions or [])
         self.connected = connected
+        self._config = SimpleNamespace(port=port, account=account)
+        accounts = list(managed_accounts if managed_accounts is not None else [account])
+        self._ib = SimpleNamespace(managedAccounts=lambda: accounts)
 
     def is_connected(self):
         return self.connected
@@ -78,6 +89,10 @@ def isolated_parent_state(tmp_path, monkeypatch):
     monkeypatch.setattr(R, "check_entry_price_sanity", sane)
     monkeypatch.setattr(R.settings, "LIVE_TRADING_ENABLED", False)
     monkeypatch.setattr(R.settings, "PAPER_TRADING", True)
+    monkeypatch.setattr(R.settings, "IB_PAPER_BROKER_ENABLED", False)
+    monkeypatch.setattr(R.settings, "IBKR_PAPER_MODE", True)
+    monkeypatch.setattr(R.settings, "IBKR_PORT", 4002)
+    monkeypatch.setattr(R.settings, "IB_ACCOUNT_ID", "DU1234567")
     monkeypatch.setattr(R.settings, "MAX_TRADE_LOSS_USD", 50.0)
     monkeypatch.setattr(R.settings, "MAX_CONTRACTS_PER_INSTRUMENT", 2)
     yield safety, data
@@ -152,6 +167,92 @@ async def test_live_mode_blocks_preview(isolated_parent_state, monkeypatch):
         await R.preview_trade_intent(request())
     assert excinfo.value.status_code == 409
     assert "live mode" in str(excinfo.value.detail).lower()
+
+
+@pytest.mark.asyncio
+async def test_real_broker_requires_explicit_paper_mode_before_preview(
+    isolated_parent_state,
+    monkeypatch,
+):
+    monkeypatch.setattr(R.settings, "IB_PAPER_BROKER_ENABLED", True)
+    monkeypatch.setattr(R.settings, "IBKR_PAPER_MODE", False)
+
+    with pytest.raises(HTTPException) as excinfo:
+        await R.preview_trade_intent(request())
+
+    assert excinfo.value.status_code == 409
+    assert "IBKR_PAPER_MODE=True" in str(excinfo.value.detail)
+
+
+@pytest.mark.asyncio
+async def test_real_broker_requires_configured_account_before_preview(
+    isolated_parent_state,
+    monkeypatch,
+):
+    monkeypatch.setattr(R.settings, "IB_PAPER_BROKER_ENABLED", True)
+    monkeypatch.setattr(R.settings, "IB_ACCOUNT_ID", "")
+
+    with pytest.raises(HTTPException) as excinfo:
+        await R.preview_trade_intent(request())
+
+    assert excinfo.value.status_code == 409
+    assert "IB_ACCOUNT_ID" in str(excinfo.value.detail)
+
+
+@pytest.mark.asyncio
+async def test_real_broker_managed_account_mismatch_blocks_before_broker(
+    isolated_parent_state,
+    monkeypatch,
+):
+    safety, _ = isolated_parent_state
+    monkeypatch.setattr(R.settings, "IB_PAPER_BROKER_ENABLED", True)
+    safety._ib_gateway = FakeGateway(
+        account="DU1234567",
+        managed_accounts=["DU7654321"],
+    )
+    preview = await R.preview_trade_intent(request())
+
+    with pytest.raises(HTTPException) as excinfo:
+        await R.submit_trade_intent(preview.intent_id)
+
+    assert excinfo.value.status_code == 409
+    assert "does not include" in str(excinfo.value.detail)
+    assert safety.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_real_broker_matching_identity_can_submit(
+    isolated_parent_state,
+    monkeypatch,
+):
+    safety, _ = isolated_parent_state
+    monkeypatch.setattr(R.settings, "IB_PAPER_BROKER_ENABLED", True)
+    safety._ib_gateway = FakeGateway(
+        account="DU1234567",
+        managed_accounts=["DU1234567"],
+    )
+    preview = await R.preview_trade_intent(request())
+    submitted = await R.submit_trade_intent(preview.intent_id)
+
+    assert submitted.status == "SUBMITTED"
+    assert safety.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_real_broker_disconnected_blocks_before_broker(
+    isolated_parent_state,
+    monkeypatch,
+):
+    safety, _ = isolated_parent_state
+    monkeypatch.setattr(R.settings, "IB_PAPER_BROKER_ENABLED", True)
+    safety._ib_gateway = FakeGateway(connected=False)
+    preview = await R.preview_trade_intent(request())
+
+    with pytest.raises(HTTPException) as excinfo:
+        await R.submit_trade_intent(preview.intent_id)
+
+    assert excinfo.value.status_code == 503
+    assert safety.calls == 0
 
 
 @pytest.mark.asyncio
