@@ -200,6 +200,21 @@ async def test_real_broker_requires_configured_account_before_preview(
 
 
 @pytest.mark.asyncio
+async def test_real_broker_rejects_non_paper_account_before_preview(
+    isolated_parent_state,
+    monkeypatch,
+):
+    monkeypatch.setattr(R.settings, "IB_PAPER_BROKER_ENABLED", True)
+    monkeypatch.setattr(R.settings, "IB_ACCOUNT_ID", "U1234567")
+
+    with pytest.raises(HTTPException) as excinfo:
+        await R.preview_trade_intent(request())
+
+    assert excinfo.value.status_code == 409
+    assert "paper account ID" in str(excinfo.value.detail)
+
+
+@pytest.mark.asyncio
 async def test_real_broker_managed_account_mismatch_blocks_before_broker(
     isolated_parent_state,
     monkeypatch,
