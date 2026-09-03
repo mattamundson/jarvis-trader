@@ -8,6 +8,7 @@ import {
   candidateApprovalCapability,
   executionCapability,
   fetchControlPlaneSnapshot,
+  killSwitchState,
   rejectPaperCandidate,
   type ControlPlaneApproval,
   type ControlPlanePosition,
@@ -188,6 +189,7 @@ export default function CommandCenterV2Page() {
   }, []);
 
   const capability = data ? executionCapability(data) : null;
+  const displayedKillSwitchState = killSwitchState(data);
   const positions = data?.portfolio?.positions ?? [];
   const approvals = data?.pendingApprovals?.candidates ?? [];
   const degraded = data ? Object.entries(data.errors) : [];
@@ -259,8 +261,14 @@ export default function CommandCenterV2Page() {
               tone={data?.health?.ibkr_execution_connected || data?.health?.ibkr_connected ? "good" : "bad"}
             />
             <StatePill
-              label={data?.safety?.kill_switch_active ? "KILL SWITCH ACTIVE" : "KILL SWITCH CLEAR"}
-              tone={data?.safety?.kill_switch_active ? "bad" : "good"}
+              label={`KILL SWITCH ${displayedKillSwitchState}`}
+              tone={
+                displayedKillSwitchState === "ACTIVE"
+                  ? "bad"
+                  : displayedKillSwitchState === "CLEAR"
+                    ? "good"
+                    : "warn"
+              }
             />
             <button
               type="button"
