@@ -386,7 +386,6 @@ async def get_trade_intent(intent_id: str):
 async def submit_trade_intent(intent_id: str):
     _require_paper_mode()
     safety, data_manager = _deps()
-    _require_verified_paper_broker(safety)
     store = _store()
 
     try:
@@ -395,6 +394,10 @@ async def submit_trade_intent(intent_id: str):
         raise HTTPException(409, str(exc)) from exc
     if record["status"] == "SUBMITTED":
         return _record_response(record)
+
+    # Preserve idempotent reads of an already-submitted intent, but require
+    # connected account identity before any new broker mutation is attempted.
+    _require_verified_paper_broker(safety)
     if safety.is_killed:
         blocked = store.mark_terminal(intent_id, status="BLOCKED", reason="Kill switch active")
         raise HTTPException(409, detail=_record_response(blocked).model_dump())
