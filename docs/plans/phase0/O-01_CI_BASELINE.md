@@ -4,53 +4,54 @@
 **Program:** O — DevOps / CI-CD  
 **Phase:** MIP-0  
 **Safety class:** S0  
-**State:** **IN PROGRESS — BASELINE REPAIRED; ROADMAP RECEIPT PENDING**  
-**Repository baseline:** `master@20ce13ca07c34b5159f05518abe670f7f3c32d24`  
-**Ready-PR evidence head:** `PR #768@2203a7f797b245f329fd3fe356a5675bc53547b2`  
+**State:** **EVIDENCE COMPLETE — MIP ADOPTION / ADMIN ENFORCEMENT PENDING**  
+**Repository repair baseline:** `master@20ce13ca07c34b5159f05518abe670f7f3c32d24`  
+**Refreshed MIP evidence head:** `PR #768@b4701a901ccddf01633b235fc71c807015acf6bf`  
 **Repair PR:** `#773@4c1f5006d50a4304d74f25385abde4ca898ea577` — merged as `20ce13c`  
-**Observed:** 2026-09-02
+**Observed:** 2026-09-02 America/Chicago
 
 ## Objective
 
 Maintain a machine-usable distinction among CI infrastructure failures, pre-existing baseline debt, flakes, intentionally skipped work, and branch-local regressions. A missing or still-running job is not pass evidence.
 
-## Required contexts observed
+## Repaired baseline result
 
-- `Engine Tests (pytest, fast)`
-- `Engine Lint (Python)`
-- `Safety-critical config gate`
-- `Dashboard Build (Next.js)`
-- `Dashboard Quality (typecheck + unit tests)`
+PR #773 repaired the deterministic CI defects discovered by O-01 and merged only after its required checks passed. PR #768 was then refreshed onto that repaired `master` with merge commit `b4701a…`, leaving it **0 commits behind master** at refresh time and triggering a complete final-head receipt.
 
-Repository protection metadata remains internally inconsistent: the branch endpoint has reported protection disabled while required-context metadata is present. O-05 must verify the actual enforcement settings; this document does not assume they are effective.
+The refreshed head is documentation-only relative to repaired master; therefore this receipt establishes the current CI ratchet for the MIP adoption tree without changing trading behavior.
 
-## Current ready-PR receipt
+## Exact refreshed-head receipt
 
-PR #768 final-head workflow evidence:
-
-| Workflow/job | Run | Result at capture |
+| Workflow/job | Run | Result |
 |---|---:|---|
-| Claude PR Review | 33681768887 | PASS |
-| Safety-critical config gate | 33681867123 | PASS |
-| Engine Lint (Python) | 33681768981 | PASS |
-| Engine Type Check (mypy) | 33681768981 | PASS |
-| Security Scan | 33681768981 | PASS |
-| Dashboard Quality | 33681768981 | PASS |
-| Dashboard Build + Playwright E2E | 33681768981 | PASS |
-| Engine Tests (pytest, slow) | 33681768981 | PASS |
-| Engine Tests (pytest, fast), attempt 1 | 33681768981 | **FAIL — 3 failed, 9,215 passed** |
-| Engine Tests (pytest, fast), fresh-process attempt 2 | 33681768981 | **FAIL — 3 failed, 9,214 passed** |
-| Coverage merge/floor | 33681768981 | **SKIPPED because fast tests failed** |
+| Claude PR Review | 33707562735 | PASS |
+| Safety Invariant Check | 33707562597 | PASS |
+| JARVIS TRADER CI | 33707562601 | **PASS** |
+| Engine Lint (Python) | 33707562601 | PASS |
+| Engine Type Check (mypy) | 33707562601 | PASS |
+| Security Scan | 33707562601 | PASS |
+| Engine Tests (pytest, fast) | 33707562601 | PASS |
+| Engine Tests (pytest, slow) | 33707562601 | PASS |
+| Engine Tests (coverage merge/floor) | 33707562601 | PASS |
+| Dashboard Quality (typecheck + unit tests) | 33707562601 | PASS |
+| Dashboard Build (Next.js) | 33707562601 | PASS |
+| Playwright smoke (50 routes) + golden-path | 33707562601 | PASS |
+| Dashboard static fetch/poll guards | 33707562601 | PASS |
 
-The three failures are:
+`Engine Draft Check (ruff + compile)` was skipped by workflow policy because this is a ready/non-draft path; the dedicated `Engine Lint (Python)` job passed and fast/slow pytest both collected and passed.
 
-- `test_calibrate_kronos_threshold.py::TestOutputJsonSchema::test_per_instrument_ok_keys`
-- `test_calibrate_kronos_threshold.py::TestOutputJsonSchema::test_percentile_keys`
-- `test_calibrate_kronos_threshold.py::TestOutputJsonSchema::test_json_serialisable`
+## Debt that O-01 repaired
 
-Both clean-process attempts failed identically. This is therefore not classified as a flake. The schema-only fixture hard-coded bars beginning 2025-09-01 while production calibration applies a 365-day lookback; on 2026-09-02 the fixture aged outside the valid window. PR #773 moves the synthetic fixture relative to the execution clock while retaining explicit insufficient-data coverage elsewhere.
+Earlier untouched-master and ready-PR probes found real baseline debt rather than branch-local regressions:
 
-This receipt supersedes the stale PR #760 baseline claims about 15 Ruff errors, a syntax error, and five dashboard failures: those defects were addressed by merged PR #757 and are not present in the completed jobs above. O-01 remains open until PR #773 passes on its exact head, the repair is merged, PR #768 is refreshed against that baseline, and one complete current-master receipt is recorded.
+1. malformed `engine/tests/test_latency_fixes_20260818.py` blocked pytest collection;
+2. `/trades/journal` selected model-only columns absent from the backing table contract;
+3. Ruff contained deterministic baseline findings;
+4. dashboard active/halted-symbol expectations had drifted;
+5. Playwright contained a stale-body async rendering race;
+6. a Kronos schema fixture aged outside the production 365-day lookback and failed reproducibly on two clean fast-suite attempts.
+
+Those stale baseline claims are superseded by the exact green receipt above. The disposable full-CI probe PR #762 and superseded repair PR #761 are both closed without merge.
 
 ## Classification contract
 
@@ -64,28 +65,55 @@ This receipt supersedes the stale PR #760 baseline claims about 15 Ruff errors, 
 | `RUNNING` | Job has no terminal conclusion | No evidence yet |
 | `PASS` | Terminal successful job on the exact recorded SHA | Positive evidence for that scope only |
 
+## Current CI ratchet
+
+The green refreshed-head receipt becomes the Phase-0 minimum for ordinary repository work:
+
+- Ruff must remain green.
+- Fast and slow pytest must remain green when required by workflow policy.
+- Coverage merge/floor must remain green.
+- Mypy allowlist gate must remain green; full-tree mypy debt remains separately governed.
+- Dashboard type/unit, production Next build and route/golden-path E2E must remain green.
+- Security Scan and Safety Invariant Check remain independent required evidence.
+- New failures may not be relabeled “pre-existing” without a pinned baseline reproduction.
+- Test deselection, quarantine or skip-count changes require review.
+
+O-02 owns the verification-rung model; O-03 owns build reproducibility; O-05 owns PR/workflow governance and the required-check/admin enforcement follow-up.
+
 ## Known CI design debt
 
 1. Full-tree mypy remains non-blocking; only an allowlist is enforced.
-2. Fast pytest has a fresh-process retry for unresolved global-state pollution.
-3. Dashboard font/network retry behavior remains reliability debt.
-4. Draft PRs intentionally execute less coverage than ready PRs.
-5. Manual/IB Gateway tests require separate E3/E4 evidence and must not run against live capital in cloud CI.
-6. Security scanning is not yet a full dependency/SAST/SBOM/history-sensitive program.
+2. Fast pytest retains a fresh-process retry mechanism for global-state reliability defense; its use must remain observable.
+3. Hosted runner/package ecosystem is bounded rather than bit-for-bit reproducible; see O-03.
+4. Draft/stacked PRs may execute less CI depending on base/workflow triggers; final candidate trees must rerun the required matrix.
+5. Manual/IB Gateway tests require separate V4/V5 evidence and must not run against live capital in cloud CI.
+6. Security scanning is not yet a full dependency/SBOM/history-sensitive supply-chain program.
+7. Repository-admin branch-protection/required-check enforcement remains unverified through the available connector and belongs to O-05.
 
 ## Exit checklist
 
-- [x] Pin a reachable repository baseline.
-- [x] Record advertised required contexts.
-- [x] Observe final-head lint, type, dashboard, security, slow-test, safety, and review jobs.
-- [x] Record terminal fast-test failures and classify their deterministic cause.
-- [x] Open a narrowly scoped repair in PR #773.
-- [x] Require PR #773 exact-head fast-suite and full-CI success.
-- [x] Merge PR #773 only after all required checks pass (`master@20ce13c`).
-- [ ] Refresh PR #768 on the repaired baseline and obtain a complete exact-head receipt.
-- [ ] Merge PR #768 only after required contexts are green.
-- [ ] Record the post-merge master SHA and master workflow receipt.
-- [ ] Verify required contexts are actually enforced by branch protection.
-- [ ] Assign CI design debts to O-02/O-03/O-05 owners and ratchets.
+### Technical evidence
 
-**Verification level:** E0/E1 cloud evidence for completed jobs only. No runtime, broker, paper E2E, or live claim.
+- [x] Pin a reachable repository baseline.
+- [x] Classify original baseline failures with terminal logs.
+- [x] Repair deterministic collection/lint/dashboard/test defects in governed PRs.
+- [x] Merge PR #773 only after required checks pass.
+- [x] Refresh PR #768 on repaired master.
+- [x] Obtain one complete exact-head receipt after refresh.
+- [x] Fast pytest PASS.
+- [x] Slow pytest PASS.
+- [x] Coverage merge/floor PASS.
+- [x] Ruff/mypy/security PASS.
+- [x] Dashboard type/unit/build/E2E PASS.
+- [x] Safety Invariant Check PASS.
+- [x] Assign remaining CI design debt to O-02/O-03/O-05.
+
+### Program/adoption follow-up
+
+- [ ] Merge/adopt PR #768 only after explicit human review/approval.
+- [ ] Record post-adoption default-branch workflow receipt.
+- [ ] Verify required contexts are actually enforced by repository-admin branch protection/rulesets.
+
+These remaining items do not invalidate the technical green baseline; they prevent claiming that MIP adoption and repository-admin enforcement are complete.
+
+**Verification level:** V0/V1/V3 cloud evidence for the scopes above. No local runtime, broker PAPER, canary or live-capital claim.
