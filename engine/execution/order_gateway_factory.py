@@ -3,8 +3,9 @@
 Chooses which gateway object the FastAPI lifespan attaches to the safety layer,
 order router, order manager, and position reconciler. Default is the in-process
 ``IBGatewayConnector`` simulator; when ``IB_PAPER_BROKER_ENABLED`` is set AND
-paper mode is on, it returns the real ``IBGatewayManager`` bound to the IB paper
-account on port 4002 so orders actually reach the broker.
+paper mode, approved paper port, and configured account identity are explicit,
+it returns the real ``IBGatewayManager`` bound to the IB paper account on port
+4002 so orders actually reach the broker.
 
 The returned object is duck-typed compatible at every call site the lifespan
 wires (``connect``, ``is_connected``, ``place_paper_order`` with ``parent_order_id``,
@@ -29,9 +30,10 @@ def build_order_gateway(
 ) -> Any:
     """Return the gateway to attach to the order path.
 
-    Real ``IBGatewayManager`` iff ``IB_PAPER_BROKER_ENABLED`` is truthy AND
-    ``PAPER_TRADING`` is on; otherwise the in-process ``IBGatewayConnector``
-    simulator. Raises ``ValueError`` when the order-leg clientId would collide
+    Real ``IBGatewayManager`` only when all paper-broker identity invariants are
+    explicit; otherwise the in-process ``IBGatewayConnector`` simulator is used
+    or an unsafe real-broker configuration raises ``ValueError``. Also raises
+    when the order-leg clientId would collide
     with the data leg (IB silently evicts the second socket) or when the
     configured port is a live-trading port (``IBGatewayConfig.__post_init__``).
     """
