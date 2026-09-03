@@ -100,11 +100,70 @@ def _deps():
     return safety, data_manager
 
 
+def _real_paper_broker_enabled() -> bool:
+    return bool(getattr(settings, "IB_PAPER_BROKER_ENABLED", False))
+
+
+def _configured_paper_account() -> str:
+    return str(getattr(settings, "IB_ACCOUNT_ID", "") or "").strip()
+
+
 def _require_paper_mode() -> None:
     if bool(getattr(settings, "LIVE_TRADING_ENABLED", False)):
         raise HTTPException(409, "Trade-intent execution is disabled in live mode")
     if not bool(getattr(settings, "PAPER_TRADING", True)):
         raise HTTPException(409, "Paper trading is not enabled")
+
+    if _real_paper_broker_enabled():
+        if not bool(getattr(settings, "IBKR_PAPER_MODE", False)):
+            raise HTTPException(409, "Real broker execution requires IBKR_PAPER_MODE=True")
+        if int(getattr(settings, "IBKR_PORT", 0)) != 4002:
+            raise HTTPException(409, "Real broker execution requires IB Gateway paper port 4002")
+        if not _configured_paper_account():
+            raise HTTPException(409, "Real broker execution requires a configured IB_ACCOUNT_ID")
+
+
+def _require_verified_paper_broker(safety) -> None:
+    """Require configuration and connected-session proof before real IB mutation."""
+
+    if not _real_paper_broker_enabled():
+        return
+
+    expected_account = _configured_paper_account()
+    gateway = getattr(safety, "_ib_gateway", None)
+    if gateway is None:
+        raise HTTPException(503, "Real IB paper gateway is not attached")
+
+    gateway_config = getattr(gateway, "_config", None)
+    if gateway_config is None:
+        raise HTTPException(503, "Attached gateway does not expose verifiable broker configuration")
+    if int(getattr(gateway_config, "port", 0)) != 4002:
+        raise HTTPException(409, "Attached gateway is not configured for paper port 4002")
+    if str(getattr(gateway_config, "account", "") or "").strip() != expected_account:
+        raise HTTPException(409, "Attached gateway account does not match IB_ACCOUNT_ID")
+
+    is_connected = getattr(gateway, "is_connected", None)
+    try:
+        connected = bool(is_connected()) if callable(is_connected) else False
+    except Exception as exc:
+        raise HTTPException(503, "Unable to verify the IB paper gateway connection") from exc
+    if not connected:
+        raise HTTPException(503, "IB paper gateway is not connected")
+
+    raw_ib = getattr(gateway, "_ib", None)
+    managed_accounts = getattr(raw_ib, "managedAccounts", None)
+    if not callable(managed_accounts):
+        raise HTTPException(503, "IB managed-account identity is unavailable")
+    try:
+        actual_accounts = {
+            str(account).strip()
+            for account in managed_accounts()
+            if str(account).strip()
+        }
+    except Exception as exc:
+        raise HTTPException(503, "Unable to verify IB managed-account identity") from exc
+    if expected_account not in actual_accounts:
+        raise HTTPException(409, "Connected IB session does not include the configured paper account")
 
 
 def _store() -> TradeIntentStore:
@@ -327,6 +386,7 @@ async def get_trade_intent(intent_id: str):
 async def submit_trade_intent(intent_id: str):
     _require_paper_mode()
     safety, data_manager = _deps()
+    _require_verified_paper_broker(safety)
     store = _store()
 
     try:
