@@ -1,7 +1,8 @@
 name: Safety Invariant Check
 
-# Gates any PR that touches safety-critical engine configuration unless the
-# author has explicitly tagged the PR body with [safety-review] AND the live
+# Gates any PR that touches a safety-critical runtime, broker-mutation,
+# authorization, readiness, operator-status, or governing-policy surface unless
+# the author has explicitly tagged the PR body with [safety-review] AND the live
 # values of the documented safety invariants (PRB-15) still match the pinned
 # expectations in engine/scripts/check_safety_invariants.py. The [safety-review]
 # tag alone only proves someone claimed to review the change; the value check
@@ -53,15 +54,23 @@ jobs:
           set -euo pipefail
           BASE="${{ github.event.pull_request.base.sha }}"
           HEAD="${{ github.event.pull_request.head.sha }}"
-          # Safety-critical surface: config.py (hard limits), kill switch,
-          # risk manager, position sizer math.
-          PATTERNS='^engine/config\.py$|^engine/risk/|^engine/notifications/openclaw_notifier\.py$|^engine/agents/trader\.py$'
+          # Safety-critical surface: hard limits and risk, execution and broker
+          # mutation, authorization/readiness, operator-facing safety truth,
+          # safety evidence scripts, and the policies that govern those paths.
+          PATTERNS='^engine/config\.py$|^engine/risk/|^engine/execution/|^engine/approval/|^engine/domain/(contracts|instruments)\.py$|^engine/routers/(trade_intents|approval_queue|health|phase3_readiness)_router\.py$|^engine/main\.py$|^engine/notifications/openclaw_notifier\.py$|^engine/agents/trader\.py$|^dashboard/lib/(controlPlane|runtimeSnapshot)\.ts$|^dashboard/app/(command-center-v2|mission-control)/|^scripts/(phase0_runtime_truth_snapshot|assess_phase0_runtime_snapshot|check_phase0_isg0|refresh_phase0_runtime_snapshot|install_phase0_runtime_snapshot_task)\.(py|ps1)$|^docs/plans/JARVIS_MASTER_IMPLEMENTATION_PLAN_v1\.0\.md$|^docs/plans/phase0/|^CLAUDE\.md$|^engine/CLAUDE\.md$|^\.claude/rules/safety\.md$|^\.github/workflows/(safety-invariant-check|pr-governance)\.yml$|^scripts/local-pr-gate\.ps1$'
           # Three-dot (merge-base) diff, not two-dot: two-dot compares BASE's
           # tip directly against HEAD, so it picks up every file the base
           # branch has drifted on since this PR forked, not just what this PR
           # itself changed. On a fast-moving base that false-positives on
           # nearly every PR (see PR #532, 2026-07-31).
-          CHANGED=$(git diff --name-only "$BASE"..."$HEAD" | (grep -E "$PATTERNS" || true))
+          #
+          # Inspect both old and new paths for renames so a safety file cannot
+          # leave the protected surface merely by being renamed first.
+          CHANGED_PATHS=$(
+            git diff --name-status -M "$BASE"..."$HEAD" |
+              awk 'BEGIN { FS="\t" } $1 ~ /^R/ { print $2; print $3; next } { print $2 }'
+          )
+          CHANGED=$(printf '%s\n' "$CHANGED_PATHS" | (grep -E "$PATTERNS" || true) | sort -u)
           if [[ -n "$CHANGED" ]]; then
             echo "touches_safety=true" >> "$GITHUB_OUTPUT"
             {
