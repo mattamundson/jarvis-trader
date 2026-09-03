@@ -5,6 +5,7 @@ import {
   candidateApprovalCapability,
   candidateTradeTerms,
   executionCapability,
+  killSwitchState,
   type ControlPlaneApproval,
   type ControlPlaneSnapshot,
 } from "@/lib/controlPlane";
@@ -83,6 +84,33 @@ test("healthy paper state permits paper approval capability", () => {
   assert.equal(result.canApprovePaper, true);
   assert.deepEqual(result.reasons, []);
 });
+
+test("negative live flag alone is not affirmative paper evidence", () => {
+  const base = snapshot();
+  const result = executionCapability(
+    snapshot({
+      health: { ...base.health!, paper_mode: false },
+      safety: { ...base.safety!, live_trading_enabled: false },
+    }),
+  );
+  assert.equal(result.mode, "UNKNOWN");
+  assert.equal(result.canApprovePaper, false);
+  assert.ok(result.reasons.includes("execution mode is UNKNOWN"));
+});
+
+test("kill-switch presentation requires both sources to prove clear", () => {
+  const base = snapshot();
+  assert.equal(killSwitchState(snapshot()), "CLEAR");
+  assert.equal(killSwitchState(snapshot({ safety: null })), "UNKNOWN");
+  assert.equal(killSwitchState(snapshot({ health: null })), "UNKNOWN");
+  assert.equal(
+    killSwitchState(
+      snapshot({ safety: { ...base.safety!, kill_switch_active: true } }),
+    ),
+    "ACTIVE",
+  );
+});
+
 
 test("live mode is never treated as paper approval capable", () => {
   const base = snapshot();
@@ -174,6 +202,26 @@ test("expired candidate is blocked", () => {
   );
   assert.equal(result.canApprove, false);
   assert.ok(result.reasons.includes("candidate expired"));
+});
+
+test("candidate without authoritative quantity fails closed", () => {
+  const result = candidateApprovalCapability(
+    snapshot(),
+    candidate({
+      verdict: {
+        trade_decision: {
+          entry_price: 6500,
+          stop_price: 6498,
+          target_1: 6504,
+        },
+        fund_decision: {},
+      },
+    }),
+    Date.parse("2026-08-31T23:15:00Z"),
+  );
+  assert.equal(result.terms.quantity, null);
+  assert.equal(result.canApprove, false);
+  assert.ok(result.reasons.includes("quantity unavailable"));
 });
 
 test("candidate without a protective stop or target fails closed", () => {
