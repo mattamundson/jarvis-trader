@@ -119,8 +119,11 @@ def _require_paper_mode() -> None:
             raise HTTPException(409, "Real broker execution requires IBKR_PAPER_MODE=True")
         if int(getattr(settings, "IBKR_PORT", 0)) != 4002:
             raise HTTPException(409, "Real broker execution requires IB Gateway paper port 4002")
-        if not _configured_paper_account():
+        configured_account = _configured_paper_account()
+        if not configured_account:
             raise HTTPException(409, "Real broker execution requires a configured IB_ACCOUNT_ID")
+        if not configured_account.upper().startswith("DU"):
+            raise HTTPException(409, "Real broker execution requires an IBKR paper account ID")
 
 
 def _require_verified_paper_broker(safety) -> None:
