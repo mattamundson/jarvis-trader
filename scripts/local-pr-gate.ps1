@@ -438,7 +438,21 @@ try {
     $unstagedChanged = @(Get-GitLines @("diff", "--name-only"))
     $stagedChanged = @(Get-GitLines @("diff", "--cached", "--name-only"))
     $untrackedChanged = @(Get-GitLines @("ls-files", "--others", "--exclude-standard"))
-    $changed = @($headChanged + $unstagedChanged + $stagedChanged + $untrackedChanged |
+    # Include both sides of renames so a safety file cannot leave the protected
+    # surface merely by being renamed before its contents change.
+    $renameChanged = @(
+        @(Get-GitLines @("diff", "--name-status", "-M", "$BaseRef...HEAD")) +
+        @(Get-GitLines @("diff", "--name-status", "-M")) +
+        @(Get-GitLines @("diff", "--cached", "--name-status", "-M")) |
+        ForEach-Object {
+            $parts = $_ -split "`t"
+            if ($parts.Count -ge 3 -and $parts[0] -match '^R') {
+                $parts[1]
+                $parts[2]
+            }
+        }
+    )
+    $changed = @($headChanged + $unstagedChanged + $stagedChanged + $untrackedChanged + $renameChanged |
         Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
         Sort-Object -Unique)
     $statusLines = @(Get-GitLines @("status", "--short", "--branch"))
@@ -517,7 +531,141 @@ try {
         $results.Add((Invoke-Step "Safety invariant values" $RepoRoot $python @("engine/scripts/check_safety_invariants.py") (& $log "safety-values"))) | Out-Null
 
         $safetyFiles = @($changed | Where-Object {
-            $_ -match '^engine/config\.py$|^engine/risk/|^engine/notifications/openclaw_notifier\.py$|^engine/agents/trader\.py$'
+            $_ -match '^engine/config\.py$|^engine/risk/|^engine/execution/|^engine/approval/|^engine/domain/(contracts|instruments)\.py$|^engine/routers/(trade_intents|approval_queue|health|phase3_readiness)_router\.py$|^engine/main\.py$|^engine/notifications/openclaw_notifier\.py$|^engine/agents/trader\.py$|^dashboard/lib/(controlPlane|runtimeSnapshot)\.ts$|^dashboard/app/(command-center-v2|mission-control)/|^scripts/(phase0_runtime_truth_snapshot|assess_phase0_runtime_snapshot|check_phase0_isg0|refresh_phase0_runtime_snapshot|install_phase0_runtime_snapshot_task)\.(py|ps1)$|^docs/plans/JARVIS_MASTER_IMPLEMENTATION_PLAN_v1\.0\.md$|^docs/plans/phase0/|^CLAUDE\.md$|^engine/CLAUDE\.md$|^\.claude/rules/safety\.md$|^\.github/workflows/(safety-invariant-check|pr-governance)\.yml$|^scripts/local-pr-gate\.ps1
+        })
+        $tagExit = 0
+        $tagLines = New-Object System.Collections.Generic.List[string]
+        $tagLines.Add("step: Safety changed-file tag check")
+        $tagLines.Add("base: $BaseRef")
+        $tagLines.Add("pr_number: $PrNumber")
+        $tagLines.Add("")
+        if ($safetyFiles.Count -eq 0) {
+            $tagLines.Add("No safety-critical files changed.")
+        }
+        else {
+            $tagLines.Add("Safety-critical files changed:")
+            foreach ($file in $safetyFiles) { $tagLines.Add("  $file") }
+            $body = Get-PrBody $PrNumber
+            if ($body -and $body.Contains("[safety-review]")) {
+                $tagLines.Add("")
+                $tagLines.Add("PR body contains [safety-review].")
+            }
+            else {
+                $tagLines.Add("")
+                $tagLines.Add("Missing [safety-review] in PR body, or no -PrNumber was supplied.")
+                $tagExit = 1
+            }
+        }
+        $tagPath = & $log "safety-tag"
+        Set-Content -Path $tagPath -Value $tagLines -Encoding UTF8
+        $results.Add([pscustomobject]@{
+            Name = "Safety changed-file tag check"
+            Status = if ($tagExit -eq 0) { "PASS" } else { "FAIL" }
+            ExitCode = $tagExit
+            DurationSeconds = 0
+            LogPath = $tagPath
+        }) | Out-Null
+    }
+
+    if ($runSecurity) {
+        $results.Add((Invoke-RedactedSecurityScan $RepoRoot (& $log "security-redacted"))) | Out-Null
+    }
+
+    if ($runEngine) {
+        $results.Add((Invoke-Step "Engine ruff" $engineRoot $ruff @("check", ".", "--config", "ruff.toml") (& $log "engine-ruff"))) | Out-Null
+        $results.Add((Invoke-Step "Engine compileall" $RepoRoot $python @("-m", "compileall", "-q", "engine", "-x", "(\.venv|node_modules|__pycache__|site-packages)") (& $log "engine-compileall"))) | Out-Null
+        $results.Add((Invoke-Step "Engine mypy allowlist" $RepoRoot $mypy @(
+            "engine/tests/test_paper_runner_engine_sync.py",
+            "engine/tests/test_portfolio_paper_trade_post.py",
+            "engine/routers/validation_router.py",
+            "engine/execution/paper_trade_logger.py",
+            "--ignore-missing-imports",
+            "--config-file",
+            "engine/pyproject.toml",
+            "--explicit-package-bases",
+            "--namespace-packages",
+            "--follow-imports=skip"
+        ) (& $log "engine-mypy-allowlist"))) | Out-Null
+        $results.Add((Invoke-Step "Engine pytest fast" $engineRoot $python @(
+            "-m", "pytest", "tests/", "-m", "not slow and not manual and not integration_ib", "-v", "--tb=short"
+        ) (& $log "engine-pytest-fast"))) | Out-Null
+        if ($IncludeSlow) {
+            $results.Add((Invoke-Step "Engine pytest slow" $engineRoot $python @(
+                "-m", "pytest", "tests/", "-m", "slow and not manual and not integration_ib", "-v", "--tb=short"
+            ) (& $log "engine-pytest-slow"))) | Out-Null
+        }
+    }
+
+    if ($runDashboard) {
+        $results.Add((Invoke-Step "Dashboard guards" $dashboardRoot $pnpm @("run", "guards") (& $log "dashboard-guards"))) | Out-Null
+        $results.Add((Invoke-Step "Dashboard typecheck" $dashboardRoot $pnpm @("run", "typecheck") (& $log "dashboard-typecheck"))) | Out-Null
+        $results.Add((Invoke-Step "Dashboard unit tests" $dashboardRoot $pnpm @("run", "test:unit") (& $log "dashboard-unit"))) | Out-Null
+        if ($IncludeComponent) {
+            $results.Add((Invoke-Step "Dashboard component tests" $dashboardRoot $pnpm @("run", "test:component") (& $log "dashboard-component"))) | Out-Null
+        }
+        if ($IncludeBuild) {
+            $buildLog = & $log "dashboard-build"
+            $results.Add((Invoke-Step "Dashboard build" $dashboardRoot $pnpm @("run", "build") $buildLog)) | Out-Null
+            $relativeBuildLog = Get-LocalRelativePath $dashboardRoot $buildLog
+            $results.Add((Invoke-Step "Dashboard bundle budget" $dashboardRoot "node" @("scripts/check-bundle-budget.mjs", $relativeBuildLog) (& $log "dashboard-bundle-budget"))) | Out-Null
+        }
+        if ($IncludeE2E) {
+            $results.Add((Invoke-Step "Dashboard Playwright" $dashboardRoot $pnpm @("exec", "playwright", "test") (& $log "dashboard-playwright"))) | Out-Null
+        }
+    }
+
+    $failures = @($results | Where-Object { $_.ExitCode -ne 0 })
+    $overall = if ($failures.Count -eq 0) { "PASS" } else { "FAIL" }
+
+    if (-not $NoReport) {
+        $reportPath = Join-Path $runDir "summary.md"
+        $summary = New-Object System.Collections.Generic.List[string]
+        $summary.Add("# Local PR gate - $overall")
+        $summary.Add("")
+        $summary.Add("- Generated UTC: $stamp")
+        $summary.Add(('- Repo: ``{0}``' -f $RepoRoot))
+        $summary.Add(('- Branch: ``{0}``' -f $branch))
+        $summary.Add(('- HEAD: ``{0}``' -f $head))
+        $summary.Add(('- Base: ``{0}`` / ``{1}``' -f $BaseRef, $base))
+        $summary.Add(('- Scope: ``{0}``' -f $effectiveScope))
+        if ($PrNumber -gt 0) { $summary.Add("- PR: #$PrNumber") }
+        $summary.Add("")
+        $summary.Add("## Results")
+        $summary.Add("")
+        $summary.Add("| Step | Status | Exit | Seconds | Log |")
+        $summary.Add("|---|---:|---:|---:|---|")
+        foreach ($result in $results) {
+            $rel = (Get-LocalRelativePath $runDir $result.LogPath) -replace "\\", "/"
+            $summary.Add("| $($result.Name) | $($result.Status) | $($result.ExitCode) | $($result.DurationSeconds) | [$rel]($rel) |")
+        }
+        $summary.Add("")
+        $summary.Add("## Changed Files")
+        $summary.Add("")
+        if ($changed.Count -eq 0) {
+            $summary.Add(('No changed files vs ``{0}``.' -f $BaseRef))
+        }
+        else {
+            foreach ($file in $changed) { $summary.Add(('- ``{0}``' -f $file)) }
+        }
+        $summary.Add("")
+        $summary.Add("## Git Status")
+        $summary.Add("")
+        $summary.Add('```text')
+        foreach ($line in $statusLines) { $summary.Add($line) }
+        $summary.Add('```')
+        Set-Content -Path $reportPath -Value $summary -Encoding UTF8
+        Write-Host ""
+        Write-Host "[local-pr-gate] report: $reportPath"
+    }
+
+    Write-Host "[local-pr-gate] overall: $overall"
+    if ($overall -eq "FAIL") { exit 1 }
+    exit 0
+}
+finally {
+    Pop-Location
+}
+
         })
         $tagExit = 0
         $tagLines = New-Object System.Collections.Generic.List[string]
