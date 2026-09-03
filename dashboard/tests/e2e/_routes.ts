@@ -49,6 +49,8 @@ export const ROUTES: RouteSpec[] = [
 
   // ---- critical: operator decision surfaces --------------------------------
   { path: "/command-center", name: "command center", kind: "page", criticality: "critical", landmark: /JARVIS TRADER.*COMMAND CENTER/i },
+  { path: "/command-center-v2", name: "command center v2", kind: "page", criticality: "critical", landmark: /Command Center V2/i },
+  { path: "/command-center-v2/trade", name: "command center v2 manual trade intent", kind: "page", criticality: "critical", landmark: /Manual Paper Trade Intent/i },
   { path: "/trades/pending-approvals", name: "pending approvals", kind: "page", criticality: "critical", landmark: /Pending trade approvals/i },
   { path: "/paper", name: "paper trading", kind: "page", criticality: "critical", landmark: null },
   { path: "/portfolio", name: "portfolio", kind: "page", criticality: "critical", landmark: null },
