@@ -7,6 +7,7 @@ import { SignalsPipelinePanel } from "./components/SignalsPipelinePanel";
 import { ValidationGatesPanel } from "./components/ValidationGatesPanel";
 import { EngineDataPanel } from "./components/EngineDataPanel";
 import { EnvironmentFleetPanel } from "./components/EnvironmentFleetPanel";
+import { RuntimeSnapshotPanel } from "./components/RuntimeSnapshotPanel";
 import { TradingStatusReconciliation } from "@/components/TradingStatusReconciliation";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 
@@ -47,6 +48,13 @@ export default function MissionControlPage() {
             a symbol trades when it shouldn't, or fails to when it should). */}
         <WidgetErrorBoundary name="Trading Status Reconciliation">
           <TradingStatusReconciliation />
+        </WidgetErrorBoundary>
+
+        {/* Panel 1c — Read-only operator runtime snapshot. This remains useful
+            when the engine is fully down because it reads a machine-local,
+            redacted artifact rather than live engine routes. */}
+        <WidgetErrorBoundary name="Runtime Snapshot">
+          <RuntimeSnapshotPanel />
         </WidgetErrorBoundary>
 
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
