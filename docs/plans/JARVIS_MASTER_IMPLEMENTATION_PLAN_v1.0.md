@@ -6,7 +6,7 @@
 **Formal implementation:** **PHASE 0 STARTS ON MERGE**  
 **First queued WP:** `A-01` Runtime Truth Baseline & Contradiction Register  
 **ISG-0:** **OPEN / NOT YET SATISFIED**  
-**Reachable planning baseline:** `master@e2a1006e3eb7d35a840487c80899b33103b52277`
+**Reachable planning baseline:** `master@20ce13ca07c34b5159f05518abe670f7f3c32d24`
 
 > This is the canonical repository implementation plan for future JARVIS work. Historical roadmap/canon documents remain evidence but do not govern new implementation when they conflict with this plan. Pre-plan PRs #749, #754, #756 and RT-3 are technical spikes to harvest selectively, not completed implementation.
 
@@ -116,7 +116,7 @@ published_at       # where relevant
 received_at
 available_at
 computed_at
-known_at=max(available_at,computed_at)
+known_at=max(received_at,available_at,computed_at)
 decision_at
 ```
 
@@ -135,11 +135,14 @@ Initial deterministic baseline remains a regime-filtered relative-strength momen
 Judge lifecycle:
 
 ```text
-RESEARCH_REJECT → RESEARCH_ONLY → PAPER_CANDIDATE → PAPER_VALIDATED
+RESEARCH_ONLY → PAPER_CANDIDATE → PAPER_VALIDATED
 → CANARY_CANDIDATE → LIVE_ELIGIBLE
 
-PAPER_CANDIDATE / PAPER_VALIDATED / CANARY_CANDIDATE / LIVE_ELIGIBLE
-→ DEGRADED / RETIRED
+RESEARCH_ONLY / PAPER_CANDIDATE / PAPER_VALIDATED / CANARY_CANDIDATE /
+LIVE_ELIGIBLE → RESEARCH_REJECT / DEGRADED / RETIRED
+
+RESEARCH_REJECT / RETIRED are terminal for that exact strategy version. A rejected
+idea may only re-enter research under a new version with a new preregistration
 ```
 
 Weakening, stale, invalidated, or unavailable evidence may move a strategy to
@@ -272,7 +275,7 @@ MIP phase labels are version-qualified (`MIP-0` through `MIP-12`). They do not s
 | MIP-8 | Evaluated contextual AI intelligence | M8 |
 | MIP-9 | Frozen integrated paper campaign | M9 |
 | MIP-10 | Canary readiness only; no live order yet | M10 |
-| MIP-11 | Tiny explicitly authorized live canary | M11 |
+| MIP-11 | Tiny live canary: entry requires completed M10 evidence plus explicit Tier 3 owner authorization; M11 completes only after the authorized canary and reconciliation evidence pass | M11 |
 | MIP-12 | Controlled evidence-banded production/research cycle | M12 |
 
 No calendar date authorizes live trading.
