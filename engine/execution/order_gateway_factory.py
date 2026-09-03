@@ -66,6 +66,10 @@ def build_order_gateway(
             raise ValueError(
                 "IB_PAPER_BROKER_ENABLED requires a non-empty IB_ACCOUNT_ID"
             )
+        if not account_id.upper().startswith("DU"):
+            raise ValueError(
+                "IB_PAPER_BROKER_ENABLED requires an IBKR paper account ID beginning with DU"
+            )
 
         # Import here so the default (simulator) path never pulls ib_async.
         from data.market_data import resolve_data_client_id
