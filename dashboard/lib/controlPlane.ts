@@ -182,6 +182,18 @@ export async function fetchControlPlaneSnapshot(): Promise<ControlPlaneSnapshot>
   };
 }
 
+export function killSwitchState(
+  snapshot: ControlPlaneSnapshot | null | undefined,
+): "ACTIVE" | "CLEAR" | "UNKNOWN" {
+  const healthState = snapshot?.health?.kill_switch_active;
+  const safetyState = snapshot?.safety?.kill_switch_active;
+
+  if (healthState === true || safetyState === true) return "ACTIVE";
+  if (healthState === false && safetyState === false) return "CLEAR";
+  return "UNKNOWN";
+}
+
+
 export function executionCapability(snapshot: ControlPlaneSnapshot): {
   mode: "PAPER" | "LIVE" | "UNKNOWN";
   canApprovePaper: boolean;
@@ -191,11 +203,13 @@ export function executionCapability(snapshot: ControlPlaneSnapshot): {
   const health = snapshot.health;
   const safety = snapshot.safety;
 
-  const mode = health?.live_trading || safety?.live_trading_enabled
-    ? "LIVE"
-    : health?.paper_mode === true || safety?.live_trading_enabled === false
-      ? "PAPER"
-      : "UNKNOWN";
+  const liveEvidence =
+    health?.live_trading === true || safety?.live_trading_enabled === true;
+  const paperEvidence =
+    health?.paper_mode === true &&
+    health?.live_trading === false &&
+    safety?.live_trading_enabled === false;
+  const mode = liveEvidence ? "LIVE" : paperEvidence ? "PAPER" : "UNKNOWN";
 
   if (!health) reasons.push("health unavailable");
   if (!safety) reasons.push("safety state unavailable");
@@ -242,7 +256,7 @@ export function candidateTradeTerms(candidate: ControlPlaneApproval): CandidateT
     tradeDecision.target_price,
     tradeDecision.take_profit,
   );
-  const quantity = positiveInteger(fundDecision.final_quantity, tradeDecision.quantity, 1);
+  const quantity = positiveInteger(fundDecision.final_quantity, tradeDecision.quantity);
 
   let riskPointsPerUnit: number | null = null;
   let rewardPointsPerUnit: number | null = null;
