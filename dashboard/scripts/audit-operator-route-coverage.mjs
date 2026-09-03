@@ -2,8 +2,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 
-const dashboardRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+const scriptPath = fileURLToPath(import.meta.url);
+const dashboardRoot = path.resolve(path.dirname(scriptPath), "..");
 const appRoot = path.join(dashboardRoot, "app");
 const manifestPath = path.join(dashboardRoot, "config", "operator-route-migration.json");
 
@@ -69,6 +71,6 @@ function main() {
   process.exitCode = strict && report.unmapped_current_routes.length ? 2 : 0;
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname)) {
+if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(scriptPath)) {
   main();
 }
