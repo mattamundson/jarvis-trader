@@ -1,0 +1,75 @@
+{
+  "plan": "JARVIS-MIP-1.0",
+  "gate": "ISG-0",
+  "schema_version": 1,
+  "observed_at": "2026-09-03",
+  "gate_auto_close_allowed": false,
+  "capital_authorized": false,
+  "criteria": [
+    {
+      "id": "A-01",
+      "state": "BLOCKED_EXTERNAL",
+      "requirement": "Runtime truth baseline complete and contradictions dispositioned",
+      "evidence": ["PR #776 merged snapshot producer", "PR #777 merged Mission Control panel", "PR #781 assessor draft"],
+      "blocker": "Actual Windows/TWS/runtime snapshot and operator contradiction disposition"
+    },
+    {
+      "id": "O-01",
+      "state": "SATISFIED_TECHNICAL",
+      "requirement": "CI/debt technical baseline established",
+      "evidence": ["JARVIS CI 33707562601 PASS", "Safety Invariant 33707562597 PASS"]
+    },
+    {
+      "id": "PLAN-ADOPTION",
+      "state": "BLOCKED_HUMAN_REVIEW",
+      "requirement": "JARVIS-MIP-1.0 adopted",
+      "evidence": ["PR #768 open"],
+      "blocker": "Independent human S3 safety review and reviewed merge"
+    },
+    {
+      "id": "A-02",
+      "state": "DRAFT_COMPLETE",
+      "requirement": "Source-of-truth hierarchy adopted",
+      "evidence": ["PR #774 draft"]
+    },
+    {
+      "id": "A-03",
+      "state": "DRAFT_COMPLETE",
+      "requirement": "Target bounded-context architecture adopted",
+      "evidence": ["PR #774 draft"]
+    },
+    {
+      "id": "K-01",
+      "state": "DRAFT_COMPLETE",
+      "requirement": "Canonical operator IA and deprecation map adopted",
+      "evidence": ["PR #774 draft"]
+    },
+    {
+      "id": "O-02-O-03",
+      "state": "DRAFT_COMPLETE",
+      "requirement": "Verification and reproducible-build governance adopted",
+      "evidence": ["PR #774 draft"]
+    },
+    {
+      "id": "O-05",
+      "state": "IMPLEMENTED_DRAFT",
+      "requirement": "PR/Coding-Agent governance active on default branch and enforcement verified",
+      "evidence": ["PR #775 draft", "master required-context metadata partially observed"],
+      "blocker": "Default-branch activation and admin enforcement receipt"
+    },
+    {
+      "id": "POST-ADOPTION-RECEIPT",
+      "state": "BLOCKED_DEPENDENCY",
+      "requirement": "Post-adoption full CI and pre-deploy receipts recorded",
+      "evidence": ["PR #778 deploy-check repair draft"],
+      "blocker": "Requires reviewed master push after adoption stack"
+    }
+  ],
+  "authorization": {
+    "isg0_closed": false,
+    "phase1_adopted": false,
+    "paper_authorized_by_this_file": false,
+    "live_authorized_by_this_file": false,
+    "note": "Machine-readable planning evidence only. Human review and runtime evidence remain authoritative gates."
+  }
+}
