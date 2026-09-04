@@ -73,3 +73,20 @@ test("mission control renders SPX intraday analysis as analysis-only", async ({ 
   await expect(card.getByText("Probability map")).toBeVisible();
   await expect(card.getByRole("button", { name: /submit|order|trade/i })).toHaveCount(0);
 });
+
+test("spx analysis page renders the full scenario tree and diagnostics", async ({ page }) => {
+  await page.route("**/api/spx-intraday", (route) => route.fulfill({ status: 200, json: SPX_PAYLOAD }));
+  await page.route("**/api/engine/**", (route) => route.fulfill({ status: 200, json: {} }));
+
+  await page.goto("/analysis/spx", { waitUntil: "domcontentloaded" });
+
+  const card = page.getByTestId("spx-intraday-analysis-card");
+  await expect(card).toBeVisible();
+  await expect(page.getByText("SPX INTRADAY ANALYSIS")).toBeVisible();
+  await expect(page.getByText("Scenario detail")).toBeVisible();
+  await expect(page.getByText("Close band 7,748.00 – 7,752.00")).toBeVisible();
+  await expect(page.getByText("Trigger:").first()).toBeVisible();
+  await expect(page.getByText("Model diagnostics & assumptions")).toBeVisible();
+  await expect(page.getByText("spx-intraday-dashboard-v1")).toBeVisible();
+  await expect(page.getByRole("button", { name: /submit|order|trade/i })).toHaveCount(0);
+});
