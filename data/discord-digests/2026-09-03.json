@@ -1,0 +1,282 @@
+{
+  "date": "2026-09-03",
+  "session_bias": {
+    "session_type": "uncertain",
+    "directional_bias": "neutral",
+    "conviction": 0.5,
+    "ib_bias": "not_mentioned",
+    "data_quality": "fresh",
+    "message_count": 1
+  },
+  "sentiment_score": null,
+  "sentiment_label": null,
+  "top_signals": [],
+  "corey_quote": "Watch for pop and drops early. Lows were made near 7620 and 28971. They should get challenged and if they hold today it can trigger a short cover rally.",
+  "commentary_health": [
+    {
+      "date": "2026-09-04",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.5,
+      "message_count": 1
+    },
+    {
+      "date": "2026-09-03",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 1
+    },
+    {
+      "date": "2026-09-01",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.7,
+      "message_count": 13
+    },
+    {
+      "date": "2026-08-31",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.65,
+      "message_count": 13
+    },
+    {
+      "date": "2026-08-30",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 5
+    },
+    {
+      "date": "2026-08-29",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 5
+    },
+    {
+      "date": "2026-08-28",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.4,
+      "message_count": 5
+    },
+    {
+      "date": "2026-08-27",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.6,
+      "message_count": 5
+    }
+  ],
+  "calibration_integrity": {
+    "total_outcomes": 6,
+    "rows_excluded_corrupt": 0,
+    "rows_excluded_duplicate": 0,
+    "alert": false,
+    "window_days": 30
+  },
+  "llm_provider_health": {
+    "engine_reachable": false,
+    "active_provider": null,
+    "primary_provider": null,
+    "primary_healthy": null,
+    "providers_available": null,
+    "google_fallback_count": null,
+    "vertex_failover_count": null,
+    "llm_path_healthy": null,
+    "alert": false
+  },
+  "task_health": {
+    "present": true,
+    "stale": false,
+    "age_hours": 0.0,
+    "scanned": 109,
+    "failing_enabled": 38,
+    "failing_disabled": 1,
+    "failing_tasks": [
+      {
+        "name": "Hermes-Nightly-Sync",
+        "result": "0x1"
+      },
+      {
+        "name": "Hermes-Snapshot-Weekly",
+        "result": "0x41306"
+      },
+      {
+        "name": "Hermes-WSL-KeepAlive",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Jarvis-A01-RuntimeSnapshotRefresh",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Jarvis-AlertSelfTest",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-ClaudeSessionPressure",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Jarvis-DR-Weekly",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-EngineWatchdog",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Jarvis-FinanceSync",
+        "result": "0x1"
+      },
+      {
+        "name": "jarvis-forecast-scorer",
+        "result": "0x40"
+      },
+      {
+        "name": "jarvis-gapfill-papertrack",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "jarvis-heartbeat-brief",
+        "result": "0x40"
+      },
+      {
+        "name": "jarvis-heartbeat-gapfill-papertrack",
+        "result": "0x1"
+      },
+      {
+        "name": "jarvis-heartbeat-preclose-framing-brief",
+        "result": "0x40"
+      },
+      {
+        "name": "Jarvis-IBGateway-AtLogon",
+        "result": "0x2"
+      },
+      {
+        "name": "Jarvis-IBGateway-RAMWatchdog",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Jarvis-IntradayBarPersist",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Jarvis-LifeOS-Dashboard",
+        "result": "0x80070002"
+      },
+      {
+        "name": "Jarvis-LLMWatchdog",
+        "result": "0x2"
+      },
+      {
+        "name": "Jarvis-MemoryWatch",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Jarvis-NorthStarCockpit",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "jarvis-options-signals",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Jarvis-PaperCollect",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "jarvis-preclose-framing-brief",
+        "result": "0x40"
+      },
+      {
+        "name": "Jarvis-ScanCredentials",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-ScanHistorySecrets",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-Sentinel",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Jarvis-Sentinel-DeadMan",
+        "result": "0x80008089"
+      },
+      {
+        "name": "Jarvis-StrategyC-Weekly",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Jarvis-TVCDP-Watch-30min",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "JARVIS-TV-CDP-Watchdog",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-VaultCaptureProcessor",
+        "result": "0xFFFF0000"
+      },
+      {
+        "name": "Jarvis-VaultDriftCheck",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-VaultIngest-Files-Guarded",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-VaultIngest-OneNote",
+        "result": "0x8007010B"
+      },
+      {
+        "name": "Jarvis-VaultMOCRegen",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-VerdictRefresh-Weekly",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-VWAP-PaperTrack",
+        "result": "0x800710E0"
+      }
+    ],
+    "alert": true
+  },
+  "gate_verdict_freshness": {
+    "active_symbols": [
+      "MES",
+      "MGC"
+    ],
+    "max_age_days": 7.0,
+    "symbols": {
+      "MES": {
+        "age_days": 1.0,
+        "newest": "2026-09-03T15:32:16.463919+00:00",
+        "files": 2,
+        "latest_verdict": "FAIL",
+        "active": true
+      },
+      "SPY": {
+        "age_days": 1.6,
+        "newest": "2026-09-03T01:19:37.088631+00:00",
+        "files": 1,
+        "latest_verdict": "FAIL",
+        "active": false
+      }
+    },
+    "stale_active": [],
+    "missing_active": [
+      "MGC"
+    ],
+    "alert": true
+  }
+}
