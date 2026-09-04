@@ -1,4 +1,31 @@
+import fs from "node:fs";
+import path from "node:path";
+
 import { defineConfig } from "@playwright/test";
+
+function loadDashboardBasicAuthEnv(): void {
+  const envPath = path.join(__dirname, ".env.local");
+  if (!fs.existsSync(envPath)) return;
+
+  for (const line of fs.readFileSync(envPath, "utf8").split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+
+    const eq = trimmed.indexOf("=");
+    if (eq <= 0) continue;
+
+    const key = trimmed.slice(0, eq).trim();
+    if (key !== "DASHBOARD_AUTH_USER" && key !== "DASHBOARD_AUTH_PASS") continue;
+
+    const rawValue = trimmed.slice(eq + 1).trim();
+    const value = rawValue.replace(/^['\"]|['\"]$/g, "");
+    if (!process.env[key]) {
+      process.env[key] = value;
+    }
+  }
+}
+
+loadDashboardBasicAuthEnv();
 
 // Golden-path e2e. Uses the pre-installed Chromium (no browser download).
 //
@@ -55,6 +82,13 @@ export default defineConfig({
   ],
   use: {
     baseURL: "http://localhost:3010",
+    httpCredentials:
+      process.env.DASHBOARD_AUTH_USER && process.env.DASHBOARD_AUTH_PASS
+        ? {
+            username: process.env.DASHBOARD_AUTH_USER,
+            password: process.env.DASHBOARD_AUTH_PASS,
+          }
+        : undefined,
     launchOptions: {
       executablePath: process.env.PW_CHROME || undefined,
       args: ["--no-sandbox", "--disable-dev-shm-usage"],

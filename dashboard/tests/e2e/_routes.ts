@@ -91,6 +91,7 @@ export const ROUTES: RouteSpec[] = [
 
   // ---- research: must carry an exploratory provenance banner ---------------
   { path: "/analysis", name: "analysis", kind: "page", criticality: "research", landmark: /JARVIS TRADER . Analysis/i },
+  { path: "/analysis/spx", name: "spx intraday analysis", kind: "page", criticality: "research", landmark: /SPX INTRADAY ANALYSIS/i },
   { path: "/backtest", name: "backtest results", kind: "page", criticality: "research", landmark: /JARVIS TRADER . Backtest Results/i },
   { path: "/strategy-research", name: "strategy research", kind: "page", criticality: "research", landmark: /Strategy Research/i },
   { path: "/research-log", name: "research log", kind: "page", criticality: "research", landmark: /RESEARCH JOURNAL/i },
