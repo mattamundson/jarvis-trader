@@ -7,6 +7,13 @@
   "corey_quote": null,
   "commentary_health": [
     {
+      "date": "2026-09-08",
+      "data_quality": "stale",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 1
+    },
+    {
       "date": "2026-09-04",
       "data_quality": "fresh",
       "directional_bias": "bullish",
@@ -56,7 +63,7 @@
   "task_health": {
     "present": true,
     "stale": false,
-    "age_hours": 0.0,
+    "age_hours": 0.2,
     "scanned": 109,
     "failing_enabled": 24,
     "failing_disabled": 1,
@@ -168,15 +175,15 @@
     "max_age_days": 7.0,
     "symbols": {
       "MES": {
-        "age_days": 4.9,
-        "newest": "2026-09-03T15:32:16.463919+00:00",
+        "age_days": 0.0,
+        "newest": "2026-09-08T13:56:16.621147+00:00",
         "files": 2,
         "latest_verdict": "FAIL",
         "active": true
       },
       "MGC": {
-        "age_days": 3.9,
-        "newest": "2026-09-04T15:46:31.067333+00:00",
+        "age_days": 0.0,
+        "newest": "2026-09-08T13:59:49.797383+00:00",
         "files": 1,
         "latest_verdict": "PASS",
         "active": true
