@@ -6,7 +6,7 @@ Use for: before any `git push`, PR creation, or tagging a version.
 
 ## Non-Negotiable Pre-Push Gates
 
-All 4 must pass. No exceptions. No shortcuts.
+All applicable gates must execute successfully. No shortcuts. A gate that did not execute is not a pass.
 
 ```bash
 # Gate 1: Engine tests
@@ -15,7 +15,7 @@ cd engine && .venv/Scripts/python -m pytest tests/ -v
 
 # Gate 2: Dashboard build
 cd dashboard && pnpm run build
-# Expected: 16 routes compiled, 0 TypeScript errors
+# Expected: production build succeeds with no TypeScript/build errors
 
 # Gate 3: Secrets check
 bash scripts/hooks/check-secrets.sh
@@ -25,6 +25,8 @@ bash scripts/hooks/check-secrets.sh
 cd engine && .venv/Scripts/python -m pytest tests/test_safety_layer.py -v
 # Expected: all tests pass
 ```
+
+If hosted CI creates a job but no runner executes any step, record `CI-INFRA / NO VALIDATION EXECUTED`; do not treat the red badge as a code failure or the existence of the job as a pass.
 
 ---
 
@@ -55,24 +57,28 @@ Check for:
 
 ---
 
-## Step 2 — Verify Safety Invariants Unchanged
+## Step 2 — Verify Safety / Authorization Boundaries
 
 If any of these files were modified, double-check:
 
 | File | What to verify |
 |---|---|
-| `engine/risk/safety_layer.py` | Kill switch thresholds unchanged unless Tier 3 approved |
-| `engine/config.py` | `LIVE_TRADING_ENABLED = False` still set |
-| `engine/config.py` | `REQUIRE_HUMAN_APPROVAL = True` still set |
-| `engine/backtest/signals.py` | `INSTRUMENT_PARAMS` unchanged unless walk-forward validated |
-| `engine/execution/ib_order_manager.py` | Port 4001 still blocked |
+| `engine/risk/safety_layer.py` | Kill-switch/risk behavior is unchanged unless the exact policy change has required safety review |
+| `engine/config.py` | repository LIVE default remains disabled unless the exact bounded LIVE change is explicitly authorized |
+| `engine/config.py` / runtime evidence | `REQUIRE_HUMAN_APPROVAL` is compared with the current governing decision and observed runtime when relevant — **do not assume a historical True/False literal** |
+| `engine/backtest/signals.py` | strategy parameters unchanged unless the change carries required research/validation evidence |
+| IB broker/adapter code | live-capital routing remains unavailable unless explicitly authorized and reviewed |
 
 ```bash
-# Quick invariant check
+# Quick source checks (source state only — not proof of loaded runtime values)
 grep -n "LIVE_TRADING_ENABLED" engine/config.py
 grep -n "REQUIRE_HUMAN_APPROVAL" engine/config.py
-grep -n "4001" engine/execution/ib_order_manager.py
+grep -R -n "4001" engine | head
 ```
+
+Repository defaults and documentation are not substitutes for loaded runtime truth. If the release depends on actual mode, approval state, broker port/account, or active risk limits, require the A-01/runtime receipt and report contradictions rather than choosing a value by assumption.
+
+A phase number, date, readiness score, test result, PAPER result, merged PR, or agent/LLM recommendation never grants LIVE capital authority.
 
 ---
 
@@ -143,6 +149,8 @@ git log --oneline -3
 bash scripts/hooks/check-secrets.sh
 ```
 
+After push, record the exact head SHA and the actual evidence state. A workflow that never receives a runner remains `CI-INFRA`, not verified.
+
 ---
 
 ## Branch Strategy
@@ -154,7 +162,7 @@ bash scripts/hooks/check-secrets.sh
 | `feat/name` | Non-trivial features |
 | `fix/name` | Bug fixes |
 
-Non-trivial work should use a feature branch. Ask the user before pushing directly to `main`.
+Non-trivial work should use a feature branch. Never force-push a protected/canonical branch without explicit authorization.
 
 ---
 
@@ -171,20 +179,24 @@ Use semantic versioning: `MAJOR.MINOR.PATCH`
 - MINOR: new feature, backward-compatible
 - PATCH: bug fix
 
+A tag/version is a software identity, not trading-environment or capital authorization.
+
 ---
 
 ## Pre-Release Checklist Summary
 
 ```
 [ ] pytest: 0 failures
-[ ] pnpm build: 0 TS errors, 16 routes
+[ ] pnpm build: production build succeeds
 [ ] check-secrets.sh: no new secrets
 [ ] test_safety_layer.py: all pass
-[ ] LIVE_TRADING_ENABLED = False (verified in config.py)
+[ ] repository LIVE default inspected; runtime LIVE state observed if the release depends on it
+[ ] approval/risk values not inferred from stale docs when runtime truth is required
+[ ] exact-head CI state recorded: PASS / FAIL / BLOCKED / CI-INFRA
 [ ] No .env files staged
 [ ] No hardcoded localhost:8010 in dashboard
 [ ] Commit message follows conventional format
-[ ] Not pushing to main directly without user confirmation
+[ ] No protected/canonical branch force-push without explicit authorization
 ```
 
 ---
@@ -192,9 +204,11 @@ Use semantic versioning: `MAJOR.MINOR.PATCH`
 ## Deliverable
 
 ```
-gates:          all 4 pass
+gates:          executed result per gate
 commit:         <hash> <message>
 branch:         <branch name>
 pushed:         yes / no
-safety check:   invariants verified unchanged
+hosted CI:      PASS / FAIL / BLOCKED / CI-INFRA
+safety check:   invariant/authority review result
+runtime truth:  observed receipt ID / UNVERIFIED-NOT-REQUIRED / BLOCKED
 ```
