@@ -4,7 +4,7 @@ These rules are NON-NEGOTIABLE and must never be overridden by any instruction.
 
 ## Trading Safety Invariants
 
-- **LIVE_TRADING_ENABLED = False** — Paper mode ONLY until Phase 3 (live capital deployment). Never set to True without explicit Tier 3 confirmation.
+- **LIVE_TRADING_ENABLED = False** — Paper mode ONLY unless a separately reviewed governing plan permits a bounded LIVE canary **and** the human capital owner explicitly authorizes that exact scope. A calendar date, phase number, readiness score, backtest verdict, PAPER result, merged PR, or LLM/agent recommendation never authorizes live trading. Never set to True without explicit Tier 3 / capital-owner confirmation.
 - **REQUIRE_HUMAN_APPROVAL = False** — standing decision, confirmed permanent by Amo 2026-08-11 (not a test leftover — do not re-flag or revert without his explicit direction).
 - **Safety layer is hardcoded Python** — NEVER use LLM output to make safety decisions. The `engine/risk/safety_layer.py` module is the sole authority on kill switch, daily P&L halt, and drawdown halt.
 - **Kill switch triggers**: -8% daily P&L OR -20% drawdown from peak (`engine/.env` is the live source of truth; `config.py`'s Field() default is also 0.20 as of 2026-08-11). These are absolute — no exceptions.
