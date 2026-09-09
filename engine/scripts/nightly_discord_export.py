@@ -9,6 +9,11 @@ freshened. Incremental: uses `--after` so we only fetch the last 7 days.
 Prereqs (user action, see docs/incident-notes/2026-04-17-t2.1-discord-staleness.md):
     1. Install DiscordChatExporter.Cli to DCE_CLI_PATH (default below).
     2. Confirm C:\\Users\\mattm\\discord-export\\.token exists and is valid.
+    3. If DCE reports "Authentication token is invalid", rotate the token before
+       rerunning; stale futures_sentiment is then a credential-freshness blocker.
+
+Security: never pass Discord credentials via DCE --token/-t command-line args.
+This helper injects DISCORD_TOKEN into the subprocess environment only.
 
 Usage:
     python -m scripts.nightly_discord_export              # full chain: export + ingest
@@ -74,14 +79,21 @@ LOOKBACK_DAYS = 7
 
 
 def _read_token() -> str:
-    if not TOKEN_FILE.exists():
-        raise FileNotFoundError(
-            f"Discord token file missing: {TOKEN_FILE}. "
-            "Save the user/bot token (one line, no quotes) before running."
-        )
-    token = TOKEN_FILE.read_text(encoding="utf-8").strip()
+    token = os.environ.get("DISCORD_TOKEN", "").strip()
+    if not token and TOKEN_FILE.exists():
+        token = TOKEN_FILE.read_text(encoding="utf-8").strip()
     if not token:
-        raise ValueError(f"Token file is empty: {TOKEN_FILE}")
+        env_file = ENGINE_DIR / ".env"
+        if env_file.exists():
+            for line in env_file.read_text(encoding="utf-8", errors="replace").splitlines():
+                if line.startswith("DISCORD_TOKEN="):
+                    token = line.split("=", 1)[1].strip().strip('"').strip("'")
+                    break
+    if not token:
+        raise ValueError(
+            f"Discord token missing: set DISCORD_TOKEN, populate {TOKEN_FILE}, "
+            "or add DISCORD_TOKEN to engine/.env before running."
+        )
     return token
 
 
@@ -91,22 +103,25 @@ def _export_channel(channel_id: str, label: str, token: str, after: str, dry_run
         str(DCE_CLI_PATH),
         "export",
         "--channel", channel_id,
-        "--token", token,
         "--output", str(EXPORT_DIR) + "/",
         "--format", "Json",
         "--after", after,
     ]
-    # Never echo the token to stdout/logs.
-    redacted = [x if x != token else "***REDACTED***" for x in cmd]
+    # Never pass the token on the command line. DiscordChatExporter reads
+    # DISCORD_TOKEN from the subprocess environment, avoiding process-list leaks.
+    redacted = cmd[:]
     logger.info("Export %s (%s): %s", label, channel_id, " ".join(redacted))
     if dry_run:
         return 0
 
+    env = os.environ.copy()
+    env["DISCORD_TOKEN"] = token
     result = subprocess.run(
         cmd,
         capture_output=True,
         text=True,
         timeout=600,
+        env=env,
     )
     if result.returncode != 0:
         stderr_tail = (result.stderr or "")[-500:]

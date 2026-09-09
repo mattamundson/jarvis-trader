@@ -2060,6 +2060,18 @@ async def ib_connection_test():
         (v for v in (getattr(ib_gw, a, None) for a in ("port", "_port")) if isinstance(v, int)),
         None,
     )
+    if port is None and connected:
+        # Some connector instances expose connection state but not their port. The
+        # live TCP probe is the authoritative paper/live boundary already used by
+        # /health, so only backfill the dashboard-facing port when that probe is
+        # currently alive. This avoids connected=true/port=null ambiguity without
+        # overstating a dead gateway as usable.
+        try:
+            alive, probed_port = _check_ibgateway_alive()
+            if alive and isinstance(probed_port, int):
+                port = probed_port
+        except Exception:
+            pass
     account_id = next(
         (
             v
