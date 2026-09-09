@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>JARVIS Product Blueprint v1.0</title>
+<style>
+:root{
+  color-scheme:dark;
+  --bg:#071019;--panel:#0c1722;--panel2:#101e2b;--line:#22384a;--text:#e7f1f8;--muted:#8ea4b5;
+  --cyan:#4fd8ff;--green:#55e6a5;--amber:#ffce67;--red:#ff6f7d;--blue:#7ba7ff;--violet:#b897ff;
+  --shadow:0 16px 48px rgba(0,0,0,.28);
+}
+*{box-sizing:border-box} body{margin:0;background:radial-gradient(circle at 50% -20%,#15304a 0,var(--bg) 45%);color:var(--text);font:14px/1.45 Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif}
+button{font:inherit}.shell{min-height:100vh}.notice{position:sticky;top:0;z-index:20;padding:9px 18px;text-align:center;background:#29181c;border-bottom:1px solid #6e3038;color:#ffd4d8;font-weight:800;letter-spacing:.05em}.top{height:64px;display:flex;align-items:center;gap:16px;padding:0 22px;border-bottom:1px solid var(--line);background:rgba(7,16,25,.92);backdrop-filter:blur(12px)}
+.brand{font-size:22px;font-weight:900;letter-spacing:.18em}.brand b{color:var(--cyan)}.pill{display:inline-flex;align-items:center;gap:7px;padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#0b1823;color:var(--muted);font-size:12px;font-weight:800}.dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 14px currentColor}.paper{color:var(--amber);border-color:#735d2f}.spacer{flex:1}.tabs{display:flex;gap:8px}.tab{border:1px solid var(--line);background:#0b1722;color:var(--muted);padding:8px 12px;border-radius:8px;cursor:pointer}.tab.active{color:#06131d;background:var(--cyan);border-color:var(--cyan);font-weight:900}.view{display:none}.view.active{display:block}
+.hero{max-width:1500px;margin:0 auto;padding:28px}.eyebrow{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--cyan);font-weight:900}.title{font-size:34px;margin:4px 0 8px}.subtitle{color:var(--muted);max-width:920px}.grid{display:grid;gap:14px}.metrics{grid-template-columns:repeat(4,minmax(0,1fr));margin-top:22px}.card{background:linear-gradient(180deg,rgba(16,30,43,.98),rgba(10,22,32,.98));border:1px solid var(--line);border-radius:13px;box-shadow:var(--shadow)}.card h3{margin:0}.metric{padding:16px}.metric .label{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.1em}.metric .value{font-size:25px;font-weight:900;margin-top:5px}.metric .sub{font-size:12px;color:var(--muted)}
+.roadmap{margin-top:22px;grid-template-columns:310px 1fr}.side{padding:17px;align-self:start;position:sticky;top:104px}.side h3{margin-bottom:12px}.legend{display:flex;flex-wrap:wrap;gap:7px}.status{font-size:10px;font-weight:900;letter-spacing:.06em;border-radius:6px;padding:4px 7px;border:1px solid var(--line)}.ns{color:#93a8b7}.p{color:var(--blue)}.d{color:var(--amber)}.au{color:var(--violet)}.b{color:var(--red)}.a{color:var(--green)}.rule{height:1px;background:var(--line);margin:16px 0}.small{color:var(--muted);font-size:12px}.tree{padding:18px}.outcome{border:1px solid var(--line);border-radius:11px;margin-bottom:12px;overflow:hidden}.outcome>button{width:100%;text-align:left;border:0;color:var(--text);background:#0e1d2a;padding:15px 16px;cursor:pointer;display:flex;align-items:center;gap:10px}.outcome>button strong{font-size:15px}.outcome>button .chev{margin-left:auto;color:var(--muted)}.outcome .body{display:none;padding:12px;background:#091721}.outcome.open .body{display:block}.program{padding:10px 11px;border-left:2px solid var(--cyan);margin:8px 0 14px;background:#0c1a26}.program-title{font-weight:900}.epic{display:grid;grid-template-columns:1fr auto;gap:8px;margin:9px 0;padding:9px 10px;border:1px solid #1d3345;border-radius:8px;background:#0a1620}.epic small{color:var(--muted)}
+.app{height:calc(100vh - 101px);min-height:720px;display:grid;grid-template-columns:190px 1fr}.nav{border-right:1px solid var(--line);background:#08131d;padding:14px 10px}.nav .group{font-size:10px;color:#607789;text-transform:uppercase;letter-spacing:.13em;margin:12px 10px 7px}.nav a{display:flex;align-items:center;gap:9px;color:#98adbc;text-decoration:none;padding:9px 10px;border-radius:8px;margin:2px 0}.nav a.active{color:var(--text);background:#102535;border:1px solid #24465b}.nav a span{width:7px;height:7px;border-radius:50%;background:#395569}.nav a.active span{background:var(--cyan);box-shadow:0 0 10px var(--cyan)}.workspace{padding:16px 18px;overflow:auto}.trust{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid #265b4a;background:#0b231d;border-radius:10px;margin-bottom:12px}.trust .big{font-size:18px;font-weight:950;color:var(--green)}.trust .explain{color:#9fc8b8}.trust .right{margin-left:auto;display:flex;gap:8px}.cockpit-metrics{grid-template-columns:repeat(4,minmax(0,1fr))}.two{grid-template-columns:1.25fr 1fr;margin-top:12px}.section{padding:14px}.section-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}.section-head small{color:var(--muted)}table{width:100%;border-collapse:collapse}th{text-align:left;color:#71899b;text-transform:uppercase;font-size:10px;letter-spacing:.08em;font-weight:800;border-bottom:1px solid var(--line);padding:8px}td{padding:9px 8px;border-bottom:1px solid #172b3a}tr:last-child td{border-bottom:0}.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.positive{color:var(--green)}.warn{color:var(--amber)}.danger{color:var(--red)}.muted{color:var(--muted)}.badge{font-size:10px;font-weight:900;padding:3px 6px;border-radius:5px;border:1px solid var(--line)}.g{color:var(--green);border-color:#235e49;background:#0b251d}.y{color:var(--amber);border-color:#6a5427;background:#241e0c}.r{color:var(--red);border-color:#71313a;background:#281116}.v{color:var(--violet);border-color:#4f3c7a;background:#181329}.bar{height:6px;background:#142839;border-radius:99px;overflow:hidden;margin-top:6px}.bar>i{display:block;height:100%;width:38%;background:linear-gradient(90deg,var(--green),var(--cyan))}.tape{margin-top:12px}.event{display:grid;grid-template-columns:76px 90px 1fr auto;gap:8px;padding:8px 0;border-bottom:1px solid #172b3a}.event:last-child{border:0}.callout{border:1px dashed #486276;background:#0b1720;padding:10px;border-radius:9px;color:var(--muted)}
+@media(max-width:1000px){.metrics,.cockpit-metrics{grid-template-columns:repeat(2,1fr)}.roadmap{grid-template-columns:1fr}.side{position:static}.app{grid-template-columns:72px 1fr}.nav a{font-size:0;justify-content:center}.nav .group{display:none}.two{grid-template-columns:1fr}}
+@media(max-width:680px){.top{height:auto;padding:10px;flex-wrap:wrap}.top .pill.optional{display:none}.hero{padding:16px}.metrics,.cockpit-metrics{grid-template-columns:1fr}.app{height:auto;grid-template-columns:1fr}.nav{display:none}.trust{align-items:flex-start;flex-direction:column}.trust .right{margin:0}.event{grid-template-columns:65px 1fr}.event>*:nth-child(2){display:none}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="notice">DESIGN BLUEPRINT ONLY · STATIC SAMPLE DATA · ZERO NETWORK CALLS · ZERO BROKER MUTATIONS · NOT A DELIVERED TRADING UI</div>
+  <header class="top">
+    <div class="brand">JARVIS <b>//</b> BLUEPRINT</div>
+    <span class="pill paper">● PAPER CONCEPT</span>
+    <span class="pill optional"><span class="dot"></span> DESIGN SAFE</span>
+    <div class="spacer"></div>
+    <div class="tabs" role="tablist" aria-label="Blueprint views">
+      <button class="tab active" data-view="plan">Master Plan</button>
+      <button class="tab" data-view="cockpit">Command Center</button>
+    </div>
+  </header>
+
+  <section id="plan" class="view active">
+    <main class="hero">
+      <div class="eyebrow">JARVIS-MPP-1.0 · Proposed PlanLife-style hierarchy</div>
+      <h1 class="title">From parallel work to one governed product.</h1>
+      <p class="subtitle">This view visualizes the proposed parent hierarchy. Release trains and PRs sit beneath work packages; status is intentionally conservative. “Merged” is not equivalent to “adopted” or “validated.”</p>
+
+      <div class="grid metrics">
+        <div class="card metric"><div class="label">Outcomes</div><div class="value">8</div><div class="sub">truth → edge → safety → execution → product → capital → learning → platform</div></div>
+        <div class="card metric"><div class="label">Programs</div><div class="value">15</div><div class="sub">A through O domain workstreams</div></div>
+        <div class="card metric"><div class="label">Current priority</div><div class="value">Authority</div><div class="sub">consolidate truth before adding capability</div></div>
+        <div class="card metric"><div class="label">Capital state</div><div class="value warn">PAPER</div><div class="sub">no LIVE authorization implied by this blueprint</div></div>
+      </div>
+
+      <div class="grid roadmap">
+        <aside class="card side">
+          <h3>Status model</h3>
+          <div class="legend">
+            <span class="status ns">NOT BUILT</span><span class="status p">PROPOSED</span><span class="status d">DRAFT</span><span class="status au">ACTIVE-UNADOPTED</span><span class="status a">ADOPTED</span><span class="status b">BLOCKED</span>
+          </div>
+          <div class="rule"></div>
+          <h3>Promotion ladder</h3>
+          <p class="small mono">IDEA → DRAFT → ADOPTED → IMPLEMENTED → VALIDATED → PAPER-QUALIFIED → HUMAN LIVE-CANARY APPROVAL → CANARY → HUMAN PRODUCTION APPROVAL</p>
+          <div class="rule"></div>
+          <h3>Current migration debt</h3>
+          <p class="small">• `/orders/place` + `/trade-intents/*`<br>• `/command-center-v2` + target `/command-center`<br>• active runtime predates proposed domain contracts<br>• cloud CI recently producing zero-step infrastructure failures</p>
+        </aside>
+
+        <section class="card tree" id="roadmapTree">
+          <div class="outcome open"><button><strong>O1 · Truthful Data</strong><span class="status d">DRAFT FOUNDATION</span><span class="chev">⌄</span></button><div class="body">
+            <div class="program"><div class="program-title">B · Data & Instrument Authority</div>
+              <div class="epic"><div><b>B1 Instrument Master</b><br><small>canonical roots, provider mapping, sessions, contract metadata</small></div><span class="status d">#788</span></div>
+              <div class="epic"><div><b>B2 Point-in-time Data</b><br><small>observed/available timestamps, PIT store, freshness and provenance</small></div><span class="status p">PROPOSED</span></div>
+              <div class="epic"><div><b>B3 Source Integrity</b><br><small>source fingerprints, contradiction/parity evidence</small></div><span class="status au">#787 + #749</span></div>
+            </div></div></div>
+
+          <div class="outcome"><button><strong>O2 · Reproducible Edge</strong><span class="status d">RESEARCH DRAFT</span><span class="chev">›</span></button><div class="body"><div class="program"><div class="program-title">C · Research & Validation</div>
+            <div class="epic"><div><b>Research ledger + fingerprints</b><br><small>immutable trial identity and reproducibility</small></div><span class="status d">#749</span></div>
+            <div class="epic"><div><b>Leakage defect quantification</b><br><small>Initial Balance and VWAP known defects before patch/promotion</small></div><span class="status d">#751/#752</span></div>
+            <div class="epic"><div><b>Robustness & execution stress</b><br><small>CPCV, cost, parameter and regime sensitivity</small></div><span class="status p">NEXT</span></div>
+          </div></div></div>
+
+          <div class="outcome"><button><strong>O3 · Deterministic Safety</strong><span class="status d">CONTRACT DRAFT</span><span class="chev">›</span></button><div class="body"><div class="program"><div class="program-title">H · Risk Authority</div>
+            <div class="epic"><div><b>H-01 Risk Policy</b><br><small>versioned, deterministic, explicit activation</small></div><span class="status d">#788</span></div>
+            <div class="epic"><div><b>Safety drills</b><br><small>kill switch, stale state, drawdown, emergency recovery</small></div><span class="status p">PROPOSED</span></div>
+          </div></div></div>
+
+          <div class="outcome"><button><strong>O4 · Reliable Execution</strong><span class="status au">DUAL AUTHORITY</span><span class="chev">›</span></button><div class="body">
+            <div class="program"><div class="program-title">I · OMS & Execution</div>
+              <div class="epic"><div><b>I-MIG-001 Manual order authority</b><br><small>reconcile legacy `/orders/place` with TradeIntent lifecycle</small></div><span class="status d">#786</span></div>
+              <div class="epic"><div><b>RT-2 TradeIntent</b><br><small>useful lifecycle exists on master; remains unadopted</small></div><span class="status au">#756</span></div>
+              <div class="epic"><div><b>Restart / ambiguity / reconciliation</b><br><small>required before canonical OMS claim</small></div><span class="status p">NEXT</span></div>
+            </div>
+            <div class="program"><div class="program-title">J · Broker & Reconciliation</div><div class="epic"><div><b>Broker truth model</b><br><small>simulator vs IB PAPER distinction, order/fill/position reconciliation</small></div><span class="status p">PROPOSED</span></div></div>
+          </div></div>
+
+          <div class="outcome"><button><strong>O5 · One Operator Product</strong><span class="status au">V2 ACTIVE</span><span class="chev">›</span></button><div class="body"><div class="program"><div class="program-title">K · Operator Product</div>
+            <div class="epic"><div><b>K-MIG-001 Canonical IA migration</b><br><small>V2 components → canonical Command Center / Trade / Operations</small></div><span class="status d">#786/#788</span></div>
+            <div class="epic"><div><b>Command Center V2</b><br><small>implementation source, not accepted final UI</small></div><span class="status au">#754</span></div>
+            <div class="epic"><div><b>Canonical `/command-center`</b><br><small>rendered, navigable, degraded-state tested product</small></div><span class="status p">SPECIFIED</span></div>
+          </div></div></div>
+
+          <div class="outcome"><button><strong>O6 · Evidence-driven Capital Progression</strong><span class="status p">PROPOSED</span><span class="chev">›</span></button><div class="body"><div class="program"><div class="program-title">N · Security & Authorization</div><div class="epic"><div><b>Promotion evidence</b><br><small>PAPER qualification → explicit human live-canary approval → bounded canary → human production approval</small></div><span class="status p">NO AUTOPROMOTION</span></div></div></div></div>
+
+          <div class="outcome"><button><strong>O7 · Continuous Learning</strong><span class="status p">PROPOSED</span><span class="chev">›</span></button><div class="body"><div class="program"><div class="program-title">L · Learning & Performance</div><div class="epic"><div><b>Realized-vs-expected loop</b><br><small>calibration, slippage, drift and recommendations without self-activation</small></div><span class="status p">PROPOSED</span></div></div></div></div>
+
+          <div class="outcome"><button><strong>O8 · Maintainable Platform</strong><span class="status d">IN PROGRESS</span><span class="chev">›</span></button><div class="body">
+            <div class="program"><div class="program-title">A / M / O · Architecture, Audit, Delivery</div>
+              <div class="epic"><div><b>Current-master inert contracts</b><br><small>clean structural rebase of stale Phase-1 stack</small></div><span class="status d">#788</span></div>
+              <div class="epic"><div><b>Exact-head CI</b><br><small>runner allocation must execute required steps</small></div><span class="status b">CI-INFRA</span></div>
+              <div class="epic"><div><b>Authority migration receipts</b><br><small>parity, restart, rollback, reconciliation before replacement</small></div><span class="status d">#786/#788</span></div>
+            </div>
+          </div></div>
+        </section>
+      </div>
+    </main>
+  </section>
+
+  <section id="cockpit" class="view">
+    <div class="app">
+      <nav class="nav" aria-label="Proposed canonical navigation">
+        <div class="group">Operate</div>
+        <a class="active" href="#"><span></span>Command Center</a><a href="#"><span></span>Trade Workstation</a><a href="#"><span></span>Portfolio</a><a href="#"><span></span>Risk Center</a>
+        <div class="group">Evidence</div>
+        <a href="#"><span></span>Research Lab</a><a href="#"><span></span>Strategies</a><a href="#"><span></span>Capital Path</a><a href="#"><span></span>Intelligence</a><a href="#"><span></span>Data</a>
+        <div class="group">System</div>
+        <a href="#"><span></span>Operations</a><a href="#"><span></span>Broker</a><a href="#"><span></span>Learning</a><a href="#"><span></span>Audit</a><a href="#"><span></span>Settings</a>
+      </nav>
+
+      <main class="workspace">
+        <div class="trust">
+          <div class="big">TRUST: SAFE</div><div class="explain">Static example: broker, data, risk and reconciliation dependencies meet sample thresholds.</div>
+          <div class="right"><span class="badge y">PAPER</span><span class="badge g">IBKR PAPER</span><span class="badge g">RECONCILED</span></div>
+        </div>
+
+        <div class="grid cockpit-metrics">
+          <div class="card metric"><div class="label">Portfolio Equity</div><div class="value">$12,480</div><div class="sub">source: sample broker projection · 2s old</div></div>
+          <div class="card metric"><div class="label">Today</div><div class="value positive">+$84</div><div class="sub">realized + unrealized · sample</div></div>
+          <div class="card metric"><div class="label">Active Risk</div><div class="value">$42</div><div class="sub">38% of sample policy budget</div><div class="bar"><i></i></div></div>
+          <div class="card metric"><div class="label">Data Trust</div><div class="value positive">FRESH</div><div class="sub">4/4 sample feeds within threshold</div></div>
+        </div>
+
+        <div class="grid two">
+          <section class="card section"><div class="section-head"><h3>Market / Regime</h3><small>advisory context</small></div><table><tr><th>Instrument</th><th>Regime</th><th>Vol</th><th>Data</th></tr><tr><td>MES</td><td>Trend +</td><td>Normal</td><td><span class="badge g">FRESH 2s</span></td></tr><tr><td>MNQ</td><td>Range</td><td>High</td><td><span class="badge g">FRESH 2s</span></td></tr><tr><td>MGC</td><td>Trend −</td><td>Normal</td><td><span class="badge g">FRESH 3s</span></td></tr></table></section>
+          <section class="card section"><div class="section-head"><h3>Risk Governor</h3><small>deterministic</small></div><table><tr><td class="muted">Kill switch</td><td><span class="badge g">OFF</span></td></tr><tr><td class="muted">Daily loss</td><td>$0 / $100 sample</td></tr><tr><td class="muted">Open risk</td><td>$42</td></tr><tr><td class="muted">Reconciliation</td><td><span class="badge g">MATCHED</span></td></tr><tr><td class="muted">Policy</td><td class="mono">risk-v1 · sample</td></tr></table></section>
+        </div>
+
+        <section class="card section" style="margin-top:12px"><div class="section-head"><h3>Top Setups / Candidates</h3><small>signal ≠ risk ≠ authorization</small></div><table><thead><tr><th>Symbol</th><th>Strategy</th><th>Direction</th><th>Signal</th><th>Risk Qty</th><th>State</th><th>Reason</th></tr></thead><tbody><tr><td><b>MES</b></td><td>Momentum v3.4</td><td>LONG</td><td>0.71 cal.</td><td>1 ceiling</td><td><span class="badge g">PAPER READY</span></td><td class="muted">fresh data · risk $42</td></tr><tr><td><b>MNQ</b></td><td>ORB v2.1</td><td>LONG</td><td>0.78</td><td>0</td><td><span class="badge r">BLOCKED</span></td><td class="danger">DATA_STALE example</td></tr><tr><td><b>MGC</b></td><td>MeanRev v1.8</td><td>SHORT</td><td>0.55</td><td>—</td><td><span class="badge y">REVIEW</span></td><td class="muted">strategy evidence pending</td></tr></tbody></table></section>
+
+        <div class="grid two">
+          <section class="card section"><div class="section-head"><h3>Open Positions</h3><small>broker-observed truth first</small></div><table><tr><th>Symbol</th><th>Qty</th><th>P&L</th><th>Protection</th></tr><tr><td>MES</td><td>+1</td><td class="positive">+$31</td><td><span class="badge g">STOP + TARGET</span></td></tr><tr><td colspan="4" class="muted">Internal projection matches sample broker state.</td></tr></table></section>
+          <section class="card section"><div class="section-head"><h3>Orders / Reconciliation</h3><small>ambiguity blocks blind retry</small></div><table><tr><th>Intent</th><th>Broker</th><th>State</th></tr><tr><td class="mono">ti_demo_41</td><td class="mono">ib_91302</td><td><span class="badge g">ACKNOWLEDGED</span></td></tr><tr><td class="mono">ti_demo_40</td><td>—</td><td><span class="badge v">RECONCILED</span></td></tr></table></section>
+        </div>
+
+        <section class="card section tape"><div class="section-head"><h3>System Tape / Attention</h3><small>correlated event projection</small></div>
+          <div class="event"><span class="mono muted">09:42:08</span><b>RISK</b><span>MES intent preview allowed qty ceiling 1 · policy sample</span><span class="badge g">SAFE</span></div>
+          <div class="event"><span class="mono muted">09:42:05</span><b>DATA</b><span>MNQ example freshness threshold exceeded</span><span class="badge r">BLOCK</span></div>
+          <div class="event"><span class="mono muted">09:41:57</span><b>BROKER</b><span>Order/position projection reconciled</span><span class="badge g">MATCH</span></div>
+        </section>
+        <div class="callout" style="margin-top:12px"><b>Blueprint rule:</b> a production implementation must derive these states from governed APIs and broker/data authorities. This HTML contains no API calls, no credentials, no order controls, and no live data.</div>
+      </main>
+    </div>
+  </section>
+</div>
+<script>
+for (const button of document.querySelectorAll('.tab')) button.addEventListener('click',()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===button));
+  document.querySelectorAll('.view').forEach(x=>x.classList.toggle('active',x.id===button.dataset.view));
+});
+for (const button of document.querySelectorAll('.outcome>button')) button.addEventListener('click',()=>{
+  const box=button.parentElement; box.classList.toggle('open');
+  button.querySelector('.chev').textContent=box.classList.contains('open')?'⌄':'›';
+});
+for (const link of document.querySelectorAll('.nav a')) link.addEventListener('click',e=>e.preventDefault());
+</script>
+</body>
+</html>
