@@ -6,7 +6,7 @@ No TA-Lib dependency. Uses numpy and pandas only.
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -402,66 +402,261 @@ def ema_ribbon(close: pd.Series) -> Tuple[pd.Series, pd.Series, pd.Series]:
     return ema_8, ema_21, ema_34
 
 
-# Saty's standard fib-ATR ratios (faithful to the AA Saty ATR Levels ThinkScript).
+# Saty's fib-ATR ratios (faithful to the AA Saty ATR Levels ThinkScript).
 # 0.236 is the directional trigger; 1.0 is the full-ATR target; >1.0 are extensions.
-SATY_ATR_RATIOS: Tuple[float, ...] = (0.236, 0.382, 0.618, 0.786, 1.0, 1.236, 1.618, 2.0)
+SATY_ATR_RATIOS: Tuple[float, ...] = (
+    0.236,
+    0.382,
+    0.5,
+    0.618,
+    0.786,
+    1.0,
+    1.236,
+    1.382,
+    1.5,
+    1.618,
+    1.786,
+    2.0,
+    2.236,
+    2.382,
+    2.5,
+    2.618,
+    2.786,
+    3.0,
+)
+SATY_CLEAN_RATIOS: Tuple[float, ...] = (0.236, 0.618, 1.0, 1.618)
 SATY_TRIGGER_RATIO = 0.236
+SATY_CHASE_RANGE_PCT_ATR = 90.0
+SATY_CHASE_DISPLACEMENT_ATR = 0.786
 
 
-def saty_atr_levels(prior_close: float, atr: float) -> dict:
+def _round_to_tick(value: float, tick_size: float | None = None) -> float:
+    """Round price-like values to an optional instrument tick size."""
+    if tick_size is None or tick_size <= 0:
+        return float(value)
+    return round(float(value) / tick_size) * tick_size
+
+
+def saty_atr_levels(
+    prior_close: float,
+    atr: float,
+    *,
+    ratios: Tuple[float, ...] = SATY_ATR_RATIOS,
+    tick_size: float | None = None,
+) -> dict:
     """Saty ATR Levels: fib-ATR price levels anchored to the prior session close.
 
-    Ported from the AA Saty ATR Levels ThinkScript study (master-jarvis/
-    thinkorswim-scripts). Unlike the engine's existing ATR-multiple targets
-    (which anchor to the *entry*), these anchor to the prior close, so the same
-    levels hold for every entry on the day — a cleaner, less path-dependent
-    target/SR framework.
-
-    Returns a dict with:
-        prior_close, atr
-        call_trigger / put_trigger : +/- 0.236 ATR directional pivots
-        upper / lower : {ratio: price} for every SATY_ATR_RATIOS level
-    Returns an empty-ish dict (levels present but flat at prior_close) if atr<=0.
+    Ported from the Saty ATR Levels ThinkScript study. Unlike entry-anchored ATR
+    targets, these levels anchor to the prior close, so the same read-only map
+    holds for every decision on the day. The return shape preserves the legacy
+    ``call_trigger``/``put_trigger`` keys while adding neutral trigger aliases.
     """
-    pc = float(prior_close)
+    pc = _round_to_tick(float(prior_close), tick_size)
     a = float(atr) if atr and atr > 0 else 0.0
-    upper = {r: pc + r * a for r in SATY_ATR_RATIOS}
-    lower = {r: pc - r * a for r in SATY_ATR_RATIOS}
+    upper = {r: _round_to_tick(pc + r * a, tick_size) for r in ratios}
+    lower = {r: _round_to_tick(pc - r * a, tick_size) for r in ratios}
+    upper_trigger = upper[SATY_TRIGGER_RATIO]
+    lower_trigger = lower[SATY_TRIGGER_RATIO]
     return {
         "prior_close": pc,
         "atr": a,
-        "call_trigger": upper[SATY_TRIGGER_RATIO],
-        "put_trigger": lower[SATY_TRIGGER_RATIO],
+        # Legacy aliases retained for existing callers/tests.
+        "call_trigger": upper_trigger,
+        "put_trigger": lower_trigger,
+        # Preferred neutral labels for dashboard/decision-support use.
+        "upper_trigger": upper_trigger,
+        "lower_trigger": lower_trigger,
         "upper": upper,
         "lower": lower,
     }
 
 
-def saty_bias(price: float, levels: dict) -> str:
-    """Saty directional bias: 'long' above the call trigger, 'short' below the
-    put trigger, else 'neutral' (price inside the trigger band = no edge)."""
+def saty_trigger_state(price: float, levels: dict) -> str:
+    """Neutral trigger state; avoids implying calls/puts are standalone entries."""
     if not levels or levels.get("atr", 0) <= 0:
         return "neutral"
-    if price > levels["call_trigger"]:
+    if price > levels["upper_trigger"]:
+        return "upside_trigger"
+    if price < levels["lower_trigger"]:
+        return "downside_trigger"
+    return "inside_trigger_band"
+
+
+def saty_bias(price: float, levels: dict) -> str:
+    """Legacy directional bias wrapper: long/short/neutral.
+
+    Kept for compatibility. New dashboard/port code should prefer
+    :func:`saty_trigger_state`, which is deliberately non-prescriptive.
+    """
+    state = saty_trigger_state(price, levels)
+    if state == "upside_trigger":
         return "long"
-    if price < levels["put_trigger"]:
+    if state == "downside_trigger":
         return "short"
     return "neutral"
 
 
 def saty_nearest_target(price: float, side: str, levels: dict) -> Optional[float]:
-    """Nearest Saty ATR level *beyond* ``price`` in the trade direction — i.e.
-    the next overhead level for a long, next level below for a short. Returns
-    None if no level lies beyond price (price already past the +/-2 ATR band)."""
+    """Nearest Saty ATR level beyond ``price`` in the selected direction."""
     if not levels or levels.get("atr", 0) <= 0:
         return None
-    if side in ("long", "buy"):
+    if side in ("long", "buy", "up", "upside"):
         above = sorted(p for p in levels["upper"].values() if p > price)
         return above[0] if above else None
-    if side in ("short", "sell"):
+    if side in ("short", "sell", "down", "downside"):
         below = sorted((p for p in levels["lower"].values() if p < price), reverse=True)
         return below[0] if below else None
     return None
+
+
+def _trend_ribbon_state(
+    price: float,
+    fast_ema: float | None = None,
+    pivot_ema: float | None = None,
+    slow_ema: float | None = None,
+) -> str:
+    """8/21/34 pivot-ribbon state, timeframe supplied by caller."""
+    if fast_ema is None or pivot_ema is None or slow_ema is None:
+        return "unknown"
+    if price >= fast_ema >= pivot_ema >= slow_ema:
+        return "bullish"
+    if price <= fast_ema <= pivot_ema <= slow_ema:
+        return "bearish"
+    return "mixed"
+
+
+def _range_state(displacement_atr: float, range_pct_atr: float | None) -> str:
+    """Classify price location in the Saty ATR map."""
+    abs_disp = abs(displacement_atr)
+    direction = "up" if displacement_atr > 0 else "down" if displacement_atr < 0 else "neutral"
+    if range_pct_atr is not None and range_pct_atr >= SATY_CHASE_RANGE_PCT_ATR and abs_disp >= 1.0:
+        return f"full_atr_extension_{direction}"
+    if abs_disp >= 1.618:
+        return f"extension_{direction}"
+    if abs_disp >= 1.0:
+        return f"full_atr_{direction}"
+    if abs_disp >= 0.618:
+        return f"range_expansion_{direction}"
+    if abs_disp >= SATY_TRIGGER_RATIO:
+        return f"initiative_{direction}"
+    return "inside_trigger_band"
+
+
+def saty_atr_context(
+    *,
+    price: float,
+    prior_close: float,
+    atr: float,
+    period_high: float | None = None,
+    period_low: float | None = None,
+    day_range: float | None = None,
+    session_open: float | None = None,
+    vwap: float | None = None,
+    fast_ema: float | None = None,
+    pivot_ema: float | None = None,
+    slow_ema: float | None = None,
+    opening_range_high: float | None = None,
+    opening_range_low: float | None = None,
+    atr_percentile: float | None = None,
+    tick_size: float | None = None,
+) -> dict[str, Any]:
+    """Causal read-only Saty ATR Pro context object.
+
+    This deliberately does not emit an execution signal. It normalizes price by
+    prior-close anchored ATR, tags trigger/extension/chase states, and exposes a
+    small confluence score for dashboard context and later parity tests.
+    """
+    levels = saty_atr_levels(prior_close, atr, tick_size=tick_size)
+    a = float(levels["atr"])
+    px = _round_to_tick(float(price), tick_size)
+
+    if a <= 0:
+        return {
+            "price": px,
+            "levels": levels,
+            "state": {
+                "trigger_state": "neutral",
+                "range_state": "invalid_atr",
+                "chase_risk": False,
+                "trend_ribbon": "unknown",
+                "vwap_state": "unknown",
+                "opening_range_state": "unknown",
+            },
+            "metrics": {
+                "atr_displacement": 0.0,
+                "range_pct_atr": None,
+                "gap_atr": None,
+                "atr_percentile": atr_percentile,
+            },
+            "next_levels": {"up": None, "down": None},
+            "context_score": {"up": 0, "down": 0},
+        }
+
+    range_pct_atr = None
+    if day_range is not None:
+        range_pct_atr = round((float(day_range) / a) * 100.0, 1)
+    elif period_high is not None and period_low is not None:
+        range_pct_atr = round(((float(period_high) - float(period_low)) / a) * 100.0, 1)
+
+    atr_displacement = round((px - levels["prior_close"]) / a, 3)
+    gap_atr = None if session_open is None else round((float(session_open) - levels["prior_close"]) / a, 3)
+    trigger_state = saty_trigger_state(px, levels)
+    range_state = _range_state(atr_displacement, range_pct_atr)
+    chase_risk = bool(
+        range_pct_atr is not None
+        and range_pct_atr >= SATY_CHASE_RANGE_PCT_ATR
+        and abs(atr_displacement) >= SATY_CHASE_DISPLACEMENT_ATR
+    )
+
+    vwap_state = "unknown"
+    if vwap is not None:
+        vwap_state = "above" if px > float(vwap) else "below" if px < float(vwap) else "at"
+
+    opening_range_state = "unknown"
+    if opening_range_high is not None and px > float(opening_range_high):
+        opening_range_state = "above_orh"
+    elif opening_range_low is not None and px < float(opening_range_low):
+        opening_range_state = "below_orl"
+    elif opening_range_high is not None and opening_range_low is not None:
+        opening_range_state = "inside_or"
+
+    trend_state = _trend_ribbon_state(px, fast_ema, pivot_ema, slow_ema)
+
+    up_score = int(trigger_state == "upside_trigger")
+    up_score += int(vwap_state == "above")
+    up_score += int(trend_state == "bullish")
+    up_score += int(opening_range_state == "above_orh")
+    up_score -= int(chase_risk)
+
+    down_score = int(trigger_state == "downside_trigger")
+    down_score += int(vwap_state == "below")
+    down_score += int(trend_state == "bearish")
+    down_score += int(opening_range_state == "below_orl")
+    down_score -= int(chase_risk)
+
+    return {
+        "price": px,
+        "levels": levels,
+        "state": {
+            "trigger_state": trigger_state,
+            "range_state": range_state,
+            "chase_risk": chase_risk,
+            "trend_ribbon": trend_state,
+            "vwap_state": vwap_state,
+            "opening_range_state": opening_range_state,
+        },
+        "metrics": {
+            "atr_displacement": atr_displacement,
+            "range_pct_atr": range_pct_atr,
+            "gap_atr": gap_atr,
+            "atr_percentile": atr_percentile,
+        },
+        "next_levels": {
+            "up": saty_nearest_target(px, "upside", levels),
+            "down": saty_nearest_target(px, "downside", levels),
+        },
+        "context_score": {"up": up_score, "down": down_score},
+    }
 
 
 # ─── AutoTrade-derived indicators (Phase 1) ───────────────────────────
