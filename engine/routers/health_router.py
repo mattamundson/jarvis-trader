@@ -2049,7 +2049,6 @@ async def ib_connection_test():
             "account_id": None,
             "error": str(exc),
         }
-    latency_ms = round((_time.perf_counter() - start) * 1000.0, 1)
     connected = bool(health.get("execution_connected") or health.get("data_connected"))
 
     execution_ib = getattr(safety_layer, "_ib_gateway", None) if safety_layer else None
@@ -2072,6 +2071,7 @@ async def ib_connection_test():
                 port = probed_port
         except Exception:
             pass
+    latency_ms = round((_time.perf_counter() - start) * 1000.0, 1)
     account_id = next(
         (
             v

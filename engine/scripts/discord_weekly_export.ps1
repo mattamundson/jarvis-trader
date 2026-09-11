@@ -13,8 +13,8 @@
 #   * indicator-alerts  (1133508659993915492) — signal overlay data
 #
 # Design notes (see docs/incident-notes/2026-04-17-t2.1-discord-staleness.md):
-#   * Token read from C:\Users\mattm\discord-export\.token first, then engine\.env
-#     DISCORD_TOKEN fallback. Never embedded in scripts/logs and never passed via
+#   * Token read from process DISCORD_TOKEN first, then engine\.env, then
+#     C:\Users\mattm\discord-export\.token fallback. Never embedded in scripts/logs and never passed via
 #     DCE --token/-t argv; DCE reads DISCORD_TOKEN from the process environment.
 #   * If DCE reports "Authentication token is invalid", rotate the token before
 #     rerunning; stale futures_sentiment is a credential-freshness blocker.
@@ -63,17 +63,25 @@ Write-Log 'INFO' "=== weekly export start ==="
 
 if (-not (Test-Path $Dce))       { Write-Log 'ERROR' "DCE not found at $Dce"; exit 2 }
 $Token = $null
-if (Test-Path $TokenFile) {
-    $Token = (Get-Content $TokenFile -Raw).Trim()
+$TokenSource = $null
+$EngineEnv = Join-Path $EngineDir '.env'
+if (-not [string]::IsNullOrWhiteSpace($env:DISCORD_TOKEN)) {
+    $Token = $env:DISCORD_TOKEN.Trim()
+    $TokenSource = 'process_env'
 }
-if ([string]::IsNullOrWhiteSpace($Token)) {
-    $EngineEnv = Join-Path $EngineDir '.env'
-    if (Test-Path $EngineEnv) {
-        $line = Get-Content $EngineEnv | Where-Object { $_ -match '^DISCORD_TOKEN=' } | Select-Object -First 1
-        if ($line) { $Token = ($line -replace '^DISCORD_TOKEN=', '').Trim().Trim('"') }
+if ([string]::IsNullOrWhiteSpace($Token) -and (Test-Path $EngineEnv)) {
+    $line = Get-Content $EngineEnv | Where-Object { $_ -match '^DISCORD_TOKEN=' } | Select-Object -First 1
+    if ($line) {
+        $Token = ($line -replace '^DISCORD_TOKEN=', '').Trim().Trim('"').Trim("'")
+        $TokenSource = 'engine_env'
     }
 }
+if ([string]::IsNullOrWhiteSpace($Token) -and (Test-Path $TokenFile)) {
+    $Token = (Get-Content $TokenFile -Raw).Trim()
+    $TokenSource = 'token_file'
+}
 if ([string]::IsNullOrWhiteSpace($Token)) { Write-Log 'ERROR' "Discord token missing: neither $TokenFile nor engine\.env DISCORD_TOKEN is populated"; exit 3 }
+Write-Log 'INFO' "Discord token source: $TokenSource"
 $env:DISCORD_TOKEN = $Token
 
 # ── Export each channel (incremental: last 3 days, daily overlap) ────────────
