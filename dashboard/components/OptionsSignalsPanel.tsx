@@ -23,6 +23,8 @@ interface LadderRow {
   label: string;
   level: number;
   p_above: number | null;
+  p_touch?: number | null;
+  p_fail?: number | null;
 }
 
 interface Horizon {
@@ -166,6 +168,8 @@ function HorizonCard({ horizon }: { horizon: Horizon }) {
               <TableHead className="font-mono text-[10px]">PRICE</TableHead>
               <TableHead className="font-mono text-[10px]">P(CLOSE ABOVE)</TableHead>
               <TableHead className="font-mono text-[10px]">P(CLOSE BELOW)</TableHead>
+              <TableHead className="font-mono text-[10px]">P(TOUCH)</TableHead>
+              <TableHead className="font-mono text-[10px]">P(FAIL)</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -183,10 +187,23 @@ function HorizonCard({ horizon }: { horizon: Horizon }) {
                 <TableCell className="font-mono text-[11px] tabular-nums">
                   {row.p_above != null ? pct(1 - row.p_above) : "—"}
                 </TableCell>
+                <TableCell className="font-mono text-[11px] tabular-nums">
+                  {row.p_touch != null ? pct(row.p_touch) : "—"}
+                </TableCell>
+                <TableCell className="font-mono text-[11px] tabular-nums">
+                  {row.p_fail != null ? pct(row.p_fail) : "—"}
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
+      )}
+      {horizon.prob_ladder.some((row) => row.p_touch != null) && (
+        <p className="font-mono text-[9px] text-muted-foreground/70">
+          P(TOUCH)/P(FAIL) are reflection-implied from the same delta surface
+          (≈2× OTM close-probability; zero-drift first-passage estimate, not
+          calibrated).
+        </p>
       )}
       {horizon.notes.length > 0 && (
         <p className="font-mono text-[9px] text-muted-foreground/70">{horizon.notes.join(" · ")}</p>
