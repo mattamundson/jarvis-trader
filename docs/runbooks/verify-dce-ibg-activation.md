@@ -22,9 +22,10 @@ Each side is independent — do either one without the other.
 1. DiscordChatExporter.Cli installed at `C:\Users\mattm\tools\DiscordChatExporter.Cli\DiscordChatExporter.Cli.exe`
    - Download: https://github.com/Tyrrrz/DiscordChatExporter/releases → `DiscordChatExporter.Cli.zip`
    - Alternative path accepted via env var `DCE_CLI_PATH`
-2. Discord token file present at `C:\Users\mattm\discord-export\.token`
+2. Discord **user** token file present at `C:\Users\mattm\discord-export\.token`
    - Single line, no quotes, no trailing newline
    - Token format: user token (starts with `mfa.` or similar), NOT a bot token
+   - Recommended local installer: `scripts\install-dce-user-token.ps1` prompts with masked input and writes the token file without printing it.
 3. PM2 daemon running (`pm2 list` shows the tree)
 4. Bandwidth acceptance: ~1.5 GB/week across exported channels — acknowledge before scheduling
 
@@ -32,22 +33,25 @@ Each side is independent — do either one without the other.
 
 ```bash
 # 1. Verify DCE binary is executable
-ls "/c/Users/mattm/tools/DiscordChatExporter.Cli/DiscordChatExporter.Cli.exe"
+ls "C:/Users/mattm/tools/DiscordChatExporter.Cli/DiscordChatExporter.Cli.exe"
 
-# 2. Verify token file exists and is non-empty
-wc -c "/c/Users/mattm/discord-export/.token"   # expect > 0
+# 2. Install/replace the DCE user token safely (interactive masked prompt)
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:/Users/mattm/ThinkorSwim/jarvis-trader/scripts/install-dce-user-token.ps1"
 
-# 3. Sanity-run the export manually (bypasses cron, same script)
-cd /c/Users/mattm/ThinkorSwim/jarvis-trader/engine
-./.venv/Scripts/python -m scripts.nightly_discord_export
+# 3. Verify token file exists and is non-empty; do not print contents
+test -s "C:/Users/mattm/discord-export/.token" && echo DCE_TOKEN_FILE_OK
 
-# 4. Bring the PM2 entry online (idempotent)
-pm2 start ecosystem.config.js --only jarvis-discord-export
+# 4. Sanity-run the export + ingest manually (bypasses cron, same script)
+cd "C:/Users/mattm/ThinkorSwim/jarvis-trader"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:/Users/mattm/ThinkorSwim/jarvis-trader/scripts/dce-nightly.ps1"
 
-# 5. Confirm cron_restart is registered (should show every-day 02:00 CT)
+# 5. Bring the PM2 entry online (idempotent)
+pm2 start "C:/Users/mattm/ThinkorSwim/jarvis-trader/engine/ecosystem.config.js" --only jarvis-discord-export
+
+# 6. Confirm cron_restart is registered (should show every-day schedule)
 pm2 describe jarvis-discord-export | grep -i "cron"
 
-# 6. Save PM2 state so it persists across reboots
+# 7. Save PM2 state so it persists across reboots
 pm2 save
 ```
 
