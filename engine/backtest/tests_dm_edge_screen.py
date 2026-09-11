@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from dm_edge_screen import dm_test, _t_sf_two_sided  # noqa: E402
+from dm_edge_screen import _t_sf_two_sided, dm_test  # noqa: E402
 
 
 def test_identical_series() -> None:

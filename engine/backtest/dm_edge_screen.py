@@ -40,14 +40,14 @@ def load_oos_series(path: str, metric: str) -> tuple[list[str], list[float]]:
 
 def align(a_periods, a_vals, b_periods, b_vals):
     """Inner-join on oos_period; drop windows where either side is None."""
-    b_map = dict(zip(b_periods, b_vals))
+    b_map = dict(zip(b_periods, b_vals, strict=True))
     keys = [p for p in a_periods if p in b_map]
-    a = [v for p, v in zip(a_periods, a_vals) if p in b_map]
+    a = [v for p, v in zip(a_periods, a_vals, strict=True) if p in b_map]
     b = [b_map[p] for p in keys]
-    keep = [(x, y) for x, y in zip(a, b) if x is not None and y is not None]
+    keep = [(x, y) for x, y in zip(a, b, strict=True) if x is not None and y is not None]
     if not keep:
         return [], []
-    ka, kb = zip(*keep)
+    ka, kb = zip(*keep, strict=True)
     return list(ka), list(kb)
 
 
@@ -67,9 +67,9 @@ def dm_test(a_vals: list[float], b_vals: list[float], power: int = 2, h: int = 1
     if n < 3:
         return {"n": n, "dm": None, "p_two_sided": None, "note": "insufficient aligned windows (need >=3)"}
     if power == 2:
-        d = [(-a) ** 2 - (-b) ** 2 for a, b in zip(a_vals, b_vals)]
+        d = [(-a) ** 2 - (-b) ** 2 for a, b in zip(a_vals, b_vals, strict=True)]
     else:
-        d = [(-a) - (-b) for a, b in zip(a_vals, b_vals)]
+        d = [(-a) - (-b) for a, b in zip(a_vals, b_vals, strict=True)]
     dbar = sum(d) / n
     # Newey-West / Bartlett HAC variance with lag h-1
     max_lag = max(0, h - 1)
