@@ -296,6 +296,53 @@ class TestProbLadder:
         ladder = prob_ladder(contracts, self.near, 628.42, 3.00)
         assert all(r["p_above"] is None for r in ladder)
 
+    # -- touch / failure columns (reflection rule) --------------------------
+
+    def test_touch_is_double_otm_close_prob_above_spot(self):
+        # +1.0 EM row (upper barrier): level 631.42, p_above = .2435
+        # → p_touch = 2 × p_above = 0.4870 (reflection rule)
+        ladder = prob_ladder(self.contracts, self.near, 628.42, 3.00)
+        row = next(r for r in ladder if r["multiple"] == 1.0)
+        assert row["p_touch"] == pytest.approx(2 * 0.2435, abs=1e-3)
+        assert row["p_fail"] == pytest.approx(1 - row["p_touch"], abs=1e-6)
+
+    def test_touch_reflection_directional(self):
+        # Upper barrier: p_touch = 2*p_above; lower barrier: p_touch
+        # = 2*(1-p_above); both clamped at 1.0.
+        ladder = prob_ladder(self.contracts, self.near, 628.42, 3.00)
+        for r in ladder:
+            if r["p_above"] is None:
+                continue
+            expected = 2 * r["p_above"] if r["level"] >= 628.42 else 2 * (1 - r["p_above"])
+            assert r["p_touch"] == pytest.approx(min(1.0, expected), abs=1e-6)
+
+    def test_spot_row_touch_near_one(self):
+        # ATM delta ≈ 0.5 → p_touch = 2*(1-~0.5) ≈ 1.0 (spot is touched by
+        # construction); must be clamped at exactly 1.0, never above.
+        ladder = prob_ladder(self.contracts, self.near, 628.42, 3.00)
+        row = next(r for r in ladder if r["multiple"] == 0.0)
+        assert 0.9 <= row["p_touch"] <= 1.0
+
+    def test_fail_is_one_minus_touch_and_monotone(self):
+        # Deeper OTM (further above spot) → lower touch, higher failure.
+        ladder = prob_ladder(self.contracts, self.near, 628.42, 3.00)
+        above = [r for r in ladder if r["multiple"] in (0.5, 1.0)]
+        t05 = next(r for r in above if r["multiple"] == 0.5)
+        t10 = next(r for r in above if r["multiple"] == 1.0)
+        assert t10["p_touch"] < t05["p_touch"]
+        assert t10["p_fail"] > t05["p_fail"]
+
+    def test_touch_none_where_level_out_of_range(self):
+        ladder = prob_ladder(self.contracts, self.near, 628.42, 50.0)
+        top = next(r for r in ladder if r["multiple"] == 1.0)
+        assert top["p_above"] is None
+        assert top["p_touch"] is None
+        assert top["p_fail"] is None
+
+    def test_empty_ladder_when_no_expected_move(self):
+        # regression guard: touch columns must not resurrect the empty ladder
+        assert prob_ladder(self.contracts, self.near, 628.42, None) == []
+
 
 # ---------------------------------------------------------------------------
 # build_symbol_block
