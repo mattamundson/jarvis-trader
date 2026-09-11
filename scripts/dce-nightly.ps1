@@ -5,7 +5,7 @@
 
 $ErrorActionPreference = 'Stop'
 $RepoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
-$Python = Join-Path $RepoRoot 'engine\.venv\Scripts\python.exe'
+$Python = if ($env:JARVIS_ENGINE_PYTHON) { $env:JARVIS_ENGINE_PYTHON } else { Join-Path $RepoRoot 'engine\.venv\Scripts\python.exe' }
 $Runner = Join-Path $RepoRoot 'scripts\dce_nightly_runner.py'
 
 if (-not (Test-Path $Python)) {

@@ -12,10 +12,11 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 ENGINE = REPO / "engine"
 EXPORTS = Path.home() / "discord-export"
-TOKEN_FILE = EXPORTS / ".token"
+TOKEN_FILE = Path(os.environ.get("DCE_TOKEN_FILE") or EXPORTS / ".token")
 LOG_DIR = ENGINE / "logs"
 LOG_FILE = LOG_DIR / "dce_nightly.log"
 STREAK_FILE = LOG_DIR / "dce_failure_streak.txt"
+RUNBOOK = REPO / "docs" / "runbooks" / "verify-dce-ibg-activation.md"
 DCE = Path(os.environ.get("DCE_CLI_PATH") or r"C:\Users\mattm\tools\DiscordChatExporter.Cli\DiscordChatExporter.Cli.exe")
 PYTHON = ENGINE / ".venv" / "Scripts" / "python.exe"
 CHANNELS = [
@@ -97,7 +98,13 @@ def main() -> int:
                 log("DCE", line[:500])
         if proc.returncode != 0:
             if "Authentication token is invalid" in output:
-                log("ERROR", f"Export failed for {name}: invalid Discord token blocks futures_sentiment freshness — rotate DISCORD_TOKEN and rerun dce-nightly.ps1")
+                log(
+                    "ERROR",
+                    "blocker=invalid_discord_token "
+                    f"channel={name} runbook={RUNBOOK} "
+                    "fix=write_fresh_discord_user_token_to_C:/Users/mattm/discord-export/.token "
+                    "then_rerun=scripts/dce-nightly.ps1",
+                )
             else:
                 log("ERROR", f"Export failed for {name}: DCE exited {proc.returncode}")
             failed.append(name)
@@ -110,7 +117,11 @@ def main() -> int:
         set_streak(streak)
         log("WARN", f"Failure streak now {streak} day(s)")
         if streak >= 2:
-            log("WARN", "Streak >= 2 — WhatsApp stale alert suppressed during DCE token remediation; inspect dce_nightly.log")
+            log(
+                "WARN",
+                "blocker=invalid_discord_token stale_sentiment_alert=active "
+                f"runbook={RUNBOOK} log={LOG_FILE}",
+            )
         return 10
 
     set_streak(0)

@@ -8,7 +8,7 @@
 
 Two code paths were shipped and are waiting on user-side installs:
 
-- **DCE nightly export** (commit `51d174c`): PM2 cron fires 02:00 CT nightly to export Discord channels via DiscordChatExporter.Cli, then ingest into `discord_corey_commentary`. Blocks on: DCE CLI install.
+- **DCE nightly export**: PM2 cron `jarvis-discord-export` fires 02:00 CT nightly to export Discord channels via DiscordChatExporter.Cli, then ingest into `discord_corey_commentary`. Blocks on: Discord USER token file.
 - **IB Gateway paper smoke** (commit `116be8e`): E2E round-trip script that places a BUY MKT → waits fill → SELL MKT → waits close fill in paper mode. Blocks on: IB Gateway running on port 4002.
 
 Each side is independent — do either one without the other.
@@ -55,7 +55,7 @@ pm2 describe jarvis-discord-export | grep -i "cron"
 pm2 save
 ```
 
-### Verification (run the morning after the first scheduled fire)
+### Verification (run after the first successful scheduled fire)
 
 ```sql
 -- Connect: sqlite3 engine/data/jarvis_trader.db
@@ -90,16 +90,16 @@ SELECT date, avg_sentiment, message_count
 
 | Exit code / error               | Cause                                     | Fix                                               |
 | ------------------------------- | ----------------------------------------- | ------------------------------------------------- |
-| DCE rc=2                        | `DiscordChatExporter.Cli.exe` not at expected path | Set `DCE_CLI_PATH` env var or symlink the binary  |
-| DCE rc=3                        | `.token` file missing or malformed        | Rewrite as single line, no quotes                 |
-| DCE rc=401                      | Discord rejected the token                | Token expired or revoked — regenerate             |
+| DCE rc=2                        | `DiscordChatExporter.Cli.exe` not at expected path | Set `DCE_CLI_PATH` env var or install the binary  |
+| DCE rc=3                        | `.token` file missing or empty            | Run `scripts\\install-dce-user-token.ps1`        |
+| DCE rc=10 + `blocker=invalid_discord_token` | Discord rejected the user token | Rotate/rewrite `C:\\Users\\mattm\\discord-export\\.token`, then rerun `scripts\\dce-nightly.ps1` |
 | PM2 entry keeps restarting      | Script exits non-zero on each cron fire   | `pm2 logs jarvis-discord-export --err --lines 50` |
 | Rows present but `corey_session_bias` empty | Sentiment ETL failed after ingest   | Re-run `python -m discord.sentiment_provider`     |
 
 ### References
 
-- Script: `engine/scripts/nightly_discord_export.py` (runner)
-- PM2 entry: `engine/ecosystem.config.js:224-248` (`jarvis-discord-export`)
+- Script: `scripts/dce-nightly.ps1` -> `scripts/dce_nightly_runner.py` (runner)
+- PM2 entry: `engine/ecosystem.config.js` (`jarvis-discord-export`, calls `scripts/dce-nightly.ps1`)
 - Known issues: `docs/incident-notes/2026-04-17-t2.1-discord-staleness.md`
 - Channel IDs: 741484321142997086 (#general), 806343100435660801 (#market-updates)
 
@@ -128,12 +128,12 @@ netstat -ano | grep ":4002 "   # expect LISTENING
 # 2. Dry-connect first (connects, qualifies contract, disconnects — no order)
 ./.venv/Scripts/python -m scripts.smoke_ib_paper_order --dry-connect
 
-# 3. If dry-connect succeeds, run full round-trip on MCL (1 contract default)
-./.venv/Scripts/python -m scripts.smoke_ib_paper_order
-
-# 4. Optional: run on a different symbol
+# 3. If dry-connect succeeds and Amo explicitly authorizes an order smoke,
+# run the full round-trip on MES only. MCL/MNQ/MGC/M2K are DO_NOT_TRADE_SYMBOLS.
 ./.venv/Scripts/python -m scripts.smoke_ib_paper_order --symbol MES
-./.venv/Scripts/python -m scripts.smoke_ib_paper_order --symbol MNQ
+
+# 4. Optional: re-run MES only with explicit approval/scope
+./.venv/Scripts/python -m scripts.smoke_ib_paper_order --symbol MES
 ```
 
 ### Success criteria
@@ -141,7 +141,7 @@ netstat -ano | grep ":4002 "   # expect LISTENING
 Exit code 0 and log line:
 
 ```
-SMOKE TEST PASSED | symbol=MCL qty=1 buy_id=<order_id> sell_id=<order_id>
+SMOKE TEST PASSED | symbol=MES qty=1 buy_id=<order_id> sell_id=<order_id>
 ```
 
 Both legs must fill within 30 seconds (default timeout per leg).
@@ -155,7 +155,7 @@ Both legs must fill within 30 seconds (default timeout per leg).
 | 3         | Connect/auth failed                | Gateway running but didn't accept the session          | Client ID collision; wait 10s and retry               |
 | 4         | Contract qualification failed      | Symbol not known or no active front-month              | Check `engine/execution/ib_gateway.py` contract map   |
 | 5         | Order placement failed             | Likely Read-Only API is checked in GUI                 | Uncheck Read-Only API, restart Gateway                |
-| 6         | Fill timeout on first leg          | Market closed, or symbol illiquid outside RTH          | Try during RTH, or use `MES` instead of `MCL`         |
+| 6         | Fill timeout on first leg          | Market closed, or liquidity issue                      | Retry MES only within authorized paper-smoke scope    |
 | 7         | Round-trip close failed            | First leg filled but SELL did not fill in 30s          | Manually close the stuck position in Gateway UI       |
 
 ### References
@@ -183,7 +183,7 @@ curl -s http://localhost:8010/corey/bias/latest \
   -H "X-API-Key: $API_KEY" | head -c 300
 
 # 2. IB data waterfall using Tier 1
-curl -s "http://localhost:8010/market/price/MCL?is_futures=true" \
+curl -s "http://localhost:8010/market/price/MES?is_futures=true" \
   -H "X-API-Key: $API_KEY" | grep '"source"'
 # Expect: "source":"ibkr"  (was "source":"polygon" or "cache" before)
 ```
