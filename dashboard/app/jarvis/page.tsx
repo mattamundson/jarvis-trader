@@ -5,6 +5,7 @@ import useSWR from "swr";
 import { Activity, Cpu, Radio, Shield, ShieldOff, Zap } from "lucide-react";
 import { BookmarkThemesPanel } from "@/components/BookmarkThemesPanel";
 import { BookmarkFeedPanel } from "@/components/BookmarkFeedPanel";
+import { ResearchQueuePanel } from "@/components/ResearchQueuePanel";
 import { QuantStatsPanel } from "@/components/QuantStatsPanel";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { RiskAttributionPanel } from "@/components/RiskAttributionPanel";
@@ -510,6 +511,7 @@ export default function JarvisCommandPage() {
           <RegimePulsePanel />
           <BookmarkThemesPanel />
           <BookmarkFeedPanel />
+          <ResearchQueuePanel />
         </div>
 
         {/* Column 2 — Market intelligence */}
