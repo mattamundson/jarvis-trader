@@ -25,12 +25,19 @@ class MarginMonitorAgent:
         utilization_warning: float = 0.25,
         utilization_halt: float = 0.35,
         max_drawdown_pct: float = 8.0,
+        pnl_monitor=None,
     ):
         self._connector = connector
         self._util_warning = utilization_warning
         self._util_halt = utilization_halt
         self._max_dd_pct = max_drawdown_pct
 
+        # 2026-09-10 drawdown metric-source reconciliation: when a PnLMonitor is
+        # injected, drawdown_pct is sourced from its persisted 90-day high-water
+        # mark so MarginMonitor and AlertManager report the same number across
+        # engine restarts. Falls back to the legacy in-process peak when absent,
+        # preserving standalone/default behavior exactly.
+        self._pnl_monitor = pnl_monitor
         self._peak_equity = 0.0
         self._current_metrics: Dict[str, float] = {}
         self._last_check: Optional[datetime] = None
@@ -70,7 +77,23 @@ class MarginMonitorAgent:
             self._peak_equity = equity
 
         drawdown = 0.0
-        if self._peak_equity > 0:
+        if self._pnl_monitor is not None:
+            # Single metric source: use the persisted 90-day high-water mark from
+            # PnLMonitor so this surface matches AlertManager across restarts.
+            persisted_peak = 0.0
+            try:
+                persisted_peak = float(self._pnl_monitor.get_peak_balance())
+            except Exception as exc:
+                logger.warning(
+                    "[MarginMonitor] persisted peak read failed (%s); "
+                    "falling back to in-process peak",
+                    exc,
+                )
+            if persisted_peak > 0:
+                drawdown = (persisted_peak - equity) / persisted_peak * 100
+            elif self._peak_equity > 0:
+                drawdown = (self._peak_equity - equity) / self._peak_equity * 100
+        elif self._peak_equity > 0:
             drawdown = (self._peak_equity - equity) / self._peak_equity * 100
 
         self._current_metrics = {

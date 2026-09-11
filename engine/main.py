@@ -686,7 +686,7 @@ async def lifespan(app: FastAPI):
 
     # Margin Monitor — Phase 3
     # Initialized here, connector will be wired after data_manager
-    margin_monitor = MarginMonitorAgent(connector=None)
+    margin_monitor = MarginMonitorAgent(connector=None, pnl_monitor=pnl_monitor)
     logger.info("✅ Margin Monitor Agent initialised")
 
     # Safety layer — always first; PnLMonitor feeds circuit breakers with live data.
