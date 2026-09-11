@@ -297,13 +297,23 @@ def straddle_expected_move(contracts: list[Contract], expiry: date, spot: float)
 def prob_ladder(
     contracts: list[Contract], expiry: date, spot: float, em_abs: Optional[float]
 ) -> list[dict]:
-    """Delta-implied P(close above level) at spot ± {0, 0.5, 1.0} × expected move.
+    """Delta-implied P(close above level) at spot ± {0, ±0.5, ±1.0} × expected move.
 
     Uses vendor CALL deltas only (put deltas are negative — never mix signs),
     linearly interpolated on strike between the bracketing listed strikes. A
     level exactly on a listed strike uses that strike's delta unchanged; a
     level outside the listed range gets p_above None (rendered "—"; we never
     extrapolate). Empty when the expected move itself is unavailable.
+
+    Touch/failure columns (2026-09-04, Amo's spec): each row also carries
+    ``p_touch`` and ``p_fail``. Per the reflection approximation (barrier
+    pricing's first-passage rule under zero-drift GBM), P(touch) = 2 × the
+    probability of closing BEYOND the level: 2 × p_above for an upper barrier
+    (level ≥ spot), 2 × (1 − p_above) for a lower barrier; clamped at 1.0.
+    Like the ladder itself these are MARKET-IMPLIED estimates under the
+    delta/N(d1) convention, not calibrated first-passage probabilities — the
+    constant 2.0 ignores the (typically negative) risk-neutral drift and the
+    vol smile. They are labeled "reflection-implied" everywhere they render.
     """
     if em_abs is None:
         return []
@@ -318,18 +328,32 @@ def prob_ladder(
     strikes = [c.strike for c in calls]
     deltas = [c.delta for c in calls]
 
-    ladder: list[dict] = []
-    for mult in LADDER_MULTIPLES:
-        level = spot + mult * em_abs
-        p_above: Optional[float] = None
+    def _interp(level: float) -> Optional[float]:
+        """Linearly interpolated CALL delta at ``level``; None outside the range."""
         if len(strikes) >= 2 and strikes[0] <= level <= strikes[-1]:
             i = bisect_left(strikes, level)
             if i < len(strikes) and strikes[i] == level:
-                p_above = deltas[i]
-            else:
-                k_lo, k_hi = strikes[i - 1], strikes[i]
-                d_lo, d_hi = deltas[i - 1], deltas[i]
-                p_above = d_lo + (d_hi - d_lo) * (level - k_lo) / (k_hi - k_lo)
+                return deltas[i]
+            k_lo, k_hi = strikes[i - 1], strikes[i]
+            d_lo, d_hi = deltas[i - 1], deltas[i]
+            return d_lo + (d_hi - d_lo) * (level - k_lo) / (k_hi - k_lo)
+        return None
+
+    ladder: list[dict] = []
+    for mult in LADDER_MULTIPLES:
+        level = spot + mult * em_abs
+        p_above = _interp(level)
+        p_touch: Optional[float] = None
+        if p_above is not None:
+            # Reflection approximation (zero-drift GBM first passage). Upper
+            # barrier (level >= spot): P(touch) = 2 × P(close >= level)
+            # = 2 × p_above. Lower barrier (level < spot): P(touch)
+            # = 2 × P(close <= level) = 2 × (1 − p_above). The spot row reads
+            # ≈ 2 × 0.5 = 1.0 either way (spot is touched by construction),
+            # and deeper-OTM rows monotonically decay toward 0.
+            p_close_beyond = p_above if level >= spot else (1.0 - p_above)
+            p_touch = min(1.0, 2.0 * p_close_beyond)
+        p_fail = (1.0 - p_touch) if p_touch is not None else None
         label = "spot" if mult == 0.0 else f"{mult:+.1f} EM"
         ladder.append(
             {
@@ -337,6 +361,8 @@ def prob_ladder(
                 "label": label,
                 "level": round(level, 2),
                 "p_above": round(p_above, 4) if p_above is not None else None,
+                "p_touch": round(p_touch, 4) if p_touch is not None else None,
+                "p_fail": round(p_fail, 4) if p_fail is not None else None,
             }
         )
     return ladder
