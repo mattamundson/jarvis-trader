@@ -13,6 +13,9 @@ test("jarvis page renders readiness scorecard split badges", async ({ page }) =>
   await expect(page.getByText("execution blocked")).toBeVisible();
   await expect(page.getByText("recommendation linked")).toBeVisible();
   await expect(page.getByText("queue lineage gap")).toBeVisible();
+  await expect(page.getByText("edge not certified")).toBeVisible();
+  await expect(page.getByText("Baseline delta")).toBeVisible();
+  await expect(page.getByText("$6,336")).toBeVisible();
   await expect(page.getByText("62")).toBeVisible();
   await expect(page.getByText("$4,759")).toBeVisible();
   await expect(page.getByText("Read-only scorecard")).toBeVisible();

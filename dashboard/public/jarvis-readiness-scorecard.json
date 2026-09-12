@@ -3,7 +3,8 @@
   "generated_at": "2026-09-12T04:43:23.113597+00:00",
   "source_reports": {
     "readiness": "docs/reports/JARVIS_DASHBOARD_RECOMMENDATION_AUDIT_LATEST.json",
-    "attribution": "docs/reports/JARVIS_RECOMMENDATION_ATTRIBUTION_AUDIT_LATEST.json"
+    "attribution": "docs/reports/JARVIS_RECOMMENDATION_ATTRIBUTION_AUDIT_LATEST.json",
+    "baseline": "docs/reports/JARVIS_RECOMMENDATION_BASELINE_COMPARISON_LATEST.json"
   },
   "mode": "READ_ONLY_ANALYSIS",
   "safety": {
@@ -18,7 +19,8 @@
     "monitoring_ready": false,
     "execution_ready": false,
     "recommendation_attribution_proven": true,
-    "queue_order_lineage_proven": false
+    "queue_order_lineage_proven": false,
+    "edge_certified": false
   },
   "metrics": {
     "dashboard_ok": true,
@@ -32,7 +34,9 @@
     "linked_closed_pnl": 4758.66,
     "linked_profit_factor": 2.3703,
     "rth_linked_closed_pnl": 1885.33,
-    "rth_linked_profit_factor": 5.9318
+    "rth_linked_profit_factor": 5.9318,
+    "linked_vs_unlinked_pnl_delta": 6336.0,
+    "linked_vs_all_paper_avg_trade_delta": 78.34
   },
   "blockers": [
     "kill_switch_active=true",
@@ -43,6 +47,7 @@
   "display_notes": [
     "Analysis-ready does not mean execution-ready.",
     "Queue order-id lineage remains unproven until order_id joins paper_trades.trade_id/idempotency_key.",
-    "No live trading, risk, kill-switch, broker execution, or symbol gate changes are represented by this scorecard."
+    "No live trading, risk, kill-switch, broker execution, or symbol gate changes are represented by this scorecard.",
+    "Baseline comparison is favorable for linked trades, but edge_certified=false until lineage and forward baseline are proven."
   ]
 }

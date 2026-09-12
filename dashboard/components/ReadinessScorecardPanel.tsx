@@ -10,7 +10,8 @@ type BadgeKey =
   | "monitoring_ready"
   | "execution_ready"
   | "recommendation_attribution_proven"
-  | "queue_order_lineage_proven";
+  | "queue_order_lineage_proven"
+  | "edge_certified";
 
 interface ReadinessScorecard {
   schema_version: "jarvis-readiness-scorecard.v1";
@@ -30,6 +31,8 @@ interface ReadinessScorecard {
     linked_profit_factor: number;
     rth_linked_closed_pnl: number;
     rth_linked_profit_factor: number;
+    linked_vs_unlinked_pnl_delta?: number;
+    linked_vs_all_paper_avg_trade_delta?: number;
   };
   blockers: string[];
   display_notes: string[];
@@ -67,6 +70,12 @@ const BADGE_COPY: { key: BadgeKey; label: string; positive: string; negative: st
     label: "Lineage",
     positive: "queue lineage proven",
     negative: "queue lineage gap",
+  },
+  {
+    key: "edge_certified",
+    label: "Edge",
+    positive: "edge certified",
+    negative: "edge not certified",
   },
 ];
 
@@ -148,6 +157,24 @@ export function ReadinessScorecardPanel() {
                   {data.metrics.queue_order_id_matches_to_paper}
                 </div>
                 <div className="text-[10px] uppercase tracking-wide text-zinc-500">order matches</div>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-2 text-[11px] text-zinc-400">
+              <div className="mb-1 font-semibold text-zinc-300">Baseline delta</div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1">
+                <span>
+                  linked vs unlinked P&L:{" "}
+                  <span className="text-emerald-300">
+                    {fmtCurrency(data.metrics.linked_vs_unlinked_pnl_delta ?? 0)}
+                  </span>
+                </span>
+                <span>
+                  avg/trade vs all paper:{" "}
+                  <span className="text-emerald-300">
+                    {fmtCurrency(data.metrics.linked_vs_all_paper_avg_trade_delta ?? 0)}
+                  </span>
+                </span>
               </div>
             </div>
 
