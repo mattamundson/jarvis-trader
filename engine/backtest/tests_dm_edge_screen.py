@@ -5,6 +5,8 @@ small-sample modification. We validate:
   1. Synthetic-data parity vs a hand-computed closed-form case (h=1, no autocorrelation).
   2. Statistical sanity: identical series -> p=1; shifted series -> rejection.
   3. p-value function parity vs scipy.stats.t.sf (if scipy available) on a t-grid.
+  4. Trade-sidecar ingestion across strict pnl extraction, index alignment, exit-date alignment,
+     and backwards-compatible --input-mode aliasing.
 
 Run: engine/.venv/Scripts/python engine/backtest/tests_dm_edge_screen.py
 Research-lane only; not wired into the test suite.
@@ -22,9 +24,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from dm_edge_screen import (  # noqa: E402
     _t_sf_two_sided,
+    align,
     align_by_ordinal,
     dm_test,
     load_trade_pnl_series,
+    load_trade_series,
 )
 
 
@@ -95,6 +99,7 @@ def test_cli_trade_mode_outputs_alignment_metadata() -> None:
     )
     out = json.loads(proc.stdout)
     assert out["input_mode"] == "trades"
+    assert out["input_kind"] == "trades"
     assert out["metric"] == "trade_pnl"
     assert out["n_a"] == 4
     assert out["n_b"] == 3
@@ -102,6 +107,7 @@ def test_cli_trade_mode_outputs_alignment_metadata() -> None:
     assert out["dropped_a_tail"] == 1
     assert out["dropped_b_tail"] == 0
     assert out["n"] == 3
+    assert out["dm_sign_interpretation"] == "negative_favors_a_positive_favors_b"
     print("PASS trade-mode CLI emits alignment metadata")
 
 
@@ -173,6 +179,34 @@ def test_minimum_sample_guard() -> None:
     print("PASS n<3 guard")
 
 
+def test_trade_sidecar_loader_index_and_exit_date_alignment() -> None:
+    payload = {
+        "trades": [
+            {"exit_date": "2026-01-02T10:30:00", "pnl": 10.0, "pnl_pct": 0.01},
+            {"exit_date": "2026-01-03T10:30:00", "pnl": -5.0, "pnl_pct": -0.005},
+            {"exit_date": "2026-01-04T10:30:00", "pnl": 7.0, "pnl_pct": 0.007},
+        ]
+    }
+    with tempfile.TemporaryDirectory() as td:
+        path = Path(td) / "trades.json"
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        periods, values = load_trade_series(str(path), "pnl", "index")
+        assert periods == ["0", "1", "2"]
+        assert values == [10.0, -5.0, 7.0]
+        periods, values = load_trade_series(str(path), "pnl_pct", "exit_date")
+        assert periods == ["2026-01-02T10:30:00", "2026-01-03T10:30:00", "2026-01-04T10:30:00"]
+        assert values == [0.01, -0.005, 0.007]
+    print("PASS trade sidecar loader supports index and exit_date alignment")
+
+
+def test_exit_date_no_overlap_alignment_guard() -> None:
+    a, b = align(["2026-01-01", "2026-01-02"], [1.0, 2.0], ["2026-02-01"], [3.0])
+    assert a == [] and b == []
+    res = dm_test(a, b, power=1)
+    assert res["dm"] is None and "insufficient" in res["note"]
+    print("PASS no-overlap exit_date alignment returns insufficient-sample guard")
+
+
 if __name__ == "__main__":
     test_load_trade_pnl_series_wrapped_schema()
     test_load_trade_pnl_series_raw_list_schema()
@@ -185,4 +219,6 @@ if __name__ == "__main__":
     test_hln_correction_shrinks_statistic()
     test_t_parity_scipy()
     test_minimum_sample_guard()
+    test_trade_sidecar_loader_index_and_exit_date_alignment()
+    test_exit_date_no_overlap_alignment_guard()
     print("\nALL GOLDEN-VECTOR TESTS PASSED")
