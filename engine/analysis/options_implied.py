@@ -374,12 +374,31 @@ def build_horizon(
     spot: float,
     label: str,
     today_ct: date,
+    symbol: str,
 ) -> dict:
     em = straddle_expected_move(contracts, expiry, spot)
     dte = (expiry - today_ct).days
     notes = list(em["notes"])
     if dte == 0:
         notes.append("0DTE — expires at today's close; deltas saturate late in the session")
+
+    opportunity_board: dict
+    try:
+        from analysis.options_opportunity_board import build_opportunity_board
+
+        opportunity_board = build_opportunity_board(symbol, contracts, expiry, spot)
+    except Exception as exc:  # noqa: BLE001 — board must degrade, not sink snapshot generation
+        logger.warning("%s opportunity board failed for %s: %s", symbol, expiry, exc)
+        opportunity_board = {
+            "symbol": symbol,
+            "expiry": expiry.isoformat(),
+            "spot": round(spot, 4),
+            "status": "degraded",
+            "candidates": [],
+            "reject_summary": [f"opportunity board error: {exc}"],
+            "disclaimer": "Analysis-only defined-risk board from delayed options quotes; not a trade signal.",
+        }
+
     return {
         "label": label,
         "expiry": expiry.isoformat(),
@@ -394,6 +413,7 @@ def build_horizon(
         if em["expected_move_pct"] is not None
         else None,
         "prob_ladder": prob_ladder(contracts, expiry, spot, em["expected_move_abs"]),
+        "opportunity_board": opportunity_board,
         "quality": em["quality"],
         "notes": notes,
     }
@@ -405,9 +425,9 @@ def build_symbol_block(symbol: str, raw: dict, now_ct: datetime) -> dict:
     today_ct = now_ct.date()
     nearest, eow = select_expiries({c.expiry for c in contracts}, today_ct)
 
-    horizons = [build_horizon(contracts, nearest, spot, "nearest", today_ct)]
+    horizons = [build_horizon(contracts, nearest, spot, "nearest", today_ct, symbol)]
     if eow is not None:
-        horizons.append(build_horizon(contracts, eow, spot, "end_of_week", today_ct))
+        horizons.append(build_horizon(contracts, eow, spot, "end_of_week", today_ct, symbol))
 
     # Holiday guard without a holiday calendar: inside RTH a fresh fetch should
     # never be an hour old — CBOE serving the prior session's snapshot means a
