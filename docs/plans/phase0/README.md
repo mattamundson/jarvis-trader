@@ -28,6 +28,8 @@ MIP-1 foundations are not formally implemented until ISG-0 closes. Their next in
 - `../production_chain_hardening_v1.json`
 - `A-01_RUNTIME_TRUTH_BASELINE.md`
 - `O-01_CI_BASELINE.md`
+- `O-01_CI_RECEIPT_2026-09-12_PR817.md`
+- `A-01_RUNTIME_OBSERVATION_2026-09-12.md`
 - `O-01_CI_BASELINE.json`
 - `A-02_SOURCE_OF_TRUTH_HIERARCHY_ADR.md`
 - `A-03_TARGET_BOUNDED_CONTEXT_ARCHITECTURE_ADR.md`
