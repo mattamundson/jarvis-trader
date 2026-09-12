@@ -1,6 +1,6 @@
 # JARVIS health probe and dead-man checklist
 
-Source-mining wave: GitHub repo consolidation wave 6.
+Source-mining wave: GitHub repo consolidation wave 6. Extended by wave 9 observability evidence mapping in [`observability-sentinel-consolidation.md`](observability-sentinel-consolidation.md).
 
 Sources mined:
 - `mattamundson/jarvis-sentinel` (`main`, pushed 2026-06-06): Sentinel MVP README, `sentinel.example.yaml`, `sentinel/probes/*`, `scripts/deadman-switch.ps1`, `scripts/install-deadman-task.ps1`, design spec, and MVP plan.
