@@ -17,6 +17,11 @@ interface ReadinessScorecard {
   schema_version: "jarvis-readiness-scorecard.v1";
   generated_at?: string;
   mode: "READ_ONLY_ANALYSIS";
+  source_health?: {
+    status: "fresh" | "stale" | "degraded";
+    age_hours: number | null;
+    latest_report_generated_at: string;
+  };
   badges: Record<BadgeKey, boolean>;
   metrics: {
     dashboard_ok: boolean;
@@ -96,6 +101,8 @@ export function ReadinessScorecardPanel() {
   const generatedAt = data?.generated_at
     ? new Date(data.generated_at).toLocaleString()
     : "unknown";
+  const sourceStatus = data?.source_health?.status ?? "unknown";
+  const sourceAge = data?.source_health?.age_hours;
 
   return (
     <Card>
@@ -111,6 +118,12 @@ export function ReadinessScorecardPanel() {
         </div>
         <p className="text-[11px] text-zinc-500">
           Analysis, monitoring, execution, and recommendation-lineage truth split. Generated {generatedAt}.
+          {data?.source_health ? (
+            <span className="ml-1">
+              Source {sourceStatus}
+              {typeof sourceAge === "number" ? ` · ${sourceAge.toFixed(1)}h old` : ""}.
+            </span>
+          ) : null}
         </p>
       </CardHeader>
       <CardContent>

@@ -25,6 +25,11 @@ export interface ReadinessScorecard {
     broker_execution_changed: false;
     env_changed: false;
   };
+  source_health: {
+    status: "fresh" | "stale" | "degraded";
+    age_hours: number | null;
+    latest_report_generated_at: string;
+  };
   badges: Record<ReadinessBadgeKey, boolean>;
   metrics: {
     dashboard_ok: boolean;
@@ -84,6 +89,20 @@ function asString(value: unknown, fallback: string): string {
   return typeof value === "string" && value.trim() ? value : fallback;
 }
 
+function reportFreshness(generatedAt: string): ReadinessScorecard["source_health"] {
+  const timestamp = Date.parse(generatedAt);
+  if (!Number.isFinite(timestamp)) {
+    return { status: "degraded", age_hours: null, latest_report_generated_at: generatedAt };
+  }
+  const ageHours = Math.max(0, (Date.now() - timestamp) / 3_600_000);
+  const status = ageHours <= 24 ? "fresh" : ageHours <= 72 ? "stale" : "degraded";
+  return {
+    status,
+    age_hours: Number(ageHours.toFixed(2)),
+    latest_report_generated_at: generatedAt,
+  };
+}
+
 function stringList(value: unknown): string[] {
   return asArray(value).filter((item): item is string => typeof item === "string" && item.trim().length > 0);
 }
@@ -141,6 +160,7 @@ export async function buildReadinessScorecard(): Promise<ReadinessScorecard> {
       broker_execution_changed: false,
       env_changed: false,
     },
+    source_health: reportFreshness(generatedAt),
     badges: {
       operator_analysis_ready: asBool(readinessVerdict.operator_analysis_ready),
       monitoring_ready: asBool(readinessVerdict.monitoring_ready),

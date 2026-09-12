@@ -11,6 +11,8 @@ test("readiness scorecard API returns read-only contract", async ({ request }) =
   expect(payload.safety.risk_config_changed).toBe(false);
   expect(payload.safety.kill_switch_changed).toBe(false);
   expect(payload.safety.broker_execution_changed).toBe(false);
+  expect(["fresh", "stale", "degraded"]).toContain(payload.source_health.status);
+  expect(payload.source_health.latest_report_generated_at).toBeTruthy();
   expect(payload.badges.edge_certified).toBe(false);
   expect(payload.metrics.unique_linked_paper_trades).toBe(62);
   expect(payload.metrics.queue_order_id_matches_to_paper).toBe(0);
@@ -29,6 +31,11 @@ test("jarvis page renders readiness scorecard split badges", async ({ page }) =>
         schema_version: "jarvis-readiness-scorecard.v1",
         generated_at: "2026-09-12T08:49:50.403936+00:00",
         mode: "READ_ONLY_ANALYSIS",
+        source_health: {
+          status: "fresh",
+          age_hours: 1.25,
+          latest_report_generated_at: "2026-09-12T08:49:50.403936+00:00",
+        },
         badges: {
           operator_analysis_ready: true,
           monitoring_ready: false,
@@ -68,6 +75,7 @@ test("jarvis page renders readiness scorecard split badges", async ({ page }) =>
   await expect(page.getByText("recommendation linked")).toBeVisible();
   await expect(page.getByText("queue lineage gap")).toBeVisible();
   await expect(page.getByText("edge not certified")).toBeVisible();
+  await expect(page.getByText(/Source fresh/)).toBeVisible();
   await expect(page.getByText("Baseline delta")).toBeVisible();
   await expect(page.getByText("$6,336")).toBeVisible();
   await expect(page.getByText("62")).toBeVisible();

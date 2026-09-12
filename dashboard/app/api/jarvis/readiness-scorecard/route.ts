@@ -24,6 +24,11 @@ export async function GET() {
           broker_execution_changed: false,
           env_changed: false,
         },
+        source_health: {
+          status: "degraded",
+          age_hours: null,
+          latest_report_generated_at: "unknown",
+        },
         badges: {
           operator_analysis_ready: false,
           monitoring_ready: false,

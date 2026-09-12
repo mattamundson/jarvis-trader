@@ -18,6 +18,7 @@ test("readiness scorecard API is GET-only, dynamic, no-store, and read-only", ()
   assert.doesNotMatch(route, /export async function (POST|PUT|PATCH|DELETE)\(/);
   assert.match(route, /force-dynamic/);
   assert.match(route, /READ_ONLY_ANALYSIS/);
+  assert.match(route, /source_health/);
   assert.match(route, /Cache-Control/);
   assert.match(route, /no-store/);
 });
@@ -30,6 +31,8 @@ test("readiness scorecard builder reads report artifacts, not live execution sur
   assert.match(src, /JARVIS_DASHBOARD_RECOMMENDATION_AUDIT_LATEST\.json/);
   assert.match(src, /JARVIS_RECOMMENDATION_ATTRIBUTION_AUDIT_LATEST\.json/);
   assert.match(src, /JARVIS_RECOMMENDATION_BASELINE_COMPARISON_LATEST\.json/);
+  assert.match(src, /reportFreshness/);
+  assert.match(src, /Infinity/);
 });
 
 test("jarvis page fetches scorecard through the API route", () => {
