@@ -1,0 +1,60 @@
+{
+  "plan": "JARVIS-MIP-1.0",
+  "work_package": "O-01",
+  "state": "EVIDENCE_COMPLETE_MIP_ADOPTION_ADMIN_ENFORCEMENT_PENDING",
+  "observed_at": "2026-09-02 America/Chicago",
+  "repository_repair_baseline": "master@20ce13ca07c34b5159f05518abe670f7f3c32d24",
+  "evidence_head": "PR#768@b4701a901ccddf01633b235fc71c807015acf6bf",
+  "repair_pr": "PR#773@4c1f5006d50a4304d74f25385abde4ca898ea577",
+  "repair_merge": "master@20ce13ca07c34b5159f05518abe670f7f3c32d24",
+  "runs": {
+    "jarvis_ci": 33707562601,
+    "safety_invariant": 33707562597,
+    "automated_review": 33707562735
+  },
+  "jobs": {
+    "automated_review": "PASS",
+    "safety_invariant": "PASS",
+    "engine_lint": "PASS",
+    "engine_type_check": "PASS",
+    "security_scan": "PASS",
+    "engine_tests_fast": "PASS",
+    "engine_tests_slow": "PASS",
+    "coverage_merge_floor": "PASS",
+    "dashboard_quality": "PASS",
+    "dashboard_build": "PASS",
+    "dashboard_playwright_smoke_50_routes_golden_path": "PASS",
+    "dashboard_static_guards": "PASS",
+    "engine_draft_check": "NOT_RUN_BY_READY_PR_POLICY"
+  },
+  "ratchet": {
+    "ruff": "GREEN",
+    "fast_pytest": "GREEN",
+    "slow_pytest": "GREEN",
+    "coverage_floor": "GREEN",
+    "mypy_allowlist": "GREEN",
+    "dashboard_type_unit": "GREEN",
+    "dashboard_next_build": "GREEN",
+    "dashboard_e2e": "GREEN",
+    "security_scan": "GREEN",
+    "safety_invariant": "GREEN"
+  },
+  "superseded_baseline_debt": [
+    "malformed latency test collection error",
+    "journal SQL phantom-column drift",
+    "Ruff baseline findings",
+    "dashboard active/halted symbol expectation drift",
+    "Playwright stale-body async rendering race",
+    "Kronos schema fixture aged outside 365-day lookback"
+  ],
+  "retired_validation_prs": {
+    "761": "CLOSED_WITHOUT_MERGE_SUPERSEDED",
+    "762": "CLOSED_WITHOUT_MERGE_DISPOSABLE_PROBE"
+  },
+  "remaining_program_blockers": [
+    "PR #768 requires explicit human review/approval before adoption/merge.",
+    "A post-adoption default-branch workflow receipt is not yet recorded.",
+    "Repository-admin branch-protection/required-check enforcement is unverified."
+  ],
+  "claim_boundary": "Cloud CI establishes V0/V1/V3 evidence for recorded scopes only; local runtime, broker PAPER, canary and live-capital state remain unverified."
+}
