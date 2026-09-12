@@ -8,8 +8,12 @@ No engine integration. Offline analysis tool only.
 Source spec: docs/research/SPEC_2026-09-04_Diebold_Mariano_edge_screen.md
 
 Usage:
+    # Window-level mode (default): gate_v2 verdict JSONs
     python dm_edge_screen.py <verdict_a.json> <verdict_b.json> [--metric sharpe|pf]
         [--power 2|1] [--one-sided greater|less]
+
+    # Trade-level mode: iterate.py --trades-out sidecars
+    python dm_edge_screen.py <trades_a.json> <trades_b.json> --input-mode trades [--power 2|1]
 """
 from __future__ import annotations
 
@@ -49,6 +53,36 @@ def align(a_periods, a_vals, b_periods, b_vals):
         return [], []
     ka, kb = zip(*keep, strict=True)
     return list(ka), list(kb)
+
+
+def load_trade_pnl_series(path: str) -> list[float]:
+    """Extract realized trade PnL from an iterate.py --trades-out sidecar."""
+    d = json.loads(Path(path).read_text())
+    rows = d.get("trades") if isinstance(d, dict) else d
+    if not isinstance(rows, list):
+        raise ValueError(f"{path}: expected a trades list or object with trades[]")
+    values: list[float] = []
+    for i, row in enumerate(rows):
+        if not isinstance(row, dict) or "pnl" not in row:
+            raise ValueError(f"{path}: trade row {i} missing pnl")
+        value = float(row["pnl"])
+        if not math.isfinite(value):
+            raise ValueError(f"{path}: trade row {i} has non-finite pnl")
+        values.append(value)
+    return values
+
+
+def align_by_ordinal(a_vals: list[float], b_vals: list[float]) -> tuple[list[float], list[float], dict]:
+    """Align trade-level streams by deterministic row ordinal."""
+    n = min(len(a_vals), len(b_vals))
+    return a_vals[:n], b_vals[:n], {
+        "n_a": len(a_vals),
+        "n_b": len(b_vals),
+        "aligned_n": n,
+        "dropped_a_tail": max(0, len(a_vals) - n),
+        "dropped_b_tail": max(0, len(b_vals) - n),
+        "alignment": "ordinal_prefix_min_length",
+    }
 
 
 def losses(vals: list[float], power: int) -> list[float]:
@@ -159,23 +193,39 @@ def _betainc(a: float, b: float, x: float) -> float:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Diebold-Mariano edge screen (research lane)")
-    ap.add_argument("verdict_a")
-    ap.add_argument("verdict_b")
+    ap.add_argument("input_a")
+    ap.add_argument("input_b")
+    ap.add_argument("--input-mode", choices=["verdict", "trades"], default="verdict")
     ap.add_argument("--metric", choices=["sharpe", "pf"], default="sharpe")
     ap.add_argument("--power", type=int, choices=[1, 2], default=2)
     ap.add_argument("--one-sided", choices=["greater", "less"], default=None)
     args = ap.parse_args()
 
-    ap_periods, ap_vals = load_oos_series(args.verdict_a, args.metric)
-    bp_periods, bp_vals = load_oos_series(args.verdict_b, args.metric)
-    a, b = align(ap_periods, ap_vals, bp_periods, bp_vals)
-    res = dm_test(a, b, power=args.power)
-    out = {
-        "a": Path(args.verdict_a).name,
-        "b": Path(args.verdict_b).name,
-        "metric": f"oos_{args.metric}",
-        **res,
-    }
+    if args.input_mode == "trades":
+        a_vals = load_trade_pnl_series(args.input_a)
+        b_vals = load_trade_pnl_series(args.input_b)
+        a, b, alignment = align_by_ordinal(a_vals, b_vals)
+        res = dm_test(a, b, power=args.power)
+        out = {
+            "a": Path(args.input_a).name,
+            "b": Path(args.input_b).name,
+            "input_mode": "trades",
+            "metric": "trade_pnl",
+            **alignment,
+            **res,
+        }
+    else:
+        ap_periods, ap_vals = load_oos_series(args.input_a, args.metric)
+        bp_periods, bp_vals = load_oos_series(args.input_b, args.metric)
+        a, b = align(ap_periods, ap_vals, bp_periods, bp_vals)
+        res = dm_test(a, b, power=args.power)
+        out = {
+            "a": Path(args.input_a).name,
+            "b": Path(args.input_b).name,
+            "input_mode": "verdict",
+            "metric": f"oos_{args.metric}",
+            **res,
+        }
     if out.get("p_two_sided") is not None and args.one_sided:
         p2 = out["p_two_sided"]
         # one-sided: halve the two-sided p when the sign matches the direction

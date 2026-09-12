@@ -11,13 +11,98 @@ Research-lane only; not wired into the test suite.
 """
 from __future__ import annotations
 
+import json
 import math
 import random
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from dm_edge_screen import _t_sf_two_sided, dm_test  # noqa: E402
+from dm_edge_screen import (  # noqa: E402
+    _t_sf_two_sided,
+    align_by_ordinal,
+    dm_test,
+    load_trade_pnl_series,
+)
+
+
+def write_json(payload) -> str:
+    fh = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8")
+    json.dump(payload, fh)
+    fh.close()
+    return fh.name
+
+
+def test_load_trade_pnl_series_wrapped_schema() -> None:
+    path = write_json({"trades": [{"pnl": 10.5}, {"pnl": -2.0}, {"pnl": 0}]})
+    vals = load_trade_pnl_series(path)
+    assert vals == [10.5, -2.0, 0.0]
+    print("PASS wrapped trade sidecar pnl extraction")
+
+
+def test_load_trade_pnl_series_raw_list_schema() -> None:
+    path = write_json([{"pnl": 1}, {"pnl": 2.25}])
+    vals = load_trade_pnl_series(path)
+    assert vals == [1.0, 2.25]
+    print("PASS raw-list trade sidecar pnl extraction")
+
+
+def test_load_trade_pnl_series_rejects_missing_pnl() -> None:
+    path = write_json({"trades": [{"pnl": 1}, {"not_pnl": 2}]})
+    try:
+        load_trade_pnl_series(path)
+    except ValueError as e:
+        assert "missing pnl" in str(e)
+    else:
+        raise AssertionError("expected missing pnl ValueError")
+    print("PASS missing pnl rejected")
+
+
+def test_align_by_ordinal_reports_dropped_tails() -> None:
+    a, b, meta = align_by_ordinal([10, 20, 30], [1, 2])
+    assert a == [10, 20]
+    assert b == [1, 2]
+    assert meta == {
+        "n_a": 3,
+        "n_b": 2,
+        "aligned_n": 2,
+        "dropped_a_tail": 1,
+        "dropped_b_tail": 0,
+        "alignment": "ordinal_prefix_min_length",
+    }
+    print("PASS ordinal alignment reports dropped tails")
+
+
+def test_cli_trade_mode_outputs_alignment_metadata() -> None:
+    a_path = write_json({"trades": [{"pnl": 10}, {"pnl": -5}, {"pnl": 7}, {"pnl": 4}]})
+    b_path = write_json({"trades": [{"pnl": 1}, {"pnl": -1}, {"pnl": 2}]})
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(Path(__file__).with_name("dm_edge_screen.py")),
+            a_path,
+            b_path,
+            "--input-mode",
+            "trades",
+            "--power",
+            "1",
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    out = json.loads(proc.stdout)
+    assert out["input_mode"] == "trades"
+    assert out["metric"] == "trade_pnl"
+    assert out["n_a"] == 4
+    assert out["n_b"] == 3
+    assert out["aligned_n"] == 3
+    assert out["dropped_a_tail"] == 1
+    assert out["dropped_b_tail"] == 0
+    assert out["n"] == 3
+    print("PASS trade-mode CLI emits alignment metadata")
 
 
 def test_identical_series() -> None:
@@ -89,6 +174,11 @@ def test_minimum_sample_guard() -> None:
 
 
 if __name__ == "__main__":
+    test_load_trade_pnl_series_wrapped_schema()
+    test_load_trade_pnl_series_raw_list_schema()
+    test_load_trade_pnl_series_rejects_missing_pnl()
+    test_align_by_ordinal_reports_dropped_tails()
+    test_cli_trade_mode_outputs_alignment_metadata()
     test_identical_series()
     test_closed_form_case()
     test_clear_rejection()
