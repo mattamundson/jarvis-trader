@@ -1,0 +1,88 @@
+{
+  "strategy_id": "mes_stc_trend_meta_rank1",
+  "hypothesis": "STC momentum only has value when it agrees with a higher-timeframe trend filter and survives out-of-sample decay checks.",
+  "status": "rejected",
+  "owner": "Amo / JARVIS research loop",
+  "created_at": "2026-09-12T00:00:00-05:00",
+  "updated_at": "2026-09-12T00:00:00-05:00",
+  "instruments": [
+    "MES"
+  ],
+  "timeframes": [
+    "1h"
+  ],
+  "data_contract": {
+    "sources": [
+      "Databento historical bars"
+    ],
+    "feature_families": [
+      "STC",
+      "SMA trend agreement",
+      "ATR risk"
+    ],
+    "freshness_sla": "research artifact must name exact data file and generated_at timestamp",
+    "leakage_controls": [
+      "no OOS parameter tuning",
+      "record every OOS access",
+      "fail closed on missing verdict"
+    ]
+  },
+  "research_lineage": {
+    "source_repos": [
+      "mattamundson/jarvis-trader",
+      "mattamundson/claude-trading-skills"
+    ],
+    "notebooks": [],
+    "docs": [
+      "docs/research/strategy-research-operating-model.md",
+      "docs/research/backtest-critique-checklist.md"
+    ],
+    "decision_links": [
+      "engine/data/gate_v2_verdicts/MES_stc_trend_meta_rank1.json"
+    ]
+  },
+  "backtest": {
+    "runner": "engine/backtest/run_mes_stc_trend_meta_rank1.py",
+    "train_window": "documented in runner/verdict artifact",
+    "test_window": "documented in runner/verdict artifact",
+    "metrics": {
+      "profit_factor": 0.71,
+      "max_drawdown_pct": 31.3,
+      "trade_count": 288,
+      "p_edge": 0.31,
+      "dsr": 0.0
+    },
+    "artifact_paths": [
+      "engine/data/gate_v2_verdicts/MES_stc_trend_meta_rank1.json"
+    ]
+  },
+  "robustness": {
+    "walk_forward": "WEAK",
+    "parameter_stability": "failed gate-v2 robustness review",
+    "regime_split": "insufficient evidence for promotion",
+    "monte_carlo": "drawdown exceeded acceptable envelope"
+  },
+  "risk_envelope": {
+    "max_position_size": "0 live contracts; rejected strategy",
+    "daily_loss_limit_pct": 0.0,
+    "kill_switch_dependencies": [
+      "engine/risk/safety_layer.py",
+      "engine/backtest/paper_config.py"
+    ],
+    "paper_only_until": "fresh honest gate-v2 PASS plus explicit approval"
+  },
+  "promotion_gate": {
+    "current_verdict": "fail",
+    "required_evidence": [
+      "fresh honest gate-v2 PASS",
+      "walk-forward consistency",
+      "paper shadow report",
+      "human approval before routing"
+    ],
+    "human_approval_required": true,
+    "blocking_conditions": [
+      "current verdict failed",
+      "do not route rejected strategies"
+    ]
+  }
+}
