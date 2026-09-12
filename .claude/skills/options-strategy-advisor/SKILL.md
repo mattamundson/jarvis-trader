@@ -1,20 +1,41 @@
 ---
 name: options-strategy-advisor
-description: Explain and analyze options strategies (covered calls, spreads, straddles, iron condors, earnings plays) for jarvis-trader's equities options book. Use when the user asks "what's a covered call", "analyze this iron condor", "should I trade a straddle before earnings", "what are my Greeks", or wants a strategy comparison. For SPY/QQQ/AAPL/TSLA (the four names jarvis actually trades in paper — see engine/CLAUDE.md "Equities" table) always pull live chain/Greeks/IV-rank from the engine's own `/options/*` endpoints rather than recomputing Black-Scholes from scratch — jarvis already has a production pricing engine (`engine/options/`). For any other ticker, theoretical/educational analysis is fine. Never places or recommends placing a live order — output is analysis only.
+description: Explain and analyze options strategies (covered calls, spreads, straddles, iron condors, earnings plays) for jarvis-trader's equities options book. Use when the user asks "what's a covered call", "analyze this iron condor", "should I trade a straddle before earnings", "what are my Greeks", or wants a strategy comparison. For SPY/QQQ use the working `/options-signals/*` delayed-chain analytics; for AAPL/TSLA (traded per `OPTIONS_WATCHLIST` but with no working options analytics behind them) and any other ticker, fall back to theoretical/HV-based analysis and say so. The `/options/*` router (`engine/routers/options_router.py`) is a disabled/stub module — its chain, Greeks, positions, and analyst endpoints do not return real data; do not use them (see "Why the `/options/*` router is off-limits" below). Never places or recommends placing a live order — output is analysis only.
 ---
 
 # Options Strategy Advisor
 
-_Adapted from [tradermonty/claude-trading-skills](https://github.com/tradermonty/claude-trading-skills) `options-strategy-advisor` skill (MIT). The original is a standalone Black-Scholes + FMP-API tool for generic retail stock options education. jarvis-trader already ships a live options pricing/Greeks/strategy engine (`engine/options/`, `engine/routers/options_router.py`) trading SPY/QQQ/AAPL/TSLA in paper — this version is a thin advisory layer on top of that engine instead of a second Black-Scholes implementation. Do not reintroduce the FMP dependency or reimplement `black_scholes_price` / Greeks — they already exist in `engine/options/premium_calculator.py` and `engine/options/greeks_monitor.py`._
+_Adapted from [tradermonty/claude-trading-skills](https://github.com/tradermonty/claude-trading-skills) `options-strategy-advisor` skill (MIT). The original is a standalone Black-Scholes + FMP-API tool for generic retail stock options education. jarvis-trader has two separate options subsystems: a disabled/stub `engine/options/` + `/options/*` router (do not use — see below), and a working, actually-running delayed-chain analytics pipeline (`engine/analysis/options_implied.py`, `engine/analysis/options_opportunity_board.py`, served at `/options-signals/*`) for SPY/QQQ only. This version routes through the working pipeline instead of reimplementing Black-Scholes, and is explicit about the gap for AAPL/TSLA and any other ticker._
 
-## Why this isn't a straight import
+## Why the `/options/*` router is off-limits
 
-jarvis-trader is not a generic retail-options sandbox. Before using this skill, know:
+A Codex review of this skill (PR #815) verified, against the actual code, that every `/options/*` endpoint this skill originally pointed to is non-functional or misleading. Confirmed by reading the source directly:
 
-- **Engine already computes real Greeks and prices** from live chain data: `engine/options/premium_calculator.py` (Black-Scholes pricing, PoP, EV, spread metrics) and `engine/options/greeks_monitor.py` (Greeks, IV solver, IV rank/percentile, portfolio Greeks). Reimplementing these in a new script is exactly the "re-implements something already shipped" case `.claude/rules/meta-discipline.md` #2 tells you to flag, not do.
-- **Engine already auto-selects a strategy by VIX regime** — `engine/options/strategy_executor.py` builds protective puts (VIX EXTREME), bull put spreads (VIX HIGH), covered calls (VIX NORMAL), or iron condors (VIX LOW) via `classify_vix_regime()`. `POST /options/strategy/recommend` exposes this. Don't propose an ad hoc strategy-selection heuristic that contradicts it.
-- **Only four equities are actually live in paper**: SPY, QQQ, AAPL, TSLA (`engine/config.py` `OPTIONS_WATCHLIST`; see `engine/CLAUDE.md` "Equities" table for their gate-v2/WFE status — SPY is REJECTED and trading anyway per Amo's 2026-08-03 decision, QQQ/AAPL/TSLA have no gate-v2 verdict on file at all). Anything you say about "the current position" or "current Greeks exposure" for these four must come from the live engine endpoints below, not from a hypothetical example.
-- **This skill never executes.** Order placement lives in `engine/options/strategy_executor.py` + `approval/service.py` + the hardcoded `risk/safety_layer.py`. This skill's job stops at analysis and education — say what a trade would look like, never place it, and never suggest bypassing the approval/safety layer.
+- **`GET /options/chain/{symbol}` always 404s.** `engine/options/chain_fetcher.py:fetch_chain()` builds an `OptionsChain` with `calls: list = []` and `puts: list = []` that are never populated, and `options_router.py` raises 404 whenever both lists are empty — which is always.
+- **`GET /options/iv-rank/{symbol}` is not option IV rank.** `chain_fetcher.get_iv_rank()` computes a rank from 21-day close-to-close *historical* volatility, not option-implied volatility, and silently returns `50.0` (presented as "neutral") whenever data is missing.
+- **`GET /options/greeks` always returns all-zero Greeks.** `options_router.py` instantiates a fresh `OptionsPositionManager()` per request, whose `GreeksMonitor` starts empty and is never rehydrated from the persisted position store.
+- **`GET /options/positions` reads a store nothing populates.** `OptionsPositionManager.add_position()` has zero production callers (`grep -rn "add_position(" engine/` outside tests and the class itself returns nothing) — real option fills route through `OrderRouter`/Schwab and never reach this SQLite table, so it can read empty while real positions exist.
+- **`GET /options/analyst/{symbol}` never returns a real verdict.** `agents/options_analyst.py:OptionsAnalyst._skew_signal/_term_signal/_gamma_signal` are hardcoded to always abstain (`return (0.0, False)`) and `_get_iv_rank()` always returns `None` — it's either "disabled" or `no_iv_data`, never a signal.
+- **`POST /options/strategy/recommend` returns a fully-specified order, not a classification.** `OptionsOrder` is documented in `strategy_executor.py` as "a complete options order ready for review or execution" with concrete strikes/premium/max-risk. Calling it is fine for illustrating what the engine's own VIX-regime logic would build, but never present its output as anything other than an illustrative structure, and never feed it into an execution call.
+
+None of this is a reason to reimplement Black-Scholes or Greeks in this skill (`engine/options/premium_calculator.py` and `greeks_monitor.py` still have correct math, they're just not wired to real data) — it's a reason to use the pipeline that actually works instead.
+
+## What actually works: `/options-signals/*`
+
+`engine/scripts/options_signals_snapshot.py` runs every 30 minutes on weekday RTH, fetches free CBOE delayed chains plus VIX/VIX3M daily CSVs, and writes `engine/data/options_signals/latest.json`. `engine/routers/options_signals_router.py` serves it read-only:
+
+- `GET /options-signals/latest` — the raw snapshot: ATM-straddle expected move (abs and %), delta-implied probability ladder, VIX/VIX3M term-structure regime, per symbol/horizon (`engine/analysis/options_implied.py`).
+- `GET /options-signals/opportunity-board` — ranked, defined-risk bounded-strategy candidates computed from that same chain (`engine/analysis/options_opportunity_board.py`), explicitly self-labeled `"not a trade signal"` and analysis-only (no broker, no order routing).
+
+**Coverage is SPY/QQQ only** (per the module's own docstrings) — this does not extend to AAPL/TSLA.
+
+## Only four equities are live in paper — but only two have working analytics
+
+SPY, QQQ, AAPL, TSLA (`engine/config.py` `OPTIONS_WATCHLIST`) all submit live paper option orders (`engine/CLAUDE.md` "Equities" table has their gate-v2/WFE status — SPY is REJECTED and trading anyway per Amo's 2026-08-03 decision, QQQ/AAPL/TSLA have no gate-v2 verdict on file at all). Of those four, only **SPY and QQQ** have a working live-data source (`/options-signals/*` above). For **AAPL and TSLA**, there is currently no working chain, Greeks, or IV source in the engine — pull current price from `GET /prices/snapshot` if you need it, and otherwise treat AAPL/TSLA exactly like the theoretical/educational path below, saying explicitly that no live options analytics back the numbers.
+
+## This skill never executes
+
+Order placement lives in `engine/options/strategy_executor.py` + `approval/service.py` + the hardcoded `risk/safety_layer.py`. This skill's job stops at analysis and education — say what a trade would look like, never place it, and never suggest bypassing the approval/safety layer. This holds even when calling `/options/strategy/recommend`, whose response is a literal order object: report its fields as illustrative, never as a ticket to submit.
 
 ## When to use
 
@@ -24,9 +45,9 @@ jarvis-trader is not a generic retail-options sandbox. Before using this skill, 
 - Earnings-related options questions: "Should I trade a straddle before NVDA earnings?"
 - Position sizing guidance for an options trade the user is considering
 
-## Live data path (SPY, QQQ, AAPL, TSLA)
+## Live data path (SPY, QQQ only)
 
-Call the engine directly — port 8010, `X-API-Key` header (current value in `engine/.env`, rotates — read at use time, never hardcode). Do not call FMP or any external pricing API for these four names.
+Call the engine directly — port 8010, `X-API-Key` header (current value in `engine/.env`, rotates — read at use time, never hardcode).
 
 ```bash
 # Read API_KEY at use time from engine/.env; never paste or commit the value.
@@ -39,37 +60,30 @@ for line in Path('engine/.env').read_text(encoding='utf-8', errors='ignore').spl
 PY
 )
 
-# Live chain (calls, puts, Greeks, IV rank, underlying price) — nearest expiry
-curl -s -H "X-API-Key: $API_KEY" "http://localhost:8010/options/chain/SPY"
+# Delayed-chain snapshot: expected move, probability ladder, VIX/VIX3M term structure
+curl -s -H "X-API-Key: $API_KEY" "http://localhost:8010/options-signals/latest"
 
-# Aggregated portfolio Greeks across all open options positions
-curl -s -H "X-API-Key: $API_KEY" "http://localhost:8010/options/greeks"
+# Ranked, defined-risk opportunity candidates from that same chain (SPY/QQQ)
+curl -s -H "X-API-Key: $API_KEY" "http://localhost:8010/options-signals/opportunity-board"
 
-# IV rank for a symbol
-curl -s -H "X-API-Key: $API_KEY" "http://localhost:8010/options/iv-rank/SPY"
+# Current price (works for any symbol, including AAPL/TSLA)
+curl -s -H "X-API-Key: $API_KEY" "http://localhost:8010/prices/snapshot"
 
-# VIX-regime-based strategy recommendation (the engine's own logic, not a new heuristic)
-curl -s -X POST "http://localhost:8010/options/strategy/recommend" \
-  -H "X-API-Key: $API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"symbol": "SPY", "vix": 18.5, "underlying_price": 560.0, "dte": 30}'
-
-# Open options positions
-curl -s -H "X-API-Key: $API_KEY" "http://localhost:8010/options/positions"
-
-# OptionsAnalyst verdict (stage-6 pipeline signal, LLM-assisted)
-curl -s -H "X-API-Key: $API_KEY" "http://localhost:8010/options/analyst/SPY"
+# Broker-backed position view (IBKR + Schwab + paper tracker) — NOT /options/positions
+curl -s -H "X-API-Key: $API_KEY" "http://localhost:8010/brokers/positions"
 ```
 
-Workflow for a live-name question ("analyze my SPY iron condor", "what's AAPL's IV rank"):
-1. Pull `/options/chain/{symbol}` and `/options/iv-rank/{symbol}` for real inputs — never invent a stock price or IV.
-2. If the user wants a recommendation rather than an analysis of a specific trade they named, call `/options/strategy/recommend` and explain *why* that regime maps to that strategy (see Step 7 below) — don't substitute your own strategy pick.
-3. If they gave you specific legs, price/Greeks-check those legs against the chain data, then walk Steps 5-9 below using the real numbers.
-4. Always note current open positions (`/options/positions`) if the question is about incremental risk ("should I add another iron condor") — don't analyze in a vacuum.
+Check `generated_at` / `data_delayed_minutes` / `data_quality` in the `/options-signals/latest` response before treating it as current — this is a 30-minute-cadence delayed CBOE feed, not real-time, and self-reports staleness rather than being computed fresh per request.
 
-## Theoretical / educational path (any other ticker)
+Workflow for a SPY/QQQ question ("analyze my SPY iron condor", "what's SPY's expected move"):
+1. Pull `/options-signals/latest` for the real expected move / probability ladder / term-structure regime — never invent a stock price or IV.
+2. If the user wants a recommendation rather than an analysis of a specific trade they named, pull `/options-signals/opportunity-board` and present its ranked candidates — remember it's explicitly labeled "not a trade signal," so frame it as ranked payoff shapes worth reviewing, not a recommendation to act on.
+3. If they gave you specific legs, sanity-check strikes/premium against the snapshot's chain-derived numbers, then walk Steps 5-9 below using the real numbers.
+4. For incremental-risk questions ("should I add another iron condor"), check `/brokers/positions` for the actual current book — not `/options/positions`, which reads an unpopulated store.
 
-For tickers outside SPY/QQQ/AAPL/TSLA, jarvis has no live engine, no chain, no position book — this is pure education/comparison and the theoretical Black-Scholes walkthrough below is fine, with user-supplied or Historical-Volatility-estimated inputs. Say explicitly that no live data backs the numbers ("theoretical, HV-based" or "using the price/IV you gave me").
+## AAPL, TSLA, and any other ticker (theoretical / educational path)
+
+AAPL and TSLA trade live in jarvis's paper book (`OPTIONS_WATCHLIST`) but have no working chain/IV/Greeks source — treat them the same as any ticker outside SPY/QQQ. Pull current price from `/prices/snapshot` if useful; the theoretical Black-Scholes walkthrough below is fine for everything else, with user-supplied or Historical-Volatility-estimated inputs. Say explicitly that no live options analytics back the numbers ("theoretical, HV-based" or "using the price/IV you gave me") — this is the honest default for AAPL/TSLA questions, not just a fallback for unrelated tickers.
 
 **Black-Scholes recap (education only — do not add this as new engine code):**
 
@@ -108,16 +122,16 @@ If you need to actually run these numbers rather than just quote them (e.g. to s
 ## Analysis workflow
 
 ### Step 1 — Gather inputs
-Required: ticker, strategy, strikes, expiration(s), contract count. Optional: IV (else HV or, for the live four, the engine's IV-rank endpoint), risk-free rate (default ~3-month T-bill).
+Required: ticker, strategy, strikes, expiration(s), contract count. Optional: IV (else HV, or for SPY/QQQ the `/options-signals/latest` snapshot's own VIX/VIX3M and expected-move data), risk-free rate (default ~3-month T-bill).
 
 ### Step 2 — Volatility
-Live four: use `/options/iv-rank/{symbol}` and the chain's embedded IV, not a manual HV calc. Other tickers: estimate HV from historical closes if the user hasn't supplied IV, and say so.
+SPY/QQQ: use the VIX/VIX3M term-structure regime and expected-move data from `/options-signals/latest`, not a manual HV calc — this is real option-derived data (ATM-straddle pricing), unlike `/options/iv-rank` (see above, an HV proxy, do not use). AAPL/TSLA/other tickers: estimate HV from historical closes if the user hasn't supplied IV, and say so.
 
 ### Step 3 — Price the legs
-Live four: read theoretical/mid prices straight off the chain response. Other tickers: quote the Black-Scholes formula inline (see above), don't hand-roll a new script for it.
+SPY/QQQ: sanity-check against the delayed-chain-derived numbers in `/options-signals/latest` and `/options-signals/opportunity-board`. AAPL/TSLA/other tickers: quote the Black-Scholes formula inline (see above), don't hand-roll a new script for it.
 
 ### Step 4 — Greeks
-Live four: `/options/greeks` gives portfolio-level aggregation; for a hypothetical single trade not yet in the position book, compute per-leg Greeks by hand using the standard formulas (delta, gamma, theta, vega, rho) and sum across legs — same math the engine uses in `greeks_monitor.py`, just walked by hand for a what-if.
+There is no working live Greeks source for any symbol (`/options/greeks` always reports zero — see above). For a hypothetical trade, compute per-leg Greeks by hand using the standard formulas (delta, gamma, theta, vega, rho) and sum across legs — same math `engine/options/greeks_monitor.py` implements correctly, just not wired to real positions, so walk it by hand instead of citing the endpoint.
 
 | Greek | Meaning |
 |-------|---------|
@@ -144,7 +158,9 @@ A short markdown report: setup, P/L summary, Greeks, risk assessment, entry/exit
 
 ## Never
 
-- Never call an external pricing API (FMP or otherwise) for SPY/QQQ/AAPL/TSLA — the engine's own chain/Greeks endpoints are the source of truth for those four.
-- Never reimplement Black-Scholes/Greeks as new engine code — `engine/options/premium_calculator.py` and `engine/options/greeks_monitor.py` already do this; extend those files if a real gap is found, don't fork the logic into a skill script.
-- Never place, submit, or draft an order — that requires `engine/options/strategy_executor.py` + the approval/safety layer, both out of scope for this skill.
+- Never call an external pricing API (FMP or otherwise) for SPY/QQQ — `/options-signals/*` is the source of truth for those two.
+- Never use `/options/chain`, `/options/greeks`, `/options/iv-rank`, `/options/positions`, or `/options/analyst` as if they returned real data — verified non-functional/misleading (see "Why the `/options/*` router is off-limits" above). Use `/options-signals/*`, `/brokers/positions`, and hand-computed Greeks instead.
+- Never present AAPL/TSLA numbers as live-data-backed — there is no working chain/IV/Greeks source for them; theoretical/HV-based only, and say so.
+- Never reimplement Black-Scholes/Greeks as new engine code — `engine/options/premium_calculator.py` and `engine/options/greeks_monitor.py` already have correct math; extend those files if a real gap is found, don't fork the logic into a skill script.
+- Never place, submit, or draft an order, and never present `/options/strategy/recommend`'s returned `OptionsOrder` as a ticket to submit — order placement requires `engine/options/strategy_executor.py` + the approval/safety layer, both out of scope for this skill.
 - Never contradict the engine's own VIX-regime strategy selection (`strategy_executor.classify_vix_regime`) with an ad hoc alternative unless the user explicitly asks "what would you do differently."
