@@ -14,10 +14,11 @@ from __future__ import annotations
 import math
 import random
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from dm_edge_screen import _t_sf_two_sided, dm_test  # noqa: E402
+from dm_edge_screen import _t_sf_two_sided, align, dm_test, load_trade_series  # noqa: E402
 
 
 def test_identical_series() -> None:
@@ -88,6 +89,34 @@ def test_minimum_sample_guard() -> None:
     print("PASS n<3 guard")
 
 
+def test_trade_sidecar_loader_index_and_exit_date_alignment() -> None:
+    payload = {
+        "trades": [
+            {"exit_date": "2026-01-02T10:30:00", "pnl": 10.0, "pnl_pct": 0.01},
+            {"exit_date": "2026-01-03T10:30:00", "pnl": -5.0, "pnl_pct": -0.005},
+            {"exit_date": "2026-01-04T10:30:00", "pnl": 7.0, "pnl_pct": 0.007},
+        ]
+    }
+    with tempfile.TemporaryDirectory() as td:
+        path = Path(td) / "trades.json"
+        path.write_text(__import__("json").dumps(payload), encoding="utf-8")
+        periods, values = load_trade_series(str(path), "pnl", "index")
+        assert periods == ["0", "1", "2"]
+        assert values == [10.0, -5.0, 7.0]
+        periods, values = load_trade_series(str(path), "pnl_pct", "exit_date")
+        assert periods == ["2026-01-02T10:30:00", "2026-01-03T10:30:00", "2026-01-04T10:30:00"]
+        assert values == [0.01, -0.005, 0.007]
+    print("PASS trade sidecar loader supports index and exit_date alignment")
+
+
+def test_exit_date_no_overlap_alignment_guard() -> None:
+    a, b = align(["2026-01-01", "2026-01-02"], [1.0, 2.0], ["2026-02-01"], [3.0])
+    assert a == [] and b == []
+    res = dm_test(a, b, power=1)
+    assert res["dm"] is None and "insufficient" in res["note"]
+    print("PASS no-overlap exit_date alignment returns insufficient-sample guard")
+
+
 if __name__ == "__main__":
     test_identical_series()
     test_closed_form_case()
@@ -95,4 +124,6 @@ if __name__ == "__main__":
     test_hln_correction_shrinks_statistic()
     test_t_parity_scipy()
     test_minimum_sample_guard()
+    test_trade_sidecar_loader_index_and_exit_date_alignment()
+    test_exit_date_no_overlap_alignment_guard()
     print("\nALL GOLDEN-VECTOR TESTS PASSED")
