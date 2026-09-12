@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "name": "JARVIS Production Hardening v1.0 — One Chain of Truth",
+  "prepared_date": "2026-09-01",
+  "captured_date": "2026-09-12",
+  "capital_authority": "paper_only",
+  "live_capital_authorized": false,
+  "canary_authorized": false,
+  "governing_rule": "one fact has one authority, every feature proves when it was knowable, every order uses one path, and every expansion of capital authority requires explicit human approval",
+  "frozen_paper_minimum_trading_days": 30,
+  "frozen_paper_maximum_trading_days": 60,
+  "planning_range_months": {
+    "low": 9,
+    "high": 14,
+    "basis": "source inference, not deployment authority"
+  },
+  "declared_checklist_actions": 409,
+  "declared_program_phases": 13,
+  "declared_starting_queue": 10,
+  "captured_phase_rows": 8,
+  "captured_starting_queue_rows": 8,
+  "missing_phase_rows": 5,
+  "missing_starting_queue_rows": 2,
+  "phases": [
+    {"number": 0, "phase": "Truth and governance", "gate": "ISG-0", "planning_range": "2–4 weeks", "permitted_state": "Paper only", "path": "Critical", "current_state": "Open"},
+    {"number": 1, "phase": "Contracts and isolation", "gate": "M1", "planning_range": "3–5 weeks", "permitted_state": "Paper only", "path": "Critical", "current_state": "Pending"},
+    {"number": 2, "phase": "PIT data and research integrity", "gate": "M2", "planning_range": "5–8 weeks", "permitted_state": "Research / paper", "path": "Critical", "current_state": "Pending"},
+    {"number": 3, "phase": "Judge and anchor strategy", "gate": "M3", "planning_range": "4–7 weeks", "permitted_state": "Research / shadow", "path": "Critical", "current_state": "Pending"},
+    {"number": 4, "phase": "Risk, OMS and broker spine", "gate": "M4", "planning_range": "6–10 weeks", "permitted_state": "IBKR paper", "path": "Critical", "current_state": "Pending"},
+    {"number": 5, "phase": "Read-only operator truth", "gate": "M5", "planning_range": "4–7 weeks", "permitted_state": "Read-only", "path": "Critical", "current_state": "Pending"},
+    {"number": 6, "phase": "Integrated paper controls", "gate": "M6", "planning_range": "4–7 weeks", "permitted_state": "IBKR paper", "path": "Critical", "current_state": "Pending"},
+    {"number": 7, "phase": "Capital Path and risk frontier", "gate": "M7", "planning_range": "3–5 weeks", "permitted_state": "Simulation", "path": "Parallel", "current_state": "Pending"}
+  ],
+  "starting_queue": [
+    {"number": 1, "task": "Rebase and update PR #760 against master@3e4a903", "mapping": ["A-01", "O-01"], "safety": "S0", "evidence": "E0", "execution_review": "Human + AI"},
+    {"number": 2, "task": "Capture and sign the redacted runtime-truth baseline", "mapping": ["A-01"], "safety": "S2", "evidence": "E2", "execution_review": "Human"},
+    {"number": 3, "task": "Produce one complete current-master CI receipt", "mapping": ["O-01"], "safety": "S1", "evidence": "E2", "execution_review": "AI + Human review"},
+    {"number": 4, "task": "Implement fail-closed safety_state_verified and failure matrix", "mapping": ["P0-SAFE"], "safety": "S3", "evidence": "E3", "execution_review": "AI + independent review"},
+    {"number": 5, "task": "Adopt the source-of-truth ADR", "mapping": ["A-02"], "safety": "S1", "evidence": "E1", "execution_review": "Human"},
+    {"number": 6, "task": "Adopt the modular-monolith and one-mutation-spine ADRs", "mapping": ["A-03"], "safety": "S2", "evidence": "E2", "execution_review": "Human"},
+    {"number": 7, "task": "Adopt operator-product and change-governance ADRs", "mapping": ["K-01", "O-05"], "safety": "S1", "evidence": "E1", "execution_review": "Human"},
+    {"number": 8, "task": "Build Instrument Master and versioned Risk Policy contracts", "mapping": ["B-01", "H-01"], "safety": "S3", "evidence": "E2", "execution_review": "AI + independent review"}
+  ],
+  "agent_boundaries": {
+    "may_not_enable_live": true,
+    "may_not_raise_limits": true,
+    "may_not_promote_strategies": true,
+    "may_not_repurpose_credentials": true,
+    "may_not_submit_broker_orders": true,
+    "may_not_merge_safety_critical_work": true,
+    "must_stop_on_missing_runtime_broker_policy_or_credential_facts": true
+  }
+}
