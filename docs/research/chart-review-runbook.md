@@ -37,6 +37,8 @@ Chart review may **not** directly authorize live/paper execution or override ris
 
 ## Dashboard target
 
+Requirements live in `docs/research/chart-review-dashboard-requirements.md`.
+
 Add/maintain a review surface that shows:
 
 - engine bars/price source,
@@ -44,4 +46,5 @@ Add/maintain a review surface that shows:
 - open/paper positions,
 - order/trade markers,
 - regime/context badges,
-- evidence links.
+- evidence links,
+- explicit `execution_authority = none` provenance for discretionary chart review.
