@@ -10,6 +10,8 @@ Source spec: docs/research/SPEC_2026-09-04_Diebold_Mariano_edge_screen.md
 Usage:
     python dm_edge_screen.py <verdict_a.json> <verdict_b.json> [--metric sharpe|pf]
         [--power 2|1] [--one-sided greater|less]
+    python dm_edge_screen.py <trades_a.json> <trades_b.json> --input-kind trades
+        [--trade-metric pnl|pnl_pct] [--trade-align index|exit_date]
 """
 from __future__ import annotations
 
@@ -38,6 +40,24 @@ def load_oos_series(path: str, metric: str) -> tuple[list[str], list[float]]:
     return periods, values
 
 
+def load_trade_series(path: str, metric: str, align: str) -> tuple[list[str], list[float]]:
+    """Extract (period, score) from an iterate.py --trades-out sidecar JSON."""
+    d = json.loads(Path(path).read_text())
+    trades = d.get("trades") or []
+    periods, values = [], []
+    for idx, trade in enumerate(trades):
+        period = str(idx) if align == "index" else trade.get("exit_date")
+        value = trade.get(metric)
+        if period is None or value is None:
+            continue
+        value = float(value)
+        if not math.isfinite(value):
+            continue
+        periods.append(period)
+        values.append(value)
+    return periods, values
+
+
 def align(a_periods, a_vals, b_periods, b_vals):
     """Inner-join on oos_period; drop windows where either side is None."""
     b_map = dict(zip(b_periods, b_vals, strict=True))
@@ -61,7 +81,7 @@ def dm_test(a_vals: list[float], b_vals: list[float], power: int = 2, h: int = 1
     """DM test on loss differential d_t = L_a - L_b (loss = -score, higher score = better).
 
     H0: E[d] = 0 (equal predictive accuracy).
-    Positive DM => A better than B (B has higher loss); negative => A worse.
+    Negative DM => A better than B (A has lower loss because score_A is higher); positive => A worse.
     """
     n = len(a_vals)
     if n < 3:
@@ -161,19 +181,34 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Diebold-Mariano edge screen (research lane)")
     ap.add_argument("verdict_a")
     ap.add_argument("verdict_b")
+    ap.add_argument("--input-kind", choices=["verdict", "trades"], default="verdict")
     ap.add_argument("--metric", choices=["sharpe", "pf"], default="sharpe")
+    ap.add_argument("--trade-metric", choices=["pnl", "pnl_pct"], default="pnl")
+    ap.add_argument("--trade-align", choices=["index", "exit_date"], default="index")
     ap.add_argument("--power", type=int, choices=[1, 2], default=2)
     ap.add_argument("--one-sided", choices=["greater", "less"], default=None)
     args = ap.parse_args()
 
-    ap_periods, ap_vals = load_oos_series(args.verdict_a, args.metric)
-    bp_periods, bp_vals = load_oos_series(args.verdict_b, args.metric)
+    if args.input_kind == "trades":
+        ap_periods, ap_vals = load_trade_series(args.verdict_a, args.trade_metric, args.trade_align)
+        bp_periods, bp_vals = load_trade_series(args.verdict_b, args.trade_metric, args.trade_align)
+        metric_label = f"trade_{args.trade_metric}"
+        align_label = args.trade_align
+    else:
+        ap_periods, ap_vals = load_oos_series(args.verdict_a, args.metric)
+        bp_periods, bp_vals = load_oos_series(args.verdict_b, args.metric)
+        metric_label = f"oos_{args.metric}"
+        align_label = "oos_period"
     a, b = align(ap_periods, ap_vals, bp_periods, bp_vals)
     res = dm_test(a, b, power=args.power)
     out = {
         "a": Path(args.verdict_a).name,
         "b": Path(args.verdict_b).name,
-        "metric": f"oos_{args.metric}",
+        "input_kind": args.input_kind,
+        "metric": metric_label,
+        "align": align_label,
+        "score_direction": "higher_is_better",
+        "dm_sign_interpretation": "negative_favors_a_positive_favors_b",
         **res,
     }
     if out.get("p_two_sided") is not None and args.one_sided:
