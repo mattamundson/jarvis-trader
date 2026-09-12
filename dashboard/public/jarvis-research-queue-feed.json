@@ -1,0 +1,123 @@
+{
+  "report": "JARVIS_RESEARCH_QUEUE_FEED",
+  "generated_at_utc": "2026-09-11T03:42:00.336908+00:00",
+  "queue": {
+    "strategy_indicator": [
+      {
+        "summary": "A user expresses skepticism about AI outperforming insider trading, quoting a post about the Claude Portfolio managing $15M in capital for automated stock picks.\n- JARVIS relevance: **very high** for ",
+        "url": "https://x.com/0xLcrgs/status/2050172445483467230",
+        "classification": "paper-only-trading"
+      },
+      {
+        "summary": "A user expresses alarm that \"Claude Code\" is now trading on TradingView, predicting manual trading will cease within a month.\n- JARVIS relevance: **very high** for paper-only trading research and tool",
+        "url": "https://x.com/0xNonceSense/status/2039738564041453635",
+        "classification": "paper-only-trading"
+      },
+      {
+        "summary": "Systematic mean-reversion strategy using VIX index to identify short-term SPY trading opportunities during market panics.\n- JARVIS relevance: **very high** for paper-only trading research and tooling.",
+        "url": "https://x.com/ConcretumR/status/2070175840004964514",
+        "classification": "paper-only-trading"
+      },
+      {
+        "summary": "Record S&P 500 call option volume led to a gamma squeeze, while large VIX call purchases signal a potential market downturn.\n- JARVIS relevance: **very high** for paper-only trading research and tooli",
+        "url": "https://x.com/InTheAssembly/status/2052365335806816270",
+        "classification": "paper-only-trading"
+      },
+      {
+        "summary": "The post discusses an orchestrator as an \"exponential slop machine\" in the context of AI and trading systems.\n- JARVIS relevance: **very high** for paper-only trading research and tooling.\n\n### 3) `A ",
+        "url": "https://x.com/KatanaLarp/status/2039972757048275045",
+        "classification": "paper-only-trading"
+      },
+      {
+        "summary": "Koroush AK shares a guide on using Claude to review trade journals with custom commands and a 2026 free trading journal.\n- JARVIS relevance: **very high** for paper-only trading research and tooling.\n",
+        "url": "https://x.com/KoroushAK/status/2060677104291967034",
+        "classification": "paper-only-trading"
+      },
+      {
+        "summary": "Trading Arena introduces an AI trading agent platform allowing users to write strategies, pick models, set risk limits, and compete on a leaderboard.\n- JARVIS relevance: **very high** for paper-only t",
+        "url": "https://x.com/MurrLincoln/status/2042275704184676652",
+        "classification": "paper-only-trading"
+      },
+      {
+        "summary": "Jane Street whistleblower's leaked information on hedge fund market prediction methods is discussed.\n- JARVIS relevance: **very high** for paper-only trading research and tooling.\n\n### 2) `A trader tu",
+        "url": "https://x.com/RitOnchain/status/2094741871700688981",
+        "classification": "paper-only-trading"
+      },
+      {
+        "summary": "The post describes building a business team using AI agents, emphasizing starting with one role and scaling gradually.\n- JARVIS relevance: **very high** for paper-only trading research and tooling.\n\n#",
+        "url": "https://x.com/RoundtableSpace/status/2034430904576458908",
+        "classification": "paper-only-trading"
+      },
+      {
+        "summary": "Personal knowledge bases provide a significant advantage for AI agents, allowing them to search, reason, and build upon high-signal systems.\n- JARVIS relevance: **very high** for paper-only trading re",
+        "url": "https://x.com/RoundtableSpace/status/2040274409022181489",
+        "classification": "paper-only-trading"
+      }
+    ],
+    "risk_position_sizing": [
+      {
+        "summary": "A user expresses skepticism about AI outperforming insider trading, quoting a post about the Claude Portfolio managing $15M in capital for automated stock picks.\n- JARVIS relevance: **very high** for ",
+        "url": "https://x.com/0xLcrgs/status/2050172445483467230",
+        "classification": "paper-only-trading"
+      },
+      {
+        "summary": "A user observes an AI bot's significant profit on Polymarket, with a detailed arbitrage roadmap shared.\n- JARVIS relevance: **very high** for paper-only trading research and tooling.\n\n### 6) `The post",
+        "url": "https://x.com/AleiahLock/status/2044155043625029926",
+        "classification": "paper-only-trading"
+      },
+      {
+        "summary": "The post praises ATR trailing stop automations as a neat feature for trading.\n- JARVIS relevance: **very high** for paper-only trading research and tooling.\n\n### 5) `The post discusses the role of a \"",
+        "url": "https://x.com/Crak_Trading/status/2045141573198110749",
+        "classification": "paper-only-trading"
+      },
+      {
+        "summary": "Koroush AK shares a guide on using Claude to review trade journals with custom commands and a 2026 free trading journal.\n- JARVIS relevance: **very high** for paper-only trading research and tooling.\n",
+        "url": "https://x.com/KoroushAK/status/2060677104291967034",
+        "classification": "paper-only-trading"
+      },
+      {
+        "summary": "Backtesting case study for NVDA call resistance showing 95% hold probability and 3:1 risk-reward short setup.\n- JARVIS relevance: **very high** for paper-only trading research and tooling.\n\n### 2) `Th",
+        "url": "https://x.com/MenthorQpro/status/2072756155596849161",
+        "classification": "paper-only-trading"
+      },
+      {
+        "summary": "The post discusses how Claude sub-agents can be used to build a high-alpha trading framework, moving beyond manual testing.\n- JARVIS relevance: **very high** for paper-only trading research and toolin",
+        "url": "https://x.com/MoonDevOnYT/status/2044009056361234587",
+        "classification": "paper-only-trading"
+      },
+      {
+        "summary": "Trading Arena introduces an AI trading agent platform allowing users to write strategies, pick models, set risk limits, and compete on a leaderboard.\n- JARVIS relevance: **very high** for paper-only t",
+        "url": "https://x.com/MurrLincoln/status/2042275704184676652",
+        "classification": "paper-only-trading"
+      },
+      {
+        "summary": "A user details building a 5-agent AI content team using OpenClaw for automated content creation and curation.\n- JARVIS relevance: **very high** for paper-only trading research and tooling.\n\n### 3) `Au",
+        "url": "https://x.com/PrajwalTomar_/status/2024823117563195838",
+        "classification": "paper-only-trading"
+      },
+      {
+        "summary": "The post describes building a business team using AI agents, emphasizing starting with one role and scaling gradually.\n- JARVIS relevance: **very high** for paper-only trading research and tooling.\n\n#",
+        "url": "https://x.com/RoundtableSpace/status/2034430904576458908",
+        "classification": "paper-only-trading"
+      },
+      {
+        "summary": "The post describes an AI bot, built by Claude, that acts as a market maker and profits from capturing the spread.\n- JARVIS relevance: **very high** for paper-only trading research and tooling.\n\n### 2)",
+        "url": "https://x.com/RoundtableSpace/status/2038402071754580248",
+        "classification": "paper-only-trading"
+      }
+    ],
+    "backtest_validation_integrity": [
+      {
+        "summary": "Backtesting case study for NVDA call resistance showing 95% hold probability and 3:1 risk-reward short setup.\n- JARVIS relevance: **very high** for paper-only trading research and tooling.\n\n### 2) `Th",
+        "url": "https://x.com/MenthorQpro/status/2072756155596849161",
+        "classification": "paper-only-trading"
+      },
+      {
+        "summary": "Karpathy's autoresearch system optimized nanochat, improving validation loss and reducing \"Time to GPT-2\" by 11%.",
+        "url": "https://x.com/tengyanAI/status/2031221682216792540",
+        "classification": "operator-memory"
+      }
+    ]
+  },
+  "constraint": "paper-only; no live engine/risk/kill-switch changes; MCL/MNQ/MGC/M2K DO_NOT_TRADE"
+}
