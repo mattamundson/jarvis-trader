@@ -1,0 +1,24 @@
+ibkr:
+  host: 127.0.0.1                # never `localhost` on Windows — IPv6 footgun
+  # Defaults target IB Gateway paper (4002) because that's installed on this machine.
+  # To use TWS once it's installed: change port_paper to 7497.
+  port_paper: 4002
+  port_live: 4001                # PERMANENTLY BLOCKED — never connect
+  client_id: 17
+  account: DUP662235
+contracts:
+  # Micro E-mini S&P 500 — preferred over full-size ES for paper learning
+  MES:
+    symbol: MES
+    secType: FUT
+    exchange: CME
+    currency: USD
+    multiplier: 5
+    expiry_month: "202609"      # YYYYMM — IB resolves the actual expiry date
+  ES:
+    symbol: ES
+    secType: FUT
+    exchange: CME
+    currency: USD
+    multiplier: 50
+    expiry_month: "202609"
