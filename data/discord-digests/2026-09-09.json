@@ -1,0 +1,217 @@
+{
+  "date": "2026-09-09",
+  "session_bias": {
+    "session_type": "uncertain",
+    "directional_bias": "neutral",
+    "conviction": 0.5,
+    "ib_bias": "not_mentioned",
+    "data_quality": "stale",
+    "message_count": 1
+  },
+  "sentiment_score": null,
+  "sentiment_label": null,
+  "top_signals": [],
+  "corey_quote": "When those levels hit, the prices bounced dramatically.",
+  "commentary_health": [
+    {
+      "date": "2026-09-10",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    },
+    {
+      "date": "2026-09-09",
+      "data_quality": "stale",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 1
+    },
+    {
+      "date": "2026-09-08",
+      "data_quality": "stale",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 1
+    },
+    {
+      "date": "2026-09-07",
+      "data_quality": "stale",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 1
+    },
+    {
+      "date": "2026-09-04",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.5,
+      "message_count": 1
+    },
+    {
+      "date": "2026-09-03",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 1
+    }
+  ],
+  "calibration_integrity": {
+    "total_outcomes": 4,
+    "rows_excluded_corrupt": 0,
+    "rows_excluded_duplicate": 0,
+    "alert": false,
+    "window_days": 30
+  },
+  "llm_provider_health": {
+    "engine_reachable": true,
+    "active_provider": null,
+    "primary_provider": "anthropic",
+    "primary_healthy": true,
+    "providers_available": 4,
+    "google_fallback_count": 0,
+    "vertex_failover_count": 0,
+    "llm_path_healthy": true,
+    "alert": false
+  },
+  "task_health": {
+    "present": true,
+    "stale": false,
+    "age_hours": 0.4,
+    "scanned": 109,
+    "failing_enabled": 24,
+    "failing_disabled": 1,
+    "failing_tasks": [
+      {
+        "name": "Hermes-Nightly-Sync",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-A01-RuntimeSnapshotRefresh",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Jarvis-DiskWatch",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Jarvis-EngineToVault",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-EngineWatchdog",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Jarvis-FinanceSync",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-IBGateway-AtLogon",
+        "result": "0x3"
+      },
+      {
+        "name": "Jarvis-IBGateway-RAMWatchdog",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Jarvis-LifeOS-Dashboard",
+        "result": "0x80070002"
+      },
+      {
+        "name": "Jarvis-MemoryGbrainIngest",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-NorthStarCockpit",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-PaperCollect",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Jarvis-PM2-AtLogon",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-PM2RestartWatch-15min",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-ScanCredentials",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-Sentinel",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Jarvis-StrategyC-Weekly",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Jarvis-VaultGbrainSync",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-VaultIngest-All",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-VaultIngest-Files",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Jarvis-VaultIngest-Files-Guarded",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-VaultIngest-OneNote",
+        "result": "0x8007010B"
+      },
+      {
+        "name": "Jarvis-VaultMOCRegen",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-VerdictRefresh-Weekly",
+        "result": "0x1"
+      }
+    ],
+    "alert": true
+  },
+  "gate_verdict_freshness": {
+    "active_symbols": [
+      "MES",
+      "MGC"
+    ],
+    "max_age_days": 7.0,
+    "symbols": {
+      "MES": {
+        "age_days": 0.9,
+        "newest": "2026-09-09T15:32:12.704467+00:00",
+        "files": 2,
+        "latest_verdict": "FAIL",
+        "active": true
+      },
+      "MGC": {
+        "age_days": 1.9,
+        "newest": "2026-09-08T15:31:45.532684+00:00",
+        "files": 1,
+        "latest_verdict": "PASS",
+        "active": true
+      },
+      "SPY": {
+        "age_days": 7.5,
+        "newest": "2026-09-03T01:19:37.088631+00:00",
+        "files": 1,
+        "latest_verdict": "FAIL",
+        "active": false
+      }
+    },
+    "stale_active": [],
+    "missing_active": [],
+    "alert": false
+  }
+}
