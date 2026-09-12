@@ -1,3 +1,8 @@
+> [!CAUTION]
+> **Legacy evidence only.** These criteria may describe historical paper
+> diagnostics but cannot authorize live trading or satisfy JARVIS-MIP-1.0
+> M10/M11. The legacy CLI is retired and always exits nonzero.
+
 # Phase 3 Readiness Criteria — Detail
 
 **Status**: Authoritative (supersedes the vibes-based checklist)

@@ -13,11 +13,12 @@ IB Gateway port 4002, account DUR375089 (confirmed live 2026-08-10 via `IB_ACCOU
 
 ## Read first (in order)
 
-1. `docs/CURRENT_STATE.md` — latest P0/P1/P2 status
-2. `docs/JARVIS_TRADER_UNIFIED_CANON.md` — canonical architecture
-3. `docs/runbooks/` — operational playbooks
-4. `engine/config.py` — hardcoded safety limits (DO NOT modify without `[safety-review]` PR tag)
-5. `docs/troubleshooting.md` — engine/OpenClaw/WhatsApp/Bun/port-8010 incidents
+1. `docs/plans/JARVIS_MASTER_IMPLEMENTATION_PLAN_v1.0.md` — governing implementation plan after repository adoption
+2. `docs/CURRENT_STATE.md` — latest observed P0/P1/P2 status; verify freshness
+3. `docs/JARVIS_TRADER_UNIFIED_CANON.md` — historical/current architecture reference, subordinate to the MIP when they conflict
+4. `docs/runbooks/` — operational playbooks
+5. `engine/config.py` — hardcoded safety limits (DO NOT modify without `[safety-review]` PR tag)
+6. `docs/troubleshooting.md` — engine/OpenClaw/WhatsApp/Bun/port-8010 incidents
 
 ## Non-negotiable rules
 

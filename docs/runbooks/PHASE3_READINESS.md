@@ -1,3 +1,9 @@
+> [!CAUTION]
+> **Legacy evidence only.** Any GO/WAIT/NO-GO value in this document or from
+> `/readiness/phase3` cannot authorize live trading, satisfy JARVIS-MIP-1.0
+> M10/M11, or replace explicit Tier 3 owner authorization. The CLI is retired
+> and always exits nonzero.
+
 # Phase 3 Live Trading Readiness Checklist
 
 **Status**: Pre-deployment validation framework

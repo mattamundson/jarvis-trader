@@ -1,52 +1,10 @@
 #!/usr/bin/env python
-"""
-Live-Trading Readiness Gate
+"""Retired legacy Phase-1 readiness diagnostics.
 
-Single canonical check for the 7 Phase-1 mission-accomplished criteria. Returns
-exit code 0 only when ALL 7 pass. Designed to be the deployment-decision guard
-between "WFO campaign complete" and "live capital authorized."
-
-Usage (from engine/ directory):
-    .venv/Scripts/python -m backtest.live_readiness
-    .venv/Scripts/python -m backtest.live_readiness --json
-    .venv/Scripts/python -m backtest.live_readiness --strict
-
-Exit codes:
-    0 — all 7 criteria PASS (live trading authorized)
-    1 — at least one criterion FAIL (live trading BLOCKED)
-    2 — engine unreachable or other infrastructure error
-
-Criteria checked:
-
-    C1 — MES paper validation
-        30 days elapsed since paper config wired AND >=30 paper trades AND
-        forward-test profit factor >= 1.0
-
-    C2 — Second symbol validated
-        At least one additional gate v2 PASS verdict beyond MES (MGC, M2K, etc.)
-        with valid (non-stale) paper config
-
-    C3 — Phase 0 credential rotation complete
-        Credential scanner returns 0 HIGH findings (or scanner output unavailable)
-
-    C4 — Engine health stable
-        /health endpoint returns status=ok + tv_mcp_healthy=true + llm_path_healthy=true
-
-    C5 — Kill switch INACTIVE
-        kill_switch_active=false on /health response
-
-    C6 — All verdicts current
-        Every PASS verdict in gate_v2_verdicts/ created within VERDICT_TTL_DAYS
-
-    C7 — DO_NOT_TRADE_SYMBOLS reflects validated symbols
-        All FAIL-only symbols are blocked, all PASS symbols are NOT blocked
-
-Why this exists:
-    Without a single gate, live-trading authorization is a judgment call across
-    7+ different files and operational checks. This script makes the decision
-    explicit and repeatable. Required to flip live_trading=true.
-
-    Build cron: schedule this script daily; alert on transitions from PASS to FAIL.
+The seven checks remain useful as paper-evidence diagnostics, but this module is
+not a live-authorization gate. It always fails closed with exit code 2.
+JARVIS-MIP-1.0 M10 evidence, explicit Tier 3 owner authorization, and the M11
+canary/reconciliation contract are separate requirements.
 """
 
 from __future__ import annotations
@@ -74,6 +32,11 @@ ENGINE_TIMEOUT_SEC = 5
 # Machine-readable go/no-go state file written on every run.
 # Consumers (dashboard, alerts, cron scripts) read this instead of re-running checks.
 DEFAULT_STATE_FILE = engine_root / "data" / "live_readiness_state.json"
+RETIREMENT_REASON = (
+    "Legacy Phase-1 readiness is diagnostic-only and cannot authorize live trading. "
+    "JARVIS-MIP-1.0 M10 plus explicit Tier 3 owner authorization are required "
+    "before an M11 canary."
+)
 
 # C1 thresholds
 PAPER_MIN_DAYS = 30
@@ -660,7 +623,7 @@ def run_all_checks() -> list[CheckResult]:
 def _print_table(results: list[CheckResult]) -> None:
     print()
     print("=" * 80)
-    print("LIVE-TRADING READINESS GATE")
+    print("RETIRED LEGACY READINESS DIAGNOSTICS — NO LIVE AUTHORIZATION")
     print("=" * 80)
     n_pass_blocking = 0
     n_blocking = 0
@@ -677,10 +640,8 @@ def _print_table(results: list[CheckResult]) -> None:
     print()
     print("=" * 80)
     print(f"BLOCKING CHECKS: {n_pass_blocking}/{n_blocking} PASS")
-    if n_pass_blocking == n_blocking:
-        print("VERDICT: LIVE TRADING AUTHORIZED")
-    else:
-        print(f"VERDICT: LIVE TRADING BLOCKED — {n_blocking - n_pass_blocking} blocking failures")
+    print("VERDICT: RETIRED / LIVE TRADING BLOCKED")
+    print(f"REASON: {RETIREMENT_REASON}")
     print("=" * 80)
     print()
 
@@ -701,10 +662,13 @@ def _write_state_file(
     blocking_pass = sum(1 for r in results if r.passed and r.blocking)
     blocking_total = sum(1 for r in results if r.blocking)
     payload: dict[str, Any] = {
-        "authorized": blocking_pass == blocking_total and not error,
+        "authorized": False,
+        "legacy_criteria_pass": blocking_pass == blocking_total and not error,
+        "retired": True,
+        "authorization_reason": RETIREMENT_REASON,
         "blocking_pass": blocking_pass,
         "blocking_total": blocking_total,
-        "exit_code": exit_code,
+        "exit_code": 2,
         "run_at": datetime.now(tz=timezone.utc).isoformat(),
         "results": [asdict(r) for r in results],
     }
@@ -735,9 +699,8 @@ def _run_once(args: Any, state_path: Path | None) -> tuple[list[CheckResult], in
         for r in results:
             r.blocking = True
 
-    blocking_failures = sum(1 for r in results if not r.passed and r.blocking)
-    exit_code = 0 if blocking_failures == 0 else 1
-    return results, exit_code
+    # Criteria are retained as diagnostics, but this retired gate never authorizes.
+    return results, 2
 
 
 def main() -> int:
@@ -791,7 +754,9 @@ def main() -> int:
                         "results": [asdict(r) for r in results],
                         "blocking_pass": sum(1 for r in results if r.passed and r.blocking),
                         "blocking_total": sum(1 for r in results if r.blocking),
-                        "authorized": exit_code == 0,
+                        "authorized": False,
+                        "retired": True,
+                        "authorization_reason": RETIREMENT_REASON,
                     },
                     indent=2,
                 )
@@ -828,8 +793,7 @@ def main() -> int:
                 if name in prev_pass_map and prev_pass_map[name] != curr_pass_map[name]
             }
 
-            authorized = exit_code == 0
-            status_str = "AUTHORIZED" if authorized else "BLOCKED"
+            status_str = "RETIRED/BLOCKED"
             blocking_fail = sum(1 for r in results if not r.passed and r.blocking)
 
             if iteration == 0 or changed:
@@ -863,7 +827,7 @@ def main() -> int:
             print("\n[monitor] Stopped.")
             break
 
-    return 0
+    return 2
 
 
 if __name__ == "__main__":

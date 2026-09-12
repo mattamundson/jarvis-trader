@@ -1,15 +1,16 @@
 #!/usr/bin/env python
 """
-Phase 3 live-trading readiness report — CLI tool.
+RETIRED legacy Phase 3 evidence report — never authorizes live trading.
 
 Usage:
     engine/.venv/Scripts/python scripts/phase3_readiness_report.py
     engine/.venv/Scripts/python scripts/phase3_readiness_report.py --db engine/data/jarvis_trader.db
 
 Exit codes:
-    0 — GO       (all blockers pass, <= 1 warning fails)
-    1 — WAIT     (all blockers pass, > 1 warning fails)
-    2 — NO-GO    (any blocker fails)
+    2 — RETIRED / NO-GO (always)
+
+The underlying criteria remain visible as historical paper-evidence diagnostics,
+but this command cannot satisfy JARVIS-MIP-1.0 M10/M11 or authorize capital.
 
 Run from the jarvis-trader project root.
 """
@@ -30,12 +31,15 @@ if _ENGINE_DIR not in sys.path:
 
 _DEFAULT_DB = os.path.join(_ENGINE_DIR, "data", "jarvis_trader.db")
 
-_EXIT_CODE = {"GO": 0, "WAIT": 1, "NO-GO": 2}
+_RETIREMENT_REASON = (
+    "Legacy Phase 3 readiness is evidence-only and cannot authorize live trading. "
+    "JARVIS-MIP-1.0 M11 plus explicit Tier 3 owner authorization are required."
+)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Print the Phase 3 live-trading readiness report.",
+        description="Print the retired legacy Phase 3 evidence report.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -58,20 +62,25 @@ def main() -> int:
 
     from readiness.phase3_criteria import _render_markdown, evaluate_with_edge_mode
 
-    # mode=None -> honors READINESS_EDGE_MODE (default paper_accrual, byte-identical
-    # to the legacy evaluate_all_criteria plus an edge_mode key). GO/WAIT/NO-GO exit
-    # codes are unchanged.
+    # Preserve the legacy calculation as evidence while forcing the authorization
+    # result closed. A historical GO must never become a process-success signal.
     report = evaluate_with_edge_mode(db_path)
+    summary = report.setdefault("summary", {})
+    summary["legacy_result"] = summary.get("overall")
+    summary["overall"] = "NO-GO"
+    summary["live_authorization"] = False
+    summary["authorization_reason"] = _RETIREMENT_REASON
 
     if args.json:
         import json
 
         print(json.dumps(report, indent=2))
     else:
+        print(f"RETIRED / NO-GO: {_RETIREMENT_REASON}")
+        print()
         print(_render_markdown(report))
 
-    overall = report["summary"]["overall"]
-    return _EXIT_CODE.get(overall, 2)
+    return 2
 
 
 if __name__ == "__main__":
