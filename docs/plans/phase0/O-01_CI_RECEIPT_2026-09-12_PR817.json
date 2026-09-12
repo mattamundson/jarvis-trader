@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "work_package": "O-01",
+  "captured_at": "2026-09-12T02:23:00-0500",
+  "master_head": "1cd8c8aab2e345a69f5987317dbf21b2406d1733",
+  "pr": 817,
+  "pr_head": "69746d7d79136cac38f2ad3d3dc69da1b4003b6a",
+  "pr_url": "https://github.com/mattamundson/jarvis-trader/pull/817",
+  "pr_mergeable": "MERGEABLE",
+  "pr_checks": [
+    {
+      "name": "Vercel",
+      "result": "PASS"
+    },
+    {
+      "name": "Vercel Deployments \u2013 Matt's projects",
+      "result": "PASS"
+    },
+    {
+      "name": "Vercel Preview Comments",
+      "result": "PASS"
+    },
+    {
+      "name": "Supabase Preview",
+      "result": "SKIPPED"
+    },
+    {
+      "name": "Vercel Agent Review",
+      "result": "NEUTRAL/SKIPPED"
+    }
+  ],
+  "latest_master_runs": [
+    {
+      "run": 34679801910,
+      "workflow": "Dependency Graph",
+      "head": "1cd8c8aab2e345a69f5987317dbf21b2406d1733",
+      "conclusion": "startup_failure",
+      "url": "https://github.com/mattamundson/jarvis-trader/actions/runs/34679801910"
+    },
+    {
+      "run": 34679800024,
+      "workflow": "unknown/empty from gh",
+      "head": "1cd8c8aab2e345a69f5987317dbf21b2406d1733",
+      "conclusion": "startup_failure",
+      "url": "https://github.com/mattamundson/jarvis-trader/actions/runs/34679800024"
+    }
+  ],
+  "classification": "CI-INFRA/startup_failure on recent master GitHub Actions; PR #817 docs lane currently only has Vercel/Supabase-style checks visible.",
+  "claim_boundary": "This is not a complete current-master CI pass receipt. O-01 remains open until required JARVIS CI contexts run to terminal conclusions on current master or a governed replacement baseline is adopted."
+}
