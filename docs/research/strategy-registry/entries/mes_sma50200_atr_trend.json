@@ -1,0 +1,59 @@
+{
+  "schema_version": "1.0",
+  "strategy_id": "mes_sma50200_atr_trend",
+  "name": "MES SMA(50,200) + 2.0xATR trend strategy (live paper strategy)",
+  "source": {
+    "type": "internal-idea",
+    "repo_or_note": "root CLAUDE.md + engine/CLAUDE.md Active Instruments table; PR #552/#598/#691 gate history",
+    "imported_via": "pre-existing in engine; seeded into registry 2026-09-12"
+  },
+  "hypothesis": "MES mean-reverts within trend: when the 50-SMA is above the 200-SMA (uptrend) and price extends >= 2.0x ATR below the 50-SMA, a long mean-reversion entry captures the snap-back with a stop below the extension.",
+  "asset_class": "future",
+  "symbols": ["MES"],
+  "timeframe": "intraday (1h bars, per engine/CLAUDE.md)",
+  "data_sources": [
+    {
+      "feed": "ibkr",
+      "adjusted": true,
+      "range_start": "2026-05-24",
+      "range_end": "2026-09-12"
+    }
+  ],
+  "feature_set": ["sma(50)", "sma(200)", "atr", "trend-direction"],
+  "rules": {
+    "entry": "Long only: 50-SMA above 200-SMA AND price <= 50-SMA - 2.0*ATR (per engine/CLAUDE.md Active Instruments).",
+    "exit": "Stop/target per engine trade_invariants long/short direction checks; full logic in engine code.",
+    "position_sizing": "Per engine position sizing; $5K/instrument cap (root CLAUDE.md).",
+    "risk_limits": "Kill switch -8% daily P&L / -20% drawdown (MAX_DRAWDOWN_PCT=0.20 in engine/.env); DO_NOT_TRADE_SYMBOLS gate; paper-only (IB 4002).",
+    "fees_and_slippage_model": "Per engine backtest model; see engine/backtest for the fill assumption."
+  },
+  "windows": {
+    "train": null,
+    "test": null,
+    "walk_forward": null
+  },
+  "gate_verdict": {
+    "gate": "paper-validation-endpoint",
+    "verdict": "FAIL",
+    "core_verdict": "FAIL",
+    "reasons": [
+      "as_of 2026-07-29 (PRB-02 banner in docs/CURRENT_STATE.md): overall_pass=false for MES; profit_factor 1.79 < 2.0 target; win_rate 43.75% < 55%; 16/60 trades; 15/30 days",
+      "MES is the only live paper strategy, but the authorizing gate verdict (MES_stark_gapfill_long_rank1.json) belongs to a different strategy — PRB-02 fix makes eligibility strategy-specific"
+    ],
+    "evidence_path": "docs/CURRENT_STATE.md (PRB-02 banner); live: GET /paper/validation/approved-paper-gates"
+  },
+  "promotion_state": "paper-shadow",
+  "known_failure_modes": [
+    "Paper profit factor and win rate below targets as of 2026-07-29 snapshot",
+    "Symbol-wide gate authorization bug (PRB-02) previously let an unrelated strategy's PASS authorize MES routing",
+    "Registry entry is a snapshot — refresh gate_verdict against the live endpoint before any state change"
+  ],
+  "evidence_paths": [
+    "docs/CURRENT_STATE.md",
+    "CLAUDE.md",
+    "engine/CLAUDE.md",
+    "dashboard/app/trading-eligibility/page.tsx"
+  ],
+  "owner": "amo",
+  "updated": "2026-09-12"
+}

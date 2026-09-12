@@ -1,0 +1,57 @@
+{
+  "schema_version": "1.0",
+  "strategy_id": "qqq_sma12_momentum_rank1",
+  "name": "QQQ SMA-12-month momentum regime filter (adapted from SPY template, GT-52 gap fill)",
+  "source": {
+    "type": "adapted",
+    "repo_or_note": "adapted from SPY sma12_monthly_momentum template (2026-08-15, GT-52 validation-gap fill)"
+  },
+  "hypothesis": "The SPY 12-month SMA regime filter transfers to QQQ: holding QQQ only while above its 12-month SMA beats buy-and-hold on risk-adjusted monthly returns.",
+  "asset_class": "equity-index",
+  "symbols": ["QQQ"],
+  "timeframe": "monthly",
+  "data_sources": [
+    {
+      "feed": "yfinance",
+      "adjusted": true,
+      "range_start": "1999-03-31",
+      "range_end": "2026-08-31"
+    }
+  ],
+  "feature_set": ["sma(12-month)"],
+  "rules": {
+    "entry": "Long when price closes above the 12-month SMA at the monthly bar.",
+    "exit": "Flat when price closes below the 12-month SMA.",
+    "position_sizing": "All-in/out monthly in the scan model.",
+    "risk_limits": "None in scan model; JARVIS gates apply.",
+    "fees_and_slippage_model": "Gross in scan; monthly turnover implies minimal cost drag."
+  },
+  "windows": {
+    "train": { "start": "1999-03-31", "end": "2026-08-31" },
+    "test": null
+  },
+  "gate_verdict": {
+    "gate": "gate-v2",
+    "verdict": "FAIL",
+    "core_verdict": "FAIL",
+    "alt_verdict": "UNSCORED",
+    "reasons": [
+      "mbb_pf_ci_lower=1.4846 >= 1.1",
+      "p_positive_edge=0.9996 >= 0.95",
+      "FAIL mc_95th_dd_pct=33.6474 > 5.0",
+      "FAIL dsr=0.0 < 0.1 (selection bias)"
+    ],
+    "evidence_path": "docs/research/QQQ_sma12momentum_rank1.gate_v2.json"
+  },
+  "promotion_state": "rejected",
+  "known_failure_modes": [
+    "33.6% Monte Carlo 95th drawdown vs 5.0% floor",
+    "DSR 0.0 — the adapted template's edge does not survive trial-count correction on QQQ",
+    "Monthly regime filter does NOT validate the live 1h options-scanner pipeline that generates QQQ's paper fills (card note)"
+  ],
+  "evidence_paths": [
+    "docs/research/QQQ_sma12momentum_rank1.gate_v2.json"
+  ],
+  "owner": "amo",
+  "updated": "2026-09-12"
+}
