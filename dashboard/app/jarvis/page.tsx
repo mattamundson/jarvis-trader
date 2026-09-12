@@ -6,6 +6,7 @@ import { Activity, Cpu, Radio, Shield, ShieldOff, Zap } from "lucide-react";
 import { BookmarkThemesPanel } from "@/components/BookmarkThemesPanel";
 import { BookmarkFeedPanel } from "@/components/BookmarkFeedPanel";
 import { ResearchQueuePanel } from "@/components/ResearchQueuePanel";
+import { ReadinessScorecardPanel } from "@/components/ReadinessScorecardPanel";
 import { QuantStatsPanel } from "@/components/QuantStatsPanel";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { RiskAttributionPanel } from "@/components/RiskAttributionPanel";
@@ -512,6 +513,7 @@ export default function JarvisCommandPage() {
           <BookmarkThemesPanel />
           <BookmarkFeedPanel />
           <ResearchQueuePanel />
+          <ReadinessScorecardPanel />
         </div>
 
         {/* Column 2 — Market intelligence */}
