@@ -1,0 +1,108 @@
+"""
+Autotrade experiment runner. The LLM modifies this file.
+Usage: uv run python -m src.train --strategy <filename>
+
+The LLM writes a new strategy to src/strategies/generated/<name>.py,
+then runs this script with --strategy <filename>.
+"""
+
+import warnings
+
+import pandas as pd
+from backtesting import Backtest
+
+# Suppress backtesting.py margin warnings (noisy but not critical)
+warnings.filterwarnings("ignore", message=".*insufficient margin.*", module="backtesting")
+
+from src.prepare import load_ohlcv_data, prepare_settings
+from src.strategies.loader import load_strategy
+from src.risk import check_leverage_hard, evaluate_risk, format_risk_summary
+from src.profit import evaluate_profit, format_profit_summary
+
+# ---------------------------------------------------------------------------
+# Hyperparameters (LLM modifies these)
+# ---------------------------------------------------------------------------
+
+TIMEFRAME = "1h"       # candle interval: "1m", "5m", "15m", "1h", "4h", "1d", etc.
+MAX_LEVERAGE = 1.0     # 1.0 = no leverage (spot); >1 for swap, e.g. 5.0 = 5x
+
+
+# ---------------------------------------------------------------------------
+# Backtest runner (do not modify)
+# ---------------------------------------------------------------------------
+
+def run_backtest(strategy_file: str) -> tuple[pd.DataFrame, Backtest, pd.Series, any]:
+    if not strategy_file:
+        raise ValueError("No strategy specified. Use --strategy <filename>.")
+
+    settings = prepare_settings()
+    settings.timeframe = TIMEFRAME
+
+    # Hard check: reject before running if leverage ceiling is exceeded.
+    # If this raises, lower MAX_LEVERAGE in train.py and re-run.
+    check_leverage_hard(MAX_LEVERAGE, settings)
+
+    data = load_ohlcv_data(settings)
+    strategy_cls = load_strategy(strategy_file)
+
+    # margin = 1/leverage: 1.0 = no leverage (spot), 0.1 = up to 10x (swap)
+    margin = 1.0 / MAX_LEVERAGE
+
+    backtest = Backtest(
+        data,
+        strategy_cls,
+        cash=settings.cash,
+        commission=0.001,
+        exclusive_orders=True,
+        margin=margin,
+    )
+    stats = backtest.run()
+    return data, backtest, stats, settings
+
+
+if __name__ == "__main__":
+    import argparse
+    import time
+
+    parser = argparse.ArgumentParser(description="Run backtest for a strategy")
+    parser.add_argument("--strategy", default="", help="Strategy filename inside src/strategies/generated/")
+    parser.add_argument("--plot", action="store_true", help="Show interactive plot after backtest")
+    args = parser.parse_args()
+
+    t0 = time.time()
+    data, backtest, stats, settings = run_backtest(strategy_file=args.strategy)
+    elapsed = time.time() - t0
+
+    # --- Risk control (safety floors) ---
+    risk = evaluate_risk(stats, settings)
+
+    # --- Profit optimization targets (only meaningful if risk passed) ---
+    profit = evaluate_profit(stats, settings) if (not risk["invalid"]) else None
+
+    # Drop internal backtesting fields (prefixed with _)
+    public_stats = stats[~stats.index.str.startswith("_")]
+    print(f"strategy:         {args.strategy}")
+    print(f"symbol:           {settings.symbol}")
+    print(f"timeframe:        {TIMEFRAME}")
+    print(f"max_leverage:     {MAX_LEVERAGE}")
+    print(f"elapsed_seconds:  {elapsed:.1f}")
+    print(public_stats.to_string())
+    print()
+    print(format_risk_summary(risk))
+    if profit is not None:
+        print(format_profit_summary(profit))
+
+    # --- Keep / discard verdict ---
+    if risk["invalid"]:
+        print("[VERDICT] CRASH — log as status='crash', move to .trash/strategies/")
+    elif not risk["passed"]:
+        print(f"[VERDICT] DISCARD (risk) — {risk['violations']}")
+        print("[VERDICT] Cannot mark keep=True. Log as status='discard'.")
+    elif profit is not None and not profit["passed"]:
+        print(f"[VERDICT] DISCARD (profit) — {profit['violations']}")
+        print("[VERDICT] Cannot mark keep=True. Log as status='discard'.")
+    else:
+        print("[VERDICT] ELIGIBLE — risk and profit targets met. Judge return quality and decide keep/discard.")
+
+    if args.plot:
+        backtest.plot()
