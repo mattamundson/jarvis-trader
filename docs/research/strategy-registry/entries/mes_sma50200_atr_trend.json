@@ -1,58 +1,67 @@
 {
   "schema_version": "1.0",
   "strategy_id": "mes_sma50200_atr_trend",
-  "name": "MES SMA(50,200) + 2.0xATR trend strategy (live paper strategy)",
+  "name": "MES SMA(50,200) golden-cross trend-following + 2.0xATR trailing stop (paper strategy)",
   "source": {
     "type": "internal-idea",
-    "repo_or_note": "root CLAUDE.md + engine/CLAUDE.md Active Instruments table; PR #552/#598/#691 gate history",
+    "repo_or_note": "engine/backtest/trend_signals.py generate_sma_trend_signals() + engine/backtest/paper_config.py MES_TREND_PAPER_CONFIG; gate history PR #552/#598/#691, rank2/rank7/rank11 runs",
     "imported_via": "pre-existing in engine; seeded into registry 2026-09-12"
   },
-  "hypothesis": "MES mean-reverts within trend: when the 50-SMA is above the 200-SMA (uptrend) and price extends >= 2.0x ATR below the 50-SMA, a long mean-reversion entry captures the snap-back with a stop below the extension.",
+  "hypothesis": "MES trend-follows: entering long on the 50-SMA/200-SMA golden cross (with a realized-vol >= 9% gate) and holding with a 2.0xATR(14) trailing stop captures the trend with a positive risk-adjusted edge over the 2019-2026 1h sample.",
   "asset_class": "future",
   "symbols": ["MES"],
-  "timeframe": "intraday (1h bars, per engine/CLAUDE.md)",
+  "timeframe": "intraday (1h bars)",
   "data_sources": [
     {
       "feed": "ibkr",
       "adjusted": true,
-      "range_start": "2026-05-24",
-      "range_end": "2026-09-12"
+      "range_start": "2019-05-05",
+      "range_end": "2026-08-26"
     }
   ],
-  "feature_set": ["sma(50)", "sma(200)", "atr", "trend-direction"],
+  "feature_set": ["sma(50)", "sma(200)", "atr(14) trailing stop (2.0x)", "realized-vol gate (min_rv_annualized=9.0)"],
   "rules": {
-    "entry": "Long only: 50-SMA above 200-SMA AND price <= 50-SMA - 2.0*ATR (per engine/CLAUDE.md Active Instruments).",
-    "exit": "Stop/target per engine trade_invariants long/short direction checks; full logic in engine code.",
-    "position_sizing": "Per engine position sizing; $5K/instrument cap (root CLAUDE.md).",
-    "risk_limits": "Kill switch -8% daily P&L / -20% drawdown (MAX_DRAWDOWN_PCT=0.20 in engine/.env); DO_NOT_TRADE_SYMBOLS gate; paper-only (IB 4002).",
-    "fees_and_slippage_model": "Per engine backtest model; see engine/backtest for the fill assumption."
+    "entry": "Long only on golden cross (50-SMA crosses above 200-SMA), suppressed when 20-bar annualized realized vol < 9% (MES_MIN_RV_ANNUALIZED=9.0); per engine/backtest/trend_signals.py.",
+    "exit": "Death cross (50-SMA crosses below 200-SMA) or 2.0xATR(14) trailing stop, whichever first; per trend_signals.py exit path.",
+    "position_sizing": "risk_per_trade 0.25% of $50K initial capital; 1 concurrent position (MES_TREND_PAPER_CONFIG).",
+    "risk_limits": "Kill switch -8% daily P&L / -20% drawdown (engine/.env MAX_DRAWDOWN_PCT=0.20); gate_v2_policy fail-closes new routing on INSUFFICIENT_SAMPLE/FAIL verdicts.",
+    "fees_and_slippage_model": "Commission $0.62/contract + 1 tick slippage per MES_TREND_PAPER_CONFIG."
   },
   "windows": {
-    "train": null,
-    "test": null,
-    "walk_forward": null
+    "train": { "start": "2019-05-05", "end": "2026-08-26" },
+    "test": null
   },
   "gate_verdict": {
-    "gate": "paper-validation-endpoint",
-    "verdict": "FAIL",
+    "gate": "gate-v2",
+    "verdict": "INSUFFICIENT_SAMPLE",
     "core_verdict": "FAIL",
+    "alt_verdict": "FAIL",
+    "as_of": "2026-08-16 committed verdict file; 2026-09-02 rank11 refresh (engine/CLAUDE.md Active Instruments) confirmed INSUFFICIENT_SAMPLE/FAIL — pf_ci_lower 0.52, p_edge 0.72, rolling_wfo WEAK, 17/30 min OOS trades, zero trades fired Jun-Aug 2026; refresh verdict file de-indexed (commit 826afb32). Refresh against the live endpoint before any state change.",
     "reasons": [
-      "as_of 2026-07-29 (PRB-02 banner in docs/CURRENT_STATE.md): overall_pass=false for MES; profit_factor 1.79 < 2.0 target; win_rate 43.75% < 55%; 16/60 trades; 15/30 days",
-      "MES is the only live paper strategy, but the authorizing gate verdict (MES_stark_gapfill_long_rank1.json) belongs to a different strategy — PRB-02 fix makes eligibility strategy-specific"
+      "FAIL mbb_pf_ci_lower=0.5248 < 1.1",
+      "FAIL p_positive_edge=0.7180 < 0.95",
+      "mc_95th_dd_pct=3.2617 <= 5.0",
+      "dsr=0.361800 >=  0.1 (not selection-bias)",
+      "dsr=0.361800 >=  0.3 (alt floor)",
+      "FAIL rolling_wfo=WEAK not in ['MODERATE', 'STRONG']",
+      "FAIL fixed_params_min_pf=0.665 < 1.2",
+      "cost_survives_through=catastrophic >= realistic",
+      "mc_95th_dd_pct=3.2617 <= 4.0 (alt ceiling)"
     ],
-    "evidence_path": "docs/CURRENT_STATE.md (PRB-02 banner); live: GET /paper/validation/approved-paper-gates"
+    "evidence_path": "engine/data/gate_v2_verdicts/archive/MES_trend_rank11_deep-2026-08-16.json"
   },
-  "promotion_state": "paper-shadow",
+  "promotion_state": "rejected",
   "known_failure_modes": [
-    "Paper profit factor and win rate below targets as of 2026-07-29 snapshot",
-    "Symbol-wide gate authorization bug (PRB-02) previously let an unrelated strategy's PASS authorize MES routing",
-    "Registry entry is a snapshot — refresh gate_verdict against the live endpoint before any state change"
+    "Edge decayed through late 2025 / early 2026 — rank8-11 (2026-07/09) all FAIL; no currently-passing gate-v2 verdict on file",
+    "Previously APPROVED (Tier 3, 2026-05-24) on an ALT gate-v2 PASS that the 2026-09-02 re-evaluation no longer supports — re-enable only on a fresh honest gate-v2 PASS",
+    "PRB-02 (2026-07-29): the old symbol-wide eligibility check let an unrelated strategy's PASS (MES_stark_gapfill_long_rank1) authorize MES routing; now strategy-specific (fix/prb-gate-v2-symbol-wide-eligibility)"
   ],
   "evidence_paths": [
+    "engine/data/gate_v2_verdicts/archive/MES_trend_rank11_deep-2026-08-16.json",
     "docs/CURRENT_STATE.md",
-    "CLAUDE.md",
     "engine/CLAUDE.md",
-    "dashboard/app/trading-eligibility/page.tsx"
+    "engine/backtest/paper_config.py",
+    "engine/backtest/trend_signals.py"
   ],
   "owner": "amo",
   "updated": "2026-09-12"

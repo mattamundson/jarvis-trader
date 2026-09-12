@@ -123,13 +123,14 @@
       "required": ["gate", "verdict"],
       "properties": {
         "gate": { "type": "string" },
-        "verdict": { "enum": ["PASS", "FAIL", "UNSCORED", "UNRUN"] },
+        "verdict": { "enum": ["PASS", "FAIL", "UNSCORED", "UNRUN", "INSUFFICIENT_SAMPLE"] },
         "core_verdict": { "enum": ["PASS", "FAIL", "UNSCORED", "UNRUN"] },
         "alt_verdict": { "enum": ["PASS", "FAIL", "UNSCORED", "UNRUN"] },
         "reasons": {
           "type": "array",
           "items": { "type": "string" }
         },
+        "as_of": { "type": "string" },
         "evidence_path": { "type": "string" }
       }
     },
