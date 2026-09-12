@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mattamundson/jarvis-trader/docs/research/strategy-registry/schema.json",
+  "title": "JARVIS strategy registry entry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "strategy_id",
+    "name",
+    "source",
+    "hypothesis",
+    "asset_class",
+    "symbols",
+    "timeframe",
+    "data_sources",
+    "feature_set",
+    "rules",
+    "windows",
+    "promotion_state",
+    "updated"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "strategy_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(_[a-z0-9]+)+$"
+    },
+    "name": { "type": "string", "minLength": 3 },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "repo_or_note"],
+      "properties": {
+        "type": {
+          "enum": ["x-bookmark-scan", "imported-repo", "internal-idea", "llm-generated", "adapted", "human"]
+        },
+        "repo_or_note": { "type": "string" },
+        "url": { "type": "string", "format": "uri" },
+        "imported_via": { "type": "string" }
+      }
+    },
+    "hypothesis": { "type": "string", "minLength": 20 },
+    "asset_class": {
+      "enum": ["equity-index", "future", "option", "forex", "crypto", "prediction-market"]
+    },
+    "symbols": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "timeframe": { "type": "string" },
+    "data_sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["feed", "range_start", "range_end"],
+        "properties": {
+          "feed": {
+            "enum": ["databento", "ibkr", "yfinance", "fred", "csv", "other"]
+          },
+          "adjusted": { "type": "boolean" },
+          "timezone": { "type": "string" },
+          "range_start": { "type": "string", "format": "date" },
+          "range_end": { "type": "string", "format": "date" }
+        }
+      }
+    },
+    "feature_set": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" }
+    },
+    "rules": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entry", "exit", "position_sizing", "risk_limits", "fees_and_slippage_model"],
+      "properties": {
+        "entry": { "type": "string" },
+        "exit": { "type": "string" },
+        "position_sizing": { "type": "string" },
+        "risk_limits": { "type": "string" },
+        "fees_and_slippage_model": { "type": "string" }
+      }
+    },
+    "windows": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["train", "test"],
+      "properties": {
+        "train": { "$ref": "#/$defs/window" },
+        "test": { "$ref": "#/$defs/window" },
+        "walk_forward": {
+          "allOf": [{ "$ref": "#/$defs/window" }],
+          "properties": { "config": { "type": "string" } }
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "net_pnl": { "type": "number" },
+        "cagr": { "type": "number" },
+        "max_drawdown": { "type": "number" },
+        "sharpe": { "type": "number" },
+        "sortino": { "type": "number" },
+        "profit_factor": { "type": "number" },
+        "trade_count": { "type": "integer", "minimum": 0 },
+        "win_rate": { "type": "number" },
+        "exposure": { "type": "string" },
+        "fees_slippage_assumption": { "type": "string" },
+        "regime_split": { "type": "string" },
+        "parameter_sensitivity": { "type": "string" },
+        "monte_carlo": { "type": "string" }
+      }
+    },
+    "gate_verdict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gate", "verdict"],
+      "properties": {
+        "gate": { "type": "string" },
+        "verdict": { "enum": ["PASS", "FAIL", "UNSCORED", "UNRUN"] },
+        "core_verdict": { "enum": ["PASS", "FAIL", "UNSCORED", "UNRUN"] },
+        "alt_verdict": { "enum": ["PASS", "FAIL", "UNSCORED", "UNRUN"] },
+        "reasons": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "evidence_path": { "type": "string" }
+      }
+    },
+    "promotion_state": {
+      "enum": ["idea", "data-contract", "backtested", "robustness", "walk-forward", "paper-shadow", "promoted", "rejected", "archived"]
+    },
+    "known_failure_modes": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "evidence_paths": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "owner": { "type": "string" },
+    "supersedes": { "type": "string" },
+    "updated": { "type": "string", "format": "date" }
+  },
+  "$defs": {
+    "window": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["start", "end"],
+          "properties": {
+            "start": { "type": "string", "format": "date" },
+            "end": { "type": "string", "format": "date" }
+          }
+        }
+      ]
+    }
+  }
+}
