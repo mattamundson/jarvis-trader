@@ -38,7 +38,7 @@ interface ReadinessScorecard {
   display_notes: string[];
 }
 
-const FEED_URL = "/jarvis-readiness-scorecard.json";
+const FEED_URL = "/api/jarvis/readiness-scorecard";
 
 const BADGE_COPY: { key: BadgeKey; label: string; positive: string; negative: string }[] = [
   {
