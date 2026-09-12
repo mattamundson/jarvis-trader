@@ -29,6 +29,16 @@ jarvis-trader is not a generic retail-options sandbox. Before using this skill, 
 Call the engine directly — port 8010, `X-API-Key` header (current value in `engine/.env`, rotates — read at use time, never hardcode). Do not call FMP or any external pricing API for these four names.
 
 ```bash
+# Read API_KEY at use time from engine/.env; never paste or commit the value.
+API_KEY=$(python - <<'PY'
+from pathlib import Path
+for line in Path('engine/.env').read_text(encoding='utf-8', errors='ignore').splitlines():
+    if line.startswith('API_KEY='):
+        print(line.split('=', 1)[1].strip().strip('"\''))
+        break
+PY
+)
+
 # Live chain (calls, puts, Greeks, IV rank, underlying price) — nearest expiry
 curl -s -H "X-API-Key: $API_KEY" "http://localhost:8010/options/chain/SPY"
 
@@ -39,7 +49,8 @@ curl -s -H "X-API-Key: $API_KEY" "http://localhost:8010/options/greeks"
 curl -s -H "X-API-Key: $API_KEY" "http://localhost:8010/options/iv-rank/SPY"
 
 # VIX-regime-based strategy recommendation (the engine's own logic, not a new heuristic)
-curl -s -H "X-API-Key: $API_KEY" -X POST "http://localhost:8010/options/strategy/recommend" \
+curl -s -X POST "http://localhost:8010/options/strategy/recommend" \
+  -H "X-API-Key: $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"symbol": "SPY", "vix": 18.5, "underlying_price": 560.0, "dte": 30}'
 
