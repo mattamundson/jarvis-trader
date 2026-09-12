@@ -38,3 +38,11 @@ _Last updated: 2026-09-03 04:38 CDT_
 
 ## Recommended next tranche
 Preserve canonical deploy-only artifacts and audit PM2 binding so the next step can be a low-risk serving cutover from the drifted canonical tree to the verified authority candidate.
+
+## 2026-09-12 04:04 CDT — dashboard-dev recursive top-3 local checkpoint
+
+- Clean local lane: `C:/Users/mattm/ThinkorSwim/wt-dashboard-dev-recursive-top3-20260912`, branch `local/dashboard-dev-recursive-top3-20260912`.
+- Added read-only readiness/recommendation audit scripts, latest reports, recommendation lineage memo, readiness badge spec, `/jarvis` readiness scorecard panel, and recommendation baseline comparison.
+- Verified after rebase onto `origin/master`: Python compile + JSON assertions, dashboard `tsc --noEmit`, `pnpm run build:clean`, and fresh Playwright `jarvis-readiness-scorecard` smoke all passed.
+- Current scorecard truth: analysis ready=true, monitoring ready=false, execution ready=false, recommendation attribution=true, queue-order lineage=false, edge_certified=false.
+- No live trading/risk/kill-switch/broker/.env/symbol-gate changes. No push/PR/merge/external publish.
