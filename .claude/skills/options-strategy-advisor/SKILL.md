@@ -55,7 +55,9 @@ Call the engine directly — port 8010, `X-API-Key` header (current value in `en
 
 ```bash
 # Read API_KEY at use time from engine/.env; never paste or commit the value.
-API_KEY=$(python - <<'PY'
+# Use the project's configured interpreter, not bare `python`:
+# engine/.venv/bin/python (Linux/cloud sessions) or engine/.venv/Scripts/python (Windows).
+API_KEY=$(engine/.venv/bin/python - <<'PY'
 from pathlib import Path
 for line in Path('engine/.env').read_text(encoding='utf-8', errors='ignore').splitlines():
     if line.startswith('API_KEY='):
@@ -77,7 +79,9 @@ curl -s -H "X-API-Key: $API_KEY" "http://localhost:8010/prices/snapshot?symbols=
 curl -s -H "X-API-Key: $API_KEY" "http://localhost:8010/brokers/positions"
 ```
 
-Before treating `/options-signals/latest` as current: check the top-level `generated_at`/`data_quality` (only ever "ok" or "partial" — a fetch either worked or didn't, this does NOT mean the quote is fresh), AND the specific horizon's own `quality`/`notes` (each horizon is independently marked `"degraded"` with a note when its `quote_ts` is >60 min old — a market holiday or feed outage can leave the top-level fields looking fine while the horizon you're using is stale). Don't stop at the top-level fields.
+Before treating `/options-signals/latest` as current: check the top-level `generated_at`/`data_quality` (only ever "ok" or "partial" — a fetch either worked or didn't, this does NOT mean the quote is fresh), AND the specific horizon's own `quality`/`notes` (each horizon is independently marked `"degraded"` with a note when its `quote_ts` is >60 min old — a market holiday or feed outage can leave the top-level fields looking fine while the horizon you're using is stale). Don't stop at the top-level fields. Also treat a **null `quote_ts`** on a horizon as unusable — `parse_chain()` can return `quote_ts=None` when CBOE's timestamp field is missing/unparseable, and the staleness check only degrades a horizon when `quote_ts is not None`, so a chain with no timestamp at all stays `quality="ok"` by omission, not because it's actually fresh.
+
+Also check the **VIX/VIX3M regime block separately** — its own caching (in the snapshot generator) reuses the last successful fetch indefinitely on a refresh failure, annotating `regime.source` with "refresh failed" but not touching `regime.as_of_date` or the top-level `data_quality`. A weeks-old regime can silently sit behind an "ok" snapshot. Check `regime.source` for a "refresh failed" marker and `regime.as_of_date` against today before citing the term-structure classification as current.
 
 Before treating `/prices/snapshot` output as a current price: check that symbol's `is_live` field, not just `as_of` — `as_of` is stamped at **fetch time** for every source, including `csv_cache`, so a prior-day close can carry a timestamp that looks fresh (confirmed by `engine/tests/test_actionable.py:test_board_cached_source_withheld_even_with_fresh_timestamp`, which exists specifically to catch this trap). When `is_live` is `false` (or `source` is `"unavailable"`), treat the price as unknown/stale regardless of how recent `as_of` looks — say "last available price via `<source>`, live status unconfirmed" rather than implying it's a current observation.
 
@@ -85,9 +89,9 @@ Before treating `/brokers/positions` as the current book: check `ibkr.connected`
 
 Workflow for a SPY/QQQ question ("analyze my SPY iron condor", "what's SPY's expected move"):
 1. Pull `/options-signals/latest` for the real expected move / probability ladder / per-horizon `atm_iv` — never invent a stock price or IV, and never substitute the VIX/VIX3M term-structure numbers for a symbol's own `atm_iv` when pricing QQQ legs (VIX is an SPX-derived index; using it as QQQ's volatility input mis-prices the legs). VIX/VIX3M term structure is a separate regime signal, not a pricing input.
-2. If the user wants a recommendation rather than an analysis of a specific trade they named, pull `/options-signals/opportunity-board` and check the returned board's own `status`, `candidate_count`, and each candidate's `reject_reasons` before presenting anything: when all candidates fail quality filters, `status` is `"degraded"`, `candidate_count` is `0`, but the `candidates` array still contains the rejected structures (the code falls back to showing rejects rather than an empty list). Only present a candidate with `status == "ok"` and empty `reject_reasons`; otherwise say the board found nothing that passed its own filters. It's explicitly labeled "not a trade signal," so frame any accepted candidate as a ranked payoff shape worth reviewing, not a recommendation to act on.
+2. If the user wants a recommendation rather than an analysis of a specific trade they named, pull `/options-signals/opportunity-board` and check the returned board's own `status`, `candidate_count`, and each candidate's `reject_reasons` before presenting anything: when all candidates fail quality filters, `status` is `"degraded"`, `candidate_count` is `0`, but the `candidates` array still contains the rejected structures (the code falls back to showing rejects rather than an empty list). Only present a candidate with `status == "ok"` and empty `reject_reasons`; otherwise say the board found nothing that passed its own filters. It's explicitly labeled "not a trade signal," so frame any accepted candidate as a ranked payoff shape worth reviewing, not a recommendation to act on. Two more limits on the board itself: (a) it always projects the symbol's **nearest** horizon — if the user asked for a specific DTE or "end of week," check the candidate's actual `expiry` and say the requested horizon isn't what's shown rather than silently substituting nearest-expiry; (b) its ranking `ev` is computed as a **binary payoff approximation** (`pop * max_gain - (1-pop) * max_loss`), which doesn't capture the continuous P/L between strikes on a vertical spread — don't cite `ev`/`ev_to_max_loss` as a precise expected value, just as the board's own (rough) ranking heuristic.
 3. If they gave you specific legs, you can only sanity-check strikes/premium that actually appear in a returned board candidate (its own generated verticals) or the ATM straddle in `/options-signals/latest` — the snapshot has no arbitrary-strike chain lookup. For a leg the response doesn't cover (e.g. a wing of a 4-leg iron condor, or a strike far from ATM), say plainly that no matching quote is available rather than inventing one, then walk Steps 5-9 with whatever real numbers you do have.
-4. For incremental-risk questions ("should I add another iron condor"), check `/brokers/positions` for the actual current book (with the connected/stale/health checks above) — not `/options/positions`, which reads an unpopulated store.
+4. For incremental-risk questions ("should I add another iron condor"), check `/brokers/positions` for the actual current book (with the connected/stale/health checks above) — not `/options/positions`, which reads an unpopulated store. If any position came from Schwab, treat its option-specific fields as unreliable: `brokers_router._normalise_schwab_position()` looks for a nested `instrument` object and camelCase `averagePrice`/`marketValue` keys, but `SchwabConnector.get_positions()` actually returns flat, snake_case fields — so every Schwab row silently defaults to `sec_type="EQUITY"` with `avg_price`/`market_price` as `None`, even for real option positions. Say Schwab option detail is unavailable rather than trusting `sec_type` from this endpoint.
 
 ## AAPL, TSLA, and any other ticker (theoretical / educational path)
 
@@ -108,23 +112,25 @@ If you need to actually run these numbers rather than just quote them (e.g. to s
 
 ## Supported strategies (for explanation and P/L walkthroughs)
 
+The engine actually has **two different, inconsistent VIX-regime-to-strategy mappings** in its code: `engine/options/strategy_executor.py` (EXTREME→protective put, HIGH→bull put spread, NORMAL→covered call, LOW→iron condor — but never called by anything that submits an order) and `engine/markets/options/strategy_pipeline.py`'s `OptionsStrategyPipeline` (low→iron condor, normal→credit spread, high→skip — wired into `OptionsMarketModule`, which does appear to be a live scanning module). Don't cite either one as "the" engine default when comparing a strategy to jarvis's behavior; this skill's own recommendations come from `/options-signals/opportunity-board` (above), not from replicating either mapping.
+
 ### Income
-1. **Covered Call** — own stock, sell call (income, caps upside). Engine's VIX-NORMAL default.
+1. **Covered Call** — own stock, sell call (income, caps upside).
 2. **Cash-Secured Put** — sell put with cash backing.
 3. **Poor Man's Covered Call** — LEAPS call + short near-term call.
 
 ### Protection
-4. **Protective Put** — own stock, buy put (insurance). Engine's VIX-EXTREME default.
+4. **Protective Put** — own stock, buy put (insurance).
 5. **Collar** — own stock, sell call + buy put.
 
 ### Directional
-6. **Bull Call Spread** / 7. **Bull Put Spread** (engine's VIX-HIGH default) / 8. **Bear Call Spread** / 9. **Bear Put Spread**
+6. **Bull Call Spread** / 7. **Bull Put Spread** / 8. **Bear Call Spread** / 9. **Bear Put Spread**
 
 ### Volatility
 10. **Long Straddle** / 11. **Long Strangle** / 12. **Short Straddle** / 13. **Short Strangle**
 
 ### Range-bound
-14. **Iron Condor** (engine's VIX-LOW default) / 15. **Iron Butterfly**
+14. **Iron Condor** / 15. **Iron Butterfly**
 
 ### Advanced
 16. **Calendar Spread** / 17. **Diagonal Spread** / 18. **Ratio Spread**
@@ -132,7 +138,7 @@ If you need to actually run these numbers rather than just quote them (e.g. to s
 ## Analysis workflow
 
 ### Step 1 — Gather inputs
-Required: ticker, strategy, strikes, expiration(s), contract count. Optional: IV (else HV, or for SPY/QQQ the matching horizon's `atm_iv` from `/options-signals/latest`), risk-free rate (default ~3-month T-bill).
+Required: ticker, strategy, strikes, expiration(s), contract count. Optional: IV (else HV, or for SPY/QQQ the matching horizon's `atm_iv` from `/options-signals/latest`), risk-free rate (default ~3-month T-bill). **Stock-backed strategies** (covered call, protective put, collar) additionally need the underlying **share quantity and cost basis** — contract count alone doesn't establish that a short call is actually covered, and correct net delta, max profit, and breakeven all depend on the stock leg. Ask for it rather than assuming 100 shares/contract at an unstated basis.
 
 ### Step 2 — Volatility
 SPY/QQQ: use the matching symbol/horizon's own `atm_iv` from `/options-signals/latest` as the pricing input — this is real option-derived IV, unlike `/options/iv-rank` (an HV proxy, do not use). Treat the snapshot's VIX/VIX3M term-structure classification (contango/backwardation/flat) as a separate regime signal for framing the trade, never as the volatility input for a specific symbol's Black-Scholes price (VIX is SPX-derived and will misprice QQQ). AAPL/TSLA/other tickers: estimate HV from historical closes if the user hasn't supplied IV, and say so.
@@ -141,7 +147,7 @@ SPY/QQQ: use the matching symbol/horizon's own `atm_iv` from `/options-signals/l
 SPY/QQQ: sanity-check against the delayed-chain-derived numbers actually present in `/options-signals/latest` (the ATM straddle) or a `/options-signals/opportunity-board` candidate — see the leg-coverage limit in Step 3 of the live-data workflow above. AAPL/TSLA/other tickers: quote the Black-Scholes formula inline (see above), don't hand-roll a new script for it.
 
 ### Step 4 — Greeks
-There is no working live Greeks source for any symbol (`/options/greeks` always reports zero — see above). For a hypothetical trade, compute per-leg Greeks by hand using the standard formulas (delta, gamma, theta, vega, rho), then scale each leg to dollar exposure as `per_share_greek × (+1 long / −1 short) × contract_quantity × 100` before summing across legs — equity options are 100-share contracts, so a raw per-share Greek understates exposure 100x if reported directly (e.g. one long call with delta 0.50 is ~$50 of underlying-equivalent exposure per $1 move, not $0.50).
+There is no working live Greeks source for any symbol (`/options/greeks` always reports zero — see above). For a hypothetical trade, compute per-leg Greeks by hand using the standard formulas (delta, gamma, theta, vega, rho), then scale each leg to dollar exposure as `per_share_greek × (+1 long / −1 short) × contract_quantity × 100` before summing across legs — equity options are 100-share contracts, so a raw per-share Greek understates exposure 100x if reported directly (e.g. one long call with delta 0.50 is ~$50 of underlying-equivalent exposure per $1 move, not $0.50). **0DTE legs** (a horizon expiring today, `dte_calendar == 0`) divide by zero in the standard Black-Scholes formulas if `T` is computed as calendar-days/365 — the engine's own `calculate_greeks()` raises on `T <= 0` for the same reason. Use the actual fraction of a year remaining until the contract's settlement cutoff (not whole calendar days), or say the calculation is unavailable once that cutoff has passed.
 
 | Greek | Meaning (per share — multiply by 100 × contracts × long/short sign for $ exposure) |
 |-------|---------|
@@ -161,7 +167,7 @@ Cover setup, max profit/loss, breakeven, Greeks, assignment risk, when to use / 
 Fetch the earnings date if the engine/watchlist tooling has it available (check for an earnings-calendar source in `engine/` before assuming there is none). Flag IV-crush risk explicitly for any pre-earnings long-premium strategy (straddle/strangle), and IV-crush *benefit* for short-premium strategies (iron condor) — this is the single most common mistake retail options traders make and the original skill's IV-crush framing is worth keeping verbatim in spirit.
 
 ### Step 8 — Risk sizing
-Position size against the user's stated risk tolerance (max loss × contracts <= risk budget), same logic as the original skill. This is advisory sizing for the user's own broker account discussion, not jarvis's own capital allocation — jarvis's own `$5K/instrument` cap and kill-switch live in `engine/config.py` / `.claude/rules/safety.md` and are not yours to recompute or override here. **Undefined-risk strategies** (naked short straddle/strangle, an uncovered ratio spread — anything without a bought wing capping the loss) have unbounded max loss, so `max loss × contracts <= budget` has no solution: don't substitute broker margin requirement or a stress-test number for max loss and quietly produce a contract count. Say plainly that no finite size satisfies a fixed dollar risk budget for an undefined-risk strategy, and that sizing there is a margin/risk-tolerance question, not a max-loss one.
+Position size against the user's stated risk tolerance (max loss × contracts <= risk budget), same logic as the original skill. This is advisory sizing for the user's own broker account discussion, not jarvis's own capital allocation — jarvis's own `$5K/instrument` cap and kill-switch live in `engine/config.py` / `.claude/rules/safety.md` and are not yours to recompute or override here. **Undefined-risk strategies** (naked short straddle/strangle, a net-short-call uncovered ratio spread — anything without a bought wing capping upside loss) have genuinely unbounded max loss, so `max loss × contracts <= budget` has no solution: don't substitute broker margin requirement or a stress-test number for max loss and quietly produce a contract count. Say plainly that no finite size satisfies a fixed dollar risk budget there, and that sizing is a margin/risk-tolerance question instead. **Exception**: an uncovered *put* ratio spread is not unbounded — the underlying can't go below zero, so its max loss is large but finite (compute it at the zero-price floor) and normal max-loss-based sizing still applies. Only net-short-call ratios and naked calls/straddles/strangles are truly unbounded.
 
 ### Step 9 — Output
 A short markdown report: setup, P/L summary, Greeks, risk assessment, entry/exit/stop guidance, when-to-use vs avoid, and (if useful) an alternatives comparison table. Match the depth to the question — a one-line "what's a collar" question doesn't need Step 9's whole template; a "should I put this trade on" question does.
