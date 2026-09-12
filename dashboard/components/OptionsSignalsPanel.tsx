@@ -27,6 +27,40 @@ interface LadderRow {
   p_fail?: number | null;
 }
 
+interface OpportunityCandidate {
+  structure: string;
+  thesis: string;
+  net_price: number;
+  max_loss: number;
+  max_gain: number;
+  breakeven: number;
+  pop: number | null;
+  ev: number | null;
+  ev_to_max_loss: number | null;
+  reward_to_risk: number;
+  liquidity_score: number;
+  score: number;
+  reject_reasons: string[];
+  journal_url?: string;
+  journal_note?: string;
+}
+
+interface OpportunityBoard {
+  symbol: string;
+  expiry: string;
+  spot: number;
+  status: "ok" | "degraded" | string;
+  source?: string;
+  source_confidence?: number;
+  source_notes?: string[];
+  candidate_count?: number;
+  rejected_count?: number;
+  candidates: OpportunityCandidate[];
+  rejected_candidates?: OpportunityCandidate[];
+  reject_summary: string[];
+  disclaimer: string;
+}
+
 interface Horizon {
   label: "nearest" | "end_of_week" | string;
   expiry: string;
@@ -37,6 +71,7 @@ interface Horizon {
   expected_move_abs: number | null;
   expected_move_pct: number | null;
   prob_ladder: LadderRow[];
+  opportunity_board?: OpportunityBoard;
   quality: "ok" | "degraded" | string;
   notes: string[];
 }
@@ -136,6 +171,98 @@ function LoadingCard() {
   );
 }
 
+function structureLabel(value: string): string {
+  return value.replaceAll("_", " ");
+}
+
+function money(value: number | null | undefined, digits = 0): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return `$${value.toFixed(digits)}`;
+}
+
+function OpportunityBoardMini({ board }: { board?: OpportunityBoard }) {
+  if (!board) {
+    return (
+      <p className="font-mono text-[10px] text-muted-foreground italic">
+        Opportunity board unavailable — regenerate options snapshot.
+      </p>
+    );
+  }
+  const top = board.candidates.slice(0, 3);
+  return (
+    <div className="rounded-lg border border-border/80 p-3 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+          Defined-risk opportunity board · ANALYSIS_ONLY
+        </p>
+        <div className="flex items-center gap-2">
+          {board.source_confidence != null && (
+            <Badge variant={board.source_confidence >= 0.7 ? "info" : "static"} className="font-mono text-[9px]">
+              SRC {pct(board.source_confidence)}
+            </Badge>
+          )}
+          <Badge variant={board.status === "ok" ? "info" : "static"} className="font-mono text-[9px]">
+            {board.status.toUpperCase()}
+          </Badge>
+        </div>
+      </div>
+      {top.length === 0 ? (
+        <p className="font-mono text-[10px] text-muted-foreground italic">
+          No bounded-risk candidates passed this cycle. {board.reject_summary.join(" · ")}
+        </p>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="font-mono text-[10px]">STRUCTURE</TableHead>
+              <TableHead className="font-mono text-[10px]">POP</TableHead>
+              <TableHead className="font-mono text-[10px]">EV/MAX LOSS</TableHead>
+              <TableHead className="font-mono text-[10px]">MAX LOSS</TableHead>
+              <TableHead className="font-mono text-[10px]">BREAKEVEN</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {top.map((candidate) => (
+              <TableRow key={`${candidate.structure}-${candidate.breakeven}`}>
+                <TableCell className="font-mono text-[10px] uppercase">
+                  <div>{structureLabel(candidate.structure)}</div>
+                  {candidate.journal_url && (
+                    <a href={candidate.journal_url} title={candidate.journal_note ?? "Open journal"} className="text-[9px] text-accent hover:underline">
+                      journal handoff
+                    </a>
+                  )}
+                </TableCell>
+                <TableCell className="font-mono text-[10px] tabular-nums">
+                  {candidate.pop != null ? pct(candidate.pop) : "—"}
+                </TableCell>
+                <TableCell className="font-mono text-[10px] tabular-nums">
+                  {candidate.ev_to_max_loss != null ? pct(candidate.ev_to_max_loss, 1) : "—"}
+                </TableCell>
+                <TableCell className="font-mono text-[10px] tabular-nums">
+                  {money(candidate.max_loss)}
+                </TableCell>
+                <TableCell className="font-mono text-[10px] tabular-nums">
+                  {candidate.breakeven.toFixed(2)}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+      {board.source_notes && board.source_notes.length > 0 && (
+        <p className="font-mono text-[9px] text-muted-foreground/70">
+          Source: {board.source ?? "unknown"} · {board.source_notes.slice(0, 2).join(" · ")}
+        </p>
+      )}
+      {board.rejected_candidates && board.rejected_candidates.length > 0 && (
+        <p className="font-mono text-[9px] text-muted-foreground/70">
+          Rejected: {board.rejected_candidates.slice(0, 2).map((c) => `${structureLabel(c.structure)} (${c.reject_reasons.join(", ")})`).join(" · ")}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function HorizonCard({ horizon }: { horizon: Horizon }) {
   const em = horizon.expected_move_abs;
   return (
@@ -205,6 +332,7 @@ function HorizonCard({ horizon }: { horizon: Horizon }) {
           calibrated).
         </p>
       )}
+      <OpportunityBoardMini board={horizon.opportunity_board} />
       {horizon.notes.length > 0 && (
         <p className="font-mono text-[9px] text-muted-foreground/70">{horizon.notes.join(" · ")}</p>
       )}
