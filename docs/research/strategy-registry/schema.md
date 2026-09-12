@@ -41,7 +41,7 @@ keys are rejected (`additionalProperties: false`) so drift is caught at review t
 | `rules` | object | yes | `entry`, `exit`, `position_sizing`, `risk_limits`, `fees_and_slippage_model`. Each a short string; the full logic lives in code, the registry records the *intent* so a reviewer can match code to claim. |
 | `windows` | object | yes | `train`, `test`, `walk_forward` — each `{start, end}` or `null` when not yet run. `walk_forward` may additionally carry `config`. |
 | `metrics` | object | no | Reported results from the latest run: `net_pnl`, `cagr`, `max_drawdown`, `sharpe`, `sortino`, `profit_factor`, `trade_count`, `win_rate`, `exposure`, `fees_slippage_assumption`, `regime_split`, `parameter_sensitivity`, `monte_carlo`. All optional individually, but at least one must be present once a backtest exists. |
-| `gate_verdict` | object | no | Latest gate result: `gate` (e.g. `gate-v2`), `verdict` (`PASS`, `FAIL`, `UNSCORED`, `UNRUN`), `core_verdict`, `alt_verdict`, `reasons[]`, `evidence_path` (path to the `.gate_v2.json` card or engine verdict file). |
+| `gate_verdict` | object | no | Latest gate result: `gate` (e.g. `gate-v2`), `verdict` (`PASS`, `FAIL`, `UNSCORED`, `UNRUN`, `INSUFFICIENT_SAMPLE`), `core_verdict`, `alt_verdict`, `reasons[]` (copied verbatim from the card/verdict file), `as_of` (optional snapshot timestamp/note for verdicts sourced from docs rather than a committed card), `evidence_path` (path to the `.gate_v2.json` card or engine verdict file). |
 | `promotion_state` | string | yes | One of the lifecycle states below. This is the only field that changes as the strategy moves through the loop. |
 | `known_failure_modes` | string[] | no | Failure modes already observed or suspected. |
 | `evidence_paths` | string[] | no | Repo-relative or absolute paths to artifacts: backtest outputs, gate cards, notebooks, journal entries, PR links. |
@@ -72,7 +72,8 @@ gates additionally requires a `[safety-review]`-tagged PR (see root `CLAUDE.md`)
 
 ## Seed entries
 
-`entries/` is seeded on 2026-09-12 from the six committed `docs/research/*.gate_v2.json`
-cards (all `FAIL` verdicts, x-bookmark edge-scan origin) plus the live MES SMA(50,200)
-trend strategy described in root `CLAUDE.md` / `engine/CLAUDE.md`. Seed provenance:
+`entries/` is seeded on 2026-09-12 from the seven committed `docs/research/*.gate_v2.json`
+cards (all `FAIL` verdicts, x-bookmark edge-scan origin) plus the MES SMA(50,200)
+golden-cross trend strategy whose rules live in `engine/backtest/trend_signals.py`
+(WFO-champion params from `engine/backtest/paper_config.py`). Seed provenance:
 `seed/2026-09-12-initial-seed.md`.
