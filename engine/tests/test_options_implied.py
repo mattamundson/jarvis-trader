@@ -14,6 +14,7 @@ from analysis.options_implied import (
     DEFAULT_SYMBOLS,
     OptionsImpliedError,
     atm_strike,
+    build_yfinance_vix_raw,
     build_regime_block,
     build_snapshot,
     build_symbol_block,
@@ -82,6 +83,88 @@ def _chain_fixture(timestamp="2026-07-15 18:20:00"):
     }
 
 
+def _vix_yfinance_raw_fixture(timestamp="2026-07-15 18:20:00"):
+    calls_by_expiry = {
+        "2026-07-16": [
+            {
+                "contractSymbol": "VIX260716C00016000",
+                "strike": 16.0,
+                "bid": 0.95,
+                "ask": 1.05,
+                "lastPrice": 1.0,
+                "impliedVolatility": 0.82,
+                "openInterest": 100,
+                "volume": 25,
+            },
+            {
+                # Missing OCC symbol: adapter should synthesize VIX260716C00017000.
+                "strike": 17.0,
+                "bid": 0.45,
+                "ask": 0.55,
+                "lastPrice": 0.5,
+                "impliedVolatility": 0.84,
+                "openInterest": float("nan"),
+                "volume": float("nan"),
+            },
+        ],
+        "2026-07-23": [
+            {
+                "contractSymbol": "VIX260723C00016000",
+                "strike": 16.0,
+                "bid": 1.40,
+                "ask": 1.60,
+                "lastPrice": 1.5,
+                "impliedVolatility": 0.80,
+                "openInterest": 90,
+                "volume": 10,
+            }
+        ],
+    }
+    puts_by_expiry = {
+        "2026-07-16": [
+            {
+                "contractSymbol": "VIX260716P00016000",
+                "strike": 16.0,
+                "bid": 0.55,
+                "ask": 0.65,
+                "lastPrice": 0.6,
+                "impliedVolatility": 0.83,
+                "openInterest": 70,
+                "volume": 9,
+            },
+            {
+                "contractSymbol": "VIX260716P00017000",
+                "strike": 17.0,
+                "bid": 1.10,
+                "ask": 1.30,
+                "lastPrice": 1.2,
+                "impliedVolatility": 0.85,
+                "openInterest": 60,
+                "volume": 7,
+            },
+        ],
+        "2026-07-23": [
+            {
+                "contractSymbol": "VIX260723P00016000",
+                "strike": 16.0,
+                "bid": 0.80,
+                "ask": 1.00,
+                "lastPrice": 0.9,
+                "impliedVolatility": 0.81,
+                "openInterest": 50,
+                "volume": 6,
+            }
+        ],
+    }
+    return build_yfinance_vix_raw(
+        spot=16.4,
+        expirations=["2026-07-16", "2026-07-23"],
+        calls_by_expiry=calls_by_expiry,
+        puts_by_expiry=puts_by_expiry,
+        quote_ts=timestamp,
+    )
+
+
 # ---------------------------------------------------------------------------
 # parse_occ
 # ---------------------------------------------------------------------------
@@ -146,6 +229,47 @@ class TestParseChain:
 
         expected = int(datetime(2026, 7, 16, 18, 55, 31, tzinfo=timezone.utc).timestamp())
         assert _parse_quote_ts("2026-07-16 18:55:31") == expected
+
+
+class TestYfinanceVixAdapter:
+    def test_build_yfinance_vix_raw_parses_as_vix_contracts(self):
+        raw = _vix_yfinance_raw_fixture()
+        spot, quote_ts, contracts = parse_chain(raw, "VIX")
+
+        assert spot == pytest.approx(16.4)
+        assert quote_ts is not None
+        assert len(contracts) == 6
+        assert all(c.root == "VIX" for c in contracts)
+        assert {c.expiry for c in contracts} == {date(2026, 7, 16), date(2026, 7, 23)}
+        synthesized = next(c for c in contracts if c.expiry == date(2026, 7, 16) and c.right == "C" and c.strike == 17.0)
+        assert synthesized.mid == pytest.approx(0.50)
+
+    def test_build_snapshot_routes_vix_to_yfinance_fetcher_not_cboe(self):
+        async def fake_cboe_fetch(url):  # pragma: no cover - should never be called for VIX
+            raise AssertionError(f"VIX should not call CBOE fetcher: {url}")
+
+        async def fake_vix_fetch():
+            return _vix_yfinance_raw_fixture()
+
+        snapshot, code = asyncio.run(
+            build_snapshot(
+                ("VIX",),
+                fetch_json=fake_cboe_fetch,
+                fetch_yfinance_vix=fake_vix_fetch,
+                regime=_regime_fixture(),
+                now_ct=_NOW,
+            )
+        )
+
+        assert code == 0
+        assert snapshot["data_quality"] == "ok"
+        assert snapshot["errors"] == []
+        block = snapshot["symbols"]["VIX"]
+        assert block["spot"] == pytest.approx(16.4)
+        assert block["source"].startswith("yfinance ^VIX")
+        assert block["horizons"][0]["expected_move_abs"] == pytest.approx(1.6)
+        assert all(row["p_above"] is None for row in block["horizons"][0]["prob_ladder"])
+        assert any("vendor deltas unavailable" in note for note in block["horizons"][0]["notes"])
 
 
 # ---------------------------------------------------------------------------
