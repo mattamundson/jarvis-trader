@@ -27,9 +27,11 @@ No LLM, no DB, no broker, no execution wiring. Pure stdlib + httpx.
 
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
 import logging
+import math
 import re
 from bisect import bisect_left
 from dataclasses import dataclass
@@ -55,7 +57,12 @@ OCC_RE = re.compile(r"^([A-Z]+?)(\d{6})([CP])(\d{8})$")
 # Verbatim from Archive/2026/options-vrp/options_vrp/vrp_signal.py.
 FLAT_BAND = 0.005
 
+# Keep the scheduled default to the existing CBOE-underlying pair. VIX support is
+# opt-in via --symbols VIX until the downstream dashboard/opportunity-board path
+# is explicitly certified with the yfinance fallback.
 DEFAULT_SYMBOLS = ("SPY", "QQQ")
+YFINANCE_VIX_TICKER = "^VIX"
+YFINANCE_VIX_MAX_EXPIRIES = 12
 LADDER_MULTIPLES = (1.0, 0.5, 0.0, -0.5, -1.0)
 
 DATA_DELAYED_MINUTES = 15
@@ -76,6 +83,7 @@ _CT = ZoneInfo("America/Chicago")
 
 FetchJson = Callable[[str], Awaitable[dict]]
 FetchText = Callable[[str], Awaitable[str]]
+FetchVixChain = Callable[[], Awaitable[dict]]
 
 
 class OptionsImpliedError(Exception):
@@ -185,6 +193,84 @@ def parse_chain(raw: dict, symbol: str) -> tuple[float, Optional[int], list[Cont
     if not contracts:
         raise OptionsImpliedError(f"{symbol}: chain parsed to zero contracts")
     return float(spot), quote_ts, contracts
+
+
+def build_yfinance_vix_raw(
+    *,
+    spot: float,
+    expirations: list[str] | tuple[str, ...],
+    calls_by_expiry: dict[str, list[dict]],
+    puts_by_expiry: dict[str, list[dict]],
+    quote_ts: Optional[str] = None,
+) -> dict:
+    """Convert yfinance ``^VIX`` option rows into the internal CBOE-like shape.
+
+    yfinance is only used as a no-key fallback for VIX because the CBOE delayed
+    options JSON is 403-blocked for VIX while remaining usable for SPY/QQQ. The
+    normalized payload is intentionally shaped like CBOE's chain so the existing
+    pure analytics path (``parse_chain``/``build_symbol_block``) stays shared.
+    """
+    try:
+        spot_f = float(spot)
+    except (TypeError, ValueError) as exc:
+        raise OptionsImpliedError("VIX: yfinance chain has no usable spot") from exc
+    if spot_f <= 0:
+        raise OptionsImpliedError("VIX: yfinance chain has no usable spot")
+
+    def _clean_int(value) -> int:
+        try:
+            f = float(value)
+        except (TypeError, ValueError):
+            return 0
+        if not math.isfinite(f) or f <= 0:
+            return 0
+        return int(f)
+
+    options: list[dict] = []
+    for expiry_iso in expirations:
+        try:
+            expiry = date.fromisoformat(str(expiry_iso))
+        except ValueError:
+            continue
+        yymmdd = expiry.strftime("%y%m%d")
+
+        for right, rows_by_expiry in (("C", calls_by_expiry), ("P", puts_by_expiry)):
+            for row in rows_by_expiry.get(str(expiry_iso), []) or []:
+                try:
+                    strike = float(row.get("strike"))
+                except (TypeError, ValueError):
+                    continue
+                if not math.isfinite(strike) or strike <= 0:
+                    continue
+
+                occ = str(row.get("contractSymbol") or "").strip()
+                parsed = parse_occ(occ)
+                if parsed is None or parsed[0] != "VIX" or parsed[1] != expiry or parsed[2] != right:
+                    occ = f"VIX{yymmdd}{right}{int(round(strike * 1000)):08d}"
+
+                options.append(
+                    {
+                        "option": occ,
+                        "bid": row.get("bid"),
+                        "ask": row.get("ask"),
+                        "iv": row.get("impliedVolatility"),
+                        # yfinance option_chain does not provide Greeks. Leave
+                        # delta null so the probability ladder degrades honestly
+                        # instead of fabricating risk-neutral touch/close odds.
+                        "delta": row.get("delta"),
+                        "last_trade_price": row.get("lastPrice"),
+                        "open_interest": _clean_int(row.get("openInterest")),
+                        "volume": _clean_int(row.get("volume")),
+                    }
+                )
+
+    if not options:
+        raise OptionsImpliedError("VIX: yfinance chain parsed to zero contracts")
+
+    return {
+        "timestamp": quote_ts or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+        "data": {"current_price": spot_f, "options": options},
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -542,6 +628,58 @@ async def _default_fetch_text(url: str) -> str:
         return resp.text
 
 
+async def _default_fetch_yfinance_vix_chain() -> dict:
+    """Fetch ``^VIX`` options via yfinance and normalize to CBOE-like JSON.
+
+    This function is intentionally isolated from the SPY/QQQ CBOE fetch path so
+    a yfinance outage can only degrade VIX when it is explicitly requested.
+    """
+
+    def _sync_fetch() -> dict:
+        import yfinance as yf
+
+        ticker = yf.Ticker(YFINANCE_VIX_TICKER)
+        expirations = list(getattr(ticker, "options", ()) or [])[:YFINANCE_VIX_MAX_EXPIRIES]
+        if not expirations:
+            raise OptionsImpliedError("VIX: yfinance returned zero expirations")
+
+        spot = None
+        fast_info = getattr(ticker, "fast_info", None)
+        for key in ("last_price", "lastPrice", "regular_market_price"):
+            try:
+                candidate = fast_info.get(key) if fast_info is not None else None
+            except Exception:  # noqa: BLE001 — yfinance fast_info can lazy-raise
+                candidate = None
+            try:
+                if candidate is not None and float(candidate) > 0:
+                    spot = float(candidate)
+                    break
+            except (TypeError, ValueError):
+                pass
+        if spot is None:
+            hist = ticker.history(period="5d")
+            if hist is not None and not hist.empty and "Close" in hist:
+                spot = float(hist["Close"].dropna().iloc[-1])
+        if spot is None or spot <= 0:
+            raise OptionsImpliedError("VIX: yfinance returned no usable spot")
+
+        calls_by_expiry: dict[str, list[dict]] = {}
+        puts_by_expiry: dict[str, list[dict]] = {}
+        for expiry in expirations:
+            chain = ticker.option_chain(expiry)
+            calls_by_expiry[expiry] = chain.calls.to_dict("records")
+            puts_by_expiry[expiry] = chain.puts.to_dict("records")
+
+        return build_yfinance_vix_raw(
+            spot=spot,
+            expirations=expirations,
+            calls_by_expiry=calls_by_expiry,
+            puts_by_expiry=puts_by_expiry,
+        )
+
+    return await asyncio.to_thread(_sync_fetch)
+
+
 async def fetch_regime_block(fetch_text: Optional[FetchText] = None) -> dict:
     """Fetch both CBOE daily CSVs and build the regime block."""
     fetch = fetch_text or _default_fetch_text
@@ -554,6 +692,7 @@ async def build_snapshot(
     symbols: tuple[str, ...] = DEFAULT_SYMBOLS,
     *,
     fetch_json: Optional[FetchJson] = None,
+    fetch_yfinance_vix: Optional[FetchVixChain] = None,
     regime: Optional[dict] = None,
     regime_error: Optional[str] = None,
     now_ct: Optional[datetime] = None,
@@ -567,14 +706,28 @@ async def build_snapshot(
     Returns (snapshot, exit_code) with exit_code 0 (all ok) or 2 (partial).
     """
     fetch = fetch_json or _default_fetch_json
+    fetch_vix = fetch_yfinance_vix or _default_fetch_yfinance_vix_chain
     now = now_ct or datetime.now(_CT)
 
     blocks: dict[str, Optional[dict]] = {}
     errors: list[str] = []
     for symbol in symbols:
+        symbol = symbol.upper()
         try:
-            raw = await fetch(CBOE_CHAIN_URL.format(symbol=symbol))
-            blocks[symbol] = build_symbol_block(symbol, raw, now)
+            if symbol == "VIX":
+                raw = await fetch_vix()
+                block = build_symbol_block(symbol, raw, now)
+                block["source"] = "yfinance ^VIX options chain (free/delayed; no vendor deltas)"
+                for horizon in block.get("horizons", []):
+                    horizon.setdefault("notes", []).append(
+                        "VIX chain source is yfinance ^VIX; vendor deltas unavailable, so probability ladder may be blank"
+                    )
+                blocks[symbol] = block
+            else:
+                raw = await fetch(CBOE_CHAIN_URL.format(symbol=symbol))
+                block = build_symbol_block(symbol, raw, now)
+                block["source"] = "CBOE delayed options chain"
+                blocks[symbol] = block
         except Exception as exc:  # noqa: BLE001 — degrade per-symbol, never sink the run
             logger.warning("%s chain failed: %s", symbol, exc)
             blocks[symbol] = None
