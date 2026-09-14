@@ -1,0 +1,93 @@
+{
+  "strategy_id": "mgc_trend_rank4",
+  "hypothesis": "MGC SMA trend rank4 previously showed promise but refreshed data invalidated the promotion case and requires a new honest pass before reuse.",
+  "status": "halted",
+  "owner": "Amo / JARVIS research loop",
+  "created_at": "2026-09-14T17:23:49-05:00",
+  "updated_at": "2026-09-14T17:23:49-05:00",
+  "instruments": [
+    "MGC"
+  ],
+  "timeframes": [
+    "1h"
+  ],
+  "data_contract": {
+    "sources": [
+      "Databento historical bars",
+      "JARVIS gate-v2 verdict artifacts"
+    ],
+    "feature_families": [
+      "trend following",
+      "ATR risk",
+      "gate-v2 robustness"
+    ],
+    "freshness_sla": "Registry entry must point to the exact verdict artifact and be refreshed before any paper/live promotion decision.",
+    "leakage_controls": [
+      "no OOS parameter tuning",
+      "record OOS access through gate artifacts where available",
+      "fail closed on missing or stale verdict"
+    ]
+  },
+  "research_lineage": {
+    "source_repos": [
+      "mattamundson/jarvis-trader"
+    ],
+    "notebooks": [],
+    "docs": [
+      "docs/research/strategy-registry.md",
+      "docs/research/backtest-critique-checklist.md"
+    ],
+    "decision_links": [
+      "engine/data/gate_v2_verdicts/archive/MGC_trend_rank4_deep-2026-08-16.json"
+    ]
+  },
+  "backtest": {
+    "runner": "engine/backtest/run_mgc_trend_rank4.py",
+    "train_window": "documented in linked runner/verdict artifact",
+    "test_window": "documented in linked runner/verdict artifact",
+    "metrics": {
+      "profit_factor": 1.0681,
+      "max_drawdown_pct": 4.4212,
+      "trade_count": 94,
+      "p_edge": 0.998,
+      "dsr": 0.9733
+    },
+    "artifact_paths": [
+      "engine/data/gate_v2_verdicts/archive/MGC_trend_rank4_deep-2026-08-16.json"
+    ]
+  },
+  "robustness": {
+    "walk_forward": "documented as passing many OOS windows but final refreshed gate failed floor requirements",
+    "parameter_stability": "refreshed data broke the prior promotion case",
+    "regime_split": "requires fresh regime attribution before reconsideration",
+    "monte_carlo": "95th percentile drawdown 4.4212% exceeded ALT floor <=4.0%"
+  },
+  "risk_envelope": {
+    "max_position_size": "0 live contracts until a fresh honest promotion gate passes and approval is recorded",
+    "daily_loss_limit_pct": 0.0,
+    "kill_switch_dependencies": [
+      "engine/risk/safety_layer.py",
+      "engine/backtest/paper_config.py",
+      "engine/approval/service.py"
+    ],
+    "paper_only_until": "fresh honest gate-v2 PASS plus explicit approval"
+  },
+  "promotion_gate": {
+    "current_verdict": "fail",
+    "required_evidence": [
+      "fresh honest gate-v2 PASS",
+      "walk-forward consistency",
+      "parameter stability",
+      "regime split",
+      "paper-shadow report",
+      "explicit approval before routing"
+    ],
+    "human_approval_required": true,
+    "blocking_conditions": [
+      "current refreshed verdict FAIL",
+      "pf_ci_lower below 1.1 floor",
+      "mc_95th_dd above 4.0% ALT floor",
+      "symbol remains halted until fresh honest CORE PASS"
+    ]
+  }
+}
