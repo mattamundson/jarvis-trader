@@ -39,9 +39,9 @@ A candidate cannot become `promotion_candidate` unless all gates are true. A que
 
 ## Current recommendation
 
-The next actionable research item is `MGC_trend_rv_filter_rank1`, but only at the data-contract/forward-evidence layer. MGC is halted, so this is research evidence only until a fresh honest gate-v2 pass and explicit promotion process exists.
+`MGC_trend_rv_filter_rank1` now has a research-only forward-evidence data-contract scaffold at `engine/research/reference_evidence/mgc_trend_rv_filter_rank1_forward_contract.json`. MGC remains halted and the queue item is blocked until a fresh scoped backlog/runner can collect zero-exposure, candidate-tagged forward evidence or link a fresh non-archived gate-v2 artifact. The archived historical verdict is context only, not promotion evidence.
 
-`MES_sma_trend_vix_pctile_blockCrisis_v1` is the cleanest preregistered backtest candidate, but it remains inert until the local runner produces a verdict artifact. If the winning blocked-tier set differs from the preregistered `Crisis` tier, register a new id instead of mutating the frozen candidate.
+The next actionable research item is `MES_sma_trend_vix_pctile_blockCrisis_v1`, but only if the local preregistered runner and cache already exist. If the winning blocked-tier set differs from the preregistered `Crisis` tier, register a new id instead of mutating the frozen candidate.
 
 ## Loop behavior
 
