@@ -1,0 +1,170 @@
+{
+  "schema_version": "reference-evidence.v1",
+  "reference_repo": "mattamundson/awesome-quant",
+  "reference_commit": "b7919e9",
+  "status": "tool_discovery_index_not_validated_dependency_or_alpha",
+  "parsed_entries": 498,
+  "relevant_trading_system_entries": 343,
+  "category_counts": {
+    "Numerical Libraries & Data Structures": 23,
+    "Financial Instruments & Pricing": 71,
+    "Technical Indicators": 24,
+    "Trading & Backtesting": 105,
+    "Portfolio Optimization & Risk Analysis": 36,
+    "Factor Analysis": 7,
+    "Sentiment Analysis & Alternative Data": 2,
+    "Time Series Analysis": 24,
+    "Market Data & Data Sources": 88,
+    "Prediction Markets": 5,
+    "Calendars & Market Hours": 5,
+    "Visualization": 8,
+    "Excel & Spreadsheet Integration": 8,
+    "Quant Research Environments": 1,
+    "Cross-Language Frameworks": 15,
+    "Reproducing Works, Training & Books": 52,
+    "Commercial & Proprietary Services": 22,
+    "Related Lists": 2
+  },
+  "non_duplicative_value": [
+    "quant_tool_dependency_intake_scorecard",
+    "catalog_inclusion_is_not_adoption_evidence",
+    "maintenance_license_provider_and_overlap_gates",
+    "human_approval_required_for_runtime_dependency_or_paid_service"
+  ],
+  "source_files": [
+    "README.md",
+    "site/projects.csv",
+    "AGENTS.md",
+    "quants.md"
+  ],
+  "required_intake_fields": [
+    "source_url_or_repo",
+    "reviewed_commit_or_version",
+    "jarvis_role",
+    "intake_class",
+    "license_or_commercial_terms",
+    "provider_or_key_requirements",
+    "maintenance_signal",
+    "overlap_check",
+    "data_provenance_contract",
+    "deterministic_fixture",
+    "blocked_influence",
+    "rollback_plan"
+  ],
+  "blocked_influence": [
+    "strategy_edge_claim",
+    "live_or_paper_order_routing",
+    "risk_limit_changes",
+    "kill_switch_changes",
+    "env_or_secret_changes",
+    "pm2_or_scheduler_changes",
+    "broker_configuration",
+    "runtime_dependency_without_approval"
+  ],
+  "safety_boundary": {
+    "runtime_dependency_changed": false,
+    "live_order_routing_changed": false,
+    "paper_order_routing_changed": false,
+    "risk_limit_or_kill_switch_changed": false,
+    "secret_or_env_changed": false,
+    "pm2_or_schedule_changed": false
+  },
+  "top_relevant_examples": [
+    {
+      "project": "OpenBB Terminal",
+      "category": "Market Data & Data Sources",
+      "repo": "OpenBB-finance/OpenBBTerminal",
+      "stars": 63674,
+      "last_commit": "2026-03-24",
+      "commercial": false
+    },
+    {
+      "project": "freqtrade",
+      "category": "Trading & Backtesting",
+      "repo": "freqtrade/freqtrade",
+      "stars": 48113,
+      "last_commit": "2026-03-28",
+      "commercial": false
+    },
+    {
+      "project": "ccxt",
+      "category": "Trading & Backtesting",
+      "repo": "ccxt/ccxt",
+      "stars": 41552,
+      "last_commit": "2026-03-28",
+      "commercial": false
+    },
+    {
+      "project": "Qlib",
+      "category": "Trading & Backtesting",
+      "repo": "microsoft/qlib",
+      "stars": 39430,
+      "last_commit": "2026-03-10",
+      "commercial": false
+    },
+    {
+      "project": "vnpy",
+      "category": "Trading & Backtesting",
+      "repo": "vnpy/vnpy",
+      "stars": 38498,
+      "last_commit": "2026-01-14",
+      "commercial": false
+    },
+    {
+      "project": "yfinance",
+      "category": "Market Data & Data Sources",
+      "repo": "ranaroussi/yfinance",
+      "stars": 22379,
+      "last_commit": "2026-03-19",
+      "commercial": false
+    },
+    {
+      "project": "nautilus_trader",
+      "category": "Trading & Backtesting",
+      "repo": "nautechsystems/nautilus_trader",
+      "stars": 21469,
+      "last_commit": "2026-03-28",
+      "commercial": false
+    },
+    {
+      "project": "backtrader",
+      "category": "Trading & Backtesting",
+      "repo": "backtrader/backtrader",
+      "stars": 20948,
+      "last_commit": "2023-04-19",
+      "commercial": false
+    },
+    {
+      "project": "zipline",
+      "category": "Trading & Backtesting",
+      "repo": "quantopian/zipline",
+      "stars": 19556,
+      "last_commit": "2020-10-14",
+      "commercial": false
+    },
+    {
+      "project": "Lean",
+      "category": "Trading & Backtesting",
+      "repo": "QuantConnect/Lean",
+      "stars": 18123,
+      "last_commit": "2026-03-25",
+      "commercial": false
+    },
+    {
+      "project": "QuantConnect",
+      "category": "Trading & Backtesting",
+      "repo": "QuantConnect/Lean",
+      "stars": 18123,
+      "last_commit": "2026-03-25",
+      "commercial": false
+    },
+    {
+      "project": "akshare",
+      "category": "Market Data & Data Sources",
+      "repo": "jindaxiang/akshare",
+      "stars": 17802,
+      "last_commit": "2026-03-27",
+      "commercial": false
+    }
+  ]
+}
