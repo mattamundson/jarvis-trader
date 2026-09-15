@@ -1,0 +1,191 @@
+{
+  "schema_version": 1,
+  "queue_id": "jarvis_strategy_validation_queue_wave33",
+  "created_from": [
+    "docs/research/repo-strategy-candidate-inventory.md",
+    "engine/backtest/candidate_registry.json",
+    "engine/research/strategy_registry/*.json"
+  ],
+  "purpose": "Turn mined repository evidence into a bounded validation queue without creating trade permission.",
+  "global_rules": {
+    "no_live_or_paper_routing_change": true,
+    "agentic_loop_minimum_hours": 6,
+    "promotion_requires_human_approval": true,
+    "reference_repos_are_not_alpha": true,
+    "observability_may_only_veto_readiness": true
+  },
+  "promotion_required_gates": [
+    "hypothesis",
+    "data_contract",
+    "backtest",
+    "fees_slippage",
+    "walk_forward",
+    "parameter_stability",
+    "regime_split",
+    "monte_carlo_path_risk",
+    "paper_shadow",
+    "human_approval"
+  ],
+  "states": [
+    "blocked",
+    "needs_data_contract",
+    "ready_to_backtest",
+    "backtest_running",
+    "walk_forward",
+    "paper_shadow",
+    "rejected",
+    "halted",
+    "promotion_candidate"
+  ],
+  "items": [
+    {
+      "id": "MGC_trend_rv_filter_rank1",
+      "symbol": "MGC",
+      "source": "engine/backtest/candidate_registry.json",
+      "priority": 1,
+      "state": "needs_data_contract",
+      "next_step": "write forward evidence data contract and link fresh gate-v2 artifact before any new run",
+      "blockers": [
+        "MGC currently halted in active-instrument table",
+        "needs fresh honest gate-v2/pass-forward evidence"
+      ],
+      "promotion_gates": {
+        "hypothesis": true,
+        "data_contract": false,
+        "backtest": true,
+        "fees_slippage": true,
+        "walk_forward": false,
+        "parameter_stability": false,
+        "regime_split": false,
+        "monte_carlo_path_risk": false,
+        "paper_shadow": false,
+        "human_approval": false
+      },
+      "may_route_orders": false
+    },
+    {
+      "id": "MGC_trend_rank4",
+      "symbol": "MGC",
+      "source": "engine/backtest/candidate_registry.json + strategy registry seeded failure",
+      "priority": 2,
+      "state": "halted",
+      "next_step": "keep halted until a fresh honest CORE PASS supersedes 2026-08-16 failure",
+      "blockers": [
+        "fresh 2026-08-16 reevaluation failed gate-v2",
+        "halted instrument"
+      ],
+      "promotion_gates": {
+        "hypothesis": true,
+        "data_contract": true,
+        "backtest": false,
+        "fees_slippage": true,
+        "walk_forward": false,
+        "parameter_stability": false,
+        "regime_split": false,
+        "monte_carlo_path_risk": false,
+        "paper_shadow": false,
+        "human_approval": false
+      },
+      "may_route_orders": false
+    },
+    {
+      "id": "MES_trend_rank11",
+      "symbol": "MES",
+      "source": "engine/backtest/candidate_registry.json + strategy registry seeded failure",
+      "priority": 3,
+      "state": "rejected",
+      "next_step": "do not route; only revisit through a fresh honest gate-v2 PASS after sample adequacy clears",
+      "blockers": [
+        "latest registry evidence is rejected/insufficient-sample",
+        "zero trades fired Jun-Aug 2026 in cited refresh"
+      ],
+      "promotion_gates": {
+        "hypothesis": true,
+        "data_contract": true,
+        "backtest": false,
+        "fees_slippage": true,
+        "walk_forward": false,
+        "parameter_stability": false,
+        "regime_split": false,
+        "monte_carlo_path_risk": false,
+        "paper_shadow": false,
+        "human_approval": false
+      },
+      "may_route_orders": false
+    },
+    {
+      "id": "MES_sma_trend_vix_pctile_blockCrisis_v1",
+      "symbol": "MES",
+      "source": "engine/backtest/candidate_registry.json",
+      "priority": 4,
+      "state": "ready_to_backtest",
+      "next_step": "run the preregistered local walk-forward runner only if data cache is present; register a new id if params differ",
+      "blockers": [
+        "no verdict artifact populated yet",
+        "paused/inert until local rank1 run succeeds"
+      ],
+      "promotion_gates": {
+        "hypothesis": true,
+        "data_contract": true,
+        "backtest": false,
+        "fees_slippage": false,
+        "walk_forward": false,
+        "parameter_stability": false,
+        "regime_split": false,
+        "monte_carlo_path_risk": false,
+        "paper_shadow": false,
+        "human_approval": false
+      },
+      "may_route_orders": false
+    },
+    {
+      "id": "SPY_stc_trend_meta_rank1",
+      "symbol": "SPY",
+      "source": "engine/research/strategy_registry/spy_stc_trend_meta_rank1.json",
+      "priority": 5,
+      "state": "rejected",
+      "next_step": "use as scanner-validation warning; do not promote without entirely new validated evidence",
+      "blockers": [
+        "seeded strategy registry evidence is validated-fail",
+        "paper routing gap explicitly accepted separately by Amo"
+      ],
+      "promotion_gates": {
+        "hypothesis": true,
+        "data_contract": true,
+        "backtest": false,
+        "fees_slippage": true,
+        "walk_forward": false,
+        "parameter_stability": false,
+        "regime_split": false,
+        "monte_carlo_path_risk": false,
+        "paper_shadow": false,
+        "human_approval": false
+      },
+      "may_route_orders": false
+    },
+    {
+      "id": "repo_reference_patterns",
+      "symbol": "N/A",
+      "source": "repo-strategy-candidate-inventory.md",
+      "priority": 99,
+      "state": "blocked",
+      "next_step": "convert a reference pattern into a candidate only after it names instrument, data source, runner, artifact path, and blocking conditions",
+      "blockers": [
+        "reference-only/research-scaffolded rows are not concrete strategies"
+      ],
+      "promotion_gates": {
+        "hypothesis": false,
+        "data_contract": false,
+        "backtest": false,
+        "fees_slippage": false,
+        "walk_forward": false,
+        "parameter_stability": false,
+        "regime_split": false,
+        "monte_carlo_path_risk": false,
+        "paper_shadow": false,
+        "human_approval": false
+      },
+      "may_route_orders": false
+    }
+  ]
+}
