@@ -1,4 +1,37 @@
+from .bootstrap import BootstrapClusterUnit, BootstrapResult, bootstrap_edge_ci
+from .concentration import ConcentrationReport, GroupConcentrationStress, analyze_edge_concentration
+from .execution_stress import ExecutionStressReport, analyze_execution_stress
+from .permutation import (
+    ClusterPermutationResult,
+    PairedPermutationResult,
+    PermutationMode,
+    PlaceboResult,
+    date_cluster_edge_permutation,
+    date_label_placebo,
+    evaluate_date_label_placebo,
+    paired_edge_permutation,
+)
+from .statistical_models import MatchedEdgeObservation
+from .statistical_validation import (
+    StatisticalEvidenceStatus,
+    StatisticalValidationBundle,
+    StatisticalValidationSpec,
+    build_statistical_validation_bundle,
+)
+from .statistical_report import render_statistical_validation_report
+
+from .candidate_store import CandidatePopulationManifest, CandidatePopulationWriter, verify_population_artifact
+from .feature_builder import FeatureInputLineage, HistoricalFeatureBuilder, HistoricalFeatureSnapshot
+from .population import CandidateDecisionState, CandidateObservation, HistoricalCandidatePopulationBuilder, HistoricalMembershipRejection, HistoricalSecurityRecord, HistoricalUniverseMember, PopulationBuildResult, PopulationDecisionClock, candidate_identity
+from .population_report import PopulationDiagnostics, build_population_diagnostics, render_population_report
+from .splits import DEFAULT_EMBARGO_SESSIONS, DEFAULT_PURGE_SESSIONS, DEFAULT_RESEARCH_SPLITS, PurgedTemporalSplit, SplitKind, SplitRegistry, TemporalSplit, default_research_split_plan
+from .validation import PopulationValidationReport, PopulationValidator, ValidationCode, ValidationIssue, ValidationSeverity
+from .relative_strength_sprint import RelativeStrengthResearchSprint, RelativeStrengthSprintInput, RelativeStrengthSprintReport, SprintStatus
+from .robustness import ParameterPoint, ParameterStabilityReport, analyze_parameter_stability
+from .trial_ledger import InMemoryTrialLedger, ResearchTrial, TrialStatus
 from .ablation import AblationKind, AblationResult, AblationRunner
+from .attribution import EdgeAttribution, EdgeAttributionEngine
+from .controls import ControlKind, ControlObservation, ControlSelector, UniverseMember
 from .acquisition import (
     RESEARCH_ACQUISITION_PLAN,
     RESEARCH_ACQUISITION_PLAN_V1,
@@ -8,7 +41,6 @@ from .acquisition import (
     acquisition_requirement_for,
     preferred_source_for,
 )
-from .attribution import EdgeAttribution, EdgeAttributionEngine
 from .campaign import (
     PRE_REGISTERED_COST_BPS,
     PRE_REGISTERED_STRATEGIES,
@@ -29,96 +61,102 @@ from .campaign_runner import (
     FamilyRunState,
     ResearchCampaignRunner,
 )
-from .candidate_store import (
-    CandidatePopulationManifest,
-    CandidatePopulationWriter,
-    verify_population_artifact,
-)
-from .controls import ControlKind, ControlObservation, ControlSelector, UniverseMember
-from .excursions import ExcursionCurve, ExcursionEngine, ExcursionHorizon, ExcursionObservation
-from .feature_builder import FeatureInputLineage, HistoricalFeatureBuilder, HistoricalFeatureSnapshot
 from .forward_returns import ForwardHorizon, ForwardReturnEngine, ForwardReturnObservation
+from .excursions import ExcursionCurve, ExcursionEngine, ExcursionHorizon, ExcursionObservation
 from .metrics import StrategyMetrics, compute_strategy_metrics
-from .population import (
-    CandidateDecisionState,
-    CandidateObservation,
-    HistoricalCandidatePopulationBuilder,
-    HistoricalUniverseMember,
-    PopulationBuildResult,
-    candidate_identity,
-)
-from .population_report import (
-    PopulationDiagnostics,
-    build_population_diagnostics,
-    render_population_report,
-)
-from .relative_strength_sprint import (
-    RelativeStrengthResearchSprint,
-    RelativeStrengthSprintInput,
-    RelativeStrengthSprintReport,
-    SprintStatus,
-)
-from .robustness import ParameterPoint, ParameterStabilityReport, analyze_parameter_stability
 from .simulator import HistoricalSimulator, bars_at_or_before
-from .splits import PurgedTemporalSplit, SplitKind, SplitRegistry, TemporalSplit
-from .trial_ledger import InMemoryTrialLedger, ResearchTrial, TrialStatus
 from .trigger_lab import DEFAULT_TRIGGERS, TriggerDefinition, TriggerKind, TriggerLab, TriggerSignal
-from .validation import (
-    PopulationValidationReport,
-    PopulationValidator,
-    ValidationCode,
-    ValidationIssue,
-    ValidationSeverity,
-)
 
 __all__ = [
-    "AblationKind",
-    "AblationResult",
+    "BootstrapClusterUnit",
+    "BootstrapResult",
+    "bootstrap_edge_ci",
+    "ConcentrationReport",
+    "GroupConcentrationStress",
+    "analyze_edge_concentration",
+    "ExecutionStressReport",
+    "analyze_execution_stress",
+    "ClusterPermutationResult",
+    "PairedPermutationResult",
+    "PermutationMode",
+    "PlaceboResult",
+    "date_cluster_edge_permutation",
+    "date_label_placebo",
+    "evaluate_date_label_placebo",
+    "paired_edge_permutation",
+    "MatchedEdgeObservation",
+    "StatisticalEvidenceStatus",
+    "StatisticalValidationBundle",
+    "StatisticalValidationSpec",
+    "build_statistical_validation_bundle",
+    "render_statistical_validation_report",
+    "SprintStatus",
+    "RelativeStrengthSprintReport",
+    "RelativeStrengthSprintInput",
+    "RelativeStrengthResearchSprint",
+    "analyze_parameter_stability",
+    "ParameterStabilityReport",
+    "ParameterPoint",
+    "TrialStatus",
+    "ResearchTrial",
+    "InMemoryTrialLedger",
     "AblationRunner",
-    "RESEARCH_ACQUISITION_PLAN",
-    "RESEARCH_ACQUISITION_PLAN_V1",
-    "AcquisitionSource",
-    "ArtifactAcquisitionRequirement",
-    "ResearchAcquisitionPlan",
-    "acquisition_requirement_for",
-    "preferred_source_for",
-    "EdgeAttribution",
+    "AblationResult",
+    "AblationKind",
     "EdgeAttributionEngine",
-    "PRE_REGISTERED_COST_BPS",
-    "PRE_REGISTERED_STRATEGIES",
-    "PRE_REGISTERED_TRIGGERS",
-    "DataReadinessReport",
-    "ResearchArtifactKind",
-    "ResearchArtifactReceipt",
-    "ResearchCampaignSpec",
-    "ResearchDataManifest",
-    "build_manifest_from_receipts",
-    "inspect_research_files",
-    "require_research_ready",
-    "CampaignRunResult",
-    "CampaignRunStatus",
-    "FamilyResearchResult",
-    "FamilyRunState",
-    "ResearchCampaignRunner",
-    "CandidatePopulationManifest",
-    "CandidatePopulationWriter",
-    "verify_population_artifact",
+    "EdgeAttribution",
+    "ExcursionObservation",
+    "ExcursionHorizon",
+    "ExcursionEngine",
+    "ExcursionCurve",
+    "ForwardReturnObservation",
+    "ForwardReturnEngine",
+    "ForwardHorizon",
     "ControlKind",
     "ControlObservation",
     "ControlSelector",
     "UniverseMember",
-    "ExcursionCurve",
-    "ExcursionEngine",
-    "ExcursionHorizon",
-    "ExcursionObservation",
+    "ResearchAcquisitionPlan",
+    "ArtifactAcquisitionRequirement",
+    "AcquisitionSource",
+    "RESEARCH_ACQUISITION_PLAN",
+    "RESEARCH_ACQUISITION_PLAN_V1",
+    "acquisition_requirement_for",
+    "preferred_source_for",
+    "HistoricalSimulator",
+    "bars_at_or_before",
+    "TriggerKind",
+    "TriggerDefinition",
+    "TriggerSignal",
+    "TriggerLab",
+    "DEFAULT_TRIGGERS",
+    "StrategyMetrics",
+    "compute_strategy_metrics",
+    "ResearchCampaignSpec",
+    "ResearchDataManifest",
+    "ResearchArtifactKind",
+    "ResearchArtifactReceipt",
+    "build_manifest_from_receipts",
+    "DataReadinessReport",
+    "PRE_REGISTERED_STRATEGIES",
+    "PRE_REGISTERED_TRIGGERS",
+    "PRE_REGISTERED_COST_BPS",
+    "inspect_research_files",
+    "require_research_ready",
+    "ResearchCampaignRunner",
+    "CampaignRunResult",
+    "CampaignRunStatus",
+    "FamilyResearchResult",
+    "FamilyRunState",
+    "CandidatePopulationManifest",
+    "CandidatePopulationWriter",
+    "verify_population_artifact",
     "FeatureInputLineage",
     "HistoricalFeatureBuilder",
     "HistoricalFeatureSnapshot",
-    "ForwardHorizon",
-    "ForwardReturnEngine",
-    "ForwardReturnObservation",
-    "StrategyMetrics",
-    "compute_strategy_metrics",
+    "PopulationDecisionClock",
+    "HistoricalSecurityRecord",
+    "HistoricalMembershipRejection",
     "CandidateDecisionState",
     "CandidateObservation",
     "HistoricalCandidatePopulationBuilder",
@@ -128,27 +166,14 @@ __all__ = [
     "PopulationDiagnostics",
     "build_population_diagnostics",
     "render_population_report",
-    "RelativeStrengthResearchSprint",
-    "RelativeStrengthSprintInput",
-    "RelativeStrengthSprintReport",
-    "SprintStatus",
-    "ParameterPoint",
-    "ParameterStabilityReport",
-    "analyze_parameter_stability",
-    "HistoricalSimulator",
-    "bars_at_or_before",
+    "DEFAULT_PURGE_SESSIONS",
+    "DEFAULT_EMBARGO_SESSIONS",
+    "DEFAULT_RESEARCH_SPLITS",
+    "default_research_split_plan",
     "PurgedTemporalSplit",
     "SplitKind",
     "SplitRegistry",
     "TemporalSplit",
-    "InMemoryTrialLedger",
-    "ResearchTrial",
-    "TrialStatus",
-    "DEFAULT_TRIGGERS",
-    "TriggerDefinition",
-    "TriggerKind",
-    "TriggerLab",
-    "TriggerSignal",
     "PopulationValidationReport",
     "PopulationValidator",
     "ValidationCode",
