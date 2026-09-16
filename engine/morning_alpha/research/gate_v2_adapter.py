@@ -66,9 +66,7 @@ class MorningAlphaGateV2:
         if len(run.trade_returns_r) != run.total_historical_trades:
             reasons.append("trade_returns_r count must equal total_historical_trades")
         if not run.sparse_strategy_approved and run.total_historical_trades < self.normal_min_trades:
-            reasons.append(
-                f"normal setup family requires at least {self.normal_min_trades} historical trades"
-            )
+            reasons.append(f"normal setup family requires at least {self.normal_min_trades} historical trades")
         if not run.oos_results:
             reasons.append("OOS results are required before Gate-v2")
         if not run.fixed_params_metrics:
@@ -77,41 +75,15 @@ class MorningAlphaGateV2:
             reasons.append("cost/slippage sweep metrics are required before Gate-v2")
         if run.n_grid_combos < 1:
             reasons.append("n_grid_combos must be >= 1")
-
         if reasons:
-            return PromotionVerdict(
-                strategy_key=run.strategy_key,
-                state=PromotionState.BACKTESTED,
-                gate_invoked=False,
-                reasons=tuple(reasons),
-            )
-
-        gate_result = self.gate_fn(
-            list(run.oos_results),
-            run.n_grid_combos,
-            run.fixed_params_metrics,
-            run.cost_sweep_metrics,
-        )
+            return PromotionVerdict(strategy_key=run.strategy_key, state=PromotionState.BACKTESTED, gate_invoked=False, reasons=tuple(reasons))
+        gate_result = self.gate_fn(list(run.oos_results), run.n_grid_combos, run.fixed_params_metrics, run.cost_sweep_metrics)
         passed = gate_result.get("verdict") == "PASS"
         state = PromotionState.GATE_V2_PASSED if passed else PromotionState.WFO_VALIDATED
-        return PromotionVerdict(
-            strategy_key=run.strategy_key,
-            state=state,
-            gate_invoked=True,
-            gate_verdict=gate_result.get("verdict"),
-            passed_via=gate_result.get("passed_via"),
-            reasons=tuple(gate_result.get("reasons", ())),
-            gate_metrics=dict(gate_result),
-        )
+        return PromotionVerdict(strategy_key=run.strategy_key, state=state, gate_invoked=True, gate_verdict=gate_result.get("verdict"), passed_via=gate_result.get("passed_via"), reasons=tuple(gate_result.get("reasons", ())), gate_metrics=dict(gate_result))
 
 
-def advance_promotion_state(
-    state: PromotionState,
-    *,
-    paper_started: bool = False,
-    forward_validated: bool = False,
-    live_approved: bool = False,
-) -> PromotionState:
+def advance_promotion_state(state: PromotionState, *, paper_started: bool = False, forward_validated: bool = False, live_approved: bool = False) -> PromotionState:
     """Advance only through explicit post-Gate-v2 evidence; Gate PASS is never live authorization."""
     if state is PromotionState.GATE_V2_PASSED and paper_started:
         return PromotionState.PAPER
@@ -120,3 +92,35 @@ def advance_promotion_state(
     if state is PromotionState.FORWARD_VALIDATED and live_approved:
         return PromotionState.LIVE_ELIGIBLE
     return state
+
+
+class ValidationPrerequisite(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    level: str = Field(pattern=r"^L[6-9]$")
+    status: str = Field(min_length=1)
+    identity_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class EvidenceGatedGateV2:
+    """Require complete L6-L9 evidence before delegating to canonical Gate-v2 adapter."""
+
+    REQUIRED_LEVELS = ("L6", "L7", "L8", "L9")
+
+    def __init__(self, adapter: MorningAlphaGateV2) -> None:
+        self.adapter = adapter
+
+    def evaluate(self, run: MorningAlphaResearchRun, evidence: Sequence[ValidationPrerequisite]) -> PromotionVerdict:
+        by_level = {row.level: row for row in evidence}
+        reasons: list[str] = []
+        for level in self.REQUIRED_LEVELS:
+            row = by_level.get(level)
+            if row is None:
+                reasons.append(f"{level} evidence is required before Gate-v2")
+            elif row.status != "complete":
+                reasons.append(f"{level} evidence status must be complete; got {row.status}")
+        identities = {row.identity_hash for row in evidence if row.level in self.REQUIRED_LEVELS}
+        if len(identities) > 1:
+            reasons.append("L6-L9 validation identity mismatch")
+        if reasons:
+            return PromotionVerdict(strategy_key=run.strategy_key, state=PromotionState.WFO_VALIDATED, gate_invoked=False, reasons=tuple(reasons))
+        return self.adapter.evaluate(run)
