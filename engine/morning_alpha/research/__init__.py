@@ -1,3 +1,4 @@
+from .controls import ControlKind, ControlObservation, ControlSelector, UniverseMember
 from .acquisition import (
     RESEARCH_ACQUISITION_PLAN,
     RESEARCH_ACQUISITION_PLAN_V1,
@@ -32,6 +33,10 @@ from .simulator import HistoricalSimulator, bars_at_or_before
 from .trigger_lab import DEFAULT_TRIGGERS, TriggerDefinition, TriggerKind, TriggerLab, TriggerSignal
 
 __all__ = [
+    "ControlKind",
+    "ControlObservation",
+    "ControlSelector",
+    "UniverseMember",
     "ResearchAcquisitionPlan",
     "ArtifactAcquisitionRequirement",
     "AcquisitionSource",
