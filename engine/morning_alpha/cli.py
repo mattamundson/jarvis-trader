@@ -9,6 +9,7 @@ from typing import Callable, Sequence
 
 from morning_alpha.reporting import render_edge_research_report, render_morning_report
 from morning_alpha.research.acquisition import RESEARCH_ACQUISITION_PLAN
+from morning_alpha.research.candidate_store import CandidatePopulationManifest, verify_population_artifact
 from morning_alpha.research.campaign import (
     ResearchArtifactKind,
     ResearchArtifactReceipt,
@@ -16,6 +17,9 @@ from morning_alpha.research.campaign import (
     build_manifest_from_receipts,
     inspect_research_files,
 )
+from morning_alpha.research.population import CandidateObservation, PopulationBuildResult
+from morning_alpha.research.population_report import build_population_diagnostics, render_population_report
+from morning_alpha.research.validation import PopulationValidator
 from morning_alpha.service import MorningAlphaService, ScanStatus
 
 
@@ -66,6 +70,10 @@ def build_parser() -> argparse.ArgumentParser:
     manifest_build = sub.add_parser("research-manifest-build")
     manifest_build.add_argument("--data-root", required=True)
     manifest_build.add_argument("--json", action="store_true", dest="json_output")
+
+    population_validate = sub.add_parser("research-population-validate")
+    population_validate.add_argument("--population-manifest", required=True)
+    population_validate.add_argument("--json", action="store_true", dest="json_output")
 
     return parser
 
@@ -206,6 +214,51 @@ def main(
         else:
             print(manifest_path)
         return 0
+
+    if args.command == "research-population-validate":
+        manifest_path = Path(args.population_manifest)
+        manifest = CandidatePopulationManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
+        root = manifest_path.parent
+        if not verify_population_artifact(root, manifest):
+            payload = {"status": "POPULATION_INVALID", "issues": ["ARTIFACT_HASH_MISMATCH"]}
+            print(json.dumps(payload, sort_keys=True) if args.json_output else "POPULATION_INVALID: ARTIFACT_HASH_MISMATCH")
+            return 2
+        candidate_path = root / manifest.candidates_path
+        rows = tuple(
+            CandidateObservation.model_validate_json(line)
+            for line in candidate_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        )
+        rejection_counts: dict[str, int] = {}
+        for row in rows:
+            if row.rejection_reason:
+                rejection_counts[row.rejection_reason] = rejection_counts.get(row.rejection_reason, 0) + 1
+        result = PopulationBuildResult(
+            decision_timestamp=manifest.decision_timestamp,
+            observations=rows,
+            input_universe_count=manifest.candidate_count,
+            qualified_count=manifest.qualified_count,
+            rejected_count=manifest.rejected_count,
+            rejection_counts=dict(sorted(rejection_counts.items())),
+            universe_hash=manifest.universe_hash,
+            population_hash=manifest.population_hash,
+        )
+        validation = PopulationValidator().validate(
+            result, expected_manifest_hash=manifest.data_manifest_hash
+        )
+        diagnostics = build_population_diagnostics(result)
+        status = "POPULATION_VALIDATED" if validation.valid else "POPULATION_INVALID"
+        if args.json_output:
+            payload = {
+                "status": status,
+                "population_identity": manifest.population_identity,
+                "validation": validation.model_dump(mode="json"),
+                "diagnostics": diagnostics.model_dump(mode="json"),
+            }
+            print(json.dumps(payload, sort_keys=True))
+        else:
+            print(render_population_report(result, validation, diagnostics), end="")
+        return 0 if validation.valid else 2
 
     raise AssertionError(args.command)
 
