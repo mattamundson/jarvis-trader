@@ -405,13 +405,17 @@ export function OptionsSignalsPanel() {
                 </Badge>
               )}
               <Badge variant={fresh ? "live" : "static"} className="font-mono text-[9px]">
-                {fresh ? "LIVE" : "STALE"} · {fmtEpochSeconds(data.generated_at)}
+                {fresh ? "FRESH SNAPSHOT" : "STALE SNAPSHOT"} · {fmtEpochSeconds(data.generated_at)}
               </Badge>
             </span>
           )}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        <p className="font-mono text-[10px] text-muted-foreground">
+          Market-implied decision support only. Uses delayed option-chain / VIX inputs when
+          available; no edge, fillability, or executable quote is claimed.
+        </p>
         {isLoading && (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <LoadingCard />

@@ -111,6 +111,9 @@ test("signals options panel renders defined-risk opportunity board", async ({ pa
   await page.goto("/signals", { waitUntil: "domcontentloaded" });
 
   await expect(page.getByText("SPY/QQQ Options — Market-Implied")).toBeVisible();
+  await expect(page.getByText(/FRESH SNAPSHOT/)).toBeVisible();
+  await expect(page.getByText(/Market-implied decision support only/)).toBeVisible();
+  await expect(page.getByText(/no edge, fillability, or executable quote is claimed/)).toBeVisible();
   await expect(page.getByText("Defined-risk opportunity board · ANALYSIS_ONLY")).toBeVisible();
   await expect(page.getByText("BEAR PUT DEBIT SPREAD")).toBeVisible();
   await expect(page.getByText("journal handoff")).toBeVisible();
