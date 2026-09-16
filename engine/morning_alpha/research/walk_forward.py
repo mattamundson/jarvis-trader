@@ -80,20 +80,48 @@ class WalkForwardRunner:
             test = tuple(r for d in test_dates for r in by_date[d])
             purged = tuple(r.observation_id for d in purge for r in by_date[d])
             embargoed = tuple(r.observation_id for d in embargo for r in by_date[d])
-            result.append(WalkForwardFold(fold_index=index, train_records=train, test_records=test, purged_train_ids=purged, embargoed_test_ids=embargoed))
+            result.append(
+                WalkForwardFold(
+                    fold_index=index,
+                    train_records=train,
+                    test_records=test,
+                    purged_train_ids=purged,
+                    embargoed_test_ids=embargoed,
+                )
+            )
             index += 1
             cursor += self.spec.step_sessions
         return tuple(result)
 
-    def run(self, records: tuple[WalkForwardRecord, ...] | list[WalkForwardRecord], selector: Callable[[tuple[WalkForwardRecord, ...]], dict[str, Any]], evaluator: Callable[[tuple[WalkForwardRecord, ...], dict[str, Any]], dict[str, Any]]) -> WalkForwardSummary:
+    def run(
+        self,
+        records: tuple[WalkForwardRecord, ...] | list[WalkForwardRecord],
+        selector: Callable[[tuple[WalkForwardRecord, ...]], dict[str, Any]],
+        evaluator: Callable[[tuple[WalkForwardRecord, ...], dict[str, Any]], dict[str, Any]],
+    ) -> WalkForwardSummary:
         completed: list[WalkForwardFold] = []
         unique_ids: dict[str, None] = {}
         for raw in self.folds(records):
             params = dict(selector(raw.train_records))
             metrics = dict(evaluator(raw.test_records, params))
             parameter_hash = _hash(params)
-            payload = {"fold_index": raw.fold_index, "train_ids": [r.observation_id for r in raw.train_records], "test_ids": [r.observation_id for r in raw.test_records], "purged": raw.purged_train_ids, "embargoed": raw.embargoed_test_ids, "parameter_hash": parameter_hash, "metrics": metrics}
-            fold = raw.model_copy(update={"selected_params": params, "parameter_hash": parameter_hash, "metrics": metrics, "fold_hash": _hash(payload)})
+            payload = {
+                "fold_index": raw.fold_index,
+                "train_ids": [r.observation_id for r in raw.train_records],
+                "test_ids": [r.observation_id for r in raw.test_records],
+                "purged": raw.purged_train_ids,
+                "embargoed": raw.embargoed_test_ids,
+                "parameter_hash": parameter_hash,
+                "metrics": metrics,
+            }
+            fold = raw.model_copy(
+                update={
+                    "selected_params": params,
+                    "parameter_hash": parameter_hash,
+                    "metrics": metrics,
+                    "fold_hash": _hash(payload),
+                }
+            )
             completed.append(fold)
             for row in fold.test_records:
                 unique_ids.setdefault(row.observation_id, None)
