@@ -33,6 +33,7 @@ class ExecutionStressReport(BaseModel):
     realistic_delay_scenario: str
     mean_entry_gap_penalty_r: float | None = None
     mean_stop_gap_penalty_r: float | None = None
+    gap_penalties_included: bool = False
     reasons: tuple[str, ...] = ()
 
 
@@ -53,6 +54,16 @@ def analyze_execution_stress(
     gross_complete = _complete(rows, "gross_r")
     cost_complete = _complete(rows, "cost_r_per_bps")
     slip_complete = _complete(rows, "slippage_r_per_atr_fraction")
+    entry_gap_presence = [row.entry_gap_penalty_r is not None for row in rows]
+    stop_gap_presence = [row.stop_gap_penalty_r is not None for row in rows]
+    entry_gap_declared = any(entry_gap_presence)
+    stop_gap_declared = any(stop_gap_presence)
+    entry_gap_complete = all(entry_gap_presence)
+    stop_gap_complete = all(stop_gap_presence)
+    if entry_gap_declared and not entry_gap_complete:
+        reasons.append("ENTRY_GAP_EVIDENCE_PARTIAL")
+    if stop_gap_declared and not stop_gap_complete:
+        reasons.append("STOP_GAP_EVIDENCE_PARTIAL")
 
     if not gross_complete:
         reasons.append("GROSS_R_MISSING")
@@ -102,10 +113,14 @@ def analyze_execution_stress(
             reasons.append(f"DELAY_EVIDENCE_MISSING:{scenario}")
 
     combined: float | None = None
+    gap_evidence_valid = (not entry_gap_declared or entry_gap_complete) and (
+        not stop_gap_declared or stop_gap_complete
+    )
     combined_ready = (
         gross_complete
         and cost_complete
         and slip_complete
+        and gap_evidence_valid
         and all(spec.realistic_delay_scenario in row.delay_penalty_r for row in rows)
         and all(float(row.cost_r_per_bps) > 0 for row in rows)
         and all(float(row.slippage_r_per_atr_fraction) > 0 for row in rows)
@@ -116,6 +131,8 @@ def analyze_execution_stress(
             - float(row.cost_r_per_bps) * spec.realistic_bps
             - float(row.slippage_r_per_atr_fraction) * spec.realistic_atr_slippage_fraction
             - float(row.delay_penalty_r[spec.realistic_delay_scenario])
+            - (float(row.entry_gap_penalty_r) if entry_gap_complete else 0.0)
+            - (float(row.stop_gap_penalty_r) if stop_gap_complete else 0.0)
             for row in rows
         )
 
@@ -144,5 +161,6 @@ def analyze_execution_stress(
         realistic_delay_scenario=spec.realistic_delay_scenario,
         mean_entry_gap_penalty_r=entry_gap,
         mean_stop_gap_penalty_r=stop_gap,
+        gap_penalties_included=(entry_gap_declared or stop_gap_declared) and gap_evidence_valid,
         reasons=tuple(dict.fromkeys(reasons)),
     )
