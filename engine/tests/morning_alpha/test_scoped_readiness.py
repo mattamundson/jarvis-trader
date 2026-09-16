@@ -55,6 +55,21 @@ def test_unknown_strategy_scope_fails_closed():
     assert report.reasons == ("UNSUPPORTED_STRATEGY_SCOPE:unknown@1.0.0",)
 
 
+def test_inconsistent_base_report_stays_blocked():
+    report = DataReadinessReport(
+        ready=False,
+        root="fixture",
+        file_count=1,
+        symbols=("SPY",),
+        reasons=(),
+    )
+
+    scoped = scope_readiness_report(report, RELATIVE_STRENGTH_BREAKOUT_SCOPE)
+
+    assert scoped.ready is False
+    assert scoped.reasons == ("UNEXPLAINED_READINESS_FAILURE",)
+
+
 def test_relative_strength_cli_applies_scoped_readiness(monkeypatch, capsys, tmp_path):
     from morning_alpha import cli
 
