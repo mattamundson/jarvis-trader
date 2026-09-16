@@ -59,9 +59,30 @@ def test_frozen_clock_returns_exact_timestamp():
 
 def test_config_defaults_match_approved_small_account_policy():
     cfg = MorningAlphaConfig()
+    assert cfg.enabled is False
+    assert cfg.paper_observation is False
     assert cfg.account_equity == 3000.0
     assert cfg.default_risk_fraction == 0.005
     assert cfg.max_risk_fraction == 0.01
     assert cfg.min_expected_r == 2.0
     assert cfg.max_initial_portfolio_heat == 0.0125
     assert cfg.max_theme_heat == 0.01
+
+
+def test_config_from_env_requires_explicit_enablement(monkeypatch):
+    monkeypatch.setenv("MORNING_ALPHA_ENABLED", "true")
+    monkeypatch.setenv("MORNING_ALPHA_PAPER_OBSERVATION", "true")
+    cfg = MorningAlphaConfig.from_env()
+    assert cfg.enabled is True
+    assert cfg.paper_observation is True
+
+
+def test_paper_observation_cannot_be_enabled_while_system_disabled():
+    with pytest.raises(ValueError, match="paper_observation requires enabled=true"):
+        MorningAlphaConfig(enabled=False, paper_observation=True)
+
+
+def test_config_from_env_rejects_ambiguous_boolean(monkeypatch):
+    monkeypatch.setenv("MORNING_ALPHA_ENABLED", "maybe")
+    with pytest.raises(ValueError, match="MORNING_ALPHA_ENABLED"):
+        MorningAlphaConfig.from_env()
