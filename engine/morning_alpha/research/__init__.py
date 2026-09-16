@@ -1,3 +1,4 @@
+from .ablation import AblationKind, AblationResult, AblationRunner
 from .attribution import EdgeAttribution, EdgeAttributionEngine
 from .controls import ControlKind, ControlObservation, ControlSelector, UniverseMember
 from .acquisition import (
@@ -36,6 +37,9 @@ from .simulator import HistoricalSimulator, bars_at_or_before
 from .trigger_lab import DEFAULT_TRIGGERS, TriggerDefinition, TriggerKind, TriggerLab, TriggerSignal
 
 __all__ = [
+    "AblationRunner",
+    "AblationResult",
+    "AblationKind",
     "EdgeAttributionEngine",
     "EdgeAttribution",
     "ExcursionObservation",
