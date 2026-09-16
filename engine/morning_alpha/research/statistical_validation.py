@@ -14,9 +14,9 @@ from morning_alpha.research.execution_stress import ExecutionStressReport, analy
 from morning_alpha.research.permutation import (
     ClusterPermutationResult,
     PairedPermutationResult,
-    PlaceboResult,
+    ClusterPlaceboResult,
     date_cluster_edge_permutation,
-    evaluate_date_label_placebo,
+    evaluate_date_cluster_placebo,
     paired_edge_permutation,
 )
 from morning_alpha.research.statistical_models import MatchedEdgeObservation
@@ -75,7 +75,7 @@ class StatisticalValidationBundle(BaseModel):
     sector_cluster_count: int = Field(ge=0)
     permutation: PairedPermutationResult | None = None
     date_cluster_permutation: ClusterPermutationResult | None = None
-    placebo: PlaceboResult | None = None
+    placebo: ClusterPlaceboResult | None = None
     iid_bootstrap: BootstrapResult | None = None
     date_cluster_bootstrap: BootstrapResult | None = None
     sector_cluster_bootstrap: BootstrapResult | None = None
@@ -190,7 +190,7 @@ def build_statistical_validation_bundle(
             )
 
         if len(rows) >= 2:
-            placebo = evaluate_date_label_placebo(rows, seed=seed + 5)
+            placebo = evaluate_date_cluster_placebo(rows, seed=seed + 5)
 
         gross_presence = [row.gross_r is not None for row in rows]
         execution_declared = any(
