@@ -1,3 +1,8 @@
+from .conformance import ConformanceCaseResult, ConformanceReport, ConformanceStatus, run_statistical_conformance
+from .red_team import RedTeamCase, RedTeamCaseResult, RedTeamReport, RedTeamStatus, run_red_team
+from .placebo_battery import PlaceboBatteryResult, PlaceboKind, PlaceboRun, run_placebo_battery
+from .execution_replay import ExecutionFill, ExecutionIntent, ExecutionQuote, ExecutionReplayResult, ExecutionReplayStatus, OrderSide, replay_execution
+from .verification_receipt import VerificationComponentEvidence, VerificationIdentity, VerificationReceipt, VerificationStatus, build_verification_receipt
 from .oos import LockedOOSEvaluator, OOSIdentity, OOSLock, OOSLockSpec, OOSResult
 from .walk_forward import WalkForwardFold, WalkForwardRecord, WalkForwardRunner, WalkForwardSpec, WalkForwardSummary
 from .regime_robustness import BucketEvidence, StructuralObservation, StructuralRobustnessReport, analyze_dimension
@@ -79,6 +84,31 @@ from .simulator import HistoricalSimulator, bars_at_or_before
 from .trigger_lab import DEFAULT_TRIGGERS, TriggerDefinition, TriggerKind, TriggerLab, TriggerSignal
 
 __all__ = [
+    "ConformanceCaseResult",
+    "ConformanceReport",
+    "ConformanceStatus",
+    "run_statistical_conformance",
+    "RedTeamCase",
+    "RedTeamCaseResult",
+    "RedTeamReport",
+    "RedTeamStatus",
+    "run_red_team",
+    "PlaceboBatteryResult",
+    "PlaceboKind",
+    "PlaceboRun",
+    "run_placebo_battery",
+    "ExecutionFill",
+    "ExecutionIntent",
+    "ExecutionQuote",
+    "ExecutionReplayResult",
+    "ExecutionReplayStatus",
+    "OrderSide",
+    "replay_execution",
+    "VerificationComponentEvidence",
+    "VerificationIdentity",
+    "VerificationReceipt",
+    "VerificationStatus",
+    "build_verification_receipt",
     "LockedOOSEvaluator",
     "OOSIdentity",
     "OOSLock",
