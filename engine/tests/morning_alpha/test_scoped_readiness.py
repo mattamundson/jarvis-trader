@@ -53,3 +53,31 @@ def test_unknown_strategy_scope_fails_closed():
 
     assert report.ready is False
     assert report.reasons == ("UNSUPPORTED_STRATEGY_SCOPE:unknown@1.0.0",)
+
+
+def test_relative_strength_cli_applies_scoped_readiness(monkeypatch, capsys, tmp_path):
+    from morning_alpha import cli
+
+    monkeypatch.setattr(
+        cli,
+        "inspect_research_files",
+        lambda _root: _report(
+            "EARNINGS_EVENTS_MISSING",
+            "ARTIFACT_KIND_MISSING:earnings_events",
+        ),
+    )
+    monkeypatch.setattr(cli, "render_edge_research_report", lambda _report: "RSB_READY\n")
+
+    class _Status:
+        value = "evidence_ready"
+
+    class _Result:
+        status = _Status()
+
+    rc = cli.main(
+        ["research-relative-strength", "--data-root", str(tmp_path)],
+        relative_strength_handler=lambda _root: _Result(),
+    )
+
+    assert rc == 0
+    assert capsys.readouterr().out == "RSB_READY\n"
