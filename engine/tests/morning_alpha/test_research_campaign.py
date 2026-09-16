@@ -50,7 +50,7 @@ def test_empty_existing_data_root_fails_closed(tmp_path: Path):
     report = inspect_research_files(root)
     assert report.ready is False
     assert report.file_count == 0
-    assert report.reasons == ("NO_BAR_FILES",)
+    assert report.reasons == ("NO_BAR_FILES", "MANIFEST_MISSING")
 
 
 def test_parquet_presence_marks_file_stage_ready_without_claiming_coverage(tmp_path: Path):
@@ -60,8 +60,10 @@ def test_parquet_presence_marks_file_stage_ready_without_claiming_coverage(tmp_p
     (bars / "SPY.parquet").write_bytes(b"fixture")
     (bars / "QQQ.parquet").write_bytes(b"fixture")
     report = inspect_research_files(root)
-    assert report.ready is True
+    assert report.file_stage_ready is True
+    assert report.ready is False
     assert report.file_count == 2
     assert report.symbols == ("QQQ", "SPY")
+    assert "MANIFEST_MISSING" in report.reasons
     assert report.earliest_timestamp is None
     assert report.latest_timestamp is None

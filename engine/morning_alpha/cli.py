@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Callable, Sequence
 
 from morning_alpha.reporting import render_morning_report
+from morning_alpha.research.campaign import ResearchCampaignSpec, inspect_research_files
 from morning_alpha.service import MorningAlphaService, ScanStatus
 
 
@@ -27,6 +28,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     lab = sub.add_parser("research-trigger-lab")
     lab.add_argument("--strategy", required=True)
+
+    data_check = sub.add_parser("research-data-check")
+    data_check.add_argument("--data-root", required=True)
+    data_check.add_argument("--json", action="store_true", dest="json_output")
+
+    campaign_plan = sub.add_parser("research-campaign-plan")
+    campaign_plan.add_argument("--json", action="store_true", dest="json_output")
 
     return parser
 
@@ -72,6 +80,25 @@ def main(
         if trigger_lab_handler is None:
             raise RuntimeError("research-trigger-lab requires a trigger_lab_handler")
         print(trigger_lab_handler(args.strategy))
+        return 0
+
+    if args.command == "research-data-check":
+        report = inspect_research_files(args.data_root)
+        if args.json_output:
+            print(json.dumps(report.model_dump(mode="json"), sort_keys=True))
+        else:
+            status = "READY" if report.ready else "NOT_READY"
+            print(f"{status}: {args.data_root}")
+            if report.reasons:
+                print("Reasons: " + ", ".join(report.reasons))
+        return 0 if report.ready else 2
+
+    if args.command == "research-campaign-plan":
+        spec = ResearchCampaignSpec()
+        if args.json_output:
+            print(json.dumps(spec.model_dump(mode="json"), sort_keys=True))
+        else:
+            print(spec.model_dump_json(indent=2))
         return 0
 
     raise AssertionError(args.command)

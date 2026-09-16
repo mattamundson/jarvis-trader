@@ -103,3 +103,30 @@ Every research run should persist:
 - per-trade R series;
 - Gate-v2 verdict; and
 - failure reasons.
+
+## Dataset certification before campaign execution
+
+The pre-registered campaign must not start merely because bar files exist. `research_manifest.json` is the dataset evidence contract and must satisfy the campaign thresholds enforced by `inspect_research_files()`.
+
+Frozen v1 minimums:
+
+```text
+min_daily_symbols     = 500
+min_intraday_symbols  = 100
+min_history_years     = 8
+```
+
+Required evidence flags:
+
+```text
+point_in_time_universe = true
+delisted_symbols       = true
+corporate_actions      = true
+sector_history         = true
+earnings_events        = true
+macro_context          = true
+source_lineage         = true
+premarket_bars         = true
+```
+
+A failed readiness check is a research stop condition, not an invitation to relax requirements. Any future change to these minimums must be treated as a new campaign specification and documented before results are viewed.

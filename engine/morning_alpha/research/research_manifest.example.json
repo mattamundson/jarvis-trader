@@ -1,0 +1,19 @@
+{
+  "manifest_version": "1.0.0",
+  "generated_at": "2026-09-15T00:00:00+00:00",
+  "providers": ["REPLACE_WITH_VERIFIED_PROVIDER"],
+  "daily_symbol_count": 0,
+  "intraday_symbol_count": 0,
+  "earliest_daily_timestamp": null,
+  "latest_daily_timestamp": null,
+  "earliest_intraday_timestamp": null,
+  "latest_intraday_timestamp": null,
+  "point_in_time_universe": false,
+  "delisted_symbols": false,
+  "corporate_actions": false,
+  "sector_history": false,
+  "earnings_events": false,
+  "macro_context": false,
+  "source_lineage": false,
+  "premarket_bars": false
+}

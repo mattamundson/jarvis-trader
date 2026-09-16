@@ -4,6 +4,7 @@ from .campaign import (
     PRE_REGISTERED_TRIGGERS,
     DataReadinessReport,
     ResearchCampaignSpec,
+    ResearchDataManifest,
     inspect_research_files,
     require_research_ready,
 )
@@ -22,6 +23,7 @@ __all__ = [
     "StrategyMetrics",
     "compute_strategy_metrics",
     "ResearchCampaignSpec",
+    "ResearchDataManifest",
     "DataReadinessReport",
     "PRE_REGISTERED_STRATEGIES",
     "PRE_REGISTERED_TRIGGERS",

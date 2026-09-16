@@ -9,7 +9,7 @@ Morning Alpha is a deterministic research and paper-observation subsystem. It do
 1. Use Python 3.10+ in the JARVIS engine environment.
 2. Install the repository requirements. Runtime adapters use `alpaca-py`; historical Parquet research uses DuckDB when configured; PostgreSQL journaling uses `psycopg2`.
 3. Keep vendor SDK imports lazy so unit tests can run without credentials.
-4. Run `PYTHONPATH=. pytest tests/morning_alpha -v` from `engine/` before any paper observation.
+4. Run `pytest tests/morning_alpha -v` from `engine/` before any paper observation.
 
 ## Environment
 
@@ -62,7 +62,7 @@ Paper observation is allowed only after:
 3. cost/slippage tests exist;
 4. canonical Gate-v2 passes;
 5. parity tests confirm historical/live normalization; and
-6. `MORNING_ALPHA_ENABLED=true` and `MORNING_ALPHA_PAPER_OBSERVATION=true` are explicitly configured.
+6. `MORNING_ALPHA_PAPER_OBSERVATION=true` is explicitly configured.
 
 No live broker mutation is implemented by Morning Alpha v1.
 
@@ -87,3 +87,31 @@ Watch:
 - `morning_alpha_audit_unverified_total`
 
 Unexpected increases in staleness, PIT violations, or UNVERIFIED audit outcomes should pause paper observation until investigated.
+
+## Research-data readiness gate
+
+Before running any historical campaign, create `${MORNING_ALPHA_DATA_DIR}/research_manifest.json` and validate it:
+
+```bash
+python -m morning_alpha.cli research-data-check --data-root ./data/morning_alpha --json
+python -m morning_alpha.cli research-campaign-plan --json
+```
+
+`research-data-check` exits `0` only when the dataset satisfies the frozen v1 evidence contract. Exit `2` means the dataset is not research-ready and the campaign must not run.
+
+The manifest must prove, at minimum:
+
+- provider/source lineage;
+- at least 500 daily symbols;
+- at least 100 intraday symbols;
+- at least 8 years of daily history;
+- point-in-time universe membership;
+- delisted-symbol coverage;
+- corporate-action handling;
+- historical sector mappings;
+- earnings-event data;
+- macro/regime context;
+- premarket/intraday bars; and
+- timezone-aware coverage timestamps.
+
+The presence of Parquet files alone is only a file-stage smoke test and is never sufficient for an edge claim.
