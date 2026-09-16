@@ -3,10 +3,18 @@ from __future__ import annotations
 import argparse
 import json
 from datetime import datetime
+from hashlib import sha256
+from pathlib import Path
 from typing import Callable, Sequence
 
 from morning_alpha.reporting import render_morning_report
-from morning_alpha.research.campaign import ResearchCampaignSpec, inspect_research_files
+from morning_alpha.research.campaign import (
+    ResearchArtifactKind,
+    ResearchArtifactReceipt,
+    ResearchCampaignSpec,
+    build_manifest_from_receipts,
+    inspect_research_files,
+)
 from morning_alpha.service import MorningAlphaService, ScanStatus
 
 
@@ -35,6 +43,22 @@ def build_parser() -> argparse.ArgumentParser:
 
     campaign_plan = sub.add_parser("research-campaign-plan")
     campaign_plan.add_argument("--json", action="store_true", dest="json_output")
+
+    receipt = sub.add_parser("research-receipt-create")
+    receipt.add_argument("--data-root", required=True)
+    receipt.add_argument("--kind", required=True, choices=tuple(kind.value for kind in ResearchArtifactKind))
+    receipt.add_argument("--path", required=True)
+    receipt.add_argument("--provider", required=True)
+    receipt.add_argument("--row-count", required=True, type=int)
+    receipt.add_argument("--symbol-count", required=True, type=int)
+    receipt.add_argument("--earliest")
+    receipt.add_argument("--latest")
+    receipt.add_argument("--point-in-time", action="store_true")
+    receipt.add_argument("--json", action="store_true", dest="json_output")
+
+    manifest_build = sub.add_parser("research-manifest-build")
+    manifest_build.add_argument("--data-root", required=True)
+    manifest_build.add_argument("--json", action="store_true", dest="json_output")
 
     return parser
 
@@ -99,6 +123,59 @@ def main(
             print(json.dumps(spec.model_dump(mode="json"), sort_keys=True))
         else:
             print(spec.model_dump_json(indent=2))
+        return 0
+
+    if args.command == "research-receipt-create":
+        root = Path(args.data_root)
+        relative = Path(args.path)
+        if relative.is_absolute() or ".." in relative.parts:
+            payload = {"error": "ARTIFACT_PATH_INVALID", "path": args.path}
+            print(json.dumps(payload, sort_keys=True) if args.json_output else payload["error"])
+            return 2
+        artifact = root / relative
+        if not artifact.is_file():
+            payload = {"error": "ARTIFACT_FILE_MISSING", "path": args.path}
+            print(json.dumps(payload, sort_keys=True) if args.json_output else payload["error"])
+            return 2
+        receipt = ResearchArtifactReceipt(
+            kind=ResearchArtifactKind(args.kind),
+            path=relative.as_posix(),
+            sha256=sha256(artifact.read_bytes()).hexdigest(),
+            provider=args.provider,
+            row_count=args.row_count,
+            symbol_count=args.symbol_count,
+            earliest_timestamp=_parse_as_of(args.earliest) if args.earliest else None,
+            latest_timestamp=_parse_as_of(args.latest) if args.latest else None,
+            point_in_time=args.point_in_time,
+        )
+        receipts_dir = root / "receipts"
+        receipts_dir.mkdir(parents=True, exist_ok=True)
+        receipt_path = receipts_dir / f"{receipt.kind.value}.json"
+        receipt_path.write_text(receipt.model_dump_json(indent=2), encoding="utf-8")
+        if args.json_output:
+            print(json.dumps(receipt.model_dump(mode="json"), sort_keys=True))
+        else:
+            print(receipt_path)
+        return 0
+
+    if args.command == "research-manifest-build":
+        root = Path(args.data_root)
+        receipt_files = sorted((root / "receipts").glob("*.json"))
+        if not receipt_files:
+            payload = {"error": "NO_RECEIPTS"}
+            print(json.dumps(payload, sort_keys=True) if args.json_output else payload["error"])
+            return 2
+        receipts = [
+            ResearchArtifactReceipt.model_validate_json(path.read_text(encoding="utf-8"))
+            for path in receipt_files
+        ]
+        manifest = build_manifest_from_receipts(receipts, generated_at=datetime.now().astimezone())
+        manifest_path = root / "research_manifest.json"
+        manifest_path.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
+        if args.json_output:
+            print(json.dumps(manifest.model_dump(mode="json"), sort_keys=True))
+        else:
+            print(manifest_path)
         return 0
 
     raise AssertionError(args.command)

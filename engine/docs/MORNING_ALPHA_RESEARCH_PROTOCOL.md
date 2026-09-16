@@ -106,7 +106,7 @@ Every research run should persist:
 
 ## Dataset certification before campaign execution
 
-The pre-registered campaign must not start merely because bar files exist. `research_manifest.json` is the dataset evidence contract and must satisfy the campaign thresholds enforced by `inspect_research_files()`.
+The pre-registered campaign must not start merely because bar files exist. `research_manifest.json` is the dataset evidence contract and must satisfy the campaign thresholds enforced by `inspect_research_files()`. Manifest v1.1 must be generated from immutable artifact receipts rather than hand-edited evidence flags. Each receipt binds an evidence file to its provider, relative path, SHA-256, coverage metadata, and point-in-time assertion. Readiness recomputes hashes from disk before certification.
 
 Frozen v1 minimums:
 

@@ -90,12 +90,28 @@ Unexpected increases in staleness, PIT violations, or UNVERIFIED audit outcomes 
 
 ## Research-data readiness gate
 
-Before running any historical campaign, create `${MORNING_ALPHA_DATA_DIR}/research_manifest.json` and validate it:
+Before running any historical campaign, build artifact receipts, generate `${MORNING_ALPHA_DATA_DIR}/research_manifest.json`, and validate it. Example:
 
 ```bash
+python -m morning_alpha.cli research-receipt-create \
+  --data-root ./data/morning_alpha \
+  --kind universe_membership \
+  --path evidence/universe.csv \
+  --provider YOUR_PROVIDER \
+  --row-count 100000 \
+  --symbol-count 1200 \
+  --point-in-time \
+  --json
+
+python -m morning_alpha.cli research-manifest-build \
+  --data-root ./data/morning_alpha \
+  --json
+
 python -m morning_alpha.cli research-data-check --data-root ./data/morning_alpha --json
 python -m morning_alpha.cli research-campaign-plan --json
 ```
+
+Each receipt stores the artifact kind, provider, relative path, SHA-256, row/symbol counts, coverage timestamps, and point-in-time assertion. Manifest v1.1 readiness recomputes the artifact hashes and fails closed if a receipt is missing, the file is missing, or bytes have changed.
 
 `research-data-check` exits `0` only when the dataset satisfies the frozen v1 evidence contract. Exit `2` means the dataset is not research-ready and the campaign must not run.
 
