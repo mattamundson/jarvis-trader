@@ -1,3 +1,12 @@
+from .acquisition import (
+    RESEARCH_ACQUISITION_PLAN,
+    RESEARCH_ACQUISITION_PLAN_V1,
+    AcquisitionSource,
+    ArtifactAcquisitionRequirement,
+    ResearchAcquisitionPlan,
+    acquisition_requirement_for,
+    preferred_source_for,
+)
 from .campaign import (
     PRE_REGISTERED_COST_BPS,
     PRE_REGISTERED_STRATEGIES,
@@ -23,6 +32,13 @@ from .simulator import HistoricalSimulator, bars_at_or_before
 from .trigger_lab import DEFAULT_TRIGGERS, TriggerDefinition, TriggerKind, TriggerLab, TriggerSignal
 
 __all__ = [
+    "ResearchAcquisitionPlan",
+    "ArtifactAcquisitionRequirement",
+    "AcquisitionSource",
+    "RESEARCH_ACQUISITION_PLAN",
+    "RESEARCH_ACQUISITION_PLAN_V1",
+    "acquisition_requirement_for",
+    "preferred_source_for",
     "HistoricalSimulator",
     "bars_at_or_before",
     "TriggerKind",
