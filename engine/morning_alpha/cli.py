@@ -7,7 +7,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Callable, Sequence
 
-from morning_alpha.reporting import render_morning_report
+from morning_alpha.reporting import render_edge_research_report, render_morning_report
 from morning_alpha.research.acquisition import RESEARCH_ACQUISITION_PLAN
 from morning_alpha.research.campaign import (
     ResearchArtifactKind,
@@ -48,6 +48,9 @@ def build_parser() -> argparse.ArgumentParser:
     source_plan = sub.add_parser("research-source-plan")
     source_plan.add_argument("--json", action="store_true", dest="json_output")
 
+    rs_research = sub.add_parser("research-relative-strength")
+    rs_research.add_argument("--data-root", required=True)
+
     receipt = sub.add_parser("research-receipt-create")
     receipt.add_argument("--data-root", required=True)
     receipt.add_argument("--kind", required=True, choices=tuple(kind.value for kind in ResearchArtifactKind))
@@ -81,6 +84,7 @@ def main(
     service_factory: ServiceFactory | None = None,
     audit_handler: Callable[[str], str] | None = None,
     trigger_lab_handler: Callable[[str], str] | None = None,
+    relative_strength_handler: Callable[[str], object] | None = None,
 ) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "scan":
@@ -109,6 +113,19 @@ def main(
             raise RuntimeError("research-trigger-lab requires a trigger_lab_handler")
         print(trigger_lab_handler(args.strategy))
         return 0
+
+    if args.command == "research-relative-strength":
+        readiness = inspect_research_files(args.data_root)
+        if not readiness.ready:
+            print("BLOCKED")
+            if readiness.reasons:
+                print("Reasons: " + ", ".join(readiness.reasons))
+            return 2
+        if relative_strength_handler is None:
+            raise RuntimeError("research-relative-strength requires a relative_strength_handler")
+        report = relative_strength_handler(args.data_root)
+        print(render_edge_research_report(report), end="")
+        return 0 if report.status.value == "evidence_ready" else 2
 
     if args.command == "research-data-check":
         report = inspect_research_files(args.data_root)
