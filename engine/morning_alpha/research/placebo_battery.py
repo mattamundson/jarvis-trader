@@ -5,7 +5,7 @@ import random
 from collections import defaultdict
 from enum import StrEnum
 from hashlib import sha256
-from statistics import fmean
+from statistics import fmean, median
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -29,6 +29,8 @@ class PlaceboRun(BaseModel):
     iteration: int = Field(ge=0)
     seed: int
     mean_edge: float
+    median_edge: float
+    win_rate: float = Field(ge=0, le=1)
     strategy_returns: tuple[float, ...]
     control_returns: tuple[float, ...]
     cluster_sizes: tuple[int, ...]
@@ -41,7 +43,10 @@ class PlaceboBatteryResult(BaseModel):
     seed: int
     n: int = Field(gt=1)
     real_mean_edge: float
-    real_edge_percentile: float = Field(ge=0, le=1)
+    real_median_edge: float
+    real_win_rate: float = Field(ge=0, le=1)
+    real_median_edge_percentile: float = Field(ge=0, le=1)
+    real_win_rate_percentile: float = Field(ge=0, le=1)
     fixture_hash: str = Field(min_length=64, max_length=64)
     runs: tuple[PlaceboRun, ...]
     battery_id: str = Field(min_length=64, max_length=64)
@@ -73,7 +78,10 @@ def _run(
     control_returns: tuple[float, ...],
     cluster_sizes: tuple[int, ...],
 ) -> PlaceboRun:
-    mean_edge = fmean(s - c for s, c in zip(strategy_returns, control_returns))
+    edges = tuple(s - c for s, c in zip(strategy_returns, control_returns))
+    mean_edge = fmean(edges)
+    median_edge = median(edges)
+    win_rate = sum(value > 0 for value in edges) / len(edges)
     identity = {
         "kind": kind.value,
         "iteration": iteration,
@@ -87,6 +95,8 @@ def _run(
         iteration=iteration,
         seed=seed,
         mean_edge=mean_edge,
+        median_edge=median_edge,
+        win_rate=win_rate,
         strategy_returns=strategy_returns,
         control_returns=control_returns,
         cluster_sizes=cluster_sizes,
@@ -215,21 +225,31 @@ def run_placebo_battery(
         if item is not None:
             runs.append(item)
 
-    real_mean = fmean(row.edge for row in rows)
-    placebo_means = [run.mean_edge for run in runs]
-    percentile = sum(value <= real_mean for value in placebo_means) / len(placebo_means)
+    real_edges = tuple(row.edge for row in rows)
+    real_mean = fmean(real_edges)
+    real_median = median(real_edges)
+    real_win_rate = sum(value > 0 for value in real_edges) / len(real_edges)
+    placebo_medians = [run.median_edge for run in runs]
+    placebo_win_rates = [run.win_rate for run in runs]
+    median_percentile = sum(value <= real_median for value in placebo_medians) / len(placebo_medians)
+    win_rate_percentile = sum(value <= real_win_rate for value in placebo_win_rates) / len(placebo_win_rates)
     fixture_hash = _hash([row.model_dump(mode="json") for row in rows])
     identity = {
         "seed": seed,
         "fixture_hash": fixture_hash,
         "real_mean_edge": real_mean,
+        "real_median_edge": real_median,
+        "real_win_rate": real_win_rate,
         "runs": [run.model_dump(mode="json") for run in runs],
     }
     return PlaceboBatteryResult(
         seed=seed,
         n=len(rows),
         real_mean_edge=real_mean,
-        real_edge_percentile=percentile,
+        real_median_edge=real_median,
+        real_win_rate=real_win_rate,
+        real_median_edge_percentile=median_percentile,
+        real_win_rate_percentile=win_rate_percentile,
         fixture_hash=fixture_hash,
         runs=tuple(runs),
         battery_id=_hash(identity),
