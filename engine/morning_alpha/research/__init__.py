@@ -1,3 +1,4 @@
+from .trial_ledger import InMemoryTrialLedger, ResearchTrial, TrialStatus
 from .ablation import AblationKind, AblationResult, AblationRunner
 from .attribution import EdgeAttribution, EdgeAttributionEngine
 from .controls import ControlKind, ControlObservation, ControlSelector, UniverseMember
@@ -37,6 +38,9 @@ from .simulator import HistoricalSimulator, bars_at_or_before
 from .trigger_lab import DEFAULT_TRIGGERS, TriggerDefinition, TriggerKind, TriggerLab, TriggerSignal
 
 __all__ = [
+    "TrialStatus",
+    "ResearchTrial",
+    "InMemoryTrialLedger",
     "AblationRunner",
     "AblationResult",
     "AblationKind",
