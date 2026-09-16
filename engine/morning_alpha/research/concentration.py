@@ -18,6 +18,7 @@ class GroupConcentrationStress(BaseModel):
     strongest_group_total_edge: float | None
     strongest_positive_share: float = Field(ge=0, le=1)
     mean_after_remove_strongest: float | None
+    mean_retention_ratio: float | None
     n_after_remove_strongest: int = Field(ge=0)
     positive_hhi: float = Field(ge=0, le=1)
 
@@ -35,6 +36,9 @@ class ConcentrationReport(BaseModel):
     mean_after_remove_top1: float | None
     mean_after_remove_top5: float | None
     mean_after_remove_top10pct: float | None
+    mean_retention_after_remove_top1: float | None
+    mean_retention_after_remove_top5: float | None
+    mean_retention_after_remove_top10pct: float | None
     mean_after_remove_top_symbol: float | None
     mean_after_remove_top5_symbols: float | None
     mean_after_remove_top10pct_symbols: float | None
@@ -92,6 +96,12 @@ def _mean_after_remove_groups(
     return fmean(remaining) if remaining else None
 
 
+def _retention_ratio(after: float | None, baseline: float) -> float | None:
+    if after is None or baseline == 0:
+        return None
+    return after / baseline
+
+
 def _group_stress(
     rows: tuple[MatchedEdgeObservation, ...],
     *,
@@ -106,12 +116,15 @@ def _group_stress(
     strongest_total = positives[0][1] if positives else None
     strongest_share = (strongest_total / positive_total) if strongest_total is not None and positive_total > 0 else 0.0
     remaining = [row.edge for row in rows if strongest_group is None or str(key_fn(row)) != strongest_group]
+    baseline = fmean(row.edge for row in rows)
+    after = fmean(remaining) if remaining else None
     return GroupConcentrationStress(
         group_name=group_name,
         strongest_group=strongest_group,
         strongest_group_total_edge=strongest_total,
         strongest_positive_share=strongest_share,
-        mean_after_remove_strongest=fmean(remaining) if remaining else None,
+        mean_after_remove_strongest=after,
+        mean_retention_ratio=_retention_ratio(after, baseline),
         n_after_remove_strongest=len(remaining),
         positive_hhi=_positive_hhi(aggregates),
     )
@@ -152,18 +165,25 @@ def analyze_edge_concentration(
     sector_stress = _group_stress(rows, group_name="sector", key_fn=sector_key)
     year_stress = _group_stress(rows, group_name="year", key_fn=year_key)
     regime_stress = _group_stress(rows, group_name="regime", key_fn=regime_key)
+    mean_edge = fmean(edges)
+    after_top1 = _mean_after_remove(rows, 1)
+    after_top5 = _mean_after_remove(rows, 5) if len(positive) >= 5 else None
+    after_top10pct = _mean_after_remove(rows, top10_count)
 
     return ConcentrationReport(
         n=len(rows),
-        mean_edge=fmean(edges),
+        mean_edge=mean_edge,
         total_edge=sum(edges),
         total_positive_edge=positive_total,
         top1_positive_share=share(1),
         top5_positive_share=top5_share,
         top10pct_positive_share=share(top10_count),
-        mean_after_remove_top1=_mean_after_remove(rows, 1),
-        mean_after_remove_top5=_mean_after_remove(rows, 5) if len(positive) >= 5 else None,
-        mean_after_remove_top10pct=_mean_after_remove(rows, top10_count),
+        mean_after_remove_top1=after_top1,
+        mean_after_remove_top5=after_top5,
+        mean_after_remove_top10pct=after_top10pct,
+        mean_retention_after_remove_top1=_retention_ratio(after_top1, mean_edge),
+        mean_retention_after_remove_top5=_retention_ratio(after_top5, mean_edge),
+        mean_retention_after_remove_top10pct=_retention_ratio(after_top10pct, mean_edge),
         mean_after_remove_top_symbol=symbol_stress.mean_after_remove_strongest,
         mean_after_remove_top5_symbols=_mean_after_remove_groups(rows, key_fn=symbol_key, remove_count=5),
         mean_after_remove_top10pct_symbols=(
