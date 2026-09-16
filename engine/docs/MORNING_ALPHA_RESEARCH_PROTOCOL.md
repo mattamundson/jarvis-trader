@@ -124,7 +124,7 @@ delisted_symbols       = true
 corporate_actions      = true
 sector_history         = true
 earnings_events        = true
-macro_context           = true
+macro_context          = true
 source_lineage         = true
 premarket_bars         = true
 ```
@@ -193,3 +193,117 @@ A narrow spike surrounded by materially worse neighbors is treated as fragile ev
 ## Sprint 1 conclusion semantics
 
 The Relative Strength research sprint may report `BLOCKED`, `INSUFFICIENT_DATA`, `FAIL`, or later evidence-ready validation states. The raw forward-return/control stage is never sufficient for PASS. Trigger, excursion, exit, cost, OOS, WFO, robustness, Monte Carlo/regime evidence and canonical Gate-v2 remain separate required stages before paper promotion.
+
+## Historical candidate population validation — Levels 0–2
+
+No performance or edge statistic may be trusted until the historical candidate population passes Levels 0–2.
+
+### Canonical decision clock
+
+Every historical morning is reconstructed at exactly `09:00 America/New_York`. Inputs with availability or market-data timestamps after that instant are forbidden. Completed prior-session daily bars and premarket information through 09:00 ET are permitted; same-day RTH high/low/close/volume are not.
+
+### Level 0 — dataset and run identity
+
+Require certified research readiness, a 64-character data-manifest identity, timezone-aware decision timestamps, source lineage, deterministic candidate IDs, and a population artifact bound to code commit, split registry, population hash, universe hash, and decision-clock contract.
+
+### Level 1 — temporal / PIT integrity
+
+Historical listing/delisting and sector-effective intervals are audited independently from candidate features. A source security row that is not part of the true PIT universe is preserved in the membership-rejection ledger rather than silently disappearing. Future market-data timestamps, future listing/classification data, or expired membership supplied as if current are fatal validation evidence.
+
+Relative Strength feature windows must use aligned stock/SPY/sector endpoints. Missing benchmark endpoints are rejected; they are never forward-filled invisibly. Appending future rows must not alter prior candidate observations or population hashes.
+
+### Level 2 — population integrity
+
+Candidate identities must be unique, candidate/rejection counts must reconcile, and source records must equal PIT-universe records plus membership-rejection records. Re-running unchanged inputs must reproduce candidate IDs, feature hashes, universe hash, and population hash exactly.
+
+The persisted population contains two independently hashed artifacts:
+
+- `candidates.jsonl`;
+- `membership_rejections.jsonl`.
+
+Tampering with either invalidates the population artifact.
+
+### Purge and embargo semantics
+
+The default maximum forward label horizon is 20 trading sessions. Purging removes the **tail** of any split whose forward labels could cross into the next split. Embargo is a distinct **head** exclusion applied after a split boundary. The final split is not tail-purged because no later holdout boundary exists.
+
+Current defaults:
+
+```text
+purge_sessions   = 20
+embargo_sessions = 0
+```
+
+These defaults are exposed by `python -m morning_alpha.cli research-split-plan --json`. Changing them after final OOS results are viewed constitutes a new research specification.
+
+### Interpretation boundary
+
+`POPULATION_VALIDATED` means the historical sample passed structural/data validation. It is **not** evidence of profitable edge and must never be reported as such.
+
+## Statistical validation — Levels 3–5
+
+After a candidate population passes structural Levels 0–2, Morning Alpha evaluates uncertainty, concentration, and execution survivability before OOS/Gate-v2 promotion work.
+
+### Level 3 — statistical uncertainty
+
+The primary estimand is matched edge: `strategy_return - control_return` for the same historical decision context. Date clustering is the primary dependence correction because same-day signals share market shocks. IID inference remains diagnostic only; sector clustering is a sensitivity view.
+
+Default evidence floors are:
+
+```text
+min_observations       = 200
+min_date_clusters       = 30
+min_sector_clusters     = 3
+bootstrap_resamples     = 10,000
+permutation_resamples   = 10,000
+confidence              = 95%
+```
+
+The primary randomization test flips all observations from a trading date together. A deterministic label-shuffle placebo breaks matched candidate/control pairing while preserving the marginal control-return distribution. Neither p-values nor confidence intervals are promotion rules.
+
+### Level 4 — concentration robustness
+
+Every evidence package must report whether apparent edge is concentrated in a small number of trades or groups. Required diagnostics include:
+
+- top-1 / top-5 / top-10%-of-trades positive-contribution shares;
+- expectancy after removing top positive trades;
+- strongest symbol, sector, year, and regime;
+- expectancy after removing each strongest group;
+- top-5-symbol and top-10%-of-symbol removals;
+- positive-contribution HHI-style concentration for symbols, sectors, years, and regimes.
+
+If removing a dominant group eliminates the sample, the post-removal mean is unavailable rather than zero.
+
+### Level 5 — execution survivability
+
+Execution analysis uses observation-specific historical coefficients; missing evidence is never silently treated as zero friction.
+
+Frozen transaction-cost curve:
+
+```text
+0 / 2 / 5 / 10 / 20 bps
+```
+
+Frozen ATR-slippage fractions:
+
+```text
+0.00 / 0.02 / 0.05 / 0.10 ATR
+```
+
+Delay sensitivity scenarios:
+
+```text
+5s / 30s / 1m / 5m
+```
+
+The evidence package reports exact bps break-even, ATR-slippage break-even, delay curves, optional gap-through penalties, and combined expectancy under the declared realistic cost/slippage/delay scenario.
+
+### Evidence-status semantics
+
+`EVIDENCE_COMPLETE` means the required analyses ran with sufficient structural sample size. It does **not** mean strategy PASS, edge confirmed, Gate-v2 PASS, or paper eligibility.
+
+`INSUFFICIENT_DATA` is used when the sample or independent cluster structure is below the pre-registered floor. `INVALID` is used for internally inconsistent or incomplete declared execution/statistical evidence.
+
+The report must always state:
+
+> This statistical evidence package is not a strategy promotion verdict.
