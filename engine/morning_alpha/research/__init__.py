@@ -28,11 +28,15 @@ from .campaign_runner import (
     FamilyRunState,
     ResearchCampaignRunner,
 )
+from .forward_returns import ForwardHorizon, ForwardReturnEngine, ForwardReturnObservation
 from .metrics import StrategyMetrics, compute_strategy_metrics
 from .simulator import HistoricalSimulator, bars_at_or_before
 from .trigger_lab import DEFAULT_TRIGGERS, TriggerDefinition, TriggerKind, TriggerLab, TriggerSignal
 
 __all__ = [
+    "ForwardReturnObservation",
+    "ForwardReturnEngine",
+    "ForwardHorizon",
     "ControlKind",
     "ControlObservation",
     "ControlSelector",
