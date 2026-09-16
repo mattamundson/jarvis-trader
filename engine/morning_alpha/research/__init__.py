@@ -53,8 +53,8 @@ from .population_report import (
     render_population_report,
 )
 from .relative_strength_sprint import (
-    RelativeStrengthRawObservation,
-    RelativeStrengthSprint,
+    RelativeStrengthResearchSprint,
+    RelativeStrengthSprintInput,
     RelativeStrengthSprintReport,
     SprintStatus,
 )
@@ -128,8 +128,8 @@ __all__ = [
     "PopulationDiagnostics",
     "build_population_diagnostics",
     "render_population_report",
-    "RelativeStrengthRawObservation",
-    "RelativeStrengthSprint",
+    "RelativeStrengthResearchSprint",
+    "RelativeStrengthSprintInput",
     "RelativeStrengthSprintReport",
     "SprintStatus",
     "ParameterPoint",
