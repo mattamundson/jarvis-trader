@@ -1,3 +1,4 @@
+from .robustness import ParameterPoint, ParameterStabilityReport, analyze_parameter_stability
 from .trial_ledger import InMemoryTrialLedger, ResearchTrial, TrialStatus
 from .ablation import AblationKind, AblationResult, AblationRunner
 from .attribution import EdgeAttribution, EdgeAttributionEngine
@@ -38,6 +39,9 @@ from .simulator import HistoricalSimulator, bars_at_or_before
 from .trigger_lab import DEFAULT_TRIGGERS, TriggerDefinition, TriggerKind, TriggerLab, TriggerSignal
 
 __all__ = [
+    "ParameterPoint",
+    "ParameterStabilityReport",
+    "analyze_parameter_stability",
     "TrialStatus",
     "ResearchTrial",
     "InMemoryTrialLedger",
