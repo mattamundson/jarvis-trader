@@ -33,7 +33,12 @@ class StructuralRobustnessReport(BaseModel):
     missing_dimension_count: int
 
 
-def analyze_dimension(observations: tuple[StructuralObservation, ...] | list[StructuralObservation], *, dimension: str, min_bucket_n: int = 10) -> StructuralRobustnessReport:
+def analyze_dimension(
+    observations: tuple[StructuralObservation, ...] | list[StructuralObservation],
+    *,
+    dimension: str,
+    min_bucket_n: int = 10,
+) -> StructuralRobustnessReport:
     if min_bucket_n < 1:
         raise ValueError("min_bucket_n must be >= 1")
     rows = tuple(observations)
@@ -47,7 +52,14 @@ def analyze_dimension(observations: tuple[StructuralObservation, ...] | list[Str
             missing += 1
             continue
         grouped.setdefault(key, []).append(row)
-    buckets = {key: BucketEvidence(n=len(group), mean_edge=fmean(row.edge for row in group), eligible=len(group) >= min_bucket_n) for key, group in sorted(grouped.items())}
+    buckets = {
+        key: BucketEvidence(
+            n=len(group),
+            mean_edge=fmean(row.edge for row in group),
+            eligible=len(group) >= min_bucket_n,
+        )
+        for key, group in sorted(grouped.items())
+    }
     eligible = {key: evidence for key, evidence in buckets.items() if evidence.eligible}
     strongest = max(eligible, key=lambda k: eligible[k].mean_edge) if eligible else None
     worst = min(eligible, key=lambda k: eligible[k].mean_edge) if eligible else None
@@ -58,5 +70,19 @@ def analyze_dimension(observations: tuple[StructuralObservation, ...] | list[Str
         if remaining:
             leave_one[key] = fmean(remaining)
     without = leave_one.get(strongest) if strongest else None
-    retained = None if without is None or overall == 0 else without / overall
-    return StructuralRobustnessReport(dimension=dimension, overall_mean_edge=overall, buckets=buckets, strongest_bucket=strongest, worst_bucket=worst, leave_one_out=leave_one, mean_without_strongest=without, retained_edge_fraction=retained, insufficient_buckets=tuple(k for k, v in buckets.items() if not v.eligible), missing_dimension_count=missing)
+    if without is None or overall == 0:
+        retained = None
+    else:
+        retained = without / overall
+    return StructuralRobustnessReport(
+        dimension=dimension,
+        overall_mean_edge=overall,
+        buckets=buckets,
+        strongest_bucket=strongest,
+        worst_bucket=worst,
+        leave_one_out=leave_one,
+        mean_without_strongest=without,
+        retained_edge_fraction=retained,
+        insufficient_buckets=tuple(k for k, v in buckets.items() if not v.eligible),
+        missing_dimension_count=missing,
+    )
