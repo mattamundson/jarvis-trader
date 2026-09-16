@@ -42,14 +42,18 @@ class MonteCarloSummary(BaseModel):
     probability_loss_threshold: dict[float, float]
 
 
-def _group(rows):
+def _group(rows: tuple[MonteCarloObservation, ...] | list[MonteCarloObservation]):
     grouped: dict[date, list[MonteCarloObservation]] = {}
     for row in rows:
         grouped.setdefault(row.trading_date, []).append(row)
     return {d: tuple(sorted(v, key=lambda r: r.observation_id)) for d, v in sorted(grouped.items())}
 
 
-def draw_cluster_path(observations, *, seed: int) -> ClusterPath:
+def draw_cluster_path(
+    observations: tuple[MonteCarloObservation, ...] | list[MonteCarloObservation],
+    *,
+    seed: int,
+) -> ClusterPath:
     grouped = _group(observations)
     if not grouped:
         raise ValueError("observations cannot be empty")
@@ -89,18 +93,42 @@ def _quantile(values: list[float], p: float) -> float:
     return ordered[idx]
 
 
-def run_cluster_monte_carlo(observations, spec: MonteCarloSpec | None = None) -> MonteCarloSummary:
+def run_cluster_monte_carlo(
+    observations: tuple[MonteCarloObservation, ...] | list[MonteCarloObservation],
+    spec: MonteCarloSpec | None = None,
+) -> MonteCarloSummary:
     cfg = spec or MonteCarloSpec()
     grouped = _group(observations)
     if not grouped:
         raise ValueError("observations cannot be empty")
     dates = tuple(grouped)
     rng = random.Random(cfg.seed)
-    terminals, drawdowns, streaks, minima = [], [], [], []
+    terminals: list[float] = []
+    drawdowns: list[float] = []
+    streaks: list[int] = []
+    minima: list[float] = []
     for _ in range(cfg.n_paths):
         sampled = [rng.choice(dates) for _ in dates]
         returns = tuple(r.return_r for d in sampled for r in grouped[d])
         terminal, dd, streak, minimum = _path_stats(returns)
-        terminals.append(terminal); drawdowns.append(dd); streaks.append(streak); minima.append(minimum)
-    threshold_probs = {threshold: sum(1 for minimum in minima if minimum <= threshold) / cfg.n_paths for threshold in cfg.loss_thresholds_r}
-    return MonteCarloSummary(n_paths=cfg.n_paths, seed=cfg.seed, cluster_count=len(dates), median_terminal_r=median(terminals), median_max_drawdown_r=median(drawdowns), p90_max_drawdown_r=_quantile(drawdowns, 0.90), p95_max_drawdown_r=_quantile(drawdowns, 0.95), p99_max_drawdown_r=_quantile(drawdowns, 0.99), p95_max_losing_streak=int(_quantile([float(x) for x in streaks], 0.95)), probability_negative_terminal_r=sum(1 for x in terminals if x < 0) / cfg.n_paths, probability_loss_threshold=threshold_probs)
+        terminals.append(terminal)
+        drawdowns.append(dd)
+        streaks.append(streak)
+        minima.append(minimum)
+    threshold_probs = {
+        threshold: sum(1 for minimum in minima if minimum <= threshold) / cfg.n_paths
+        for threshold in cfg.loss_thresholds_r
+    }
+    return MonteCarloSummary(
+        n_paths=cfg.n_paths,
+        seed=cfg.seed,
+        cluster_count=len(dates),
+        median_terminal_r=median(terminals),
+        median_max_drawdown_r=median(drawdowns),
+        p90_max_drawdown_r=_quantile(drawdowns, 0.90),
+        p95_max_drawdown_r=_quantile(drawdowns, 0.95),
+        p99_max_drawdown_r=_quantile(drawdowns, 0.99),
+        p95_max_losing_streak=int(_quantile([float(x) for x in streaks], 0.95)),
+        probability_negative_terminal_r=sum(1 for x in terminals if x < 0) / cfg.n_paths,
+        probability_loss_threshold=threshold_probs,
+    )
