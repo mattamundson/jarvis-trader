@@ -19,6 +19,10 @@ from morning_alpha.research.campaign import (
 )
 from morning_alpha.research.population import CandidateObservation, PopulationBuildResult
 from morning_alpha.research.population_report import build_population_diagnostics, render_population_report
+from morning_alpha.research.scoped_readiness import (
+    RELATIVE_STRENGTH_BREAKOUT_SCOPE,
+    scope_readiness_report,
+)
 from morning_alpha.research.validation import PopulationValidator
 from morning_alpha.service import MorningAlphaService, ScanStatus
 
@@ -123,7 +127,10 @@ def main(
         return 0
 
     if args.command == "research-relative-strength":
-        readiness = inspect_research_files(args.data_root)
+        readiness = scope_readiness_report(
+            inspect_research_files(args.data_root),
+            RELATIVE_STRENGTH_BREAKOUT_SCOPE,
+        )
         if not readiness.ready:
             print("BLOCKED")
             if readiness.reasons:
