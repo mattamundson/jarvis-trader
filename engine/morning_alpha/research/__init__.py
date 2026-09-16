@@ -1,3 +1,4 @@
+from .attribution import EdgeAttribution, EdgeAttributionEngine
 from .controls import ControlKind, ControlObservation, ControlSelector, UniverseMember
 from .acquisition import (
     RESEARCH_ACQUISITION_PLAN,
@@ -35,6 +36,8 @@ from .simulator import HistoricalSimulator, bars_at_or_before
 from .trigger_lab import DEFAULT_TRIGGERS, TriggerDefinition, TriggerKind, TriggerLab, TriggerSignal
 
 __all__ = [
+    "EdgeAttributionEngine",
+    "EdgeAttribution",
     "ExcursionObservation",
     "ExcursionHorizon",
     "ExcursionEngine",
