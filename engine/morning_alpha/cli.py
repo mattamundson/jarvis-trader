@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Callable, Sequence
 
 from morning_alpha.reporting import render_morning_report
+from morning_alpha.research.acquisition import RESEARCH_ACQUISITION_PLAN
 from morning_alpha.research.campaign import (
     ResearchArtifactKind,
     ResearchArtifactReceipt,
@@ -43,6 +44,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     campaign_plan = sub.add_parser("research-campaign-plan")
     campaign_plan.add_argument("--json", action="store_true", dest="json_output")
+
+    source_plan = sub.add_parser("research-source-plan")
+    source_plan.add_argument("--json", action="store_true", dest="json_output")
 
     receipt = sub.add_parser("research-receipt-create")
     receipt.add_argument("--data-root", required=True)
@@ -123,6 +127,14 @@ def main(
             print(json.dumps(spec.model_dump(mode="json"), sort_keys=True))
         else:
             print(spec.model_dump_json(indent=2))
+        return 0
+
+    if args.command == "research-source-plan":
+        plan = RESEARCH_ACQUISITION_PLAN
+        if args.json_output:
+            print(json.dumps(plan.model_dump(mode="json"), sort_keys=True))
+        else:
+            print(plan.model_dump_json(indent=2))
         return 0
 
     if args.command == "research-receipt-create":
