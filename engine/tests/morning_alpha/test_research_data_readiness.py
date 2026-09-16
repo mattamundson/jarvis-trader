@@ -129,3 +129,99 @@ def test_cli_campaign_plan_is_machine_readable(capsys):
     assert payload["min_intraday_symbols"] == 100
     assert payload["min_history_years"] == 8
     assert payload["strategies"][0]["strategy_id"] == "relative_strength_breakout"
+
+
+def test_manifest_v1_1_requires_hashed_artifact_receipts(tmp_path: Path):
+    root = _dataset(tmp_path)
+    evidence = root / "evidence"
+    evidence.mkdir()
+    universe = evidence / "universe.csv"
+    universe.write_text("symbol,effective_from\nSPY,2016-01-01\n", encoding="utf-8")
+
+    from hashlib import sha256
+
+    manifest = _manifest(
+        manifest_version="1.1.0",
+        artifacts=[
+            {
+                "kind": "universe_membership",
+                "path": "evidence/universe.csv",
+                "sha256": sha256(universe.read_bytes()).hexdigest(),
+                "provider": "fixture",
+                "row_count": 1,
+                "symbol_count": 1,
+                "point_in_time": True,
+            }
+        ],
+    )
+    (root / "research_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    report = inspect_research_files(root)
+    assert report.ready is False
+    assert "ARTIFACT_KIND_MISSING:daily_bars" in report.reasons
+    assert "ARTIFACT_KIND_MISSING:intraday_bars" in report.reasons
+
+
+def test_manifest_receipt_hash_mismatch_fails_closed(tmp_path: Path):
+    root = _dataset(tmp_path)
+    evidence = root / "evidence"
+    evidence.mkdir()
+    universe = evidence / "universe.csv"
+    universe.write_text("symbol,effective_from\nSPY,2016-01-01\n", encoding="utf-8")
+
+    manifest = _manifest(
+        manifest_version="1.1.0",
+        artifacts=[
+            {
+                "kind": "universe_membership",
+                "path": "evidence/universe.csv",
+                "sha256": "0" * 64,
+                "provider": "fixture",
+                "row_count": 1,
+                "symbol_count": 1,
+                "point_in_time": True,
+            }
+        ],
+    )
+    (root / "research_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    report = inspect_research_files(root)
+    assert "ARTIFACT_HASH_MISMATCH:evidence/universe.csv" in report.reasons
+
+
+def test_manifest_builder_derives_evidence_flags_from_receipts(tmp_path: Path):
+    from hashlib import sha256
+    from morning_alpha.research.campaign import (
+        ResearchArtifactKind,
+        ResearchArtifactReceipt,
+        build_manifest_from_receipts,
+    )
+
+    root = tmp_path / "research"
+    root.mkdir()
+    receipts = []
+    for kind in ResearchArtifactKind:
+        p = root / f"{kind.value}.dat"
+        p.write_text(kind.value, encoding="utf-8")
+        receipts.append(
+            ResearchArtifactReceipt(
+                kind=kind,
+                path=p.name,
+                sha256=sha256(p.read_bytes()).hexdigest(),
+                provider="fixture",
+                row_count=1000,
+                symbol_count=800 if kind.value == "daily_bars" else 250,
+                earliest_timestamp=datetime(2016, 1, 1, tzinfo=UTC),
+                latest_timestamp=datetime(2026, 9, 15, tzinfo=UTC),
+                point_in_time=True,
+            )
+        )
+
+    manifest = build_manifest_from_receipts(receipts, generated_at=datetime(2026, 9, 15, tzinfo=UTC))
+    assert manifest.manifest_version == "1.1.0"
+    assert manifest.point_in_time_universe is True
+    assert manifest.delisted_symbols is True
+    assert manifest.corporate_actions is True
+    assert manifest.sector_history is True
+    assert manifest.earnings_events is True
+    assert manifest.macro_context is True
+    assert manifest.source_lineage is True
+    assert manifest.premarket_bars is True

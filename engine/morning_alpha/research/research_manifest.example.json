@@ -1,7 +1,7 @@
 {
-  "manifest_version": "1.0.0",
+  "manifest_version": "1.1.0",
   "generated_at": "2026-09-15T00:00:00+00:00",
-  "providers": ["REPLACE_WITH_VERIFIED_PROVIDER"],
+  "providers": [],
   "daily_symbol_count": 0,
   "intraday_symbol_count": 0,
   "earliest_daily_timestamp": null,
@@ -15,5 +15,6 @@
   "earnings_events": false,
   "macro_context": false,
   "source_lineage": false,
-  "premarket_bars": false
+  "premarket_bars": false,
+  "artifacts": []
 }
