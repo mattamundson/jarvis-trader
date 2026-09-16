@@ -59,3 +59,12 @@ def test_sector_rank_rejects_mixed_as_of_timestamps():
     other = datetime(2026, 9, 15, 14, 0, tzinfo=UTC)
     with pytest.raises(ValueError, match="same as_of"):
         SectorRotationEngine().rank([snapshot("XLK", 0.1), snapshot("XLF", 0.2, as_of=other)])
+
+
+def test_sector_rank_excludes_benchmarks_that_did_not_exist_as_of_timestamp():
+    before_xlc = datetime(2018, 6, 17, 13, 0, tzinfo=UTC)
+    rows = [snapshot(symbol, idx / 100, as_of=before_xlc) for idx, symbol in enumerate(SECTOR_ETFS)]
+    ranked = SectorRotationEngine().rank(rows)
+    assert "XLC" not in {row.symbol for row in ranked}
+    assert "XLRE" in {row.symbol for row in ranked}
+    assert len(ranked) == 10
