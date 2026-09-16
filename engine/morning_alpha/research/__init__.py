@@ -1,3 +1,4 @@
+from .relative_strength_sprint import RelativeStrengthResearchSprint, RelativeStrengthSprintInput, RelativeStrengthSprintReport, SprintStatus
 from .robustness import ParameterPoint, ParameterStabilityReport, analyze_parameter_stability
 from .trial_ledger import InMemoryTrialLedger, ResearchTrial, TrialStatus
 from .ablation import AblationKind, AblationResult, AblationRunner
@@ -39,9 +40,13 @@ from .simulator import HistoricalSimulator, bars_at_or_before
 from .trigger_lab import DEFAULT_TRIGGERS, TriggerDefinition, TriggerKind, TriggerLab, TriggerSignal
 
 __all__ = [
-    "ParameterPoint",
-    "ParameterStabilityReport",
+    "SprintStatus",
+    "RelativeStrengthSprintReport",
+    "RelativeStrengthSprintInput",
+    "RelativeStrengthResearchSprint",
     "analyze_parameter_stability",
+    "ParameterStabilityReport",
+    "ParameterPoint",
     "TrialStatus",
     "ResearchTrial",
     "InMemoryTrialLedger",
