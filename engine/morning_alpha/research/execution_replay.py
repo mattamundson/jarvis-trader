@@ -47,6 +47,7 @@ class ExecutionIntent(BaseModel):
     trigger_timestamp: datetime
     reference_price: float = Field(gt=0)
     stop_price: float = Field(gt=0)
+    target_price: float | None = Field(default=None, gt=0)
     risk_per_share: float = Field(gt=0)
     max_delay_seconds: int = Field(ge=0)
     max_participation_fraction: float = Field(gt=0, le=1)
@@ -91,6 +92,7 @@ class ExecutionReplayResult(BaseModel):
     fills: tuple[ExecutionFill, ...] = ()
     stop_fill_price: float | None = None
     theoretical_stop_r: float | None = None
+    theoretical_exit_r: float | None = None
     realized_r: float | None = None
 
 
@@ -133,6 +135,17 @@ def _realized_r(intent: ExecutionIntent, entry_price: float, exit_price: float) 
     return pnl / intent.risk_per_share
 
 
+def _theoretical_exit_r(intent: ExecutionIntent) -> float | None:
+    if intent.target_price is None:
+        return None
+    pnl = (
+        intent.target_price - intent.reference_price
+        if intent.side is OrderSide.BUY
+        else intent.reference_price - intent.target_price
+    )
+    return pnl / intent.risk_per_share
+
+
 def replay_execution(
     intent: ExecutionIntent,
     quotes: tuple[ExecutionQuote, ...] | list[ExecutionQuote],
@@ -140,6 +153,8 @@ def replay_execution(
     delay_seconds: int = 0,
     stop_quotes: tuple[ExecutionQuote, ...] | list[ExecutionQuote] = (),
     stop_trigger_timestamp: datetime | None = None,
+    exit_quotes: tuple[ExecutionQuote, ...] | list[ExecutionQuote] = (),
+    exit_trigger_timestamp: datetime | None = None,
 ) -> ExecutionReplayResult:
     if delay_seconds < 0:
         raise ValueError("delay_seconds must be non-negative")
@@ -232,9 +247,13 @@ def replay_execution(
 
     average_entry = total_notional / total_qty
     status = ExecutionReplayStatus.FILLED if total_qty == intent.quantity else ExecutionReplayStatus.PARTIAL_FILL
+    if stop_trigger_timestamp is not None and exit_trigger_timestamp is not None:
+        raise ValueError("stop and target exit triggers are mutually exclusive")
+
     stop_fill: float | None = None
     realized: float | None = None
     theoretical: float | None = None
+    theoretical_exit: float | None = None
 
     if stop_trigger_timestamp is not None:
         if stop_trigger_timestamp.tzinfo is None or stop_trigger_timestamp.utcoffset() is None:
@@ -247,6 +266,18 @@ def replay_execution(
             stop_fill = _impacted_price(stop_side, raw_exit, intent.impact_bps)
             realized = _realized_r(intent, average_entry, stop_fill)
             theoretical = _theoretical_stop_r(intent)
+    elif exit_trigger_timestamp is not None:
+        if exit_trigger_timestamp.tzinfo is None or exit_trigger_timestamp.utcoffset() is None:
+            raise ValueError("exit_trigger_timestamp must be timezone-aware")
+        exit_side = _stop_side(intent.side)
+        exit_eligible = sorted((q for q in exit_quotes if q.timestamp >= exit_trigger_timestamp), key=lambda q: q.timestamp)
+        if exit_eligible:
+            quote = exit_eligible[0]
+            raw_exit = _cross_price(exit_side, quote)
+            exit_fill = _impacted_price(exit_side, raw_exit, intent.impact_bps)
+            realized = _realized_r(intent, average_entry, exit_fill)
+            theoretical_exit = _theoretical_exit_r(intent)
+            stop_fill = exit_fill
 
     commission = total_qty * intent.commission_per_share
     return ExecutionReplayResult(
@@ -266,5 +297,6 @@ def replay_execution(
         fills=tuple(fills),
         stop_fill_price=_round(stop_fill),
         theoretical_stop_r=_round(theoretical),
+        theoretical_exit_r=_round(theoretical_exit),
         realized_r=_round(realized),
     )
