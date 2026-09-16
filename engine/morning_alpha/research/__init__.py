@@ -1,12 +1,23 @@
+from .oos import LockedOOSEvaluator, OOSIdentity, OOSLock, OOSLockSpec, OOSResult
+from .walk_forward import WalkForwardFold, WalkForwardRecord, WalkForwardRunner, WalkForwardSpec, WalkForwardSummary
+from .regime_robustness import BucketEvidence, StructuralObservation, StructuralRobustnessReport, analyze_dimension
+from .monte_carlo import ClusterPath, MonteCarloObservation, MonteCarloSpec, MonteCarloSummary, draw_cluster_path, run_cluster_monte_carlo
+from .gate_v2_adapter import EvidenceGatedGateV2, ValidationPrerequisite
+from .paper_forward import ForwardComparison, PaperForwardRegistry, PaperOutcome, PaperSignal, compare_forward_to_historical
+from .multiple_testing import BootstrapMultipleTestResult, PBOResult, StepdownResult, VariantReturnSeries, cscv_pbo, reality_check, romano_wolf_stepdown, spa_style_test
+from .replication import ReplicationCandidate, ReplicationDataset, ReplicationReport, ShadowComparisonEvent, ShadowComparisonJournal, compare_replication
+from .edge_decay import EdgeDecayMonitor, EdgeMonitorResult, EdgeMonitorSpec, EdgeState
 from .bootstrap import BootstrapClusterUnit, BootstrapResult, bootstrap_edge_ci
 from .concentration import ConcentrationReport, GroupConcentrationStress, analyze_edge_concentration
 from .execution_stress import ExecutionStressReport, analyze_execution_stress
 from .permutation import (
+    ClusterPlaceboResult,
     ClusterPermutationResult,
     PairedPermutationResult,
     PermutationMode,
     PlaceboResult,
     date_cluster_edge_permutation,
+    evaluate_date_cluster_placebo,
     date_label_placebo,
     evaluate_date_label_placebo,
     paired_edge_permutation,
@@ -68,6 +79,51 @@ from .simulator import HistoricalSimulator, bars_at_or_before
 from .trigger_lab import DEFAULT_TRIGGERS, TriggerDefinition, TriggerKind, TriggerLab, TriggerSignal
 
 __all__ = [
+    "LockedOOSEvaluator",
+    "OOSIdentity",
+    "OOSLock",
+    "OOSLockSpec",
+    "OOSResult",
+    "WalkForwardFold",
+    "WalkForwardRecord",
+    "WalkForwardRunner",
+    "WalkForwardSpec",
+    "WalkForwardSummary",
+    "BucketEvidence",
+    "StructuralObservation",
+    "StructuralRobustnessReport",
+    "analyze_dimension",
+    "ClusterPath",
+    "MonteCarloObservation",
+    "MonteCarloSpec",
+    "MonteCarloSummary",
+    "draw_cluster_path",
+    "run_cluster_monte_carlo",
+    "EvidenceGatedGateV2",
+    "ValidationPrerequisite",
+    "ForwardComparison",
+    "PaperForwardRegistry",
+    "PaperOutcome",
+    "PaperSignal",
+    "compare_forward_to_historical",
+    "BootstrapMultipleTestResult",
+    "PBOResult",
+    "StepdownResult",
+    "VariantReturnSeries",
+    "cscv_pbo",
+    "reality_check",
+    "romano_wolf_stepdown",
+    "spa_style_test",
+    "ReplicationCandidate",
+    "ReplicationDataset",
+    "ReplicationReport",
+    "ShadowComparisonEvent",
+    "ShadowComparisonJournal",
+    "compare_replication",
+    "EdgeDecayMonitor",
+    "EdgeMonitorResult",
+    "EdgeMonitorSpec",
+    "EdgeState",
     "BootstrapClusterUnit",
     "BootstrapResult",
     "bootstrap_edge_ci",
@@ -76,11 +132,13 @@ __all__ = [
     "analyze_edge_concentration",
     "ExecutionStressReport",
     "analyze_execution_stress",
+    "ClusterPlaceboResult",
     "ClusterPermutationResult",
     "PairedPermutationResult",
     "PermutationMode",
     "PlaceboResult",
     "date_cluster_edge_permutation",
+    "evaluate_date_cluster_placebo",
     "date_label_placebo",
     "evaluate_date_label_placebo",
     "paired_edge_permutation",
