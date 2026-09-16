@@ -194,6 +194,7 @@ A narrow spike surrounded by materially worse neighbors is treated as fragile ev
 
 The Relative Strength research sprint may report `BLOCKED`, `INSUFFICIENT_DATA`, `FAIL`, or later evidence-ready validation states. The raw forward-return/control stage is never sufficient for PASS. Trigger, excursion, exit, cost, OOS, WFO, robustness, Monte Carlo/regime evidence and canonical Gate-v2 remain separate required stages before paper promotion.
 
+
 ## Historical candidate population validation — Levels 0–2
 
 No performance or edge statistic may be trusted until the historical candidate population passes Levels 0–2.
@@ -240,6 +241,7 @@ These defaults are exposed by `python -m morning_alpha.cli research-split-plan -
 
 `POPULATION_VALIDATED` means the historical sample passed structural/data validation. It is **not** evidence of profitable edge and must never be reported as such.
 
+
 ## Statistical validation — Levels 3–5
 
 After a candidate population passes structural Levels 0–2, Morning Alpha evaluates uncertainty, concentration, and execution survivability before OOS/Gate-v2 promotion work.
@@ -259,7 +261,7 @@ permutation_resamples   = 10,000
 confidence              = 95%
 ```
 
-The primary randomization test flips all observations from a trading date together. A deterministic label-shuffle placebo breaks matched candidate/control pairing while preserving the marginal control-return distribution. Neither p-values nor confidence intervals are promotion rules.
+The primary randomization test flips all observations from a trading date together. A deterministic date-cluster placebo breaks matched candidate/control pairing while preserving the marginal control-return distribution and date-cluster membership counts. IID permutation/placebo results are diagnostic sensitivity checks only. Neither p-values nor confidence intervals are promotion rules.
 
 ### Level 4 — concentration robustness
 
@@ -270,6 +272,7 @@ Every evidence package must report whether apparent edge is concentrated in a sm
 - strongest symbol, sector, year, and regime;
 - expectancy after removing each strongest group;
 - top-5-symbol and top-10%-of-symbol removals;
+- retained-edge ratios after each removal so concentration fragility is comparable across samples;
 - positive-contribution HHI-style concentration for symbols, sectors, years, and regimes.
 
 If removing a dominant group eliminates the sample, the post-removal mean is unavailable rather than zero.
@@ -296,7 +299,7 @@ Delay sensitivity scenarios:
 5s / 30s / 1m / 5m
 ```
 
-The evidence package reports exact bps break-even, ATR-slippage break-even, delay curves, optional gap-through penalties, and combined expectancy under the declared realistic cost/slippage/delay scenario.
+The evidence package reports exact bps break-even, ATR-slippage break-even, delay curves, gap-through penalties when declared, and combined expectancy under the declared realistic cost/slippage/delay/gap scenario. Partial gap evidence is invalid rather than silently treated as zero friction.
 
 ### Evidence-status semantics
 
@@ -307,3 +310,27 @@ The evidence package reports exact bps break-even, ATR-slippage break-even, dela
 The report must always state:
 
 > This statistical evidence package is not a strategy promotion verdict.
+
+## Extended validation hierarchy: L6-L14
+
+After L3-L5 evidence is complete, Morning Alpha does not treat statistical significance as final proof. The post-L5 validation sequence is:
+
+1. **L6 Locked chronological OOS** — final OOS interval, parameter identity, data manifest, population hash, trial ledger and code commit are sealed before evaluation. Tuning code cannot consume final OOS metrics.
+2. **L7 Purged rolling walk-forward** — train/test APIs are separated; train tails are purged and test heads embargoed for overlapping forward labels; overlapping OOS observations are not double counted.
+3. **L8 Regime / structural robustness** — report worst/strongest buckets and leave-one-bucket-out expectancy for regime, sector, symbol, year and other pre-registered dimensions.
+4. **L9 Cluster-aware Monte Carlo** — resample trading-date clusters/blocks rather than IID trades and report terminal-R, drawdown, losing-streak and threshold-crossing distributions.
+5. **L10 Canonical Gate-v2** — invoke only through `backtest.wfo_lifecycle.compute_gate_v2`, and only after complete L6-L9 evidence with consistent identity.
+6. **L11 Immutable paper-forward** — persist signals before outcomes and append outcomes separately. Historical expectations are compared to actual paper trigger/fill/slippage/MFE/MAE/R evidence without rewriting backtests.
+7. **L12 Multiple-testing / data-snooping defenses** — retain DSR trial counts and add CSCV/PBO, block-bootstrap Reality-Check-style evidence, SPA-style sensitivity and multiplicity-adjusted family tests when sample structure supports them.
+8. **L13 Independent replication / shadow execution** — replay on independently sourced data and journal primary-vs-shadow signal divergence before outcomes.
+9. **L14 Continuous edge-decay monitoring** — versioned NORMAL/WATCH/DEGRADED/HALTED rules monitor rolling expectancy and execution drift. HALTED is sticky until explicit revalidation.
+
+None of these states alone authorizes live execution. `EVIDENCE_COMPLETE`, Gate-v2 PASS, PAPER, FORWARD_VALIDATED and LIVE_ELIGIBLE remain distinct states.
+
+### Multiple-testing method labeling
+
+Backtest-overfitting and data-snooping procedures must retain explicit method/version labels. Approximate or adapted implementations must use labels such as `Reality-Check-style`, `SPA-style`, or `Romano-Wolf-style`; they must not be represented as canonical replications of the published procedures unless separately verified against reference implementations and test vectors.
+
+### No “soundproof” claim
+
+Market edges are non-stationary and cannot be proven permanent. The objective is progressive falsification: make false discovery, hidden dependence, implementation friction, vendor artifacts and edge decay increasingly difficult to overlook. A strategy can be halted or retired after promotion if forward evidence degrades.
