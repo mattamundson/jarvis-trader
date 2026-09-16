@@ -1,3 +1,5 @@
+import json
+
 from morning_alpha.research.campaign import DataReadinessReport
 from morning_alpha.research.scoped_readiness import (
     RELATIVE_STRENGTH_BREAKOUT_SCOPE,
@@ -96,3 +98,32 @@ def test_relative_strength_cli_applies_scoped_readiness(monkeypatch, capsys, tmp
 
     assert rc == 0
     assert capsys.readouterr().out == "RSB_READY\n"
+
+
+def test_data_check_cli_can_report_rsb_scoped_readiness(monkeypatch, capsys, tmp_path):
+    from morning_alpha import cli
+
+    monkeypatch.setattr(
+        cli,
+        "inspect_research_files",
+        lambda _root: _report(
+            "EARNINGS_EVENTS_MISSING",
+            "ARTIFACT_KIND_MISSING:earnings_events",
+        ),
+    )
+
+    rc = cli.main(
+        [
+            "research-data-check",
+            "--data-root",
+            str(tmp_path),
+            "--strategy",
+            RELATIVE_STRENGTH_BREAKOUT_SCOPE,
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert payload["ready"] is True
+    assert payload["reasons"] == []
