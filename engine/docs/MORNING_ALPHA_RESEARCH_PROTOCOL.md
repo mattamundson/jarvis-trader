@@ -124,9 +124,72 @@ delisted_symbols       = true
 corporate_actions      = true
 sector_history         = true
 earnings_events        = true
-macro_context          = true
+macro_context           = true
 source_lineage         = true
 premarket_bars         = true
 ```
 
 A failed readiness check is a research stop condition, not an invitation to relax requirements. Any future change to these minimums must be treated as a new campaign specification and documented before results are viewed.
+
+## Relative Strength Sprint 1 controls
+
+`relative_strength_breakout@1.0.0` is evaluated against matched point-in-time controls at the original decision timestamp:
+
+1. deterministic random eligible-universe stock;
+2. deterministic random same-sector stock;
+3. the same stock entered at the next eligible regular-session open;
+4. SPY over the same horizon; and
+5. the corresponding sector ETF when it actually existed at the historical timestamp.
+
+Random controls are seeded from immutable campaign/candidate identity. A missing control is recorded as unavailable; it is never substituted from a future universe or current survivor list.
+
+## Edge attribution semantics
+
+Sprint 1 decomposes strategy-minus-market performance using transparent counterfactual differences:
+
+```text
+sector increment    = sector return - market return
+selection increment = same-stock next-open return - sector return
+timing increment    = strategy return - same-stock next-open return
+```
+
+Explicit exit/filter adjustments may be added only when those counterfactual studies exist. A residual term reconciles the components exactly to the total strategy-minus-market increment. Negative selection/timing contributions are preserved; attribution never clips an unfavorable result.
+
+## Ablation versioning
+
+Initial diagnostic variants are:
+
+- `FULL`;
+- `FULL_MINUS_SECTOR_FILTER`;
+- `FULL_MINUS_VOLUME_CONFIRMATION`;
+- `FULL_MINUS_REGIME_FILTER`; and
+- `FULL_MINUS_ENTRY_CONFIRMATION`.
+
+Ablations are research variants, not silent strategy edits. If an ablation appears superior, it requires a new explicit strategy version and a new validation cycle before any promotion decision.
+
+## Immutable trial ledger
+
+Every attempted experiment is recorded with an identity derived from:
+
+- campaign ID;
+- strategy key;
+- control version;
+- trigger version;
+- exit version;
+- ablation kind;
+- parameter fingerprint;
+- cost assumption;
+- data-manifest hash; and
+- sample interval.
+
+Result status, sample size and output artifacts are not part of the trial identity. Failed trials remain queryable and still count toward the multiple-testing burden used by DSR/Gate-v2.
+
+## Parameter robustness rule
+
+Research must prefer broad stable parameter plateaus to isolated in-sample maxima. Diagnostics track adjacent expectancy dispersion, maximum neighbor drop, positive-neighbor fraction and minimum sample size. The robustness layer does not emit a recommended parameter value.
+
+A narrow spike surrounded by materially worse neighbors is treated as fragile evidence even if it has the highest in-sample return.
+
+## Sprint 1 conclusion semantics
+
+The Relative Strength research sprint may report `BLOCKED`, `INSUFFICIENT_DATA`, `FAIL`, or later evidence-ready validation states. The raw forward-return/control stage is never sufficient for PASS. Trigger, excursion, exit, cost, OOS, WFO, robustness, Monte Carlo/regime evidence and canonical Gate-v2 remain separate required stages before paper promotion.
