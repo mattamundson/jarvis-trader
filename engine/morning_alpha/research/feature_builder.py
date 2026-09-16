@@ -106,17 +106,26 @@ class HistoricalFeatureSnapshot(BaseModel):
         )
 
     def to_setup_context(self) -> SetupContext:
-        return SetupContext(
-            returns_20d=self.returns_20d,
-            spy_return_20d=self.spy_return_20d,
-            sector_return_20d=self.sector_return_20d,
-            sma20=self.sma20,
-            sma50=self.sma50,
-            atr14=self.atr14,
-            prior_high=self.prior_high,
-            prior_low=self.prior_low,
-            high_252d=self.high_252d,
-        )
+        fields = SetupContext.model_fields
+        payload: dict[str, object] = {
+            "spy_return_20d": self.spy_return_20d,
+            "sector_return_20d": self.sector_return_20d,
+            "sma20": self.sma20,
+            "sma50": self.sma50,
+            "atr14": self.atr14,
+            "prior_high": self.prior_high,
+            "prior_low": self.prior_low,
+            "high_252d": self.high_252d,
+        }
+        if "as_of" in fields:
+            payload["as_of"] = self.decision_timestamp
+        if "return_20d" in fields:
+            payload["return_20d"] = self.returns_20d
+        elif "returns_20d" in fields:
+            payload["returns_20d"] = self.returns_20d
+        else:  # pragma: no cover - guarded by detector contract tests
+            raise RuntimeError("SetupContext lacks a 20-day return field")
+        return SetupContext(**payload)
 
 
 class HistoricalFeatureBuilder:
