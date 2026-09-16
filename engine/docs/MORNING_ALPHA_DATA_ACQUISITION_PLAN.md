@@ -120,7 +120,23 @@ naics
 
 Use the classification effective at the historical decision timestamp. Do not use today's sector classification for earlier sessions.
 
-**Open research policy:** sector benchmark availability must be explicit. The modern 11 Select Sector SPDR ETFs do not all share identical inception histories. Before campaign execution, define a versioned sector-proxy policy for dates where a canonical ETF is unavailable; never synthesize missing ETF history silently.
+### Sector benchmark policy v1
+
+Morning Alpha v1 does **not** synthesize sector-ETF history before an ETF existed. The ranking engine enforces benchmark inception dates and excludes unavailable benchmarks at the historical `as_of` timestamp.
+
+Canonical inception constraints include:
+
+```text
+XLRE -> 2015-10-07
+XLC  -> 2018-06-18
+```
+
+The complete modern 11-sector benchmark set is therefore available from **2018-06-18** onward. The frozen v1 research campaign requires at least eight years of daily history ending in 2026, which keeps the intended campaign window inside the full 11-sector era. If a future campaign extends earlier, it must either:
+
+1. accept the smaller contemporaneously available benchmark set, or
+2. define a separately versioned proxy methodology before viewing results.
+
+Do not silently backfill XLC/XLRE with synthetic or current-sector history.
 
 ### Earnings events
 
