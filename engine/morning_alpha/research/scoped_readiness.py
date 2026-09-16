@@ -25,6 +25,14 @@ def scope_readiness_report(
     coverage, point-in-time, hash, or artifact failure remains blocking.
     """
 
+    if not report.ready and not report.reasons:
+        return report.model_copy(
+            update={
+                "ready": False,
+                "reasons": ("UNEXPLAINED_READINESS_FAILURE",),
+            }
+        )
+
     allowed_omissions = _ALLOWED_OMISSIONS_BY_SCOPE.get(strategy_key)
     if allowed_omissions is None:
         reason = f"UNSUPPORTED_STRATEGY_SCOPE:{strategy_key}"
