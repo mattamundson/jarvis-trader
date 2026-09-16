@@ -36,6 +36,7 @@ class CandidatePopulationManifest(BaseModel):
     qualified_count: int = Field(ge=0)
     rejected_count: int = Field(ge=0)
     strategy_versions: tuple[str, ...]
+    decision_clock: str = "09:00 America/New_York"
 
 
 class CandidatePopulationWriter:
@@ -88,6 +89,7 @@ class CandidatePopulationWriter:
             qualified_count=result.qualified_count,
             rejected_count=result.rejected_count,
             strategy_versions=strategy_versions,
+            decision_clock="09:00 America/New_York",
         )
         (root_path / "population_manifest.json").write_text(
             manifest.model_dump_json(indent=2), encoding="utf-8"

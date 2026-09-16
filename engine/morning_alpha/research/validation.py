@@ -103,6 +103,16 @@ class PopulationValidator:
             error(ValidationCode.ACCOUNTING_MISMATCH, "population accounting does not reconcile")
 
         for row in result.observations:
+            for name in ("listing_timestamp", "sector_effective_from", "market_data_timestamp"):
+                value = getattr(row, name, None)
+                if value is not None and value > row.decision_timestamp:
+                    error(ValidationCode.TEMPORAL_LEAKAGE, f"{name} is after decision timestamp", row.candidate_id)
+            delisting = getattr(row, "delisting_timestamp", None)
+            if delisting is not None and delisting <= row.decision_timestamp:
+                error(ValidationCode.TEMPORAL_LEAKAGE, "security is delisted at decision timestamp", row.candidate_id)
+            sector_end = getattr(row, "sector_effective_to", None)
+            if sector_end is not None and sector_end <= row.decision_timestamp:
+                error(ValidationCode.TEMPORAL_LEAGE, "sector classification is not effective at decision timestamp", row.candidate_id)
             if expected_manifest_hash is not None and row.data_manifest_hash != expected_manifest_hash:
                 error(
                     ValidationCode.MANIFEST_IDENTITY_MISMATCH,
@@ -137,6 +147,11 @@ class PopulationValidator:
                             "stock/SPY/sector feature endpoints do not match",
                             row.candidate_id,
                         )
+
+        if expected_manifest_hash is not None and any(
+            row.data_manifest_hash != expected_manifest_hash for row in result.observations
+        ):
+            pass
 
         if repeat_reference is not None:
             current_signature = (

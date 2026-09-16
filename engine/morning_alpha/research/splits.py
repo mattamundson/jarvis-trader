@@ -42,6 +42,7 @@ class PurgedTemporalSplit(BaseModel):
     included_dates: tuple[date, ...]
     excluded_dates: tuple[date, ...]
     purge_sessions: int = Field(ge=0)
+    embargo_sessions: int = Field(default=0, ge=0)
 
 
 class SplitRegistry(BaseModel):
@@ -50,6 +51,7 @@ class SplitRegistry(BaseModel):
     splits: tuple[TemporalSplit, ...]
     trading_dates: tuple[date, ...]
     purge_sessions: int = Field(default=20, ge=0)
+    embargo_sessions: int = Field(default=0, ge=0)
 
     @model_validator(mode="after")
     def validate_registry(self) -> "SplitRegistry":
@@ -96,11 +98,13 @@ class SplitRegistry(BaseModel):
                 included_dates=dates,
                 excluded_dates=(),
                 purge_sessions=self.purge_sessions,
+                embargo_sessions=self.embargo_sessions,
             )
 
         excluded: set[date] = set()
         if index > 0:
             excluded.update(dates[: self.purge_sessions])
+            excluded.update(dates[: self.embargo_sessions])
         if index < len(self.splits) - 1:
             excluded.update(dates[-self.purge_sessions :])
         included_dates = tuple(day for day in dates if day not in excluded)
@@ -110,4 +114,5 @@ class SplitRegistry(BaseModel):
             included_dates=included_dates,
             excluded_dates=excluded_dates,
             purge_sessions=self.purge_sessions,
+            embargo_sessions=self.embargo_sessions,
         )

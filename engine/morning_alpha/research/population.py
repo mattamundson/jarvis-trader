@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 from collections import Counter
-from datetime import date, datetime
+from datetime import date, datetime, time
 from enum import StrEnum
 from hashlib import sha256
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict, Field, SerializeAsAny, model_validator
 
@@ -14,6 +15,26 @@ from morning_alpha.models import MarketBar, SetupCandidate, StrategyKey
 from morning_alpha.research.campaign import DataReadinessReport, require_research_ready
 from morning_alpha.research.feature_builder import HistoricalFeatureBuilder, HistoricalFeatureSnapshot
 from morning_alpha.setups.relative_strength_breakout import RelativeStrengthBreakout
+
+
+NEW_YORK = ZoneInfo("America/New_York")
+
+
+class PopulationDecisionClock:
+    """Canonical historical Morning Alpha decision clock: 09:00 America/New_York."""
+
+    timezone = NEW_YORK
+    hour = 9
+    minute = 0
+
+    def at(self, trading_date: date) -> datetime:
+        if trading_date.weekday() >= 5:
+            raise ValueError("decision date must be a trading day")
+        return datetime.combine(trading_date, time(self.hour, self.minute), tzinfo=self.timezone)
+
+    @property
+    def canonical(self) -> str:
+        return "09:00 America/New_York"
 
 
 class CandidateDecisionState(StrEnum):
@@ -59,6 +80,11 @@ class CandidateObservation(BaseModel):
     source_lineage_hash: str = Field(pattern=r"^.{64}$")
     feature_snapshot: dict[str, Any] = Field(default_factory=dict)
     detector_candidate: SerializeAsAny[SetupCandidate] | None = None
+    listing_timestamp: datetime | None = None
+    delisting_timestamp: datetime | None = None
+    sector_effective_from: datetime | None = None
+    sector_effective_to: datetime | None = None
+    market_data_timestamp: datetime | None = None
 
     @model_validator(mode="after")
     def validate_observation(self) -> "CandidateObservation":
@@ -72,6 +98,10 @@ class CandidateObservation(BaseModel):
             raise ValueError("qualified observation requires detector_candidate")
         if self.decision_state is CandidateDecisionState.REJECTED and not self.rejection_reason:
             raise ValueError("rejected observation requires rejection_reason")
+        for name in ("listing_timestamp", "delisting_timestamp", "sector_effective_from", "sector_effective_to", "market_data_timestamp"):
+            value = getattr(self, name)
+            if value is not None:
+                _require_aware(value, name)
         return self
 
 
@@ -119,6 +149,11 @@ class HistoricalUniverseMember(BaseModel):
     sector_etf: str = Field(min_length=1)
     listing_timestamp: datetime
     delisting_timestamp: datetime | None = None
+    security_type: str = "common_stock"
+    primary_exchange: str | None = None
+    sector_effective_from: datetime | None = None
+    sector_effective_to: datetime | None = None
+    market_data_timestamp: datetime | None = None
 
     @model_validator(mode="after")
     def validate_membership(self) -> "HistoricalUniverseMember":
@@ -127,6 +162,13 @@ class HistoricalUniverseMember(BaseModel):
             _require_aware(self.delisting_timestamp, "delisting_timestamp")
             if self.delisting_timestamp <= self.listing_timestamp:
                 raise ValueError("delisting_timestamp must be after listing_timestamp")
+        for name in ("sector_effective_from", "sector_effective_to", "market_data_timestamp"):
+            value = getattr(self, name)
+            if value is not None:
+                _require_aware(value, name)
+        start = self.sector_effective_from or self.listing_timestamp
+        if self.sector_effective_to is not None and self.sector_effective_to <= start:
+            raise ValueError("sector_effective_to must be after sector_effective_from")
         return self
 
     def active_at(self, decision_timestamp: datetime) -> bool:
@@ -134,6 +176,24 @@ class HistoricalUniverseMember(BaseModel):
         return self.listing_timestamp <= decision_timestamp and (
             self.delisting_timestamp is None or self.delisting_timestamp > decision_timestamp
         )
+
+    def sector_active_at(self, decision_timestamp: datetime) -> bool:
+        _require_aware(decision_timestamp, "decision_timestamp")
+        start = self.sector_effective_from or self.listing_timestamp
+        return start <= decision_timestamp and (
+            self.sector_effective_to is None or self.sector_effective_to > decision_timestamp
+        )
+
+    def eligible_at(self, decision_timestamp: datetime) -> bool:
+        _require_aware(decision_timestamp, "decision_timestamp")
+        if not self.active_at(decision_timestamp) or not self.sector_active_at(decision_timestamp):
+            return False
+        if self.market_data_timestamp is not None and self.market_data_timestamp > decision_timestamp:
+            return False
+        return True
+
+
+HistoricalSecurityRecord = HistoricalUniverseMember
 
 
 class HistoricalCandidatePopulationBuilder:
@@ -198,6 +258,11 @@ class HistoricalCandidatePopulationBuilder:
             source_lineage_hash=feature.source_lineage_hash,
             feature_snapshot=feature.model_dump(mode="json"),
             detector_candidate=detector_candidate,
+            listing_timestamp=member.listing_timestamp,
+            delisting_timestamp=member.delisting_timestamp,
+            sector_effective_from=member.sector_effective_from or member.listing_timestamp,
+            sector_effective_to=member.sector_effective_to,
+            market_data_timestamp=member.market_data_timestamp,
         )
 
     def _observation_without_feature(
@@ -229,6 +294,11 @@ class HistoricalCandidatePopulationBuilder:
             source_lineage_hash=rejection_hash,
             feature_snapshot={},
             detector_candidate=None,
+            listing_timestamp=member.listing_timestamp,
+            delisting_timestamp=member.delisting_timestamp,
+            sector_effective_from=member.sector_effective_from or member.listing_timestamp,
+            sector_effective_to=member.sector_effective_to,
+            market_data_timestamp=member.market_data_timestamp,
         )
 
     def build_session(
@@ -246,7 +316,7 @@ class HistoricalCandidatePopulationBuilder:
         require_research_ready(readiness)
         _require_aware(decision_timestamp, "decision_timestamp")
         active = sorted(
-            (member for member in universe if member.active_at(decision_timestamp)),
+            (member for member in universe if member.eligible_at(decision_timestamp)),
             key=lambda member: member.stable_security_id,
         )
         universe_hash = self._universe_hash(active)
