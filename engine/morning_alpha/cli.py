@@ -48,6 +48,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     data_check = sub.add_parser("research-data-check")
     data_check.add_argument("--data-root", required=True)
+    data_check.add_argument(
+        "--strategy",
+        choices=(RELATIVE_STRENGTH_BREAKOUT_SCOPE,),
+        help="optional frozen strategy scope; omitted means full-campaign readiness",
+    )
     data_check.add_argument("--json", action="store_true", dest="json_output")
 
     campaign_plan = sub.add_parser("research-campaign-plan")
@@ -144,6 +149,8 @@ def main(
 
     if args.command == "research-data-check":
         report = inspect_research_files(args.data_root)
+        if args.strategy:
+            report = scope_readiness_report(report, args.strategy)
         if args.json_output:
             print(json.dumps(report.model_dump(mode="json"), sort_keys=True))
         else:
