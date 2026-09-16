@@ -107,3 +107,17 @@ def test_quotes_outside_maximum_delay_do_not_receive_fantasy_fill():
     result = replay_execution(intent(max_delay_seconds=10), (q(30, 100.0, 100.2),))
     assert result.status is ExecutionReplayStatus.UNVERIFIED_EXECUTION
     assert result.filled_quantity == 0
+
+
+def test_profitable_theoretical_target_can_become_non_positive_after_real_entry_and_exit():
+    i = intent(target_price=101.0, max_delay_seconds=60)
+    result = replay_execution(
+        i,
+        (q(30, 100.7, 100.8),),
+        delay_seconds=30,
+        exit_quotes=(q(40, 100.5, 100.7),),
+        exit_trigger_timestamp=TS + timedelta(seconds=40),
+    )
+    assert result.theoretical_exit_r == 1.0
+    assert result.realized_r is not None
+    assert result.realized_r <= 0.0
