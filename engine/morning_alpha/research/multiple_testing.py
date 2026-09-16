@@ -63,7 +63,7 @@ def _validate_aligned(series):
     return rows, n
 
 
-def _score(values) -> float:
+def _score(values: tuple[float, ...] | list[float]) -> float:
     if not values:
         return float("-inf")
     avg = fmean(values)
@@ -81,7 +81,8 @@ def cscv_pbo(series, *, partitions: int = 8) -> PBOResult:
         raise ValueError("observation count must be divisible by partitions")
     block = n // partitions
     blocks = tuple(tuple(range(i * block, (i + 1) * block)) for i in range(partitions))
-    logits, selected = [], []
+    logits: list[float] = []
+    selected: list[str] = []
     for chosen in itertools.combinations(range(partitions), partitions // 2):
         chosen_set = set(chosen)
         is_idx = tuple(i for b in chosen for i in blocks[b])
@@ -90,17 +91,18 @@ def cscv_pbo(series, *, partitions: int = 8) -> PBOResult:
         winner = max(is_scores, key=is_scores.get)
         selected.append(winner)
         oos_perf = {row.variant_id: fmean(row.returns[i] for i in oos_idx) for row in rows}
-        ordered = sorted(oos_perf, key=lambda k: oos_perf[k])
+        ordered = sorted(oos_perf, key=lambda k: oos_perf[k])  # worst -> best
         rank = ordered.index(winner) + 1
         omega = rank / (len(rows) + 1)
         logits.append(math.log(omega / (1.0 - omega)))
-    return PBOResult(pbo=sum(v <= 0 for v in logits)/len(logits), split_count=len(logits), oos_logits=tuple(logits), selected_variants=tuple(selected))
+    pbo = sum(value <= 0 for value in logits) / len(logits)
+    return PBOResult(pbo=pbo, split_count=len(logits), oos_logits=tuple(logits), selected_variants=tuple(selected))
 
 
 def _circular_block_indices(n: int, block_length: int, rng: random.Random) -> tuple[int, ...]:
     if block_length < 1:
         raise ValueError("block_length must be >= 1")
-    out = []
+    out: list[int] = []
     while len(out) < n:
         start = rng.randrange(n)
         out.extend((start + j) % n for j in range(block_length))
@@ -113,51 +115,102 @@ def _means(rows):
 
 def reality_check(series, *, n_bootstrap: int = 2000, block_length: int = 5, seed: int = 0) -> BootstrapMultipleTestResult:
     rows, n = _validate_aligned(series)
+    if n_bootstrap < 1:
+        raise ValueError("n_bootstrap must be positive")
     means = _means(rows)
     winner = max(means, key=means.get)
     observed = math.sqrt(n) * max(means.values())
-    centered = {row.variant_id: tuple(x-means[row.variant_id] for x in row.returns) for row in rows}
-    rng = random.Random(seed); exceed = 0
+    centered = {row.variant_id: tuple(x - means[row.variant_id] for x in row.returns) for row in rows}
+    rng = random.Random(seed)
+    exceed = 0
     for _ in range(n_bootstrap):
         idx = _circular_block_indices(n, block_length, rng)
-        stat = max(math.sqrt(n)*fmean(centered[row.variant_id][i] for i in idx) for row in rows)
+        stat = max(math.sqrt(n) * fmean(centered[row.variant_id][i] for i in idx) for row in rows)
         exceed += stat >= observed
-    p = (exceed+1)/(n_bootstrap+1)
-    return BootstrapMultipleTestResult(best_variant_id=winner, observed_statistic=observed, p_value=p, n_bootstrap=n_bootstrap, block_length=block_length, method="white_reality_check_style_block_bootstrap", active_variant_count=len(rows))
+    p = (exceed + 1) / (n_bootstrap + 1)
+    return BootstrapMultipleTestResult(
+        best_variant_id=winner,
+        observed_statistic=observed,
+        p_value=p,
+        n_bootstrap=n_bootstrap,
+        block_length=block_length,
+        method="white_reality_check_style_block_bootstrap",
+        active_variant_count=len(rows),
+    )
 
 
 def _t_stat(values: tuple[float, ...]) -> float:
-    avg=fmean(values); sd=stdev(values) if len(values)>1 else 0.0
-    if sd==0:
-        return float("inf") if avg>0 else (float("-inf") if avg<0 else 0.0)
-    return math.sqrt(len(values))*avg/sd
+    n = len(values)
+    avg = fmean(values)
+    sd = stdev(values) if n > 1 else 0.0
+    if sd == 0:
+        return float("inf") if avg > 0 else (float("-inf") if avg < 0 else 0.0)
+    return math.sqrt(n) * avg / sd
 
 
 def spa_style_test(series, *, n_bootstrap: int = 2000, block_length: int = 5, seed: int = 0) -> BootstrapMultipleTestResult:
-    rows,n=_validate_aligned(series)
-    cutoff=-math.sqrt(2.0*math.log(max(math.log(max(n,3)),1.0000001)))
-    tstats={row.variant_id:_t_stat(row.returns) for row in rows}
-    active=tuple(row for row in rows if tstats[row.variant_id]>=cutoff) or (max(rows,key=lambda r:tstats[r.variant_id]),)
-    winner=max(active,key=lambda r:tstats[r.variant_id]); observed=max(tstats[row.variant_id] for row in active)
-    means=_means(active); sds={r.variant_id:stdev(r.returns) if len(r.returns)>1 else 0.0 for r in active}; centered={r.variant_id:tuple(x-means[r.variant_id] for x in r.returns) for r in active}
-    rng=random.Random(seed); exceed=0
+    rows, n = _validate_aligned(series)
+    # Hansen-style consistent truncation: clearly inferior alternatives are omitted
+    # from the active maximum. This function is explicitly method-labelled as SPA-style.
+    cutoff = -math.sqrt(2.0 * math.log(max(math.log(max(n, 3)), 1.0000001)))
+    tstats = {row.variant_id: _t_stat(row.returns) for row in rows}
+    active = tuple(row for row in rows if tstats[row.variant_id] >= cutoff)
+    if not active:
+        active = (max(rows, key=lambda r: tstats[r.variant_id]),)
+    winner = max(active, key=lambda r: tstats[r.variant_id])
+    observed = max(tstats[row.variant_id] for row in active)
+    means = _means(active)
+    sds = {row.variant_id: stdev(row.returns) if len(row.returns) > 1 else 0.0 for row in active}
+    centered = {row.variant_id: tuple(x - means[row.variant_id] for x in row.returns) for row in active}
+    rng = random.Random(seed)
+    exceed = 0
     for _ in range(n_bootstrap):
-        idx=_circular_block_indices(n,block_length,rng); stats=[]
+        idx = _circular_block_indices(n, block_length, rng)
+        stats = []
         for row in active:
-            sd=sds[row.variant_id]; stats.append(0.0 if sd<=0 else math.sqrt(n)*fmean(centered[row.variant_id][i] for i in idx)/sd)
-        exceed += max(stats)>=observed
-    return BootstrapMultipleTestResult(best_variant_id=winner.variant_id, observed_statistic=observed, p_value=(exceed+1)/(n_bootstrap+1), n_bootstrap=n_bootstrap, block_length=block_length, method="hansen_spa_style_consistent_truncation_block_bootstrap", active_variant_count=len(active))
+            sd = sds[row.variant_id]
+            if sd <= 0:
+                stats.append(0.0)
+            else:
+                stats.append(math.sqrt(n) * fmean(centered[row.variant_id][i] for i in idx) / sd)
+        exceed += max(stats) >= observed
+    p = (exceed + 1) / (n_bootstrap + 1)
+    return BootstrapMultipleTestResult(
+        best_variant_id=winner.variant_id,
+        observed_statistic=observed,
+        p_value=p,
+        n_bootstrap=n_bootstrap,
+        block_length=block_length,
+        method="hansen_spa_style_consistent_truncation_block_bootstrap",
+        active_variant_count=len(active),
+    )
 
 
 def romano_wolf_stepdown(series, *, n_bootstrap: int = 2000, block_length: int = 5, seed: int = 0) -> StepdownResult:
-    rows,n=_validate_aligned(series); observed={r.variant_id:_t_stat(r.returns) for r in rows}; means=_means(rows); sds={r.variant_id:stdev(r.returns) if len(r.returns)>1 else 0.0 for r in rows}; centered={r.variant_id:tuple(x-means[r.variant_id] for x in r.returns) for r in rows}
-    rng=random.Random(seed); boot=[]
+    rows, n = _validate_aligned(series)
+    observed = {row.variant_id: _t_stat(row.returns) for row in rows}
+    means = _means(rows)
+    sds = {row.variant_id: stdev(row.returns) if len(row.returns) > 1 else 0.0 for row in rows}
+    centered = {row.variant_id: tuple(x - means[row.variant_id] for x in row.returns) for row in rows}
+    rng = random.Random(seed)
+    boot_stats: list[dict[str, float]] = []
     for _ in range(n_bootstrap):
-        idx=_circular_block_indices(n,block_length,rng); sample={}
-        for r in rows:
-            sd=sds[r.variant_id]; sample[r.variant_id]=0.0 if sd<=0 else math.sqrt(n)*fmean(centered[r.variant_id][i] for i in idx)/sd
-        boot.append(sample)
-    raw={vid:(1+sum(s[vid]>=observed[vid] for s in boot))/(n_bootstrap+1) for vid in observed}; ordered=sorted(observed,key=observed.get,reverse=True); adjusted={}; running=0.0
-    for pos,vid in enumerate(ordered):
-        remaining=ordered[pos:]; p=(1+sum(max(s[k] for k in remaining)>=observed[vid] for s in boot))/(n_bootstrap+1); running=max(running,p,raw[vid]); adjusted[vid]=min(1.0,running)
+        idx = _circular_block_indices(n, block_length, rng)
+        sample: dict[str, float] = {}
+        for row in rows:
+            sd = sds[row.variant_id]
+            sample[row.variant_id] = 0.0 if sd <= 0 else math.sqrt(n) * fmean(centered[row.variant_id][i] for i in idx) / sd
+        boot_stats.append(sample)
+    raw = {
+        vid: (1 + sum(sample[vid] >= observed[vid] for sample in boot_stats)) / (n_bootstrap + 1)
+        for vid in observed
+    }
+    ordered = sorted(observed, key=observed.get, reverse=True)
+    adjusted: dict[str, float] = {}
+    running = 0.0
+    for pos, vid in enumerate(ordered):
+        remaining = ordered[pos:]
+        p = (1 + sum(max(sample[k] for k in remaining) >= observed[vid] for sample in boot_stats)) / (n_bootstrap + 1)
+        running = max(running, p, raw[vid])
+        adjusted[vid] = min(1.0, running)
     return StepdownResult(raw_p_values=raw, adjusted_p_values=adjusted, n_bootstrap=n_bootstrap, block_length=block_length)
