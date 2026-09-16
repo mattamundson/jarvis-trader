@@ -6,6 +6,7 @@ from typing import Iterable
 from pydantic import BaseModel, ConfigDict, Field
 
 from morning_alpha.models import SectorSnapshot
+from morning_alpha.sectors.benchmark_policy import sector_benchmark_available
 
 SECTOR_ETFS = ("XLK", "XLF", "XLE", "XLV", "XLI", "XLY", "XLP", "XLC", "XLB", "XLU", "XLRE")
 
@@ -60,7 +61,11 @@ class SectorRotationEngine:
     version = "sector_rotation_score@0.1.0-research"
 
     def rank(self, snapshots: Iterable[SectorSnapshot]) -> list[SectorScore]:
-        rows = [row for row in snapshots if row.symbol in SECTOR_ETFS]
+        rows = [
+            row
+            for row in snapshots
+            if row.symbol in SECTOR_ETFS and sector_benchmark_available(row.symbol, as_of=row.as_of)
+        ]
         if not rows:
             return []
         as_of_values = {row.as_of for row in rows}
