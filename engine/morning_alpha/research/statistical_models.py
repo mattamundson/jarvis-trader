@@ -26,6 +26,10 @@ class MatchedEdgeObservation(BaseModel):
     control_return: float
     gross_r: float | None = None
     cost_r_per_bps: float | None = None
+    slippage_r_per_atr_fraction: float | None = None
+    delay_penalty_r: dict[str, float] = Field(default_factory=dict)
+    entry_gap_penalty_r: float | None = None
+    stop_gap_penalty_r: float | None = None
 
     @model_validator(mode="after")
     def validate_observation(self) -> "MatchedEdgeObservation":
@@ -33,10 +37,23 @@ class MatchedEdgeObservation(BaseModel):
             raise ValueError("decision_timestamp must be timezone-aware")
         if self.trading_date != self.decision_timestamp.date():
             raise ValueError("trading_date must match decision_timestamp date")
-        for field_name in ("strategy_return", "control_return", "gross_r", "cost_r_per_bps"):
+        for field_name in (
+            "strategy_return",
+            "control_return",
+            "gross_r",
+            "cost_r_per_bps",
+            "slippage_r_per_atr_fraction",
+            "entry_gap_penalty_r",
+            "stop_gap_penalty_r",
+        ):
             value = getattr(self, field_name)
             if value is not None and not math.isfinite(value):
                 raise ValueError(f"{field_name} must be finite")
+        for key, value in self.delay_penalty_r.items():
+            if not key:
+                raise ValueError("delay_penalty_r key cannot be blank")
+            if not math.isfinite(value):
+                raise ValueError("delay_penalty_r values must be finite")
         return self
 
     @property
