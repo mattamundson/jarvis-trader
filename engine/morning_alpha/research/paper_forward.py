@@ -81,12 +81,40 @@ class PaperForwardRegistry:
             raise ValueError("UNKNOWN_PAPER_SIGNAL")
         if any(row.signal_hash == signal_hash for row in self._outcomes):
             raise ValueError("DUPLICATE_PAPER_OUTCOME")
-        self._outcomes.append(PaperOutcome(signal_hash=signal_hash, realized_r=realized_r, actual_slippage_r=actual_slippage_r, filled=filled))
+        self._outcomes.append(
+            PaperOutcome(
+                signal_hash=signal_hash,
+                realized_r=realized_r,
+                actual_slippage_r=actual_slippage_r,
+                filled=filled,
+            )
+        )
 
 
-def compare_forward_to_historical(registry: PaperForwardRegistry, *, historical_expectancy_r: float, min_outcomes: int = 50) -> ForwardComparison:
+def compare_forward_to_historical(
+    registry: PaperForwardRegistry,
+    *,
+    historical_expectancy_r: float,
+    min_outcomes: int = 50,
+) -> ForwardComparison:
     outcomes = registry.outcomes
     if len(outcomes) < min_outcomes:
-        return ForwardComparison(status="insufficient_data", outcome_count=len(outcomes), historical_expectancy_r=historical_expectancy_r, paper_expectancy_r=None, expectancy_delta_r=None, fill_rate=None, average_actual_slippage_r=None)
+        return ForwardComparison(
+            status="insufficient_data",
+            outcome_count=len(outcomes),
+            historical_expectancy_r=historical_expectancy_r,
+            paper_expectancy_r=None,
+            expectancy_delta_r=None,
+            fill_rate=None,
+            average_actual_slippage_r=None,
+        )
     paper = fmean(row.realized_r for row in outcomes)
-    return ForwardComparison(status="complete", outcome_count=len(outcomes), historical_expectancy_r=historical_expectancy_r, paper_expectancy_r=paper, expectancy_delta_r=paper-historical_expectancy_r, fill_rate=sum(row.filled for row in outcomes)/len(outcomes), average_actual_slippage_r=fmean(row.actual_slippage_r for row in outcomes))
+    return ForwardComparison(
+        status="complete",
+        outcome_count=len(outcomes),
+        historical_expectancy_r=historical_expectancy_r,
+        paper_expectancy_r=paper,
+        expectancy_delta_r=paper - historical_expectancy_r,
+        fill_rate=sum(row.filled for row in outcomes) / len(outcomes),
+        average_actual_slippage_r=fmean(row.actual_slippage_r for row in outcomes),
+    )
