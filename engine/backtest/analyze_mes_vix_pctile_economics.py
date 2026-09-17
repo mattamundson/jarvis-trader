@@ -46,11 +46,15 @@ engine_root = Path(__file__).parent.parent
 if str(engine_root) not in sys.path:
     sys.path.insert(0, str(engine_root))
 
-from backtest._gate_v2_helpers import bootstrap_pf_ci_lower  # noqa: E402
+from backtest._gate_v2_helpers import (  # noqa: E402
+    bootstrap_pf_ci_lower,
+    window_quality,
+)
 from backtest._gate_v2_trade_metrics import trade_level_dsr  # noqa: E402
 from backtest.metrics import calculate_metrics  # noqa: E402
 from backtest.run_mes_trend_vix_pctile_rank1 import (  # noqa: E402
     CAPITAL,
+    COST_SWEEP_TIERS,
     FAST,
     MIN_OOS_TRADES_PER_WINDOW,
     SLOW,
@@ -64,9 +68,12 @@ from backtest.run_mes_trend_vix_pctile_rank1 import (  # noqa: E402
     _run_signals_and_backtest,
 )
 
+#: MES contract multiplier used by the runner path under analysis.
+MES_MULTIPLIER = 5.0
+
 #: Trial counts to deflate DSR against. 4 is the runner's own grid size; the rest
 #: bracket the plausible real MES-campaign trial count against the deep cache.
-TRIAL_COUNTS = (4, 9, 25, 50, 100, 200, 500)
+DSR_TRIAL_COUNTS = [4, 9, 25, 50, 100, 200, 500]
 
 #: Sign-permutation count for the empirical DSR null. Lower than the gate default
 #: (10,000) purely to bound wall-clock on a sensitivity sweep.
@@ -161,6 +168,53 @@ def _full_sample_economics(df: pd.DataFrame, vix_df: pd.DataFrame, block: tuple[
         "max_drawdown_pct": round(float(result.max_drawdown_pct) * 100, 4),
         "engine_sharpe": round(engine_sharpe, 4),
         "honest_sharpe_observed_tpy": round(honest, 4),
+        "cost_ledger_reconciliation": _cost_ledger_reconciliation(result, trades),
+    }
+
+
+def _cost_ledger_reconciliation(result, trades) -> dict:
+    """Measured decomposition of `sum(trade.pnl) - (final_capital - initial)`.
+
+    Structural facts pinned by `tests/test_backtester_cost_ledger_consistency.py`:
+      * `trade.pnl` is the raw price move; it carries NO commission and NO spread.
+      * `capital` is charged `_transaction_cost` (already 2*c*cpc, a full round trip)
+        at ENTRY and AGAIN at every EXIT  -> 4*c*cpc per closed trade.
+      * `capital` is charged the exit-side half-spread explicitly; the entry-side
+        half-spread is embedded in the fill price, but ATR-anchored stops/targets are
+        recomputed from that fill, so it does not change the realised price distance.
+    Predicted gap = 4*sum(c)*cpc  +  sum(c)*spread_ticks*tick*mult.
+    """
+    from backtest.backtester import Backtester as _B  # local import: avoid module cycle
+
+    # Match the runner's full-sample economics path, which uses the "realistic"
+    # cost-sweep commission (0.62), not config.py's default 1.42. This was the
+    # source of the second bad reconciliation attempt on 2026-09-17.
+    bt_probe = _B()
+    cpc = float(COST_SWEEP_TIERS["realistic"]["commission"])
+    spread_ticks = float(bt_probe.spread_ticks) if bt_probe.spread_enabled else 0.0
+    tick = float(bt_probe._get_tick_size("MES", MES_MULTIPLIER))
+    sum_c = int(sum(t.contracts for t in trades))
+    ledger = float(sum(t.pnl for t in trades))
+    equity = float(result.final_capital - result.initial_capital)
+    gap = ledger - equity
+    commission_4x = 4 * sum_c * cpc
+    exit_half_spread = sum_c * spread_ticks * tick * MES_MULTIPLIER
+    predicted = commission_4x + exit_half_spread
+    return {
+        "ledger_total_pnl": round(ledger, 2),
+        "equity_change": round(equity, 2),
+        "gap": round(gap, 2),
+        "sum_contracts": sum_c,
+        "commission_per_contract_config": cpc,
+        "spread_ticks_config": spread_ticks,
+        "tick_size": tick,
+        "commission_charged_to_capital_4x": round(commission_4x, 2),
+        "exit_half_spread_charged_to_capital": round(exit_half_spread, 2),
+        "predicted_gap": round(predicted, 2),
+        "residual": round(gap - predicted, 2),
+        "residual_pct_of_gap": round(100 * (gap - predicted) / gap, 3) if gap else None,
+        "true_round_trip_commission_1x": round(sum_c * cpc, 2),
+        "commission_overcharge_vs_1x": round(commission_4x - sum_c * cpc, 2),
     }
 
 
@@ -195,7 +249,7 @@ def main() -> int:
     windows_with_trades = int(sum(1 for r in oos_results if r.total_trades > 0))
 
     dsr_by_trials = {}
-    for n in TRIAL_COUNTS:
+    for n in DSR_TRIAL_COUNTS:
         dsr_by_trials[n] = round(
             float(trade_level_dsr(oos_results, n_grid_combos=n, initial_capital=CAPITAL,
                                   n_permutations=DSR_PERMUTATIONS)), 6)
@@ -238,6 +292,12 @@ def main() -> int:
                        "total_oos_trades": total_oos_trades, "p_edge": p_edge,
                        "oos_window_pfs": [round(float(r.profit_factor), 4) if math.isfinite(r.profit_factor)
                                           else str(r.profit_factor) for r in oos_results],
+                       # Measured trade counts per window. Never infer these from PF shape:
+                       # PF=inf means "no losing trades" (possible with several winners), NOT
+                       # "one trade". An earlier version of this analysis made that mistake and
+                       # published a bogus "multi-trade subset = 0.12".
+                       "oos_window_trades": [int(r.total_trades) for r in oos_results],
+                       "window_quality": window_quality(oos_results),
                        "champion_blocked_tiers": "[] (no gate) per window-IS selection"},
         "dsr_by_trial_count": {str(k): v for k, v in dsr_by_trials.items()},
         "dsr_permutations": DSR_PERMUTATIONS,

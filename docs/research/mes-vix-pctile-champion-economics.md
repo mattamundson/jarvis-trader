@@ -62,20 +62,49 @@ and meta-label variants). At 200 trials the candidate is **below the ALT DSR flo
 at 500 it is indistinguishable from noise. The recorded `dsr=0.9752` is therefore an
 **artifact of the runner's grid size**, not evidence of skill.
 
-## 4. p_edge is inflated by degenerate single-trade windows
+## 4. p_edge is carried by single-trade windows (CORRECTED 2026-09-17)
 
-Of 82 windows, 54 produced at least one trade and 32 of those had PF > 1.0 → `p_edge = 32/54 = 0.5926`.
-But **29 of those 32 profitable windows contain a single trade** (PF = `inf`).
+> **Correction.** The first version of this section reported "29 of the 32 profitable
+> windows are single-trade" and "the multi-trade subset is 3/25 = 0.12". Both numbers were
+> **wrong**: they were inferred from the sign/shape of `profit_factor` (`inf` was assumed to
+> imply a single trade), and `inf` only means *no losing trades* — it can occur with several
+> winners. The figures below are measured directly from per-window `oos_trades` via
+> `_gate_v2_helpers.window_quality`, which is now recorded in the verdict JSON and printed
+> by the runner. Old figures are retained here so the error is auditable.
 
-| subset | profitable / total | p_edge |
-|---|---|---|
-| all windows with trades | 32 / 54 | 0.5926 (the reported number) |
-| windows with a finite PF | 3 / 25 | **0.1200** |
+Measured window structure (deep cache, 82 windows, 6-month train / 1-month step):
 
-So 91% of the windows counted as "profitable" are single-trade windows. The reported
-`p_edge` is carried by windows that cannot distinguish edge from a coin flip, and the
-multi-trade subset is 0.12. This is a **metric-fragility finding** for the gate itself:
-`p_edge` treats `inf` (one winning trade) as a strong positive.
+| trades in window | 0 | 1 | 2 | 3 |
+|---|---|---|---|---|
+| windows | 28 | **47** | 5 | 2 |
+
+| quantity | value |
+|---|---|
+| windows with trades | 54 |
+| **single-trade windows** | **47 of 54 (87 %)** |
+| median trades per window | **1.0** |
+| `p_edge` (as reported) | 0.5926 (32/54) |
+| `p_edge` excluding single-trade windows | **0.7143** (5 of the 7 multi-trade windows) |
+| `p_edge` at the gate-standard floor (≥ 5 trades) | **0.0000** — *zero* windows reach 5 trades |
+| `sample_adequate_at_gate_floor` | **False** |
+
+So the real shape of this evidence is not "a decent edge diluted by noise", and it is also
+not the 0.12 first reported. It is: **a window set with almost no usable samples.** 87 % of
+traded windows contain exactly one trade, the median window contains one trade, and *not one
+window* reaches the five-trade floor the gate standard defines for a window to count
+(`MIN_OOS_TRADES_PER_WINDOW = 5`). The 0.7143 over multi-trade windows is computed from
+**7 windows** — far too few to carry a `p_edge` claim in either direction.
+
+This matters for the gate: `p_edge` is a fraction of *windows*, so a strategy whose windows
+mostly contain a single anonymous trade can move it almost arbitrarily. The companion
+`window_quality` block exists so this is visible at verdict time instead of being inferred
+after the fact from PF shapes.
+
+Why the floor is 1 and not 5: 37 runners override the gate standard down to 1, with explicit
+comments — SMA trend strategies fire only 1-3 trades per 2-month OOS window, so a 5-trade
+floor returns `INSUFFICIENT_SAMPLE` everywhere. That trade-off is deliberate; what was
+missing was any reporting of its consequence. Raising the floor is **not** the fix (it would
+fail every trend strategy); reporting the elevation is.
 
 ## 5. Economics — modest, positive, and not promotion-grade
 
@@ -87,39 +116,83 @@ Fixed params over the whole deep sample, `risk_per_trade=1%`, `$50,000` initial:
 | `block=["Crisis"]` (pre-registered) | 1.5581 | 112 | 15.327 | +1.8436 % | 4.5708 % | 0.7033 | 0.1734 |
 
 Honest Sharpe applies the observed-trades-per-year correction:
-`0.874 × sqrt(16.696/252) = 0.225`. Win rate 52.46 %, final equity $60,041.37
-(CAGR is computed from the equity curve, which is the cost-inclusive number).
+`0.874 × sqrt(16.696/252) = 0.225`. Win rate 52.46 %, final equity $60,041.37.
+CAGR is computed from the equity curve. Per §5a that curve **over-charges commission** (1.75×
+the documented fee) and remains **too low**, while the trade-ledger metrics are cost-free and
+**too high** — so read 2.5361 % as a lower bound and 2.9397 % (zero-cost) as an upper bound.
 
-### 5a. Metric-consistency finding: PF/Sharpe/total_pnl are gross of entry costs
+### 5a. Cost-ledger finding: the two bases disagree in OPPOSITE directions (CORRECTED 2026-09-17)
 
-`final_capital` and `sum(trade.pnl)` **do not reconcile**, and the gap is exactly the
-entry-side cost the trade ledger never sees:
+> **Correction.** The first version of this section explained the gap as
+> "entry commission ($349.06) + entry spread ($1,407.50)". That was **wrong** — the leg split
+> was inferred from code reading, not measured. A second attempt ("4 × commission") was right
+> about the multiple but **wrong about the rate**: it multiplied by `config.py`'s
+> `COMMISSION_PER_CONTRACT=1.42` while the runner actually executes at
+> `commission_per_contract=0.62`, inflating the prediction 2.29×. The figures below are
+> measured by instrumenting the cost hooks themselves
+> (`engine/backtest/probe_cost_charge_by_callsite.py`) and the reconciliation closes to
+> **$0.00 residual**.
 
-| quantity | value |
-|---|---|
-| `final_capital − initial_capital` | $10,041.37 |
-| `total_pnl` (= `sum(trade.pnl)`) | $11,789.49 |
-| **gap** | **$1,748.12** |
-| entry commission (`122 trades × 4.615 avg contracts × $0.62`) | $349.06 |
-| entry spread (`contracts × 2 ticks × $0.25 × 5`) | $1,407.50 |
-| **entry costs total** | **$1,756.56** (100.5 % of the gap) |
+Measured charge-by-charge decomposition of the full-sample `block=[]` run
+(122 trades, Σcontracts = 563, runner commission rate = **$0.62/contract**, not the
+configured $1.42):
 
-`backtester.py` deducts entry commission and entry spread from `capital` at entry, while
-`trade.pnl` (net of the exit-side half-spread only) is what feeds `gross_profit`,
-`gross_loss`, `total_pnl`, PF, and the Sharpe return series. Consequence: **gate
-PF/Sharpe are mildly optimistic** — they omit the entry-side half of round-trip cost.
+| charged to `capital` | amount | n calls |
+|---|---|---|
+| commission — entry (`_process_pending_entry`) | $698.12 | 122 |
+| commission — EOD close (`_check_eod_close`) | $256.68 | 59 |
+| commission — stop exit (`_check_stop_exit`) | $141.36 | 22 |
+| commission — target exits (`_check_targets_exit`) | $63.24 | 27 |
+| commission — run-level exits | $236.84 | 41 |
+| **commission subtotal** | **$1,396.24** | 271 (= 122 entries + 149 exit legs) |
+| exit spread (`_exit_spread_cost`, all paths) | **$351.88** | 149 |
+| **total** | **$1,748.12** | |
+| ledger `sum(trade.pnl)` − equity change | $1,748.12 | |
+| residual | **$0.00 (0.000 %)** | |
 
-CAGR impact, same run:
+Every exit path charges commission — entry pays `2 × Σc × cpc` ($698.12) and the four exit
+paths together pay the same again ($698.12) — so the 4× is uniform, not path-specific. That
+was the one thing the earlier code-reading guess got right; the *rate* was the error.
+
+So the reconciliation is exact, and the mechanism is:
+
+- `_transaction_cost()` is **already** a round trip (`2 × contracts × cpc`, per its own
+  docstring and PR #733), but it is charged **at entry** *and* **again at every exit leg** →
+  `4 × Σcontracts × cpc` = 4.0000 × $349.06 = $1,396.24. Pinned by test.
+- `trade.pnl` carries **no commission and no spread at all** — it is the raw price move.
+  The entry-side half-spread does move the fill, but ATR-anchored stops/targets are
+  recomputed from that fill, so it cancels in the realised price distance; the exit-side
+  half-spread is an explicit `capital`-only deduction. Pinned by test.
+- `spread_cost_total` reports **both** half-spreads even though only the exit side is
+  realised on this path (measured $351.88 charged vs $703.75 reported).
+
+**The two metric bases are wrong in opposite directions:**
+
+| basis | what it includes | direction |
+|---|---|---|
+| `trade.pnl` → PF, win rate, `engine_sharpe`, `total_pnl` | **no commission, no spread** | **optimistic** |
+| `final_capital` → CAGR, max drawdown | commission at **1.75×** the documented real fee | **pessimistic** |
+
+Commission multiple against the *documented* fee in `config.py` ($1.42 round trip):
+charged $1,396.24 vs correct $799.46 = **1.7465×**.
+
+So the honest CAGR is bracketed, not known:
 
 | basis | CAGR |
 |---|---|
-| equity curve (cost-inclusive, used above) | **2.5361 %** |
-| `(initial + total_pnl) / initial` (entry costs omitted) | 2.9397 % |
+| `total_pnl`-derived (zero cost — upper bound) | 2.9397 % |
+| equity curve (current, commission 1.7465×) — lower bound | **2.5361 %** |
+| corrected cost model (linear estimate, ±0.16 pp) | ≈ **2.70 %** |
 
-So quoting CAGR from `total_pnl` would overstate the edge by **0.40 pp/yr (~16 % relative)**.
-This is a research-path defect worth fixing, but it is **not** the kind of change this
-loop should make unilaterally: it changes every PF/Sharpe the gate has ever recorded, so
-it belongs in its own reviewed PR. Recorded here as an open item.
+The corrected figure is an *estimate*: it moves the $596.78 overcharge linearly
+(596.78 / 50,000 / 7.307y ≈ 0.163 pp/yr) and is not a re-run. **The direction of the finding
+is what matters: gate PF/Sharpe are optimistic, gate CAGR/DD are pessimistic, and no single
+number in the verdict is a correct net-of-cost economics figure.**
+
+This remains **research-path evidence only**. Fixing the ledger changes every PF/Sharpe/CAGR
+the gate has ever recorded, so it belongs in its own reviewed PR with the executable
+contract already shipped here
+(`tests/test_backtester_cost_ledger_consistency.py`, 5 pins + 2 strict-xfail targets).
 
 Reading of this:
 
