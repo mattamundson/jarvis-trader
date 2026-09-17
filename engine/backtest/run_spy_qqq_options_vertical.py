@@ -285,9 +285,13 @@ def replay_trades(
     closes_by_date = closes.groupby(closes.index.normalize()).last()
     vix_series = None
     if not vix.empty:
+        from backtest.trend_signals import _daily_date_index
+
         vix_daily = vix.copy()
-        vix_daily.index = pd.to_datetime(vix_daily.index).normalize()
-        vix_series = vix_daily.reindex(sig.index.normalize(), method="ffill")
+        # Align tz conventions before the ffill reindex (pandas >= 3.0 raises on a
+        # mixed-tz comparison: tz-aware bar index vs naive daily VIX index).
+        vix_daily.index = _daily_date_index(vix_daily.index)
+        vix_series = vix_daily.reindex(_daily_date_index(sig.index), method="ffill")
         vix_series.index = sig.index
 
     trades: list[OptTrade] = []
