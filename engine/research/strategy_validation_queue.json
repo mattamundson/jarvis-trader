@@ -120,18 +120,21 @@
       "symbol": "MES",
       "source": "engine/backtest/candidate_registry.json",
       "priority": 4,
-      "state": "ready_to_backtest",
-      "next_step": "run the preregistered local walk-forward runner only if data cache is present; register a new id if params differ",
+      "state": "rejected",
+      "next_step": "terminal after PR #863: committed deep-cache economics and DSR sensitivity falsified the preregistered Crisis-block hypothesis; only a new separately registered no-gate or metric-repair candidate may continue",
       "blockers": [
-        "no verdict artifact populated yet",
-        "paused/inert until local rank1 run succeeds"
+        "PR #863 evidence: champion blocked_tiers=[] rather than preregistered [\"Crisis\"]",
+        "pre-registered Crisis block degraded PF/CAGR/honest Sharpe versus no-gate baseline",
+        "DSR collapses below ALT floor at campaign-level trial count (n_trials >= 200)",
+        "reported p_edge is dominated by single-trade infinite-PF windows",
+        "entry-side costs are omitted from gate PF/Sharpe and require a separate reviewed metric PR"
       ],
       "promotion_gates": {
         "hypothesis": true,
         "data_contract": true,
-        "backtest": false,
+        "backtest": true,
         "fees_slippage": false,
-        "walk_forward": false,
+        "walk_forward": true,
         "parameter_stability": false,
         "regime_split": false,
         "monte_carlo_path_risk": false,

@@ -45,10 +45,10 @@ def test_next_actionable_items_skip_terminal_failures_and_blocked_references() -
     actionable = next_actionable_items(queue)
     ids = [item["id"] for item in actionable]
     assert "MGC_trend_rv_filter_rank1" not in ids
-    assert "MES_sma_trend_vix_pctile_blockCrisis_v1" in ids
+    assert "MES_sma_trend_vix_pctile_blockCrisis_v1" not in ids
     assert "SPY_stc_trend_meta_rank1" not in ids
     assert "repo_reference_patterns" not in ids
-    assert ids == sorted(ids, key=lambda item_id: next(i["priority"] for i in actionable if i["id"] == item_id))
+    assert ids == []
 
 
 def test_promotion_ready_is_false_for_committed_queue() -> None:

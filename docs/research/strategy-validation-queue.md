@@ -39,9 +39,11 @@ A candidate cannot become `promotion_candidate` unless all gates are true. A que
 
 ## Current recommendation
 
-`MGC_trend_rv_filter_rank1` now has a research-only forward-evidence data-contract scaffold at `engine/research/reference_evidence/mgc_trend_rv_filter_rank1_forward_contract.json`. MGC remains halted and the queue item is blocked until a fresh scoped backlog/runner can collect zero-exposure, candidate-tagged forward evidence or link a fresh non-archived gate-v2 artifact. The archived historical verdict is context only, not promotion evidence.
+`MGC_trend_rv_filter_rank1` has a research-only forward-evidence data-contract scaffold at `engine/research/reference_evidence/mgc_trend_rv_filter_rank1_forward_contract.json`, but it remains blocked: MGC is halted, no fresh scoped runner/backlog exists, and no candidate-tagged zero-exposure forward ledger exists. The archived historical verdict is context only, not promotion evidence.
 
-The next actionable research item is `MES_sma_trend_vix_pctile_blockCrisis_v1`, but only if the local preregistered runner and cache already exist. If the winning blocked-tier set differs from the preregistered `Crisis` tier, register a new id instead of mutating the frozen candidate.
+`MES_sma_trend_vix_pctile_blockCrisis_v1` is now terminal in this queue. PR #863 produced the preregistered deep-cache evidence and economics audit: the run's champion was `blocked_tiers=[]`, not the frozen `["Crisis"]` hypothesis; the Crisis block degraded PF/CAGR/honest Sharpe; DSR falls below the ALT floor at campaign-level trial counts; and p_edge is dominated by single-trade infinite-PF windows. Do not mutate this frozen candidate. Any follow-on must be a separate metric-repair PR or a newly registered no-gate candidate.
+
+There are no non-terminal actionable items in the committed queue. A loop that reads this state should write a final status report and disable `Jarvis-Strategy-Validation-Loop` by readback rather than restarting repo-mining.
 
 ## Loop behavior
 
