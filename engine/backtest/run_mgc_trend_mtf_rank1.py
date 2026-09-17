@@ -200,15 +200,20 @@ def build_daily_regime(df: pd.DataFrame) -> pd.Series:
     daily_regime_bull_shifted = daily_regime_bull.shift(1)
 
     # Build a date -> bool mapping (normalize to date for the lookup)
-    # daily_regime_bull_shifted has a DatetimeIndex; normalize to midnight
+    # daily_regime_bull_shifted has a DatetimeIndex; normalize to midnight.
+    # Both sides go through _daily_date_index so a tz-aware bar index (deep cache
+    # timestamps carry +00:00 offsets) cannot raise a pandas-3 mixed-tz comparison
+    # against the naive date key. See trend_signals._daily_date_index.
+    from backtest.trend_signals import _daily_date_index
+
     date_to_regime = pd.Series(
         daily_regime_bull_shifted.values,
-        index=daily_regime_bull_shifted.index.normalize(),
+        index=_daily_date_index(daily_regime_bull_shifted.index),
     )
 
     # Map each 1h bar's date onto the daily regime (forward-fill NaN days,
     # e.g. weekends -- safe because weekend bars are absent from futures data)
-    bar_dates = df.index.normalize()
+    bar_dates = _daily_date_index(df.index)
     mapped = date_to_regime.reindex(bar_dates, method=None)
     mapped.index = df.index
 
