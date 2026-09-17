@@ -49,6 +49,29 @@ GATE_DSR: float = 0.10
 #: Deflated Sharpe ratio floor — ALT path (trend strategies on daily bars).
 GATE_DSR_ALT: float = 0.30
 
+#: Fraction of OOS windows with PF > 1.0 required on the ALT path.
+#:
+#: NOT YET ENFORCED BY ANY RUNNER — this constant exists so the ALT path can be
+#: aligned with the criterion that is already documented as the *promotion*
+#: requirement, `engine/CLAUDE.md` "Flip-to-active criteria" item 1:
+#:
+#:     p_positive_edge >= 0.6 on a fresh rolling walk-forward run (ALT path)
+#:
+#: The ALT conjunction currently inlined across the runners is
+#: `dsr >= GATE_DSR_ALT and wfo in {MODERATE,STRONG} and
+#:  fixed_params_min_pf >= 1.20 and cost_passes and mc_95th_dd <= GATE_MC_DD_ALT`
+#: — it does NOT reference `p_edge`, so a verdict can print "PASS via alt" with a
+#: p_edge below the documented 0.6 activation bar. Observed 2026-09-17:
+#: `MES_trend_vix_pctile_rank1` reported PASS via alt at p_edge = 0.5926, and 29 of
+#: its 32 "profitable" windows were single-trade windows (PF = inf), so the
+#: multi-trade subset was 0.12.
+#:
+#: Wiring this into the ~65 inline ALT conjunctions is a repo-wide behavioural
+#: change to every future verdict; it is deliberately left unwired pending review.
+#: See `docs/research/alt-p-edge-gate-proposal-2026-09-17.md` for the impact
+#: analysis: of 9 recorded ALT-path PASS verdicts, exactly 1 would flip.
+GATE_P_EDGE_ALT: float = 0.60
+
 #: Bootstrap win-rate CI lower-bound floor (Init 2C). Complements DSR — which a
 #: few large outlier wins can carry — by binding on win RELIABILITY. SHADOW /
 #: NOT YET ENFORCED: the runners record ``win_rate_ci_lower`` into gate_v2_metrics,
