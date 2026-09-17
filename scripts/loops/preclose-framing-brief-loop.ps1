@@ -32,6 +32,11 @@
   heartbeat-check.ps1 -LoopName preclose-framing-brief (see
   register-preclose-framing-brief-loop.ps1).
 
+  Every ERROR exit also appends "<UTC timestamp>`t<reason>" to
+  docs/loop-reports/preclose-framing-brief.log so the failure reason survives
+  after the Task Scheduler run ends (the .heartbeat file alone only records
+  ERROR, not why). Same fix as morning-brief-loop.ps1 (2026-07-09).
+
 .PARAMETER DryRun
   Passed straight through to preclose_framing_brief.py --dry-run: generates and
   saves the brief but never posts to Discord. Use during the rollout gating
@@ -57,6 +62,16 @@ $venvPython = Join-Path $RepoRoot "engine\.venv\Scripts\python.exe"
 function Stop-WithError {
     param([string] $Reason)
     Write-LoopHeartbeat -LoopName $loopName -Status "ERROR"
+    if ($script:LoopReportDir) {
+        try {
+            $failLog = Join-Path $script:LoopReportDir "preclose-framing-brief.log"
+            $stampUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+            Add-Content -Path $failLog -Value "$stampUtc`t$Reason" -Encoding UTF8
+        }
+        catch {
+            Write-Warning "failure log write failed (non-fatal): $($_.Exception.Message)"
+        }
+    }
     Send-LoopNotification -Message "[!!] jarvis preclose-framing-brief FAILED - $Reason ($stamp)" | Out-Null
     Write-Warning "[preclose-framing-brief-loop] ERROR - $Reason"
     exit 3
