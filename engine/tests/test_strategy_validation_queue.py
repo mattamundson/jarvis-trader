@@ -44,7 +44,7 @@ def test_next_actionable_items_skip_terminal_failures_and_blocked_references() -
     queue = load_queue(QUEUE)
     actionable = next_actionable_items(queue)
     ids = [item["id"] for item in actionable]
-    assert "MGC_trend_rv_filter_rank1" in ids
+    assert "MGC_trend_rv_filter_rank1" not in ids
     assert "MES_sma_trend_vix_pctile_blockCrisis_v1" in ids
     assert "SPY_stc_trend_meta_rank1" not in ids
     assert "repo_reference_patterns" not in ids

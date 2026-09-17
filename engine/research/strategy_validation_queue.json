@@ -43,15 +43,16 @@
       "symbol": "MGC",
       "source": "engine/backtest/candidate_registry.json",
       "priority": 1,
-      "state": "needs_data_contract",
-      "next_step": "write forward evidence data contract and link fresh gate-v2 artifact before any new run",
+      "state": "blocked",
+      "next_step": "blocked after data-contract scaffold; collect zero-exposure candidate-tagged forward evidence only after a fresh scoped backlog/runner exists",
       "blockers": [
         "MGC currently halted in active-instrument table",
-        "needs fresh honest gate-v2/pass-forward evidence"
+        "data-contract scaffold exists but no fresh non-archived gate-v2 artifact is linked",
+        "no candidate_id-tagged zero-exposure forward ledger exists"
       ],
       "promotion_gates": {
         "hypothesis": true,
-        "data_contract": false,
+        "data_contract": true,
         "backtest": true,
         "fees_slippage": true,
         "walk_forward": false,
@@ -61,7 +62,8 @@
         "paper_shadow": false,
         "human_approval": false
       },
-      "may_route_orders": false
+      "may_route_orders": false,
+      "evidence_contract": "engine/research/reference_evidence/mgc_trend_rv_filter_rank1_forward_contract.json"
     },
     {
       "id": "MGC_trend_rank4",
