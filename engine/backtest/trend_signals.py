@@ -58,6 +58,31 @@ def _wilder_atr(high: pd.Series, low: pd.Series, close: pd.Series, period: int =
     return tr.ewm(alpha=1 / period, min_periods=period, adjust=False).mean()
 
 
+def _daily_date_index(index) -> pd.DatetimeIndex:
+    """Return a tz-naive, midnight-normalized ``DatetimeIndex``.
+
+    The daily VIX series (naive exchange dates) and the intraday bar index must
+    share one tz convention before any comparison or ffill ``reindex``.
+
+    pandas >= 3.0 raises ``TypeError: Cannot compare dtypes datetime64[us, UTC]
+    and datetime64[s]`` on a mixed-tz comparison instead of silently comparing
+    unequal. Caches whose timestamps carry a UTC offset — e.g.
+    ``MES_2019-05-05_2026-08-26_1h.csv`` — therefore aborted *every* VIX-gated
+    walk-forward window, so the whole VIX-gated research family produced no
+    OOS results and no verdict.
+
+    Tz-aware indexes are converted to UTC before the tz is dropped, so the
+    calendar date stays the UTC date. That is identical to the historical
+    behaviour on caches whose timestamps were stored without an offset, and it
+    introduces no look-ahead: the caller still ffills a daily close forward onto
+    later bars only.
+    """
+    idx = pd.DatetimeIndex(index)
+    if idx.tz is not None:
+        idx = idx.tz_convert("UTC").tz_localize(None)
+    return idx.normalize()
+
+
 def generate_sma_trend_signals(
     df: pd.DataFrame,
     fast: int = 60,
@@ -114,8 +139,10 @@ def generate_sma_trend_signals(
     _vix_tier_series: pd.Series | None = None
     if vix_df is not None and not vix_df.empty:
         vix_daily = vix_df["close"].copy()
-        vix_daily.index = pd.to_datetime(vix_daily.index).normalize()
-        bar_dates = df.index.normalize()
+        # Align tz conventions before the ffill reindex (pandas >= 3.0 raises on
+        # mixed-tz comparisons — see _daily_date_index).
+        vix_daily.index = _daily_date_index(vix_daily.index)
+        bar_dates = _daily_date_index(df.index)
         _vix_series = vix_daily.reindex(bar_dates, method="ffill")
         _vix_series.index = df.index
 
