@@ -265,6 +265,7 @@ from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_
 from backtest._gate_v2_helpers import (  # noqa: E402
     classify_wfo_consistency as _classify_wfo_consistency,
 )
+from backtest._gate_v2_helpers import window_quality as _window_quality  # noqa: E402
 
 
 def _run_fixed_params_sweep(
@@ -424,6 +425,7 @@ def _compute_gate_v2(
         "n_oos_windows": len(oos_results),
         "n_oos_windows_with_trades": len(oos_pfs),
         "total_oos_trades": all_trades,
+        "window_quality": _window_quality(oos_results),
     }
 
 
@@ -560,6 +562,20 @@ def run_wfo() -> dict:
         f"{gate['n_oos_windows']} total"
     )
     print(f"  Total OOS trades     = {gate['total_oos_trades']}")
+    _wq = gate.get("window_quality", {})
+    if _wq:
+        print("  --- window quality (audit only; no effect on pass/fail) ---")
+        print(
+            f"  p_edge               = {_wq['p_edge']:.4f} (as reported) | "
+            f"excl. single-trade = {_wq['p_edge_excl_single_trade']:.4f} | "
+            f"at gate floor({_wq['gate_min_trades']}) = {_wq['p_edge_at_gate_floor']:.4f}"
+        )
+        print(
+            f"  windows              = {_wq['n_windows_with_trades']} with trades "
+            f"({_wq['n_windows_single_trade']} single-trade) | "
+            f"median trades/window = {_wq['median_trades_per_window']} | "
+            f"gate-floor adequate = {_wq['sample_adequate_at_gate_floor']}"
+        )
     print(f"{'=' * 70}")
 
     verdicts_dir = engine_root / "data" / "gate_v2_verdicts"
@@ -586,6 +602,7 @@ def run_wfo() -> dict:
         "gate_v2_metrics": {
             "pf_ci_lower": gate["pf_ci_lower"],
             "p_edge": gate["p_edge"],
+            "window_quality": gate["window_quality"],
             "mc_95th_dd": gate["mc_95th_dd"],
             "mc_95th_dd_pct": gate["mc_95th_dd_pct"],
             "dsr": gate["dsr"],

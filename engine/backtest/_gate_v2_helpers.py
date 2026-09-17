@@ -49,6 +49,33 @@ GATE_DSR: float = 0.10
 #: Deflated Sharpe ratio floor — ALT path (trend strategies on daily bars).
 GATE_DSR_ALT: float = 0.30
 
+#: Fraction of OOS windows with PF > 1.0 required on the ALT path.
+#:
+#: NOT YET ENFORCED BY ANY RUNNER — this constant exists so the ALT path can be
+#: aligned with the criterion that is already documented as the *promotion*
+#: requirement, `engine/CLAUDE.md` "Flip-to-active criteria" item 1:
+#:
+#:     p_positive_edge >= 0.6 on a fresh rolling walk-forward run (ALT path)
+#:
+#: The ALT conjunction currently inlined across the runners is
+#: `dsr >= GATE_DSR_ALT and wfo in {MODERATE,STRONG} and
+#:  fixed_params_min_pf >= 1.20 and cost_passes and mc_95th_dd <= GATE_MC_DD_ALT`
+#: — it does NOT reference `p_edge`, so a verdict can print "PASS via alt" with a
+#: p_edge below the documented 0.6 activation bar. Observed 2026-09-17:
+#: `MES_trend_vix_pctile_rank1` reported PASS via alt at p_edge = 0.5926, while 47 of its
+#: 54 traded windows held exactly one trade, the median window held one trade, and ZERO
+#: windows reached the gate-standard 5-trade floor (sample adequacy FALSE) — i.e. the
+#: p_edge numerator was a fraction of windows that cannot support an edge claim.
+#: (An earlier note here said "29 of 32 profitable windows were single-trade / 0.12
+#: excluding them"; that was inferred from PF=inf and is WRONG — inf only means no losing
+#: trades. Corrected to direct per-window trade counts. See PR #866.)
+#:
+#: Wiring this into the ~65 inline ALT conjunctions is a repo-wide behavioural
+#: change to every future verdict; it is deliberately left unwired pending review.
+#: See `docs/research/alt-p-edge-gate-proposal-2026-09-17.md` for the impact
+#: analysis: of 9 recorded ALT-path PASS verdicts, exactly 1 would flip.
+GATE_P_EDGE_ALT: float = 0.60
+
 #: Bootstrap win-rate CI lower-bound floor (Init 2C). Complements DSR — which a
 #: few large outlier wins can carry — by binding on win RELIABILITY. SHADOW /
 #: NOT YET ENFORCED: the runners record ``win_rate_ci_lower`` into gate_v2_metrics,
@@ -446,3 +473,62 @@ def classify_wfo_consistency(oos_pfs: list[float]) -> str:
     if pct >= 0.55:
         return "MODERATE"
     return "WEAK"
+
+
+def window_quality(oos_results, gate_min_trades: int = MIN_OOS_TRADES_PER_WINDOW) -> dict:
+    """Honest window-quality decomposition of an OOS window set.
+
+    **ADDITIVE — this function changes no pass/fail decision.**
+
+    Why it exists (2026-09-17): 37 runners override the gate-standard
+    ``MIN_OOS_TRADES_PER_WINDOW`` (5) down to 1, deliberately and with comments —
+    trend strategies generate only 1-3 trades per 2-month OOS window, so a 5-trade
+    floor yields ``INSUFFICIENT_SAMPLE`` everywhere. The consequence is that the
+    reported ``p_edge`` is computed over windows that cannot distinguish edge from a
+    coin flip: for ``MES_sma_trend_vix_pctile_blockCrisis_v1`` the verdict reported
+    ``p_edge = 0.5926`` while 47 of its 54 traded windows held exactly one trade.
+
+    Rather than raise the floor (which would silently fail every trend strategy), this
+    reports the elevation in the open. For the candidate above on the deep cache the
+    measured structure was: 82 windows, 54 with trades, of which **47 held exactly one
+    trade**, median 1.0 trades/window, and **zero windows reached the 5-trade gate floor** —
+    so ``p_edge_at_gate_floor`` is 0.0 and the sample-adequacy check is ``False``. The
+    reported ``p_edge`` of 0.5926 is therefore a fraction of windows that cannot support an
+    edge claim in either direction.
+
+    - ``p_edge`` — the runner's existing definition (unchanged, for comparability)
+    - ``p_edge_excl_single_trade`` — over windows with >= 2 trades
+    - ``p_edge_at_gate_floor`` — over windows meeting the gate-standard floor
+    - ``median_trades_per_window`` / ``sample_adequate_at_gate_floor`` — the same
+      adequacy question the gate already asks via ``MIN_OOS_TRADES_PER_WINDOW``
+    - ``n_windows_single_trade`` — the count of degenerate "profitable" windows
+
+    A verdict whose ``p_edge`` sits near a threshold while
+    ``p_edge_excl_single_trade`` collapses toward 0 is carried by degenerate windows,
+    not by edge.
+    """
+
+    def _p_edge_of(rows, min_trades: int = 1) -> float:
+        pfs = [r.profit_factor for r in rows if getattr(r, "total_trades", 0) >= min_trades]
+        if not pfs:
+            return 0.0
+        return sum(1 for pf in pfs if pf > 1.0) / len(pfs)
+
+    windows = list(oos_results or [])
+    with_trades = [r for r in windows if getattr(r, "total_trades", 0) >= 1]
+    single = [r for r in with_trades if r.total_trades == 1]
+    trades = [int(r.total_trades) for r in with_trades]
+    median_tpw = float(np.median(trades)) if trades else 0.0
+
+    return {
+        "n_windows": len(windows),
+        "n_windows_with_trades": len(with_trades),
+        "n_windows_single_trade": len(single),
+        "gate_min_trades": int(gate_min_trades),
+        "n_windows_at_gate_floor": sum(1 for r in with_trades if r.total_trades >= gate_min_trades),
+        "median_trades_per_window": round(median_tpw, 3),
+        "sample_adequate_at_gate_floor": bool(median_tpw >= gate_min_trades),
+        "p_edge": round(_p_edge_of(windows), 4),
+        "p_edge_excl_single_trade": round(_p_edge_of(windows, 2), 4),
+        "p_edge_at_gate_floor": round(_p_edge_of(windows, gate_min_trades), 4),
+    }
