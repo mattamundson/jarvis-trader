@@ -20,6 +20,7 @@ files need to change.
 
 from __future__ import annotations
 
+import hashlib
 import os
 from pathlib import Path
 
@@ -442,6 +443,61 @@ def _find_latest_cache(
         return chosen
 
     return latest
+
+
+def cache_provenance(path) -> dict:
+    """Content-addressed provenance for a cache file, for recording inside a verdict.
+
+    Why this exists (2026-09-17 audit, `docs/research/verdict-artifact-audit-2026-09-17.md`):
+    **zero of 76** verdict artifacts recorded which cache they ran on. Provenance existed only as
+    a filename convention, and that convention is demonstrably unreliable — 8 duplicate-content
+    groups (19 files) file the same bytes under `-deep-`, `-pre-deep-`, and
+    `-shallow-contaminated-` labels. So no "validated on deep data" claim could be independently
+    verified from its artifact.
+
+    Recording this dict in the verdict makes provenance checkable with one line instead of a
+    re-run. Filename is recorded too, but the hash is what makes it tamper-evident.
+
+    Deliberately dependency-light (no pandas): it must work on the raw file even if a loader
+    later changes, and it must be cheap to test.
+    """
+    p = Path(path)
+    if not p.exists():
+        return {"error": "cache_not_found", "cache_file": p.name}
+
+    raw = p.read_bytes()
+    # Timestamps: first and last data row's first CSV field (no pandas needed).
+    lines = raw.decode("utf-8", errors="replace").splitlines()
+    data = [ln for ln in lines[1:] if ln.strip()] if lines else []
+    first_ts = data[0].split(",")[0].strip() if data else ""
+    last_ts = data[-1].split(",")[0].strip() if data else ""
+
+    prov = {
+        "cache_file": p.name,
+        "cache_rows": len(data),
+        "cache_span_first": first_ts,
+        "cache_span_last": last_ts,
+        "cache_bytes": len(raw),
+        "cache_sha256": hashlib.sha256(raw).hexdigest(),
+    }
+    # Flag non-deep provenance on a MEASURABLE basis, not a filename token: the repo names its
+    # deep caches by span (e.g. MES_2019-05-05_2026-08-26_1h.csv), so a `-deep-` token check
+    # misfires on exactly the cache that matters. The standing rule is that a shallow cache
+    # (~2.3y) does NOT certify edge, so span is the thing worth recording.
+    try:
+        from datetime import datetime
+
+        first = datetime.fromisoformat(first_ts)
+        last = datetime.fromisoformat(last_ts)
+        span_years = (last - first).days / 365.25
+        prov["cache_span_years"] = round(span_years, 3)
+        if span_years < 5.0:
+            prov["provenance_note"] = (
+                f"span {span_years:.2f}y < 5.0y: does not meet the deep-data standard"
+            )
+    except (TypeError, ValueError):
+        prov["provenance_note"] = "span unparseable from cache timestamps"
+    return prov
 
 
 def bootstrap_pf_ci_lower(oos_pfs: list[float], n: int = 5000) -> float:

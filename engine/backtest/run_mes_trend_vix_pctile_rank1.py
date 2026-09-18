@@ -119,11 +119,15 @@ def _load_vix_data(start: str = "2022-01-01") -> pd.DataFrame:
 
 
 def _load_mes_data(data_dir: Path) -> pd.DataFrame:
-    from backtest._gate_v2_helpers import _find_latest_cache
+    from backtest._gate_v2_helpers import _find_latest_cache, cache_provenance
 
     data_file = _find_latest_cache(data_dir, "MES")
     print(f"[MES] Selected {data_file.name}")
     df = pd.read_csv(data_file)
+    # Record content-addressed provenance on the frame so any runner can drop it into its
+    # verdict with one line. Verdict provenance was unverifiable across all 76 artifacts
+    # before this (see docs/research/verdict-artifact-audit-2026-09-17.md).
+    df.attrs["cache_provenance"] = cache_provenance(data_file)
     df.columns = [c.lower() for c in df.columns]
     ts_col = "timestamp" if "timestamp" in df.columns else "datetime"
     df[ts_col] = pd.to_datetime(df[ts_col])
@@ -584,6 +588,10 @@ def run_wfo() -> dict:
 
     verdict_doc = {
         "symbol": SYMBOL,
+        # Which cache produced this verdict, content-addressed. Added 2026-09-17 after the
+        # audit found 0/76 verdicts recorded provenance; filename labels alone proved
+        # unreliable (8 duplicate-content groups with conflicting labels).
+        "cache_provenance": df.attrs.get("cache_provenance", {}),
         "family": "trend_vix_pctile",
         "rank": 1,
         "verdict": gate["verdict"],
