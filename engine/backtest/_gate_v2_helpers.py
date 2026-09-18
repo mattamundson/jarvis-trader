@@ -21,6 +21,7 @@ files need to change.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 from pathlib import Path
 
@@ -531,6 +532,72 @@ def inject_cache_provenance(verdict_doc: dict, data_path=None, df=None) -> dict:
     except Exception as exc:  # pragma: no cover - never block a verdict write
         verdict_doc["cache_provenance"] = {"error": "provenance_failed", "detail": str(exc)[:200]}
     return verdict_doc
+
+
+def campaign_trial_count(symbol: str, verdict_root=None) -> dict:
+    """LOWER BOUND on the true campaign trial count, from DISTINCT recorded verdict artifacts.
+
+    Why (2026-09-17 audit): runners pass their own grid size as `n_trials`, so recorded DSR is
+    deflated against 1-64 trials while the real MES campaign count is in the hundreds. DSR is a
+    cliff, and the ALT floor is 0.30: measured on the current candidate, 0.977 at 4 trials →
+    0.2885 at 200 → 0.0505 at 500. So every recorded DSR understates the deflation.
+
+    Derived from the artifact store rather than picked, and **deduped by content hash** because the
+    audit found the same artifact filed under up to four names (8 duplicate-content groups) — a
+    naive sum of recorded grid sizes double-counts and would overstate the campaign.
+
+    Two honest caveats, both reported in the result rather than buried:
+      * this is a LOWER bound — experiments never written to a verdict file cannot be counted, and
+        hidden trials can only make deflation STRICTER, never looser;
+      * a grid combo count is not the same thing as an independent hypothesis count. It is the
+        best-measurable proxy from the record, not a claim of exactness.
+
+    Use it to REPORT DSR at the campaign count alongside the runner's own grid count. Do not
+    silently replace the grid-count DSR: comparability with historical verdicts depends on both
+    being visible.
+    """
+    import hashlib as _hashlib
+
+    root = Path(verdict_root) if verdict_root is not None else (
+        Path(__file__).resolve().parent.parent / "data" / "gate_v2_verdicts"
+    )
+    sym = (symbol or "").upper()
+    seen: dict[str, int] = {}
+    files_scanned = 0
+    files_matching = 0
+
+    if root.exists():
+        for f in sorted(root.rglob("*.json")):
+            try:
+                raw = f.read_bytes()
+                d = json.loads(raw.decode("utf-8", errors="replace"))
+            except (OSError, ValueError):
+                continue
+            if not isinstance(d, dict):
+                continue
+            files_scanned += 1
+            if str(d.get("symbol", "")).upper() != sym:
+                continue
+            files_matching += 1
+            wc = d.get("wfo_config")
+            wc = wc if isinstance(wc, dict) else {}
+            tc = wc.get("n_combos") or wc.get("grid_combos") or wc.get("n_trials")
+            if not tc:
+                continue
+            digest = _hashlib.sha256(raw).hexdigest()
+            # Same bytes = same run filed under another name -> count the grid once.
+            seen.setdefault(digest, int(tc))
+
+    return {
+        "symbol": sym,
+        "n_trials_lower_bound": sum(seen.values()),
+        "n_distinct_artifacts_counted": len(seen),
+        "n_files_matching_symbol": files_matching,
+        "n_files_scanned": files_scanned,
+        "basis": "sum of wfo_config grid-combo counts over DISTINCT (content-hashed) verdict artifacts",
+        "caveat": "lower bound: unlogged experiments are uncountable and can only increase deflation",
+        "verdict_root": str(root),
+    }
 
 
 def bootstrap_pf_ci_lower(oos_pfs: list[float], n: int = 5000) -> float:
