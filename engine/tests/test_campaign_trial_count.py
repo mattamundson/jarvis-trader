@@ -66,6 +66,34 @@ def test_reports_its_basis_and_caveat(tmp_path):
     assert "lower bound" in r["caveat"]
 
 
+def test_deflation_report_shows_both_bases(tmp_path):
+    """The report must carry BOTH counts, or new verdicts become incomparable with old ones."""
+    from backtest._gate_v2_helpers import deflation_report
+
+    _fixture(tmp_path)
+    d = deflation_report("MES", n_grid_combos=4, verdict_root=tmp_path)
+    assert d["n_trials_grid"] == 4
+    assert d["n_trials_campaign"] == 15
+    assert d["enforcement"].startswith("report-only")
+    assert "grid-combo" in d["campaign_basis"]
+    assert "lower bound" in d["campaign_caveat"]
+
+
+def test_deflation_report_on_real_store_orders_the_bases():
+    """Against the real artifact store, the campaign count must exceed the runner grid count.
+
+    This is the whole point: the live vix_pctile verdict deflates against 4 while the MES campaign
+    is in the hundreds. If this ever inverts, the derivation is wrong.
+    """
+    from backtest._gate_v2_helpers import deflation_report
+
+    d = deflation_report("MES", n_grid_combos=4)
+    if d["n_distinct_artifacts_counted"] == 0:
+        import pytest as _pytest
+        _pytest.skip("verdict store not present in this checkout")
+    assert d["n_trials_campaign"] > d["n_trials_grid"]
+
+
 def test_naive_sum_would_overstate(tmp_path):
     """Guard against the failure mode the dedupe prevents."""
     _fixture(tmp_path)

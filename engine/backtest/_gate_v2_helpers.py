@@ -600,6 +600,29 @@ def campaign_trial_count(symbol: str, verdict_root=None) -> dict:
     }
 
 
+def deflation_report(symbol: str, n_grid_combos: int, verdict_root=None) -> dict:
+    """Both deflation bases for a verdict, so the honest one is visible next to the historical one.
+
+    The runner's own `n_grid_combos` is what historical verdicts deflated against, so it is kept for
+    comparability. `n_trials_campaign` is the lower bound derived from the artifact store. Reporting
+    both is deliberate: replacing the grid count outright would silently make new verdicts
+    incomparable with old ones, and not reporting the campaign count is what let a `p_edge`-based
+    PASS survive on 4-trial deflation.
+
+    **Report-only.** No threshold reads these keys; the pass/fail decision is computed elsewhere and
+    unchanged.
+    """
+    c = campaign_trial_count(symbol, verdict_root=verdict_root)
+    return {
+        "n_trials_grid": int(n_grid_combos),
+        "n_trials_campaign": int(c["n_trials_lower_bound"]),
+        "campaign_basis": c["basis"],
+        "campaign_caveat": c["caveat"],
+        "n_distinct_artifacts_counted": c["n_distinct_artifacts_counted"],
+        "enforcement": "report-only: does not alter the pass/fail decision",
+    }
+
+
 def bootstrap_pf_ci_lower(oos_pfs: list[float], n: int = 5000) -> float:
     """Bootstrap 5th-percentile of mean PF distribution; inf-cap baked in."""
     # Cap inf/-inf before bootstrapping — np.percentile returns NaN via inf-inf interpolation

@@ -377,6 +377,25 @@ def _compute_gate_v2(
     # Sharpes (a 1-2 trade window's giant Sharpe deflated to a fake ~1.0 and
     # auto-passed both gate floors). See _gate_v2_trade_metrics for the why.
     dsr = trade_level_dsr(oos_results, n_grid_combos=n_grid_combos, initial_capital=CAPITAL)
+    # Honest deflation, reported BOTH ways (2026-09-17). The grid count keeps comparability with
+    # historical verdicts; the campaign count is derived from the artifact store and is the honest
+    # one (MES = 214 trials vs the 4 this runner used, and 0.2885 < the 0.30 ALT floor at that
+    # count). Report-only: it does not change the pass/fail decision.
+    from backtest._gate_v2_helpers import deflation_report
+
+    deflation = deflation_report(SYMBOL, n_grid_combos)
+    dsr_campaign = trade_level_dsr(
+        oos_results,
+        n_grid_combos=max(1, deflation["n_trials_campaign"]),
+        initial_capital=CAPITAL,
+    )
+    deflation["dsr_campaign"] = round(float(dsr_campaign), 6)
+    deflation["dsr_grid"] = round(float(dsr), 6)
+    print(
+        f"  deflation            = grid n={deflation['n_trials_grid']} dsr={deflation['dsr_grid']:.4f}"
+        f"  |  campaign n={deflation['n_trials_campaign']} dsr={deflation['dsr_campaign']:.4f}"
+        f"  (alt floor {GATE_DSR_ALT})"
+    )
 
     wfo_consistency = _classify_wfo_consistency(oos_pfs)
     fixed_params_min_pf = fixed_params_metrics.get("fixed_params_min_pf", 0.0)
@@ -421,6 +440,8 @@ def _compute_gate_v2(
         "mc_95th_dd": round(mc_95th_dd, 6),
         "mc_95th_dd_pct": round(mc_95th_dd * 100, 4),
         "dsr": round(dsr, 6),
+        # Both deflation bases (additive, report-only — no threshold reads this).
+        "deflation": deflation,
         "wfo_consistency": wfo_consistency,
         "fixed_params_min_pf": fixed_params_min_pf,
         "fixed_params_mean_pf": fixed_params_metrics.get("fixed_params_mean_pf", 0.0),
@@ -614,6 +635,7 @@ def run_wfo() -> dict:
             "mc_95th_dd": gate["mc_95th_dd"],
             "mc_95th_dd_pct": gate["mc_95th_dd_pct"],
             "dsr": gate["dsr"],
+            "deflation": gate["deflation"],
             "wfo_consistency": gate["wfo_consistency"],
             "fixed_params_min_pf": gate["fixed_params_min_pf"],
             "fixed_params_mean_pf": gate["fixed_params_mean_pf"],
