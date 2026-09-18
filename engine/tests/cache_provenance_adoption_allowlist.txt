@@ -1,6 +1,19 @@
-# Cache-provenance adoption backlog (debt ledger, NOT permanent exemption).
-# One module per line. Remove a line when the module calls inject_cache_provenance().
-# Managed by tests/test_cache_provenance_adoption.py. Created 2026-09-17.
+# Cache-provenance adoption ledger (managed by tests/test_cache_provenance_adoption.py).
+# Created 2026-09-17; split into sections 2026-09-18 so the backlog number is honest.
+# The guard requires: adopted, OR listed below. Lines starting '#' are ignored.
+#
+# --- VERDICT WRITERS pending adoption (the real backlog) ---
+run_discovery_adx_fixed.py
+verdict_lifecycle.py
+#
+# --- NOT verdict writers: reference the verdict store but never write into it ---
+# CLASSIFICATION IS HEURISTIC: a file listed here may still write JSON to a path
+# supplied at runtime. run_discovery_adx_fixed.py was moved to WRITERS on direct
+# evidence (frame read + json.dumps write). Treat this split as a triage aid, not
+# ground truth.
+# These are analysis/report/audit tools. They cannot 'record cache provenance' because
+# they do not produce verdict artifacts. Kept listed so the guard's ghost check stays honest,
+# but excluded from the adoption target.
 activate_mes_vix_pctile_candidate.py
 analyze_mes_vix_pctile_economics.py
 audit_verdict_artifacts.py
@@ -15,4 +28,3 @@ roi_readiness.py
 run_discovery_adx_fixed.py
 scoreboard.py
 show_verdict_history.py
-verdict_lifecycle.py
