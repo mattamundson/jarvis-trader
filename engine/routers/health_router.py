@@ -698,6 +698,14 @@ DATA_INTEGRITY_STALE_AFTER_S = 900.0
 # (not a third, divergent number) so /health and the readiness gate agree.
 MARKET_DATA_STALE_AFTER_S = DATA_INTEGRITY_STALE_AFTER_S
 
+# Bar-age ceiling for the persisted-bar check below. The 900s threshold above
+# gates *tick* freshness in the Redis fabric; hourly bars are legitimately
+# written up to ~60 minutes after the hour closes (observed: the 11:00 bar
+# landing at 11:45). 3 hours tolerates one missed fetch without paging, and
+# still catches the failure class this exists for by two orders of magnitude
+# (2026-09-18: bars froze for 38 hours with /health reading fresh).
+MARKET_DATA_BAR_STALE_AFTER_H = 3.0
+
 
 @router.get("/system/data-integrity")
 async def get_data_integrity():
@@ -916,6 +924,39 @@ async def _health_inner() -> dict:
         # Can't prove it's stale -- and this signal is defense-in-depth on top
         # of ibgateway_alive/tv_mcp_healthy/llm_path_healthy, not the only
         # liveness signal /health has. Fail open here, not closed.
+        pass
+
+    # Independent check on the table the UI actually renders from. The Redis
+    # path above fails OPEN (a missing `market:latest:` entry, or a lookup that
+    # throws, both yield stale=False) and it measures the fabric, not the bars.
+    # 2026-09-18: the engine served 38 hours with a dead IB data leg (clientId
+    # held by an orphaned session) -- /health read market_data_fresh=true and
+    # market_data_stale_symbols=[] the entire time while the dashboard showed
+    # the 2026-09-16T16:00 close as the live price. This check asks the one
+    # question that cannot be talked around: how old is the newest bar?
+    try:
+        from backtest.signals import DO_NOT_TRADE_SYMBOLS, TREND_INSTRUMENTS
+        from data.bars_repository import bars_freshness
+
+        bar_symbols = sorted(TREND_INSTRUMENTS - DO_NOT_TRADE_SYMBOLS)
+        if bar_symbols:
+            stale_bars = sorted(
+                sym
+                for sym, v in bars_freshness(
+                    bar_symbols, interval="1h", max_age_hours=MARKET_DATA_BAR_STALE_AFTER_H
+                ).items()
+                if v.get("stale")
+            )
+            if stale_bars:
+                market_data_stale_symbols = sorted(
+                    set(market_data_stale_symbols) | set(stale_bars)
+                )
+                market_data_fresh = False
+    except Exception:
+        # Same reasoning as above: an unreadable bar table is not proof of
+        # staleness. It IS proof we could not verify -- the readiness script
+        # (scripts/jarvis_premarket_readiness.py) reports that case explicitly,
+        # which /health deliberately does not claim to cover.
         pass
 
     # A2 (branch 1353bdb): a broker that reports connected but whose RPC probes

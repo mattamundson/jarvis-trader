@@ -366,3 +366,63 @@ def latest_bar(
     finally:
         if conn is not None:
             conn.close()
+
+
+def bars_freshness(
+    symbols: list[str] | tuple[str, ...],
+    interval: str = "1h",
+    max_age_hours: float = 3.0,
+    db_path: Optional[Path] = None,
+) -> dict[str, dict]:
+    """Age of each symbol's most recent PERSISTED bar, for health gating.
+
+    Why this exists (2026-09-18): the engine served 38 hours with a dead data
+    leg (the IB data client could not connect -- its clientId was held by an
+    orphaned session, "Error 326: client id is already in use"). For that whole
+    window `/health` reported ``market_data_fresh: true`` with an empty
+    ``market_data_stale_symbols``, and the dashboard rendered the last good
+    close (2026-09-16T16:00) as the live price, complete with indicator scores.
+
+    The pre-existing check reads Redis ``market:latest:{symbol}`` within 900s and
+    fails OPEN: a missing entry or a thrown lookup yields ``stale=False``. This
+    function is deliberately boring instead -- it reads the same
+    ``market_data_bars`` table the UI renders from and asks "how old is the
+    newest row?". A bar that old cannot be shown as current by accident.
+
+    Age-based rather than calendar-based on purpose: no timezone/rollover edge
+    cases, and the failure it guards against is measured in hours/days.
+
+    Returns ``{SYMBOL: {"present", "ts", "age_hours", "stale"}}``. A symbol with
+    no bar at all is ``present=False, stale=True`` -- unlike the Redis variant,
+    "nothing at all" is precisely the condition worth paging on here, because
+    this table is the render source.
+    """
+    import datetime as _dt
+
+    db = db_path or _DEFAULT_DB_PATH
+    now = _dt.datetime.now(_dt.timezone.utc)
+    out: dict[str, dict] = {}
+
+    for symbol in symbols:
+        sym = symbol.upper()
+        entry: dict = {"present": False, "ts": None, "age_hours": None, "stale": True}
+        try:
+            row = latest_bar(sym, interval, db_path=db)
+            if row:
+                ts_raw = row.get("timestamp")
+                ts = _dt.datetime.fromisoformat(str(ts_raw))
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=_dt.timezone.utc)
+                age_h = (now - ts).total_seconds() / 3600.0
+                entry = {
+                    "present": True,
+                    "ts": str(ts_raw),
+                    "age_hours": round(age_h, 2),
+                    "stale": age_h > max_age_hours,
+                }
+        except Exception as exc:  # never let a freshness probe break /health
+            logger.warning("[bars_repo] bars_freshness %s failed: %s", sym, exc)
+            entry = {"present": False, "ts": None, "age_hours": None, "stale": True,
+                     "error": type(exc).__name__}
+        out[sym] = entry
+    return out
