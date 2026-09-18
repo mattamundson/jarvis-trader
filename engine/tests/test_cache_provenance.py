@@ -81,6 +81,37 @@ def test_unparseable_timestamps_are_reported_not_raised(tmp_path):
     assert prov["provenance_note"] == "span unparseable from cache timestamps"
 
 
+def test_inject_cache_provenance_from_path(tmp_path):
+    """The injector is what each runner calls; verify both input modes."""
+    from backtest._gate_v2_helpers import inject_cache_provenance
+
+    p = _write(tmp_path, "timestamp,open,high,low,close\n2021-01-04 09:00:00+00:00,1,1,1,1\n")
+    doc = inject_cache_provenance({"symbol": "X"}, p)
+    assert doc["cache_provenance"]["cache_file"] == "a.csv" or doc["cache_provenance"]["cache_file"].endswith(".csv")
+    assert doc["cache_provenance"]["cache_rows"] == 1
+    assert doc["symbol"] == "X"  # untouched
+
+
+def test_inject_cache_provenance_prefers_df_attrs():
+    import pandas as pd
+
+    from backtest._gate_v2_helpers import inject_cache_provenance
+
+    df = pd.DataFrame({"close": [1.0]})
+    df.attrs["cache_provenance"] = {"cache_file": "from_attrs.csv", "cache_sha256": "deadbeef"}
+    doc = inject_cache_provenance({}, df=df)
+    assert doc["cache_provenance"]["cache_file"] == "from_attrs.csv"
+
+
+def test_inject_cache_provenance_never_raises_on_bad_input():
+    from backtest._gate_v2_helpers import inject_cache_provenance
+
+    doc = inject_cache_provenance({})  # no df, no path
+    assert doc["cache_provenance"]["error"] == "provenance_unavailable"
+    doc2 = inject_cache_provenance({}, 12345)  # bogus path type
+    assert "cache_provenance" in doc2
+
+
 @pytest.mark.skipif(not (CACHE_DIR / DEEP_CACHE_NAME).exists(), reason="deep cache not present")
 def test_deep_cache_provenance_lock():
     """Provenance lock on the certified MES deep cache."""

@@ -727,6 +727,10 @@ def run_wfo() -> dict:
         },
     }
 
+    # Provenance: record which cache produced this verdict (2026-09-17 audit found 0/76
+    # artifacts recorded it). `data_file` is the cache this run loaded.
+    from backtest._gate_v2_helpers import inject_cache_provenance  # local, matches file style
+    verdict_doc = inject_cache_provenance(verdict_doc, data_file)
     verdict_file.write_text(json.dumps(verdict_doc, indent=2, default=str))
     print(f"\n[MGC-RV-R1] Verdict written -> {verdict_file}")
 
