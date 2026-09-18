@@ -500,6 +500,39 @@ def cache_provenance(path) -> dict:
     return prov
 
 
+def inject_cache_provenance(verdict_doc: dict, data_path=None, df=None) -> dict:
+    """Attach cache provenance to a verdict doc. Adoption is one line per runner.
+
+    The 2026-09-17 audit found 74 modules write verdict files inline, each with its own loader,
+    so there is no single hook. This is the shared step every runner can call instead of
+    reinventing the shape:
+
+        from backtest._gate_v2_helpers import inject_cache_provenance
+        ...
+        verdict_doc = inject_cache_provenance(verdict_doc, data_file)   # or df=df
+
+    Prefers `df.attrs['cache_provenance']` when a frame is supplied (set by loaders that already
+    adopt it), else hashes `data_path` directly. Returns the same dict for chaining. Never raises:
+    a verdict must still be written if provenance cannot be computed — the failure is *recorded*,
+    not swallowed.
+    """
+    try:
+        if df is not None:
+            prov = dict(getattr(df, "attrs", {}).get("cache_provenance") or {})
+        elif data_path is not None:
+            prov = cache_provenance(data_path)
+        else:
+            prov = {}
+        if not prov:
+            prov = {"error": "provenance_unavailable", "note": "neither df.attrs nor data_path provided"}
+        verdict_doc["cache_provenance"] = prov
+        print(f"[PROV] cache={prov.get('cache_file')} rows={prov.get('cache_rows')} "
+              f"span_years={prov.get('cache_span_years')} sha256={str(prov.get('cache_sha256'))[:12]}")
+    except Exception as exc:  # pragma: no cover - never block a verdict write
+        verdict_doc["cache_provenance"] = {"error": "provenance_failed", "detail": str(exc)[:200]}
+    return verdict_doc
+
+
 def bootstrap_pf_ci_lower(oos_pfs: list[float], n: int = 5000) -> float:
     """Bootstrap 5th-percentile of mean PF distribution; inf-cap baked in."""
     # Cap inf/-inf before bootstrapping — np.percentile returns NaN via inf-inf interpolation
