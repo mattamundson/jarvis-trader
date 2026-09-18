@@ -136,7 +136,10 @@ def load_deep_cache(symbol: str, smoke: bool = False, cache_override: str | None
             f"Deep cache not found: {path}. Fetch deep data first "
             f"(see jarvis-deep-validation skill)."
         )
-    df = pd.read_csv(path)
+    df = pd.read_csv(path)    # Cache provenance (2026-09-17 audit: 0/76 verdicts recorded which cache they ran on).
+    from backtest._gate_v2_helpers import cache_provenance as _cp  # noqa: E402
+    df.attrs["cache_provenance"] = _cp(path)
+
     df.columns = [c.lower() for c in df.columns]
     ts_col = "timestamp" if "timestamp" in df.columns else "datetime"
     ts = pd.to_datetime(df[ts_col])
@@ -569,6 +572,9 @@ def main() -> int:
     if args.out:
         out_path = Path(args.out)
         out_path.parent.mkdir(parents=True, exist_ok=True)
+        # Record the provenance carried on the frame (see loader).
+        from backtest._gate_v2_helpers import inject_cache_provenance as _ip  # noqa: E402
+        doc = _ip(doc, df=df)
         out_path.write_text(json.dumps(doc, indent=2, default=str))
         print(f"\nWrote {len(rows)} rows -> {out_path}")
     else:

@@ -97,7 +97,10 @@ def load_data(symbol: str) -> pd.DataFrame:
         cand = Path(f"backtest/cache/{symbol}_2015-01-01_2026-08-17_1d.csv")
     if not cand.exists():
         raise FileNotFoundError(f"cache not found: {cand}")
-    df = pd.read_csv(cand)
+    df = pd.read_csv(cand)    # Cache provenance (2026-09-17 audit: 0/76 verdicts recorded which cache they ran on).
+    from backtest._gate_v2_helpers import cache_provenance as _cp  # noqa: E402
+    df.attrs["cache_provenance"] = _cp(cand)
+
     df.columns = [c.lower() for c in df.columns]
     ts_col = "timestamp" if "timestamp" in df.columns else "datetime"
     ts = pd.to_datetime(df[ts_col])
@@ -242,6 +245,9 @@ def main() -> int:
 
     VERDICTS_DIR.mkdir(parents=True, exist_ok=True)
     out = VERDICTS_DIR / f"{SYMBOL}_sma_cert_{FAST}_{SLOW}_{ATR_TRAIL_MULT}.json"
+    # Record the provenance carried on the frame (see loader).
+    from backtest._gate_v2_helpers import inject_cache_provenance as _ip  # noqa: E402
+    metrics = _ip(metrics, df=df)
     out.write_text(json.dumps(metrics, indent=2))
     # allow_nan=False: any missed NaN/Infinity raises instead of writing
     # invalid strict JSON that downstream consumers may reject.
