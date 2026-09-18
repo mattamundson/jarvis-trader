@@ -1,26 +1,16 @@
-"""Cost-ledger consistency for the intraday `Backtester`.
+"""Cost-ledger contract for the intraday `Backtester` — post-fix (reading A).
 
-Pins the exact structural findings from the 2026-09-17 MES economics audit
-(`docs/research/mes-vix-pctile-champion-economics.md` §5) so the state of the
-ledger is *measured*, never inferred:
+History: the pre-fix version pinned five *current-behaviour* cases documenting a defect — `capital`
+was charged commission at entry AND at every exit (`_transaction_cost` itself being a round trip, so
+4× per contract), while `trade.pnl` carried no commission and no spread at all. That made the
+trade-ledger metrics (PF, win rate, engine Sharpe, `total_pnl`) optimistic and the equity-curve
+metrics (CAGR, drawdown) pessimistic, simultaneously. Those pins were deleted with the fix, as
+designed, so the defect cannot quietly return.
 
-1. `capital` is charged commission at ENTRY (`_process_pending_entry` returns
-   `capital_used = _transaction_cost(...)`) and AGAIN at every EXIT
-   (`capital_change += pnl - _transaction_cost(...) - _exit_spread_cost(...)`).
-   `_transaction_cost` is itself already a round trip (`2 * contracts * cpc`).
-   Net: capital pays **4 × contracts × commission_per_contract** per closed
-   trade against a true round-trip of `1 × 1.42` (config describes
-   COMMISSION_PER_CONTRACT=1.42 as the *round-trip* CME fee).
-
-2. `trade.pnl` carries **no** commission and **no** spread — it is the raw
-   price move × contracts × multiplier. So every trade-ledger-derived metric
-   (profit_factor, win_rate, engine_sharpe, total_pnl, gross_profit/loss) is
-   gross of all costs, while `final_capital`/CAGR/drawdown are net.
-
-These tests are the executable spec for the current behaviour. When the ledger
-is fixed, the `test_current_*` cases are *expected to fail* and must be
-replaced by the `test_target_*` contract (kept below, marked xfail until then)
-in the same PR — so a fix cannot land silently.
+Decided 2026-09-18: `COMMISSION_PER_CONTRACT` (1.42) is the **round trip** (reading A). A contract is
+charged it once. Costs are attributed to trades at the end of `run()`, proportionally to contracts —
+costs are charged per contract, so the allocation is faithful and reconciliation is exact by
+construction rather than by four matching exit-path edits.
 """
 
 from __future__ import annotations
@@ -35,7 +25,7 @@ import pytest
 
 from backtest.backtester import Backtester
 
-COMM = 1.25  # $/contract — arbitrary; chosen so multiples are unambiguous
+COMM = 1.25  # $/contract round trip — arbitrary, chosen so multiples are unambiguous
 MULT = 5.0  # MES multiplier
 TICK = 0.25
 
@@ -61,10 +51,10 @@ def _stop_out_fixture() -> pd.DataFrame:
     return df
 
 
-def _run(spread_ticks: float = 0.0, contracts: int = 1):
+def _run(spread_ticks: float = 0.0, contracts: int = 1, commission: float = COMM):
     bt = Backtester(
         initial_capital=10_000.0,
-        commission_per_contract=COMM,
+        commission_per_contract=commission,
         slippage_ticks=0.0,
         spread_ticks=spread_ticks,
         fixed_contracts=contracts,
@@ -75,75 +65,72 @@ def _run(spread_ticks: float = 0.0, contracts: int = 1):
 
 
 # --------------------------------------------------------------------------- #
-# Current behaviour (pinned)
+# The contract
 # --------------------------------------------------------------------------- #
 
-def test_current_trade_pnl_is_gross_of_all_costs():
-    res = _run(spread_ticks=1.0)
+def test_ledger_reconciles_to_equity():
+    """The whole point: sum(trade.pnl) must equal final_capital - initial_capital."""
+    for spread in (0.0, 1.0):
+        for contracts in (1, 3):
+            res = _run(spread_ticks=spread, contracts=contracts)
+            assert res.total_pnl == pytest.approx(
+                res.final_capital - res.initial_capital, abs=1e-6
+            ), f"ledger != equity at spread={spread} contracts={contracts}"
+
+
+def test_capital_pays_exactly_one_round_trip_per_contract():
+    """Reading A: COMM is the round trip, charged ONCE per contract."""
+    for contracts in (1, 2, 3):
+        res = _run(spread_ticks=0.0, contracts=contracts)
+        (t,) = res.trades
+        raw_move = -1.0 * MULT * contracts
+        commission_paid = raw_move - (res.final_capital - res.initial_capital)
+        assert commission_paid == pytest.approx(contracts * COMM), (
+            f"expected {contracts}x{COMM} once, got {commission_paid}"
+        )
+        assert t.contracts == contracts
+
+
+def test_trade_pnl_is_net_of_cost():
+    """Trade-ledger metrics must not be cost-free any more."""
+    res = _run(spread_ticks=1.0, contracts=2)
     (t,) = res.trades
-    # raw move: 1 contract * (99 - 100) * 5 = -5.0 — no commission, no spread
-    assert t.pnl == pytest.approx(-1.0 * MULT * 1)
+    raw_move = -1.0 * MULT * 2
+    assert t.pnl < raw_move, "pnl should include cost, not be the raw price move"
+    assert t.pnl == pytest.approx(res.final_capital - res.initial_capital, abs=1e-6)
 
 
-def test_current_capital_pays_commission_four_times_per_contract():
-    res = _run(spread_ticks=0.0)
-    (t,) = res.trades
-    equity_change = res.final_capital - res.initial_capital
-    price_move = t.pnl
-    commission_paid = price_move - equity_change  # only cost enabled
-    # entry: 2*c*COMM ; exit: 2*c*COMM  →  4*c*COMM
-    assert commission_paid == pytest.approx(4 * t.contracts * COMM)
+def test_spread_cost_total_equals_what_was_charged():
+    no_spread = _run(spread_ticks=0.0)
+    spread = _run(spread_ticks=1.0)
+    charged = no_spread.final_capital - spread.final_capital
+    assert spread.spread_cost_total == pytest.approx(charged), (
+        f"reported {spread.spread_cost_total} vs charged {charged}"
+    )
 
 
-@pytest.mark.parametrize("contracts", [1, 3])
-def test_current_ledger_equity_gap_equals_two_round_trips(contracts):
-    res = _run(spread_ticks=0.0, contracts=contracts)
-    gap = res.total_pnl - (res.final_capital - res.initial_capital)
-    one_round_trip = 2 * contracts * COMM
-    assert gap == pytest.approx(2 * one_round_trip)
-
-
-def test_current_trade_pnl_carries_no_spread_on_either_side():
-    """Spread is invisible to trade.pnl on BOTH sides.
-
-    Entry-side half-spread worsens the fill price (100.00 -> 100.25), but the stop and
-    targets are then recomputed from that fill (stop 99.00 -> 99.25), so an ATR-defined
-    stop-out loses exactly the same price distance whether or not spread is on. Exit-side
-    half-spread is an explicit deduction from `capital` only. Net: `trade.pnl` is
-    spread-invariant; `capital` pays 2 * half_spread per closed trade.
-    """
+def test_entry_side_spread_cancels_in_realised_distance():
+    """Entry half-spread shifts the fill AND the ATR-anchored stop, so the distance is unchanged."""
     no_spread = _run(spread_ticks=0.0)
     spread = _run(spread_ticks=1.0)
     (t0,), (t1,) = no_spread.trades, spread.trades
-    # fills moved by exactly one half-spread each...
     assert t1.entry_price - t0.entry_price == pytest.approx(TICK)
     assert t1.exit_price - t0.exit_price == pytest.approx(TICK)
-    # ...but the ledger does not see it
-    assert t1.pnl == pytest.approx(t0.pnl)
-    # capital pays only the exit-side half-spread beyond price move on THIS fixture:
-    # entry-side spread shifted the fill AND the ATR-anchored stop by the same +TICK, so
-    # the realised price distance is unchanged; only the explicit exit deduction remains.
-    exit_side = TICK * 1.0 * MULT * t1.contracts
-    assert (no_spread.final_capital - spread.final_capital) == pytest.approx(exit_side)
-    # run-level reporting field counts BOTH sides regardless — a second inconsistency:
-    # spread_cost_total overstates realised spread cost when stops are ATR-anchored.
-    assert spread.spread_cost_total == pytest.approx(2 * exit_side)
+    # The realised distance is identical and BOTH runs pay the same commission, so the only
+    # difference in net pnl is the exit-side spread. (A first version of this assertion also added
+    # COMM; the revert-on-failure guard caught it before it shipped.)
+    assert (t0.pnl - t1.pnl) == pytest.approx(TICK * MULT)
 
 
-# --------------------------------------------------------------------------- #
-# Target contract — flips on when the ledger is fixed
-# --------------------------------------------------------------------------- #
-
-@pytest.mark.xfail(strict=True, reason="ledger fix not yet applied; see economics report §5")
-def test_target_trade_pnl_reconciles_to_equity():
-    res = _run(spread_ticks=1.0, contracts=2)
-    assert res.total_pnl == pytest.approx(res.final_capital - res.initial_capital, abs=1e-6)
-
-
-@pytest.mark.xfail(strict=True, reason="ledger fix not yet applied; see economics report §5")
-def test_target_capital_pays_exactly_one_round_trip_commission():
-    res = _run(spread_ticks=0.0, contracts=1)
+def test_commission_disabled_means_no_commission_charge():
+    res = _run(spread_ticks=0.0, contracts=1, commission=0.0)
     (t,) = res.trades
-    price_move = -1.0 * MULT * t.contracts
-    commission_paid = price_move - (res.final_capital - res.initial_capital)
-    assert commission_paid == pytest.approx(1 * t.contracts * COMM)
+    assert t.pnl == pytest.approx(-1.0 * MULT)
+    assert res.final_capital - res.initial_capital == pytest.approx(t.pnl)
+
+
+def test_commission_scales_linearly_with_rate():
+    cheap = _run(spread_ticks=0.0, contracts=2, commission=0.5)
+    dear = _run(spread_ticks=0.0, contracts=2, commission=2.0)
+    delta = cheap.final_capital - dear.final_capital
+    assert delta == pytest.approx(2 * (2.0 - 0.5))
