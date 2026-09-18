@@ -120,23 +120,49 @@
       "symbol": "MES",
       "source": "engine/backtest/candidate_registry.json",
       "priority": 4,
-      "state": "ready_to_backtest",
-      "next_step": "run the preregistered local walk-forward runner only if data cache is present; register a new id if params differ",
+      "state": "rejected",
+      "next_step": "do not route and do not mutate the frozen params; reopen only under a NEW candidate id with a fresh honest gate-v2 PASS",
       "blockers": [
-        "no verdict artifact populated yet",
-        "paused/inert until local rank1 run succeeds"
+        "preregistered Crisis-tier block falsified on the deep cache: blocking nothing won the 4-combo grid (PF 1.6478 vs 1.4936 for ['Crisis'])",
+        "nominal ALT PASS applies to the no-block champion, not to the preregistered variant",
+        "campaign-deflated DSR 0.1937 (210 trials, 24 distinct artifacts) is below the 0.30 ALT floor",
+        "sample inadequate at the gate floor: 47 of 82 OOS windows fired exactly one trade; sample_adequate_at_gate_floor=false"
       ],
       "promotion_gates": {
         "hypothesis": true,
         "data_contract": true,
-        "backtest": false,
-        "fees_slippage": false,
+        "backtest": true,
+        "fees_slippage": true,
         "walk_forward": false,
         "parameter_stability": false,
         "regime_split": false,
         "monte_carlo_path_risk": false,
         "paper_shadow": false,
         "human_approval": false
+      },
+      "resolution": {
+        "resolved_at": "2026-09-18",
+        "outcome": "rejected",
+        "verdict_artifact": "engine/data/gate_v2_verdicts/MES_trend_vix_pctile_rank1.json",
+        "verdict_snapshot": "docs/research/mes-vix-pctile-rank1-verdict-snapshot-2026-09-18.json",
+        "verdict_snapshot_sha256": "a27ffe8390e02b6cf08037286db0c653e3ba96450aeb54d493ac41fa9b8bccea",
+        "verdict_snapshot_sha256_note": "sha256 of the LF-normalized bytes (git stores this file eol=lf; the Windows working tree is CRLF under core.autocrlf=true)",
+        "verdict_doc": "docs/research/mes-vix-pctile-blockcrisis-verdict-2026-09-18.md",
+        "runner": "engine/backtest/run_mes_trend_vix_pctile_rank1.py",
+        "cache_sha256": "e26631c012b128284e61526dad78e7d39a3c180634dad7398a7dd8cc225f83fe",
+        "cache_span_years": 7.307,
+        "champion_blocked_tiers": [],
+        "preregistered_blocked_tiers": ["Crisis"],
+        "measured": {
+          "pf_no_block": 1.6478,
+          "pf_preregistered_crisis": 1.4936,
+          "pf_ci_lower": 2.2532,
+          "p_edge": 0.5926,
+          "dsr_grid": 0.9688,
+          "dsr_campaign": 0.1937,
+          "n_trials_campaign": 210
+        },
+        "note": "Runner verdict is PASS via alt for the no-block champion only; deflation is report-only in the runner, so the artifact does not encode this rejection. Frozen params were NOT mutated (activation protocol requires a new id when the champion tier set differs)."
       },
       "may_route_orders": false
     },
