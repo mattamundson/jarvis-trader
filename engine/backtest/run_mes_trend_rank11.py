@@ -436,6 +436,12 @@ def _compute_gate_v2(
     pf_ci_lower = trade_level_pf_ci_lower(oos_results)
     p_edge = trade_level_p_edge(oos_results)
 
+    # Honest p_edge decomposition (2026-09-18). Additive and report-only -- no threshold reads it.
+    # The gate permits 1-trade OOS windows (min_oos_trades=1 here), so p_edge can be carried by
+    # windows with no room to be wrong. This measures that rather than inferring it from PF shape.
+    from backtest._gate_v2_helpers import window_quality as _window_quality
+    window_quality_metrics = _window_quality(oos_results)
+
     # Trade-level risk metrics (correct). mc_95th_dd is a real permutation Monte
     # Carlo on the concatenated OOS trade list; dsr is the Deflated Sharpe from the
     # actual per-trade return series. The legacy window-level DD is retained under
@@ -567,6 +573,7 @@ def _compute_gate_v2(
         # Detailed metrics
         "pf_ci_lower": round(pf_ci_lower, 4),
         "p_edge": round(p_edge, 4),
+        "window_quality": window_quality_metrics,
         "mc_95th_dd": round(mc_95th_dd, 6),
         "mc_95th_dd_pct": round(mc_95th_dd * 100, 4),
         "mc_95th_dd_window_legacy": round(mc_95th_dd_window_legacy, 6),
@@ -848,6 +855,7 @@ def run_wfo(sota_hardening: bool = False) -> dict:
         "gate_v2_metrics": {
             "pf_ci_lower": gate["pf_ci_lower"],
             "p_edge": gate["p_edge"],
+            "window_quality": gate.get("window_quality"),
             "mc_95th_dd": gate["mc_95th_dd"],
             "mc_95th_dd_pct": gate["mc_95th_dd_pct"],
             "mc_95th_dd_window_legacy": gate["mc_95th_dd_window_legacy"],
