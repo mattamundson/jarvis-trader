@@ -151,7 +151,10 @@ def _find_data_file() -> Path | None:
 
 
 def _load_data(data_file: Path) -> pd.DataFrame:
-    df = pd.read_csv(data_file)
+    df = pd.read_csv(data_file)    # Cache provenance (2026-09-17 audit: 0/76 verdicts recorded which cache they ran on).
+    from backtest._gate_v2_helpers import cache_provenance as _cp  # noqa: E402
+    df.attrs["cache_provenance"] = _cp(data_file)
+
     df.columns = [c.lower() for c in df.columns]
     ts_col = "timestamp" if "timestamp" in df.columns else "datetime"
     df[ts_col] = pd.to_datetime(df[ts_col], utc=True)
@@ -725,6 +728,9 @@ def main() -> None:
         if verdict:
             fname = f"MGC_trend_{variant}.json"
             out_path = verdicts_dir / fname
+            # Record the provenance carried on the frame (see loader).
+            from backtest._gate_v2_helpers import inject_cache_provenance as _ip  # noqa: E402
+            verdict = _ip(verdict, df=df)
             out_path.write_text(json.dumps(verdict, indent=2, default=str))
             print(f"[{SYMBOL}/{variant}] Verdict written -> {out_path}")
 
