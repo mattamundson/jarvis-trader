@@ -443,6 +443,24 @@ def _compute_gate_v2(
     # for the gate decision. See _gate_v2_trade_metrics for the rationale.
     mc_95th_dd = trade_level_mc_95th_dd(oos_results, initial_capital=CAPITAL)
     dsr = trade_level_dsr(oos_results, n_grid_combos=n_grid_combos, initial_capital=CAPITAL)
+    # Honest deflation, reported BOTH ways (2026-09-18). The grid count keeps comparability with
+    # every earlier verdict; the campaign count is what the promotion question actually asks.
+    # Additive and report-only -- no threshold reads this.
+    from backtest._gate_v2_helpers import deflation_report
+    deflation = deflation_report(SYMBOL, n_grid_combos)
+    deflation["dsr_grid"] = round(float(dsr), 6)
+    try:
+        deflation["dsr_campaign"] = round(
+            float(trade_level_dsr(
+                oos_results,
+                n_grid_combos=max(1, deflation["n_trials_campaign"]),
+                initial_capital=CAPITAL,
+            )),
+            6,
+        )
+    except Exception as exc:  # report the failure rather than silently omitting the number
+        deflation["dsr_campaign"] = None
+        deflation["dsr_campaign_error"] = f"{type(exc).__name__}: {exc}"
     win_rate_ci_lower = trade_level_win_rate_ci_lower(oos_results)  # Init 2C (shadow; not gated)
     mc_95th_dd_window_legacy = float(np.percentile(oos_dds, 95.0)) if oos_dds else 1.0
 
@@ -553,6 +571,7 @@ def _compute_gate_v2(
         "mc_95th_dd_pct": round(mc_95th_dd * 100, 4),
         "mc_95th_dd_window_legacy": round(mc_95th_dd_window_legacy, 6),
         "dsr": round(dsr, 6),
+        "deflation": deflation,
         "wfo_consistency": wfo_consistency,
         "fixed_params_min_pf": fixed_params_min_pf,
         "fixed_params_mean_pf": fixed_params_metrics.get("fixed_params_mean_pf", 0.0),
@@ -894,6 +913,12 @@ def run_wfo(sota_hardening: bool = False) -> dict:
     # artifacts recorded it). `data_file` is the cache this run loaded.
     from backtest._gate_v2_helpers import inject_cache_provenance  # local, matches file style
     verdict_doc = inject_cache_provenance(verdict_doc, data_file)
+
+    # Both deflation bases (2026-09-18). Additive, report-only -- no threshold reads this.
+    _defl = gate.get("deflation")
+    if _defl is not None:
+        verdict_doc.setdefault("gate_v2_metrics", {})["deflation"] = _defl
+        verdict_doc["deflation"] = _defl
     verdict_file.write_text(json.dumps(verdict_doc, indent=2, default=str))
     print(f"\n[MES-R11] Verdict written -> {verdict_file}")
 

@@ -67,8 +67,11 @@ not a gate defect** — recorded here rather than silently accepted.
 
 `dsr` here is deflated against **3 grid combos**. The campaign count for MES is **214** (PR #872,
 deduped from distinct artifacts), and the measured cliff on a comparable candidate is
-`0.97 @4 → 0.21 @200` (PR #886). `dsr` 0.9818 at 214 trials would be far below even the CORE floor of
-0.10.
+`0.97 @4 → 0.21 @200` (PR #886). `dsr` 0.9818 at 214 trials was *predicted* to fall far below even the CORE floor of 0.10. **That
+prediction is wrong** — measured in round-3 T6 when the wiring landed, the actual campaign-count value
+is **0.2676 at 217 trials**, which clears the CORE floor of 0.10. See
+`mes-rank11-deflation-2026-09-18.md`. The cliff measured on the vix_pctile candidate's return series
+did not transfer to this candidate: it is a property of one return series, not of the method.
 
 The rank11 runner records **no `deflation` block** (`"deflation" in metrics` → `False`); only the
 vix_pctile runner was wired for that in PR #873. So this PASS cannot currently state its campaign
