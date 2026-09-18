@@ -197,24 +197,28 @@ def _cost_ledger_reconciliation(result, trades) -> dict:
     ledger = float(sum(t.pnl for t in trades))
     equity = float(result.final_capital - result.initial_capital)
     gap = ledger - equity
-    commission_4x = 4 * sum_c * cpc
+    commission_once = sum_c * cpc
     exit_half_spread = sum_c * spread_ticks * tick * MES_MULTIPLIER
-    predicted = commission_4x + exit_half_spread
+    total_cost = commission_once + exit_half_spread
     return {
         "ledger_total_pnl": round(ledger, 2),
         "equity_change": round(equity, 2),
-        "gap": round(gap, 2),
+        "gap": round(gap, 6),
+        "reconciliation_ok": abs(gap) < 1e-6,
         "sum_contracts": sum_c,
         "commission_per_contract_config": cpc,
         "spread_ticks_config": spread_ticks,
         "tick_size": tick,
-        "commission_charged_to_capital_4x": round(commission_4x, 2),
+        "commission_charged_once_per_contract": round(commission_once, 2),
         "exit_half_spread_charged_to_capital": round(exit_half_spread, 2),
-        "predicted_gap": round(predicted, 2),
-        "residual": round(gap - predicted, 2),
-        "residual_pct_of_gap": round(100 * (gap - predicted) / gap, 3) if gap else None,
-        "true_round_trip_commission_1x": round(sum_c * cpc, 2),
-        "commission_overcharge_vs_1x": round(commission_4x - sum_c * cpc, 2),
+        "total_cost_charged": round(total_cost, 2),
+        "model": "one round trip per contract charged once (reading A), trade.pnl net of cost",
+        "note": (
+            "Post-2026-09-18 the ledger reconciles BY CONSTRUCTION, so gap is expected to be 0.0. "
+            "This block previously predicted a 4x-commission gap (the pre-fix defect) and therefore "
+            "reported a spurious residual once the defect was fixed; it now asserts reconciliation "
+            "instead. A non-zero gap is a regression, not an accounting curiosity."
+        ),
     }
 
 
