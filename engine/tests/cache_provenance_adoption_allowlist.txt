@@ -16,17 +16,9 @@ research_verdict.py
 roi_readiness.py
 run_discovery_adx_fixed.py
 run_equity_sma_cert.py
-run_index_breakout_gate_v2.py
-run_m2k_donchian_rank1.py
 run_mes_calendar_rank1.py
-run_mes_donchian_rank1.py
-run_mes_trend_vix_rank1.py
-run_mes_trend_vix_rank2.py
-run_mes_trend_vix_rank3.py
 run_mgc_trend_mtf_rank1.py
-run_mnq_breakout_rank7.py
 run_spy_qqq_options_vertical.py
-run_trend_vix_pctile_gate.py
 saty_atr_wfo_runner.py
 scoreboard.py
 show_verdict_history.py

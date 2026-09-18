@@ -193,6 +193,9 @@ def _load_symbol_data(symbol: str, data_dir: Path, cache_suffix: str) -> pd.Data
     data_file = _find_latest_cache(data_dir, symbol, suffix=cache_suffix)
     print(f"[{symbol}] Selected {data_file.name}")
     df = pd.read_csv(data_file)
+    # Cache provenance (2026-09-17 audit: 0/76 verdicts recorded which cache they ran on).
+    from backtest._gate_v2_helpers import cache_provenance as _cp  # noqa: E402
+    df.attrs["cache_provenance"] = _cp(data_file)
     df.columns = [c.lower() for c in df.columns]
     ts_col = "timestamp" if "timestamp" in df.columns else "datetime"
     df[ts_col] = pd.to_datetime(df[ts_col], utc=True)
@@ -573,6 +576,9 @@ def run_wfo(symbol: str, smoke_test: bool = False) -> dict:
         },
         "windows": window_records,
     }
+    # Record the provenance carried on the frame (see loader).
+    from backtest._gate_v2_helpers import inject_cache_provenance as _ip  # noqa: E402
+    verdict_doc = _ip(verdict_doc, df=df)
     verdict_file.write_text(json.dumps(verdict_doc, indent=2, default=str))
     print(f"\n[{symbol}-VIXPCT] Verdict written -> {verdict_file}")
     return verdict_doc
