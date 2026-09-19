@@ -1,3 +1,9 @@
+[CmdletBinding()]
+param(
+    # Escape hatch: force the non-PM2 port path even when the PM2 probe is
+    # inconclusive (see the bounded-detection block below).
+    [switch]$AssumeUnmanaged
+)
 
 $repoRoot = "C:\Users\mattm\ThinkorSwim\jarvis-trader"
 $pythonExe = Join-Path $repoRoot "engine\.venv\Scripts\python.exe"
@@ -9,12 +15,108 @@ $envFile = Join-Path $repoRoot "engine\.env"
 # fight, PM2 sometimes wins the rebind and `Start-Process` silently exits,
 # leaving the OLD uvicorn running (uptime does not reset, new code does not
 # load). The port-based logic below is kept only for non-PM2 setups.
-$pm2Managed = $false
+#
+# BOUNDED DETECTION (2026-09-19). The previous detection was an unbounded
+# `pm2 jlist | Out-String` pipeline. `pm2 jlist` shells out to pidusage ->
+# WMI (Get-CimInstance/gwmi), and when the host WMI repository hangs jlist
+# never returns. Measured live 2026-09-19 01:30-01:33 CDT:
+#   * `pm2 ping`                 -> pong in 0.2s
+#   * `pm2 jlist` (bounded 45s)  -> TIMEOUT (unbounded: hangs indefinitely)
+#   * `Get-CimInstance Win32_Process` (bounded 45s) -> TIMEOUT
+# The unbounded pipeline therefore hung this entire restart script, i.e. the
+# recovery path was unavailable exactly when it was needed (this is the same
+# ".CMD launcher leaves children holding the pipe" class as the hermes doctor
+# npm-audit deadlock fixed 2026-09-04).
+#
+# New behaviour: bounded attempts, then a LOUD, NON-DESTRUCTIVE abort (exit 6).
+# We deliberately do NOT fall through to the port-kill path on a wedge -- that
+# path kills whatever holds :8010, which during an RPC wedge is the live
+# healthy engine. Use -AssumeUnmanaged to opt into the port path explicitly.
+$Pm2JlistTimeoutSec = 20
+$Pm2JlistAttempts = 2
+
+$pm2Exe = $null
 try {
-    $pm2Json = pm2 jlist 2>$null | Out-String
-    if ($pm2Json -match '"name"\s*:\s*"jarvis-engine"') { $pm2Managed = $true }
+    $pm2Cmd = Get-Command pm2 -ErrorAction SilentlyContinue
+    if ($pm2Cmd) { $pm2Exe = $pm2Cmd.Source }
 }
 catch {}
+if (-not $pm2Exe) {
+    $pnpmPm2 = Join-Path $env:LOCALAPPDATA 'pnpm\pm2.CMD'
+    if (Test-Path $pnpmPm2) { $pm2Exe = $pnpmPm2 }
+}
+
+function Invoke-BoundedPm2Jlist {
+    param([int]$TimeoutSec = 20)
+    $proc = $null
+    $outTask = $null
+    try {
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        # pm2 on this host is a .CMD shim (pnpm). CreateProcess cannot start a
+        # .cmd directly, so route through cmd.exe. UseShellExecute stays false
+        # so the output handles stay redirectable and the tree stays killable.
+        $psi.FileName = $env:ComSpec
+        $psi.Arguments = "/d /s /c `"`"$pm2Exe`" jlist`""
+        $psi.UseShellExecute = $false
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError = $true
+        $psi.CreateNoWindow = $true
+        $proc = New-Object System.Diagnostics.Process
+        $proc.StartInfo = $psi
+        [void]$proc.Start()
+        $outTask = $proc.StandardOutput.ReadToEndAsync()
+        [void]$proc.StandardError.ReadToEndAsync()
+        if (-not $proc.WaitForExit($TimeoutSec * 1000)) {
+            return @{ ok = $false; reason = "timeout after ${TimeoutSec}s"; output = '' }
+        }
+        return @{ ok = $true; reason = 'ok'; output = $outTask.Result }
+    }
+    catch {
+        return @{ ok = $false; reason = "error: $($_.Exception.Message)"; output = '' }
+    }
+    finally {
+        if ($null -ne $proc) {
+            try {
+                if (-not $proc.HasExited) {
+                    # Kill the whole launcher tree; pm2.CMD spawns node.exe
+                    # children that keep the redirected pipe handles open.
+                    taskkill /F /T /PID $proc.Id 2>$null | Out-Null
+                }
+            }
+            catch {}
+            try { $proc.Dispose() } catch {}
+        }
+    }
+}
+
+$pm2Managed = $false
+if ($pm2Exe) {
+    $pm2Detect = $null
+    for ($attempt = 1; $attempt -le $Pm2JlistAttempts; $attempt++) {
+        $pm2Detect = Invoke-BoundedPm2Jlist -TimeoutSec $Pm2JlistTimeoutSec
+        if ($pm2Detect.ok) { break }
+        if ($attempt -lt $Pm2JlistAttempts) { Start-Sleep -Seconds 2 }
+    }
+
+    if ($pm2Detect.ok) {
+        if ($pm2Detect.output -match '"name"\s*:\s*"jarvis-engine"') { $pm2Managed = $true }
+    }
+    else {
+        Write-Host "ERROR: 'pm2 jlist' did not complete after $Pm2JlistAttempts bounded attempt(s) of ${Pm2JlistTimeoutSec}s ($($pm2Detect.reason))."
+        Write-Host "       PM2's RPC is wedged -- typically a hung WMI repository: 'pm2 ping' still answers pong while 'pm2 jlist'/pidusage hangs."
+        Write-Host "       Refusing to continue: the non-PM2 port-kill fallback would kill the live engine holding :8010."
+        Write-Host "       Diagnose / repair (repair needs an elevated shell):"
+        Write-Host "         pm2 ping                  # expect pong"
+        Write-Host "         winmgmt /verifyrepository # expect 'consistent'"
+        Write-Host "         winmgmt /salvagerepository"
+        Write-Host "       Or re-run  restart_engine.ps1 -AssumeUnmanaged  to force the port path."
+        if (-not $AssumeUnmanaged) {
+            exit 6
+        }
+        Write-Host "WARNING: -AssumeUnmanaged set -- proceeding down the non-PM2 port path despite the wedge."
+        $pm2Managed = $false
+    }
+}
 
 if ($pm2Managed) {
     Write-Host "Detected jarvis-engine under PM2 - using pm2 restart (port-kill path skipped)"

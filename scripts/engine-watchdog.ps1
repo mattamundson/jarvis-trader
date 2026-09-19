@@ -90,18 +90,43 @@ Write-Log "FAIL: /health unresponsive after $ProbeCount consecutive probes (${Pr
 # saturation, not death -- skip the restart. A truly hung loop stops logging,
 # so a stale log still restarts. Stat failure falls through to restart
 # (fail-safe, preserves prior behavior).
-$EngineLog = "$env:USERPROFILE\.pm2\logs\jarvis-engine-error.log"
-try {
-    $logAgeSec = ((Get-Date) - (Get-Item $EngineLog -ErrorAction Stop).LastWriteTime).TotalSeconds
-    if ($logAgeSec -lt 60) {
-        Write-Log ("SKIP: /health failed {1}x but engine log fresh ({0:N0}s) -- event loop alive, not restarting (RTH saturation)" -f $logAgeSec, $ProbeCount)
-        Trim-Log
-        exit 0
+# Candidate engine logs, freshest wins. The guard used to stat ONE hard-coded
+# path -- $env:USERPROFILE\.pm2\logs\jarvis-engine-error.log -- which DOES NOT
+# EXIST on this host (verified 2026-09-19: C:\Users\<user>\.pm2\logs contains
+# only jarvis-dashboard-*.log and pm2-logrotate-*.log; the engine writes to
+# engine/logs/). Get-Item therefore threw on every tick, the catch fell
+# through, and the guard was INERT: every /health saturation produced an
+# unconditional restart decision -- a restart-storm contributor.
+$EngineLogCandidates = @(
+    (Join-Path $PSScriptRoot "..\engine\logs\jarvis.log"),            # live app log (structured JSON)
+    (Join-Path $PSScriptRoot "..\engine\logs\engine-boot-error.log"), # live app log (text)
+    "$env:USERPROFILE\.pm2\logs\jarvis-engine-error.log"              # legacy PM2 path (absent here)
+)
+$EngineLog = $null
+$logAgeSec = $null
+foreach ($candidate in $EngineLogCandidates) {
+    try {
+        $item = Get-Item $candidate -ErrorAction Stop
+        $age = ((Get-Date) - $item.LastWriteTime).TotalSeconds
+        if ($null -eq $logAgeSec -or $age -lt $logAgeSec) {
+            $logAgeSec = $age
+            $EngineLog = $candidate
+        }
     }
-    Write-Log ("CONFIRM-DEAD: engine log stale ({0:N0}s) AND /health failed {1}x -- genuine hang, restarting" -f $logAgeSec, $ProbeCount)
+    catch {}
 }
-catch {
-    Write-Log "WARN: cannot stat engine log -- falling through to restart on /health failure"
+
+if ($null -eq $logAgeSec) {
+    # No candidate exists at all: preserve prior fail-safe behaviour (restart).
+    Write-Log ("WARN: no engine log candidate exists ({0}) -- falling through to restart on /health failure" -f ($EngineLogCandidates -join '; '))
+}
+elseif ($logAgeSec -lt 60) {
+    Write-Log ("SKIP: /health failed {1}x but engine log fresh ({0:N0}s, {2}) -- event loop alive, not restarting (RTH saturation)" -f $logAgeSec, $ProbeCount, $EngineLog)
+    Trim-Log
+    exit 0
+}
+else {
+    Write-Log ("CONFIRM-DEAD: engine log stale ({0:N0}s, {2}) AND /health failed {1}x -- genuine hang, restarting" -f $logAgeSec, $ProbeCount, $EngineLog)
 }
 # --------------------------------------------------------------------------
 
