@@ -8,7 +8,7 @@
     "p_higher_high": 81.5,
     "p_up_5d": 48.1
   },
-  "generated_at": "2026-09-21T22:07:48.867803+00:00",
+  "generated_at": "2026-09-21T22:17:55.835349+00:00",
   "instrument": "ES=F",
   "limitations": [
     "Daily bars; no true premarket/Globex conditioning yet.",
@@ -111,11 +111,11 @@
     }
   },
   "today": {
-    "accel5_pct": 2.68,
-    "close": 7829.25,
+    "accel5_pct": 2.72,
+    "close": 7832.25,
     "date": "2026-09-21",
     "is_ath_close": true,
-    "low": 7713.75,
+    "low": 7829.0,
     "state": "ath_close_lowvol_accel_gt2",
     "vix": 14.869999885559082
   }

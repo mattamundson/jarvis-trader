@@ -288,7 +288,7 @@ def render(payload: dict[str, Any]) -> str:
         "| State | n | Cont. | Rot. | Fail. | P(higher high) | P(gap down) | P(up 5d) | med 5d | med MAE5 |",
         "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
-    for k, v in payload["states"].items():
+    for v in payload["states"].values():
         md.append(f"| {v['label']} | {v['n']} | {v['p_continuation']} | {v['p_rotation']} | {v['p_failure']} | "
                   f"{v['p_higher_high']} | {v['p_gap_down']} | {v['p_up_5d']} | {v['median_5d']} | {v['median_mae5']} |")
     md += ["", "## Limitations", ""] + [f"- {x}" for x in payload["limitations"]] + ["", "## Machine payload", "", "```json",

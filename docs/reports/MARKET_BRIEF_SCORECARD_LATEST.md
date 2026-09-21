@@ -1,6 +1,6 @@
 # Market Brief Scorecard
 
-Generated: 2026-09-21T22:08:00.394230+00:00  ·  model `market-brief-scorecard-v1`
+Generated: 2026-09-21T22:17:56.614356+00:00  ·  model `market-brief-scorecard-v1`
 
 ## Safety
 
@@ -28,7 +28,7 @@ Generated: 2026-09-21T22:08:00.394230+00:00  ·  model `market-brief-scorecard-v
     "n_pending": 1,
     "n_scored": 0
   },
-  "generated_at": "2026-09-21T22:08:00.394230+00:00",
+  "generated_at": "2026-09-21T22:17:56.614356+00:00",
   "limitations": [
     "Scores are only as honest as the ledger; missing briefs bias the sample.",
     "Small n early on: treat Brier/ skill numbers as directional until n is meaningful.",

@@ -1,6 +1,6 @@
 # Market Brief — Measured Base Rates
 
-Generated: 2026-09-21T22:07:48.867803+00:00  ·  model `market-brief-base-rates-v1`
+Generated: 2026-09-21T22:17:55.835349+00:00  ·  model `market-brief-base-rates-v1`
 
 ## Safety
 
@@ -9,8 +9,8 @@ Generated: 2026-09-21T22:07:48.867803+00:00  ·  model `market-brief-base-rates-
 
 ## Today's state
 
-- Date: `2026-09-21`  ·  ES close `7829.25`  ·  low `7713.75`
-- New ATH close: `True`  ·  VIX `14.869999885559082`  ·  5d accel `2.68%`
+- Date: `2026-09-21`  ·  ES close `7832.25`  ·  low `7829.00`
+- New ATH close: `True`  ·  VIX `14.869999885559082`  ·  5d accel `2.72%`
 - Matched state: `ath_close_lowvol_accel_gt2`  (n=27)
 
 ## Probability block (next session)
@@ -62,7 +62,7 @@ Generated: 2026-09-21T22:07:48.867803+00:00  ·  model `market-brief-base-rates-
     "p_higher_high": 81.5,
     "p_up_5d": 48.1
   },
-  "generated_at": "2026-09-21T22:07:48.867803+00:00",
+  "generated_at": "2026-09-21T22:17:55.835349+00:00",
   "instrument": "ES=F",
   "limitations": [
     "Daily bars; no true premarket/Globex conditioning yet.",
@@ -165,11 +165,11 @@ Generated: 2026-09-21T22:07:48.867803+00:00  ·  model `market-brief-base-rates-
     }
   },
   "today": {
-    "accel5_pct": 2.68,
-    "close": 7829.25,
+    "accel5_pct": 2.72,
+    "close": 7832.25,
     "date": "2026-09-21",
     "is_ath_close": true,
-    "low": 7713.75,
+    "low": 7829.0,
     "state": "ath_close_lowvol_accel_gt2",
     "vix": 14.869999885559082
   }
