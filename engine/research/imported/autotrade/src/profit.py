@@ -30,8 +30,8 @@ Note: Zero-trade detection is handled upstream in src/risk.py (evaluate_risk).
 from __future__ import annotations
 
 import math
-import pandas as pd
 
+import pandas as pd
 from src.prepare import Settings
 
 

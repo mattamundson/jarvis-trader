@@ -5,6 +5,7 @@ import useSWR from "swr";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { BookMarked, ExternalLink, AlertTriangle } from "lucide-react";
+import { localFetch } from "@/lib/api";
 
 // ── Types (mirror second-brain JARVIS_RESEARCH_QUEUE_FEED shape) ─────────────
 
@@ -39,7 +40,7 @@ const FEED_URL = "/jarvis-research-queue-feed.json";
 export function ResearchQueuePanel() {
   const { data, error, isLoading } = useSWR<ResearchFeed>(
     FEED_URL,
-    (url: string) => fetch(url).then((r) => r.json())
+    localFetch<ResearchFeed>
   );
   const [tab, setTab] = useState<QueueKey>("risk_position_sizing");
 

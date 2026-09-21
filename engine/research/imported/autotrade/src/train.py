@@ -10,14 +10,13 @@ import warnings
 
 import pandas as pd
 from backtesting import Backtest
+from src.prepare import load_ohlcv_data, prepare_settings
+from src.profit import evaluate_profit, format_profit_summary
+from src.risk import check_leverage_hard, evaluate_risk, format_risk_summary
+from src.strategies.loader import load_strategy
 
 # Suppress backtesting.py margin warnings (noisy but not critical)
 warnings.filterwarnings("ignore", message=".*insufficient margin.*", module="backtesting")
-
-from src.prepare import load_ohlcv_data, prepare_settings
-from src.strategies.loader import load_strategy
-from src.risk import check_leverage_hard, evaluate_risk, format_risk_summary
-from src.profit import evaluate_profit, format_profit_summary
 
 # ---------------------------------------------------------------------------
 # Hyperparameters (LLM modifies these)

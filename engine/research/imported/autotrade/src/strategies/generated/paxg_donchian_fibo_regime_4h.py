@@ -2,7 +2,6 @@ import pandas as pd
 import ta.momentum
 import ta.trend
 import ta.volatility
-
 from src.strategies.base import BaseStrategy
 
 
