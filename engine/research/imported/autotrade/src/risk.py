@@ -21,10 +21,9 @@ src/profit.py.
 from __future__ import annotations
 
 import math
+
 import pandas as pd
-
 from src.prepare import Settings
-
 
 # ---------------------------------------------------------------------------
 # Hard check — runs BEFORE the backtest
