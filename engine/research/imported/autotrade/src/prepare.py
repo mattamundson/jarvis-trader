@@ -11,7 +11,6 @@ from dataclasses import dataclass
 
 import pandas as pd
 from dotenv import load_dotenv
-
 from src.data.crypto.loader import load_ohlcv
 
 # ---------------------------------------------------------------------------

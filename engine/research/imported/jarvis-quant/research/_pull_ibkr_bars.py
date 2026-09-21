@@ -16,8 +16,8 @@ If this fails, ensure you're running from the .venv:
     .venv\\Scripts\\python research\\_pull_ibkr_bars.py
 """
 
-from pathlib import Path
 import sys
+from pathlib import Path
 
 try:
     import pyarrow  # noqa: F401 — explicit dep guard (parquet engine)

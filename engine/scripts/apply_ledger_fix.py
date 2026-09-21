@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import py_compile
 import subprocess
-import sys
 from pathlib import Path
 
 ENGINE = Path(__file__).resolve().parent.parent  # engine/
