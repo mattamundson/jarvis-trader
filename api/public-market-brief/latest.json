@@ -1,0 +1,301 @@
+{
+  "mode": "ANALYSIS_ONLY",
+  "orders_enabled": false,
+  "risk_config_touched": false,
+  "generatedAt": "2026-09-22T18:28:40.716Z",
+  "asOf": "2026-09-22T18:28:40.716Z",
+  "sourceQuality": "fresh",
+  "ageSeconds": 0,
+  "scores": {
+    "status": "computed",
+    "macro_event_count": 0,
+    "probabilities": {
+      "continuation": 52.5,
+      "rotation": 14.1,
+      "failure": 33.4
+    },
+    "probability_source": {
+      "primary": "trailing_unconditional_base_rate",
+      "conditional_status": "provisional_no_measured_edge",
+      "rationale": "Live public brief uses the measured trailing unconditional ES base rate; state conditioning remains diagnostic only.",
+      "walkforward": {
+        "n": 1197,
+        "mean_brier_model": 0.594619,
+        "mean_brier_base": 0.596765,
+        "paired_diff_base_minus_model": 0.002146,
+        "paired_ci95": [
+          -0.002225,
+          0.006517
+        ],
+        "paired_t": 0.962,
+        "model_beats_base": false,
+        "verdict": "state conditioning has no measurable edge over the trailing base rate"
+      }
+    },
+    "conditional_diagnostic": {
+      "state": "ath_close_lowvol_accel_gt2",
+      "n": 27,
+      "status": "provisional_no_measured_edge",
+      "publish_as_edge": false,
+      "probabilities": {
+        "continuation": 55.6,
+        "rotation": 25.9,
+        "failure": 18.5,
+        "sum": 100
+      }
+    },
+    "notes": [
+      "Live public generator: Yahoo daily data, floor-trader pivots, measured ES base rates.",
+      "No broker, order routing, account state, risk config, or kill-switch access."
+    ],
+    "macro_events": []
+  },
+  "symbols": {
+    "SPY": {
+      "provider": "yahoo-live",
+      "confidence": 0.8,
+      "gap_pct": 0.0976,
+      "daily": {
+        "prev_close": 773.5,
+        "last_close": 774.2550048828125,
+        "day_open": 774.030029296875,
+        "day_high": 775.1400146484375,
+        "day_low": 772.5900268554688,
+        "prev_day_high": 774.8900146484375,
+        "prev_day_low": 766.030029296875
+      },
+      "pivots": {
+        "pivot": 771.4733479817709,
+        "r1": 776.9166666666667,
+        "s1": 768.0566813151042,
+        "support_2": 762.6133626302084,
+        "resistance_2": 780.3333333333334
+      }
+    },
+    "QQQ": {
+      "provider": "yahoo-live",
+      "confidence": 0.8,
+      "gap_pct": 0.7067,
+      "daily": {
+        "prev_close": 741.469970703125,
+        "last_close": 746.7100219726562,
+        "day_open": 741.0050048828125,
+        "day_high": 746.9400024414062,
+        "day_low": 741,
+        "prev_day_high": 743.219970703125,
+        "prev_day_low": 727.8099975585938
+      },
+      "pivots": {
+        "pivot": 737.4999796549479,
+        "r1": 747.189961751302,
+        "s1": 731.7799886067708,
+        "support_2": 722.0900065104166,
+        "resistance_2": 752.9099527994791
+      }
+    },
+    "^VIX": {
+      "provider": "yahoo-live",
+      "confidence": 0.8,
+      "gap_pct": -3.9677,
+      "daily": {
+        "prev_close": 14.869999885559082,
+        "last_close": 14.279999732971191,
+        "day_open": 14.640000343322754,
+        "day_high": 14.949999809265137,
+        "day_low": 14.1899995803833,
+        "prev_day_high": 15.130000114440918,
+        "prev_day_low": 14.600000381469727
+      },
+      "pivots": {
+        "pivot": 14.866666793823242,
+        "r1": 15.133333206176758,
+        "s1": 14.603333473205566,
+        "support_2": 14.33666706085205,
+        "resistance_2": 15.396666526794434
+      }
+    },
+    "ES=F": {
+      "provider": "yahoo-live",
+      "confidence": 0.8,
+      "gap_pct": 0.0383,
+      "daily": {
+        "prev_close": 7833.5,
+        "last_close": 7836.5,
+        "day_open": 7830,
+        "day_high": 7848.5,
+        "day_low": 7810.5,
+        "prev_day_high": 7847.25,
+        "prev_day_low": 7713.75
+      },
+      "pivots": {
+        "pivot": 7798.166666666667,
+        "r1": 7882.583333333334,
+        "s1": 7749.083333333334,
+        "support_2": 7664.666666666667,
+        "resistance_2": 7931.666666666667
+      }
+    },
+    "NQ=F": {
+      "provider": "yahoo-live",
+      "confidence": 0.8,
+      "gap_pct": 0.6781,
+      "daily": {
+        "prev_close": 30784.75,
+        "last_close": 30993.5,
+        "day_open": 30780,
+        "day_high": 30997.5,
+        "day_low": 30670,
+        "prev_day_high": 30862.75,
+        "prev_day_low": 29904
+      },
+      "pivots": {
+        "pivot": 30517.166666666668,
+        "r1": 31130.333333333336,
+        "s1": 30171.583333333336,
+        "support_2": 29558.416666666668,
+        "resistance_2": 31475.916666666668
+      }
+    }
+  },
+  "levels": [
+    {
+      "symbol": "ES=F",
+      "pivot": 7798.166666666667,
+      "r1": 7882.583333333334,
+      "s1": 7749.083333333334
+    },
+    {
+      "symbol": "NQ=F",
+      "pivot": 30517.166666666668,
+      "r1": 31130.333333333336,
+      "s1": 30171.583333333336
+    },
+    {
+      "symbol": "SPY",
+      "pivot": 771.4733479817709,
+      "r1": 776.9166666666667,
+      "s1": 768.0566813151042
+    },
+    {
+      "symbol": "QQQ",
+      "pivot": 737.4999796549479,
+      "r1": 747.189961751302,
+      "s1": 731.7799886067708
+    }
+  ],
+  "analysis": {
+    "marketOverview": [
+      "Machine distribution: continuation 52.5%, rotation 14.1%, failure 33.4%.",
+      "ES last 7,836.50; session range 7,810.50 → 7,848.50; gap +0.04%. NQ last 30,993.50; session range 30,670.00 → 30,997.50; gap +0.68%.",
+      "SPY gap +0.10% and QQQ gap +0.71% provide cash-index confirmation context; VIX is 14.28 with -3.97% change.",
+      "Primary read: buyers retain higher-value control, but the claim must be confirmed by acceptance above resistance rather than a single touch."
+    ],
+    "auctionCues": [
+      "ES pivot/control is 7,798.17; acceptance above 7,882.58 marks higher-value migration, while loss of 7,749.08 marks failed auction risk.",
+      "NQ pivot/control is 30,517.17; NQ must confirm above 31,130.33 to validate risk-on continuation.",
+      "Responsive sellers matter only if they create sustained rejection; first resistance touch alone is information, not reversal proof.",
+      "The public brief treats all structural claims as scoreable conditions, not narrative certainty."
+    ],
+    "volatilityRegime": [
+      "VIX level 14.28; day-over-day/gap proxy -3.97%.",
+      "Volatility is flat/down; continuation has cleaner confirmation if ES/NQ also accept higher value.",
+      "A directional read without the VIX regime is downgraded; volatility decides whether a rally is confirmed or fragile."
+    ],
+    "esStructure": {
+      "symbol": "ES=F",
+      "label": "ES",
+      "resistance": [
+        "R1 / first upside reaction: 7,882.58",
+        "R2 / extension reference: 7,931.67",
+        "Current session high: 7,848.50"
+      ],
+      "support": [
+        "Pivot / control: 7,798.17",
+        "S1 / first downside test: 7,749.08",
+        "S2 / deeper failed-auction reference: 7,664.67"
+      ],
+      "confirmation": "Continuation confirms only if price accepts above 7,882.58; one touch is not enough.",
+      "invalidation": "Continuation invalidates on sustained trade below 7,749.08 / failure to reclaim pivot 7,798.17.",
+      "bias": "ES bias favors continuation while price holds above pivot/control."
+    },
+    "nqStructure": {
+      "symbol": "NQ=F",
+      "label": "NQ",
+      "resistance": [
+        "R1 / first upside reaction: 31,130.33",
+        "R2 / extension reference: 31,475.92",
+        "Current session high: 30,997.50"
+      ],
+      "support": [
+        "Pivot / control: 30,517.17",
+        "S1 / first downside test: 30,171.58",
+        "S2 / deeper failed-auction reference: 29,558.42"
+      ],
+      "confirmation": "Continuation confirms only if price accepts above 31,130.33; one touch is not enough.",
+      "invalidation": "Continuation invalidates on sustained trade below 30,171.58 / failure to reclaim pivot 30,517.17.",
+      "bias": "NQ bias favors continuation while price holds above pivot/control."
+    },
+    "scenarioMap": [
+      {
+        "name": "Continuation / higher-value acceptance",
+        "probability": 52.5,
+        "conditions": [
+          "ES accepts above 7,882.58 and holds pivot/control 7,798.17.",
+          "NQ confirms above 31,130.33 instead of lagging at resistance."
+        ],
+        "targets": [
+          "ES extension reference 7,931.67",
+          "NQ extension reference 31,475.92"
+        ],
+        "invalidation": "Sustained ES loss of 7,749.08 shifts this from continuation to failure/rotation scoring."
+      },
+      {
+        "name": "Rotation / absorption near highs",
+        "probability": 14.1,
+        "conditions": [
+          "ES holds between 7,749.08 and 7,882.58.",
+          "Buyers defend pullbacks but cannot force clean acceptance through resistance."
+        ],
+        "targets": [
+          "ES control/pivot 7,798.17",
+          "NQ control/pivot 30,517.17"
+        ],
+        "invalidation": "Clean acceptance above resistance upgrades to continuation; failed support downgrades to failure."
+      },
+      {
+        "name": "Failure / responsive sellers take control",
+        "probability": 33.4,
+        "conditions": [
+          "ES fails below 7,749.08 and cannot reclaim 7,798.17.",
+          "NQ loses 30,171.58 with VIX firming rather than mean-reverting."
+        ],
+        "targets": [
+          "ES downside reference 7,664.67",
+          "NQ downside reference 29,558.42"
+        ],
+        "invalidation": "Fast reclaim of pivot/control invalidates the failure branch."
+      }
+    ],
+    "intradayPlan": [
+      "Early session: test whether ES can accept above 7,882.58 or rotate back toward pivot 7,798.17.",
+      "Midday: continuation remains valid only if pullbacks defend pivot/control; chop between pivot and R1 is rotation, not breakout confirmation.",
+      "Late session: close location versus ES 7,798.17/7,882.58 and NQ 30,517.17/31,130.33 determines which branch gets scored."
+    ],
+    "finalThoughts": [
+      "The site publishes the base-rate probability block because walk-forward testing did not prove that the conditional state model beats the trailing base rate.",
+      "The narrative layer restores the missing market-structure read, but every branch remains tied to explicit probabilities and invalidation levels.",
+      "This is decision support only: no orders, broker access, risk config changes, or kill-switch interaction."
+    ]
+  },
+  "warnings": [
+    "Live public brief uses exchange/daily Yahoo bars; intraday premarket microstructure is a follow-up data layer."
+  ],
+  "modelVersion": "market-brief-public-live-v1",
+  "publicContract": {
+    "surface": "public_market_brief",
+    "tradingControlsExposed": false,
+    "localPathExposed": false,
+    "probabilityContract": "trailing_unconditional_base_rate_primary",
+    "analysisContract": "deterministic_machine_payload_summary"
+  }
+}
