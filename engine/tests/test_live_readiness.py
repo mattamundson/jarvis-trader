@@ -332,12 +332,25 @@ def test_c2_fail_with_only_mes_pass(tmp_verdicts_dir):
     assert "MES" in result.detail
 
 
-def test_c2_pass_when_mgc_also_passes(tmp_verdicts_dir):
+def test_c2_fail_when_mgc_pass_is_blocked_and_disabled(tmp_verdicts_dir):
     _write_verdict(tmp_verdicts_dir, symbol="MES", verdict="PASS")
     _write_verdict(tmp_verdicts_dir, symbol="MGC", family="trend", rank=4, verdict="PASS")
     result = lr.check_c2_second_symbol()
+    assert result.passed is False
+    assert "blocked_or_disabled=['MGC']" in result.detail
+
+
+def test_c2_pass_when_non_mes_pass_is_actionable(tmp_verdicts_dir, monkeypatch):
+    _write_verdict(tmp_verdicts_dir, symbol="MES", verdict="PASS")
+    _write_verdict(tmp_verdicts_dir, symbol="FOO", family="trend", rank=4, verdict="PASS")
+    monkeypatch.setattr("backtest.signals.DO_NOT_TRADE_SYMBOLS", frozenset())
+    monkeypatch.setattr(
+        "backtest.paper_config.PAPER_CONFIGS",
+        {"FOO": {"enabled": True, "strategy": "sma_trend"}},
+    )
+    result = lr.check_c2_second_symbol()
     assert result.passed is True
-    assert "MGC" in result.detail
+    assert "FOO" in result.detail
 
 
 def test_c2_ignores_fail_verdicts(tmp_verdicts_dir):
@@ -555,20 +568,59 @@ def test_c7_fail_when_pass_symbol_blocked(tmp_verdicts_dir, monkeypatch):
     assert "MES" in result.detail
 
 
+def test_c7_pass_when_pass_symbol_is_blocked_but_paper_disabled(
+    tmp_verdicts_dir, monkeypatch
+):
+    """MGC's stale PASS does not require unblocking while paper_config is disabled."""
+    _write_verdict(tmp_verdicts_dir, symbol="MGC", family="trend", rank=4, verdict="PASS")
+    monkeypatch.setattr("backtest.signals.DO_NOT_TRADE_SYMBOLS", frozenset({"MGC"}))
+    monkeypatch.setattr(
+        "backtest.paper_config.PAPER_CONFIGS",
+        {"MGC": {"enabled": False, "strategy": "sma_trend"}},
+    )
+    result = lr.check_c7_do_not_trade_symbols()
+    assert result.passed is True
+
+
 def test_c7_fail_when_fail_only_symbol_not_blocked(tmp_verdicts_dir, monkeypatch):
     """A FAIL-only symbol should be in DO_NOT_TRADE_SYMBOLS — this was the M2K bug."""
     _write_verdict(tmp_verdicts_dir, symbol="M2K", verdict="FAIL")
     monkeypatch.setattr("backtest.signals.DO_NOT_TRADE_SYMBOLS", frozenset())
+    monkeypatch.setattr(
+        "backtest.paper_config.PAPER_CONFIGS",
+        {"M2K": {"enabled": False, "strategy": "sma_trend"}},
+    )
     result = lr.check_c7_do_not_trade_symbols()
     assert result.passed is False
     assert "M2K" in result.detail
 
 
-def test_c7_pass_symbol_with_both_pass_and_fail_isnt_blocked(tmp_verdicts_dir, monkeypatch):
+def test_c7_mes_fail_only_symbol_allowed_unblocked_by_standing_directive(
+    tmp_verdicts_dir, monkeypatch
+):
+    """MES is the explicit exception: FAIL-only verdicts must not disable it."""
+    _write_verdict(tmp_verdicts_dir, symbol="MES", verdict="FAIL")
+    monkeypatch.setattr("backtest.signals.DO_NOT_TRADE_SYMBOLS", frozenset())
+    result = lr.check_c7_do_not_trade_symbols()
+    assert result.passed is True
+
+
+def test_c7_mixed_pass_and_fail_symbol_allowed_if_any_pass(tmp_verdicts_dir, monkeypatch):
     """If a symbol has any PASS verdict, having a sibling FAIL doesn't require blocking."""
     _write_verdict(tmp_verdicts_dir, symbol="MES", family="trend", rank=11, verdict="PASS")
     _write_verdict(tmp_verdicts_dir, symbol="MES", family="orb", rank=1, verdict="FAIL")
     monkeypatch.setattr("backtest.signals.DO_NOT_TRADE_SYMBOLS", frozenset())
+    result = lr.check_c7_do_not_trade_symbols()
+    assert result.passed is True
+
+
+def test_c7_ignores_options_underlying_not_in_futures_policy_scope(
+    tmp_verdicts_dir, monkeypatch
+):
+    """SPY verdicts are not governed by the futures DO_NOT_TRADE_SYMBOLS set."""
+    _write_verdict(tmp_verdicts_dir, symbol="SPY", family="trend", rank=1, verdict="FAIL")
+    monkeypatch.setattr("backtest.signals.DO_NOT_TRADE_SYMBOLS", frozenset())
+    monkeypatch.setattr("backtest.paper_config.PAPER_CONFIGS", {})
     result = lr.check_c7_do_not_trade_symbols()
     assert result.passed is True
 

@@ -39,7 +39,8 @@ Criteria checked:
         Every PASS verdict in gate_v2_verdicts/ created within VERDICT_TTL_DAYS
 
     C7 — DO_NOT_TRADE_SYMBOLS reflects validated symbols
-        All FAIL-only symbols are blocked, all PASS symbols are NOT blocked
+        All FAIL-only symbols are blocked, all PASS symbols are NOT blocked,
+        except explicit standing policy exemptions such as MES.
 
 Why this exists:
     Without a single gate, live-trading authorization is a judgment call across
@@ -70,6 +71,13 @@ VERDICTS_DIR = engine_root / "data" / "gate_v2_verdicts"
 VERDICT_TTL_DAYS = 30
 ENGINE_HEALTH_URL = "http://127.0.0.1:8010/health"
 ENGINE_TIMEOUT_SEC = 5
+
+# Amo's standing directive keeps MES active as the primary paper vehicle even
+# when the latest gate-v2 verdict set is FAIL-only / INSUFFICIENT_SAMPLE. This
+# must stay in parity with `gate_v2_policy.is_strategy_authorized()` and
+# `backtest.signals.generate_instrument_signals()`; C7 should not recommend
+# disabling MES merely because raw verdict files are red.
+FAIL_ONLY_ALLOWED_UNBLOCKED_SYMBOLS = frozenset({"MES"})
 
 # Machine-readable go/no-go state file written on every run.
 # Consumers (dashboard, alerts, cron scripts) read this instead of re-running checks.
@@ -400,7 +408,23 @@ def check_c1_mes_paper_validation() -> CheckResult:
 
 
 def check_c2_second_symbol() -> CheckResult:
-    """At least one additional gate v2 PASS beyond MES."""
+    """At least one additional actionable gate v2 PASS beyond MES.
+
+    A PASS verdict on a symbol that is still blocked by DO_NOT_TRADE_SYMBOLS or
+    disabled in paper_config is evidence, not production capacity. Counting it
+    here while C7 simultaneously rejects the same symbol is internally
+    contradictory and can overstate readiness.
+    """
+    try:
+        from backtest.paper_config import PAPER_CONFIGS
+        from backtest.signals import DO_NOT_TRADE_SYMBOLS
+    except ImportError as e:
+        return CheckResult(
+            name="C2 Second symbol validated",
+            passed=False,
+            detail=f"Cannot import paper/blocklist state: {e}",
+        )
+
     verdicts = _load_verdicts()
     pass_symbols = set()
     for v in verdicts:
@@ -409,19 +433,30 @@ def check_c2_second_symbol() -> CheckResult:
             if sym:
                 pass_symbols.add(sym)
 
-    non_mes_passes = pass_symbols - {"MES"}
-    if not non_mes_passes:
+    actionable_non_mes_passes = sorted(
+        sym
+        for sym in pass_symbols - {"MES"}
+        if sym not in DO_NOT_TRADE_SYMBOLS and PAPER_CONFIGS.get(sym, {}).get("enabled", False)
+    )
+    blocked_or_disabled = sorted((pass_symbols - {"MES"}) - set(actionable_non_mes_passes))
+    if not actionable_non_mes_passes:
         return CheckResult(
             name="C2 Second symbol validated",
             passed=False,
-            detail=f"No PASS verdicts beyond MES. Found: {sorted(pass_symbols)}",
-            fix="Need at least one of: MGC PASS, M2K PASS, or new symbol",
+            detail=(
+                f"No actionable PASS verdicts beyond MES. PASS symbols={sorted(pass_symbols)}; "
+                f"blocked_or_disabled={blocked_or_disabled}"
+            ),
+            fix="Need a non-MES symbol with PASS verdict, not in DO_NOT_TRADE_SYMBOLS, and paper_config.enabled=True",
         )
 
     return CheckResult(
         name="C2 Second symbol validated",
         passed=True,
-        detail=f"PASS symbols: {sorted(pass_symbols)} (non-MES: {sorted(non_mes_passes)})",
+        detail=(
+            f"PASS symbols: {sorted(pass_symbols)} "
+            f"(actionable non-MES: {actionable_non_mes_passes})"
+        ),
     )
 
 
@@ -596,14 +631,21 @@ def check_c6_verdicts_current() -> CheckResult:
 
 
 def check_c7_do_not_trade_symbols() -> CheckResult:
-    """All FAIL-only symbols are blocked; all PASS symbols are NOT blocked."""
+    """Futures/paper-config blocklist state matches actionable verdict state.
+
+    Explicit standing policy exemptions remain valid and are documented rather
+    than converted into false "disable this symbol" recommendations. This check
+    is scoped to the futures/paper-config universe; options underlyings such as
+    SPY are not governed by `DO_NOT_TRADE_SYMBOLS`.
+    """
     try:
+        from backtest.paper_config import PAPER_CONFIGS
         from backtest.signals import DO_NOT_TRADE_SYMBOLS
     except ImportError as e:
         return CheckResult(
             name="C7 DO_NOT_TRADE_SYMBOLS sync",
             passed=False,
-            detail=f"Cannot import DO_NOT_TRADE_SYMBOLS: {e}",
+            detail=f"Cannot import paper/blocklist state: {e}",
         )
 
     verdicts = _load_verdicts()
@@ -616,11 +658,25 @@ def check_c7_do_not_trade_symbols() -> CheckResult:
 
     issues = []
     for sym, verdict_list in by_symbol.items():
+        policy_scope = (
+            sym in PAPER_CONFIGS
+            or sym in DO_NOT_TRADE_SYMBOLS
+            or sym in FAIL_ONLY_ALLOWED_UNBLOCKED_SYMBOLS
+        )
+        if not policy_scope:
+            continue
+
+        cfg_enabled = PAPER_CONFIGS.get(sym, {}).get("enabled", False)
         has_pass = "PASS" in verdict_list
         has_fail = "FAIL" in verdict_list
-        if has_pass and sym in DO_NOT_TRADE_SYMBOLS:
+        if has_pass and sym in DO_NOT_TRADE_SYMBOLS and cfg_enabled:
             issues.append(f"{sym}: has PASS verdict but is in DO_NOT_TRADE_SYMBOLS")
-        if not has_pass and has_fail and sym not in DO_NOT_TRADE_SYMBOLS:
+        if (
+            not has_pass
+            and has_fail
+            and sym not in DO_NOT_TRADE_SYMBOLS
+            and sym not in FAIL_ONLY_ALLOWED_UNBLOCKED_SYMBOLS
+        ):
             issues.append(f"{sym}: only FAIL verdicts, not in DO_NOT_TRADE_SYMBOLS")
 
     if issues:
