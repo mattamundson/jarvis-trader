@@ -5,7 +5,7 @@
  * Mocks Keychain access to return the test password.
  *
  * Test key derivation (matches real Chromium pipeline):
- *   password = "test-keychain-password"
+ *   password = "[REDACTED]"
  *   key = PBKDF2(password, "saltysalt", 1003, 16, sha1)
  *
  * Encryption: AES-128-CBC with IV = 16 × 0x20, prefix "v10"

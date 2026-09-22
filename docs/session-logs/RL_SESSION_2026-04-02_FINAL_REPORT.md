@@ -878,7 +878,7 @@ curl http://localhost:8010/strategies/rl/config
 
 # 4. Launch Run 8
 curl -X POST http://localhost:8010/strategies/rl/train \
-  -H "X-API-Key: jarvis-dev-key-change-me" \
+  -H "X-API-Key: [REDACTED]" \
   -H "Content-Type: application/json" \
   -d '{"symbol": "MES", "timesteps": 500000}'
 

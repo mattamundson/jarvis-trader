@@ -11,7 +11,7 @@ pip install -r requirements-core.txt
 
 2. Set API key in `.env`:
 ```bash
-API_KEY=your-api-key-here
+API_KEY=[REDACTED]
 ```
 
 3. Start the server:
@@ -38,7 +38,7 @@ curl -X POST http://localhost:8010/safety/kill-switch/activate
 ### Protected endpoint with key (should succeed)
 ```bash
 curl -X POST http://localhost:8010/safety/kill-switch/activate \
-  -H "X-API-Key: your-api-key-here"
+  -H "X-API-Key: [REDACTED]"
 # Response: {...} or 500+ if dependencies missing (but NOT 401!)
 ```
 
@@ -54,7 +54,7 @@ http://localhost:8010/docs
 ```python
 import httpx
 
-api_key = "your-api-key-here"
+api_key = "[REDACTED]"
 
 async with httpx.AsyncClient() as client:
     # Protected endpoint
@@ -95,7 +95,7 @@ openssl rand -hex 32
 
 2. Set in `.env`:
 ```bash
-API_KEY=<output-from-above>
+API_KEY=[REDACTED]
 ```
 
 3. Update CORS in `main.py` for your domain:

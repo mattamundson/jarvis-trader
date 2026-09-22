@@ -18,7 +18,7 @@ The JARVIS TRADER FastAPI engine now includes production-grade API key authentic
 In `.env` (or `.env.example`):
 
 ```bash
-API_KEY=your-strong-api-key-here
+API_KEY=[REDACTED]
 ```
 
 **Default value**: `jarvis-dev-key-change-me` (change in production!)
@@ -54,7 +54,7 @@ Include the `X-API-Key` header in all protected endpoint requests:
 
 ```bash
 curl -X POST http://localhost:8010/safety/kill-switch/activate \
-  -H "X-API-Key: your-strong-api-key-here"
+  -H "X-API-Key: [REDACTED]"
 ```
 
 ### Python/httpx Example
@@ -292,7 +292,7 @@ curl -X POST http://localhost:8010/safety/kill-switch/activate \
 
 # With valid key (should succeed or fail at next layer)
 curl -X POST http://localhost:8010/safety/kill-switch/activate \
-  -H "X-API-Key: jarvis-dev-key-change-me"
+  -H "X-API-Key: [REDACTED]"
 
 # Health check (no key needed)
 curl http://localhost:8010/health

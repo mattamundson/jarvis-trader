@@ -328,7 +328,7 @@ Expected: PASS.
 **Step 5: Smoke the live endpoint**
 
 ```bash
-curl -H "X-API-Key: xPRdYjkyUP20r29jrhAlgefneE1oYGSvFn3ri5C1OGc" http://localhost:8010/system/mes-sprint-gate
+curl -H "X-API-Key: [REDACTED]" http://localhost:8010/system/mes-sprint-gate
 ```
 
 Expected: JSON with 6 checks, `overall` = "PENDING" or "FAIL" until smoke test runs.

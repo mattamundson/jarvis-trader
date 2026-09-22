@@ -155,7 +155,7 @@ Added API_KEY configuration section:
 # ── API Security ───────────────────────────────────────────────────────────
 # FastAPI X-API-Key header authentication
 # Change this to a strong random key in production
-API_KEY=your-api-key-here
+API_KEY=[REDACTED]
 ```
 
 ---
@@ -288,7 +288,7 @@ engine/
 4. **Set production API key**:
    ```bash
    # In .env file
-   API_KEY=<strong-random-key>
+   API_KEY=[REDACTED]
    ```
 
 5. **Update CORS for production domains** in `main.py`

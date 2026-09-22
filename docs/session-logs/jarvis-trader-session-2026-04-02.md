@@ -52,7 +52,7 @@ if self.tilt_detector is not None:
 - `live_engine_probe._api_key_for_probe()` (line 18-19) reads `os.environ.get("JARVIS_API_KEY") or os.environ.get("API_KEY") or "test-key"`
 - `@unittest.skipIf(not _engine_running(), ...)` class decorator — probe returns True when engine IS running because any response ≠ 404 counts as "routed" (including 401)
 - BUT test `_get()`/`_post()` methods had hardcoded `X-API-Key: test-key`
-- Running engine uses `API_KEY=jarvis-dev-key-change-me` from `engine/.env`
+- Running engine uses `API_KEY=[REDACTED] from `engine/.env`
 - Result: Engine skipping logic correctly detected running engine, but requests got 401 Unauthorized
 
 **Fix pattern applied at 6 locations**:
@@ -169,7 +169,7 @@ Test class decorators:
 ### API Key Configuration
 ```
 engine/.env:
-    API_KEY=jarvis-dev-key-change-me
+    API_KEY=[REDACTED]
 
 Fix applied to tests:
     # Before: req.add_header("X-API-Key", "test-key")

@@ -92,7 +92,7 @@ Open `engine/.env` and replace the `API_KEY` line:
 API_KEY=test-key
 
 # New (use your generated value)
-API_KEY=<your-generated-key-here>
+API_KEY=[REDACTED]
 ```
 
 ### Step 2 — Update dashboard/.env.local

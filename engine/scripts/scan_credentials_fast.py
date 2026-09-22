@@ -76,9 +76,27 @@ ALLOWLIST_VALUE_MARKERS = (
     "placeholder",
     "redacted",
     "changeme",
+    "fakekeyfortesting",
+    "not-a-real",
+    "not_a_real",
     "your_",
     "test_",
     "local-research-sandbox-dummy-not-a-credential",
+)
+REFERENCE_VALUE_MARKERS = (
+    "process.env",
+    "import.meta.env",
+    "os.getenv",
+    "os.environ",
+    "getattr(settings",
+    "settings.",
+    "config.",
+    "localstorage",
+    "sessionstorage",
+    "get-content",
+    "select-string",
+    "${",
+    "%env",
 )
 RULES: list[tuple[str, str, re.Pattern[str]]] = [
     ("HIGH", "generic_secret_assignment", re.compile(r"(?i)\b(api[_-]?key|secret|token|password|passwd|pwd)\b\s*[:=]\s*['\"]?([^'\"\s#]{16,})")),
@@ -127,6 +145,43 @@ def _allowlisted(text: str) -> bool:
     return any(marker in lowered for marker in ALLOWLIST_VALUE_MARKERS)
 
 
+def _is_reference_assignment(rule: str, text: str, match: re.Match[str] | None = None) -> bool:
+    """Return True for env/config references that are not literal credentials.
+
+    The fast scanner is intended to find tracked literal secrets, not safe source
+    expressions such as ``apiKey = process.env.ENGINE_API_KEY`` or docs showing
+    how to read a key from `.env`. Those were dominating C3 with false positives.
+    """
+    if rule != "generic_secret_assignment":
+        return False
+    lowered = text.lower()
+    if any(marker in lowered for marker in REFERENCE_VALUE_MARKERS):
+        return True
+    if match is None:
+        return False
+    value = match.group(2).strip().strip("'\"`;,)")
+    value_lower = value.lower()
+    # Expressions/references frequently include punctuation or identifier names
+    # and are not tracked literals: api_key=direct_anthropic_key,
+    # token=response.get('access_token'), password=password, etc.
+    if any(ch in value for ch in ".()[]{}"):
+        return True
+    if "_" in value and not value_lower.startswith(("sk_", "ghp_")):
+        return True
+    if value_lower in {
+        "apikey",
+        "api_key",
+        "secret",
+        "token",
+        "password",
+        "auth_token",
+        "direct_anthropic_key",
+        "directanthropickey",
+    }:
+        return True
+    return False
+
+
 def scan_roots(roots: list[Path]) -> list[Finding]:
     findings: list[Finding] = []
     for root in roots:
@@ -141,7 +196,10 @@ def scan_roots(roots: list[Path]) -> list[Finding]:
                 if _allowlisted(line):
                     continue
                 for severity, rule, pattern in RULES:
-                    if pattern.search(line):
+                    match = pattern.search(line)
+                    if match:
+                        if _is_reference_assignment(rule, line, match):
+                            continue
                         findings.append(
                             Finding(
                                 severity=severity,

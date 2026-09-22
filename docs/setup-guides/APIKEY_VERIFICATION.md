@@ -713,7 +713,7 @@ completed
      (Did you mean status?)
 
 ● Bash(curl -s -H "Accept: application/json" -H
-      "X-Subscription-Token: BSApyDHMDQ2QubwA5TSe1ZkC6lk5Msk"
+      "X-Subscription-Token: [REDACTED]"
        "https://api.search.brave.com/res/v1/web/search?q=Gree
       nfield+Me…)
   ⎿  Error: Sibling tool call errored
@@ -725,7 +725,7 @@ completed
      … +14 lines (ctrl+o to expand)
 
 ● Bash(curl -s -H "Accept: application/json" -H
-      "X-Subscription-Token: BSApyDHMDQ2QubwA5TSe1ZkC6lk5Msk"
+      "X-Subscription-Token: [REDACTED]"
        "https://api.search.brave.com/res/v1/web/search?q=Gree
       nfield+Me…)
   ⎿  {"type":"search","query":{"original":"Greenfield Me
@@ -1745,7 +1745,7 @@ hlHctNNk8
      error: unknown command 'stats'
      (Did you mean status?)
 
-● Bash(curl -s -H "Accept: application/json" -H "X-Subscription-Token: BSApyDHMDQ2QubwA5TSe1ZkC6lk5Msk"
+● Bash(curl -s -H "Accept: application/json" -H "X-Subscription-Token: [REDACTED]"
       "https://api.search.brave.com/res/v1/web/search?q=Greenfield+Me…)
   ⎿  Error: Sibling tool call errored
 
@@ -1755,7 +1755,7 @@ hlHctNNk8
      Model: nomic-embed-text
      … +14 lines (ctrl+o to expand)
 
-● Bash(curl -s -H "Accept: application/json" -H "X-Subscription-Token: BSApyDHMDQ2QubwA5TSe1ZkC6lk5Msk"
+● Bash(curl -s -H "Accept: application/json" -H "X-Subscription-Token: [REDACTED]"
       "https://api.search.brave.com/res/v1/web/search?q=Greenfield+Me…)
   ⎿  {"type":"search","query":{"original":"Greenfield Metal Sales Minnesota","show_strict_warning":
      false,"is_navigational":true,"is_geolocal":true,"local_decision":"mix","is_news_breaking":fals
@@ -2617,7 +2617,7 @@ hlHctNNk8
      error: unknown command 'stats'
      (Did you mean status?)
 
-● Bash(curl -s -H "Accept: application/json" -H "X-Subscription-Token: BSApyDHMDQ2QubwA5TSe1ZkC6lk5Msk"
+● Bash(curl -s -H "Accept: application/json" -H "X-Subscription-Token: [REDACTED]"
       "https://api.search.brave.com/res/v1/web/search?q=Greenfield+Me…)
   ⎿  Error: Sibling tool call errored
 
@@ -2627,7 +2627,7 @@ hlHctNNk8
      Model: nomic-embed-text
      … +14 lines (ctrl+o to expand)
 
-● Bash(curl -s -H "Accept: application/json" -H "X-Subscription-Token: BSApyDHMDQ2QubwA5TSe1ZkC6lk5Msk"
+● Bash(curl -s -H "Accept: application/json" -H "X-Subscription-Token: [REDACTED]"
       "https://api.search.brave.com/res/v1/web/search?q=Greenfield+Me…)
   ⎿  {"type":"search","query":{"original":"Greenfield Metal Sales Minnesota","show_strict_warning":
      false,"is_navigational":true,"is_geolocal":true,"local_decision":"mix","is_news_breaking":fals
@@ -5784,7 +5784,7 @@ hlHctNNk8
 ● Bash(wsl -d Ubuntu -- bash -l -c "sed -n '370,420p'
       /root/.hermes/hermes-agent/hermes_cli/runtime_provider.py")
   ⎿          from agent.anthropic_adapter import resolve_anthropic_token
-             token = resolve_anthropic_token()
+             token = [REDACTED]
              if not token:
      … +23 lines (ctrl+o to expand)
 
@@ -6714,7 +6714,7 @@ hlHctNNk8
 ● Bash(wsl -d Ubuntu -- bash -l -c "sed -n '370,420p'
       /root/.hermes/hermes-agent/hermes_cli/runtime_provider.py")
   ⎿          from agent.anthropic_adapter import resolve_anthropic_token
-             token = resolve_anthropic_token()
+             token = [REDACTED]
              if not token:
      … +23 lines (ctrl+o to expand)
 

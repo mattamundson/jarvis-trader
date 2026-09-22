@@ -99,7 +99,7 @@
 ### Proxy Configuration
 
 **next.config.ts** correctly rewrites `/api/engine/*` → `NEXT_PUBLIC_ENGINE_URL`.  
-**Header injection** in `lib/api.ts`: `X-API-Key: jarvis-dev-key-change-me` ✓  
+**Header injection** in `lib/api.ts`: `X-API-Key: [REDACTED] ✓  
 **Timeout handling**: 30s fetch timeout with 1 retry ✓
 
 ---

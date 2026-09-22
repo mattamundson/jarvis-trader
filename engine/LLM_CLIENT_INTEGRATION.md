@@ -37,7 +37,7 @@ The client is **automatically initialized** in `main.py` during startup:
 from llm import JarvisLLMClient
 
 _llm_client = JarvisLLMClient(
-    api_key=settings.ANTHROPIC_API_KEY,
+    api_key=[REDACTED]
     db_path="data/llm_costs.db"
 )
 ```
@@ -51,7 +51,7 @@ Two new endpoints are now available for monitoring:
 #### Get Daily Statistics
 ```bash
 curl -X GET http://localhost:8010/llm/stats \
-  -H "X-API-Key: jarvis-dev-key-change-me"
+  -H "X-API-Key: [REDACTED]"
 ```
 
 Response:
@@ -88,7 +88,7 @@ Response:
 #### Get Monthly Statistics
 ```bash
 curl -X GET http://localhost:8010/llm/stats/monthly \
-  -H "X-API-Key: jarvis-dev-key-change-me"
+  -H "X-API-Key: [REDACTED]"
 ```
 
 Response:

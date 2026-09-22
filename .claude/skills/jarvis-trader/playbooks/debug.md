@@ -92,7 +92,7 @@ cd engine && .venv/Scripts/python -c "from config import settings; print(setting
 cd engine && .venv/Scripts/python -m pytest tests/test_safety_layer.py -v -k "test_name"
 
 # Check if an endpoint is reachable (engine must be running)
-curl -s -H "X-API-Key: jarvis-dev-key-change-me" http://localhost:8010/health
+curl -s -H "X-API-Key: [REDACTED]" http://localhost:8010/health
 ```
 
 ---

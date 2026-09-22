@@ -752,7 +752,7 @@ Organized into 4 test classes:
 ### 12.1 Verify engine health
 
 ```bash
-curl -s -H "X-API-Key: xPRdYjkyUP20r29jrhAlgefneE1oYGSvFn3ri5C1OGc" \
+curl -s -H "X-API-Key: [REDACTED]" \
   http://localhost:8010/health | jq
 ```
 
@@ -761,7 +761,7 @@ Expected: `status=ok`, `llm_path_healthy=true`, `ibkr_connected=true`, `kill_swi
 ### 12.2 Check today's LLM spend / success rate
 
 ```bash
-curl -s -H "X-API-Key: xPRdYjkyUP20r29jrhAlgefneE1oYGSvFn3ri5C1OGc" \
+curl -s -H "X-API-Key: [REDACTED]" \
   http://localhost:8010/llm/stats | jq
 ```
 
@@ -812,7 +812,7 @@ The `↺` column should advance only on explicit restarts. If it rises unprompte
 ### 12.7 Pull most recent MES pipeline decisions
 
 ```bash
-curl -s -H "X-API-Key: xPRdYjkyUP20r29jrhAlgefneE1oYGSvFn3ri5C1OGc" \
+curl -s -H "X-API-Key: [REDACTED]" \
   "http://localhost:8010/decisions/recent?symbol=MES&limit=20" | jq '.[] | {ts, action, confidence, regime}'
 ```
 
@@ -888,12 +888,12 @@ User enabled auto mode, which let me run cross-instrument validation, commit, an
 2. **Re-read `project_mes_trend_following_candidate.md`** — canonical strategy documentation.
 3. **Verify MES strategy is still live**:
    ```bash
-   curl -s -H "X-API-Key: xPRdYjkyUP20r29jrhAlgefneE1oYGSvFn3ri5C1OGc" http://localhost:8010/health | jq '.llm_path_healthy'
+   curl -s -H "X-API-Key: [REDACTED]" http://localhost:8010/health | jq '.llm_path_healthy'
    # should print: true
    ```
 4. **Check for MES paper trades since activation**:
    ```bash
-   curl -s -H "X-API-Key: xPRdYjkyUP20r29jrhAlgefneE1oYGSvFn3ri5C1OGc" \
+   curl -s -H "X-API-Key: [REDACTED]" \
      "http://localhost:8010/paper/trades?limit=20" | jq '.[] | select(.symbol == "MES")'
    ```
 5. **Read MEMORY.md line 4** — latest pivot status ("ACTIVATED 2026-04-20 12:56 CT").
@@ -902,7 +902,7 @@ User enabled auto mode, which let me run cross-instrument validation, commit, an
 If performance diverges from backtest expectation (PF drops below 1.0 for 7 consecutive trading days with ≥3 trades), escalate before the 2026-04-22 R4 window ends. Pause strategy via kill switch if needed:
 
 ```bash
-curl -X POST -H "X-API-Key: xPRdYjkyUP20r29jrhAlgefneE1oYGSvFn3ri5C1OGc" \
+curl -X POST -H "X-API-Key: [REDACTED]" \
   http://localhost:8010/safety/kill-switch/activate
 ```
 

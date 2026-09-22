@@ -2,7 +2,7 @@
 
 > **ENGINE STATUS: OFFLINE** — Failed to start. `API_KEY` not set in `engine/.env`.
 > All engine API calls skipped. Signal posture based on web data only.
-> Fix: Set `API_KEY=<strong-random-string>` in `engine/.env` before next session.
+> Fix: Set `API_KEY=[REDACTED] in `engine/.env` before next session.
 
 ---
 

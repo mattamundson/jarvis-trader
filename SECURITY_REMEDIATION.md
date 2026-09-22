@@ -33,7 +33,7 @@ The sk-ant-api03 key in the git history grants full access to the Anthropic API 
 ```bash
 # Confirm the old key no longer works (should return 401)
 curl -X GET https://api.anthropic.com/v1/models \
-  -H "x-api-key: sk-ant-api03-your-old-exposed-key"
+  -H "x-api-key: [REDACTED]"
 ```
 
 ---
@@ -54,7 +54,7 @@ The Polygon API key grants access to real-time and historical market data. A com
 ### Verification:
 ```bash
 # Confirm the old key no longer works (should return 401)
-curl "https://api.polygon.io/v1/meta/symbols/AAPL?apiKey=your_old_exposed_key"
+curl "https://api.polygon.io/v1/meta/symbols/AAPL?apiKey=[REDACTED]"
 ```
 
 ---
@@ -201,7 +201,7 @@ Now that old credentials are revoked, regenerate new ones.
 4. Copy the new key (sk-ant-api03-...)
 5. Add to `.env`:
 ```bash
-ANTHROPIC_API_KEY=sk-ant-api03-your-new-key-here
+ANTHROPIC_API_KEY=[REDACTED_ANTHROPIC_KEY]
 ```
 
 ### 6b: Generate New Polygon API Key
@@ -327,7 +327,7 @@ git check-ignore -v .env client_secret*.json *.pem
 ```bash
 # Verify old Anthropic key is dead
 curl -s -X GET https://api.anthropic.com/v1/models \
-  -H "x-api-key: sk-ant-api03-old-exposed-key" | grep -i "unauthorized"
+  -H "x-api-key: [REDACTED]" | grep -i "unauthorized"
 # Should show: unauthorized or 401 error
 ```
 

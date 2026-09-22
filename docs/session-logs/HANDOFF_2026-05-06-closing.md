@@ -520,7 +520,7 @@ OneDrive should have released the lock by now (it was a sync-in-progress lock, l
 **Post-rotation verification protocol:**
 ```bash
 # Anthropic — should return 401 with old key
-curl -s -H "x-api-key: sk-ant-api03-<OLD-KEY>" \
+curl -s -H "x-api-key: [REDACTED]" \
   -H "content-type: application/json" \
   -H "anthropic-version: 2023-06-01" \
   https://api.anthropic.com/v1/messages \
@@ -719,7 +719,7 @@ pm2 status
 **Post-Wave-1 verification (assistant executes after each service signal):**
 ```bash
 # Test Anthropic old key is dead
-curl -s -H "x-api-key: sk-ant-api03-OLDKEY" \
+curl -s -H "x-api-key: [REDACTED]" \
   -H "anthropic-version: 2023-06-01" -H "content-type: application/json" \
   https://api.anthropic.com/v1/messages \
   -d '{"model":"claude-haiku-4-5-20251001","max_tokens":1,"messages":[{"role":"user","content":"hi"}]}'

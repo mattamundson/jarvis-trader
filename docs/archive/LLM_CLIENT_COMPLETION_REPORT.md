@@ -235,13 +235,13 @@ tenacity==9.0.0           # Retry logic with exponential backoff
 
 **Endpoint 1**: `GET /llm/stats`
 ```bash
-curl http://localhost:8010/llm/stats -H "X-API-Key: jarvis-dev-key-change-me"
+curl http://localhost:8010/llm/stats -H "X-API-Key: [REDACTED]"
 ```
 Returns: Daily statistics with per-model and per-agent cost breakdown
 
 **Endpoint 2**: `GET /llm/stats/monthly`
 ```bash
-curl http://localhost:8010/llm/stats/monthly -H "X-API-Key: jarvis-dev-key-change-me"
+curl http://localhost:8010/llm/stats/monthly -H "X-API-Key: [REDACTED]"
 ```
 Returns: Monthly totals with daily breakdown by date
 

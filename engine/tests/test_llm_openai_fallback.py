@@ -42,7 +42,7 @@ def _make_client(tmp_path, monkeypatch, **env):
     for key, val in env.items():
         monkeypatch.setenv(key, val)
     db_path = str(tmp_path / "openai_test_costs.db")
-    return JarvisLLMClient(api_key="test-anthropic-key", db_path=db_path)
+    return JarvisLLMClient(api_key="[REDACTED]", db_path=db_path)
 
 
 # ── Init / flag tests ─────────────────────────────────────────────────────────

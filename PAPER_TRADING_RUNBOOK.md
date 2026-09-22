@@ -177,7 +177,7 @@ WHATSAPP_TO=whatsapp:+1234567890
 # ──────────────────────────────────────────────────────────────────────────
 # SECURITY & LOGGING
 # ──────────────────────────────────────────────────────────────────────────
-API_KEY=jarvis-dev-key-change-me
+API_KEY=[REDACTED]
 LOG_LEVEL=INFO
 ```
 
@@ -469,7 +469,7 @@ The Kill Switch is the emergency stop mechanism. It must work correctly 100% of 
 ```bash
 # Method 1: Via API
 curl -X POST http://localhost:8010/v1/safety/kill-switch/activate \
-  -H "X-API-Key: jarvis-dev-key-change-me" \
+  -H "X-API-Key: [REDACTED]" \
   -H "Content-Type: application/json" \
   -d '{"reason": "manual_test"}'
 
@@ -496,7 +496,7 @@ curl http://localhost:8010/v1/safety/kill-switch
 # 2. Orders are REJECTED (not submitted to broker)
 # Try to submit an order via API — should be blocked with reason: "Kill Switch Active"
 curl -X POST http://localhost:8010/v1/trading/submit-order \
-  -H "X-API-Key: jarvis-dev-key-change-me" \
+  -H "X-API-Key: [REDACTED]" \
   -H "Content-Type: application/json" \
   -d '{"symbol": "MES", "quantity": 1, "order_type": "market"}'
 # Expected response: { "error": "Kill Switch is active. All orders rejected." }
@@ -519,7 +519,7 @@ curl http://localhost:8010/v1/safety/kill-switch
 
 # 2. If Manual: Rearm Immediately
 curl -X POST http://localhost:8010/v1/safety/kill-switch/rearm \
-  -H "X-API-Key: jarvis-dev-key-change-me" \
+  -H "X-API-Key: [REDACTED]" \
   -H "Content-Type: application/json"
 
 # 3. If Automatic (Daily Loss or Drawdown): Wait for Recovery
@@ -528,7 +528,7 @@ curl -X POST http://localhost:8010/v1/safety/kill-switch/rearm \
 #
 # To force rearm (only if root cause identified and fixed):
 curl -X POST http://localhost:8010/v1/safety/kill-switch/rearm \
-  -H "X-API-Key: jarvis-dev-key-change-me" \
+  -H "X-API-Key: [REDACTED]" \
   -d '{"verified_by": "matt_trader", "root_cause": "..."}'
 
 # 4. Verify Kill Switch is now DISARMED
@@ -579,7 +579,7 @@ If critical bugs are discovered during the 30-day paper test that require code c
 ```bash
 # 1. Immediately activate kill switch
 curl -X POST http://localhost:8010/v1/safety/kill-switch/activate \
-  -H "X-API-Key: jarvis-dev-key-change-me" \
+  -H "X-API-Key: [REDACTED]" \
   -d '{"reason": "critical_bug_found"}'
 
 # 2. Capture full context
@@ -776,7 +776,7 @@ If live trading encounters a critical bug:
 ```bash
 # 1. IMMEDIATELY activate kill switch
 curl -X POST http://localhost:8010/v1/safety/kill-switch/activate \
-  -H "X-API-Key: jarvis-dev-key-change-me" \
+  -H "X-API-Key: [REDACTED]" \
   -d '{"reason": "critical_bug_live_trading"}'
 
 # 2. Close all open positions manually via IBKR

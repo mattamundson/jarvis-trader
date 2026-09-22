@@ -65,7 +65,7 @@ class TestAPIKeyCheck:
 
     def test_api_key_valid_passes(self):
         """Valid API_KEY returns PASS."""
-        result = _check_api_key(SimpleNamespace(API_KEY="valid-test-key-123"))
+        result = _check_api_key(SimpleNamespace(API_KEY="valid"))
         assert result.status == "pass"
 
 

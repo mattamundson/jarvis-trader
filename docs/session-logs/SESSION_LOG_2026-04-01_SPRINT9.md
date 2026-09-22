@@ -1252,7 +1252,7 @@ ANTHROPIC_API_KEY=sk-ant-api03-...     (required for LLM pipeline)
 POLYGON_API_KEY=...                    (required for market data via Polygon)
 POSTGRES_URL=postgresql://...          (listed as required but engine uses SQLite)
 REDIS_URL=redis://...                  (listed as required)
-API_KEY=<strong-random-string>         (FastAPI auth header)
+API_KEY=[REDACTED]         (FastAPI auth header)
 ```
 
 Note: `config.py` startup validation requires all 5 but main.py only uses SQLite. A future fix should demote POSTGRES_URL and REDIS_URL to optional with warnings.

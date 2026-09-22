@@ -89,7 +89,7 @@ Macro context for MNQ: NQ near all-time highs with Broadcom/Meta AI headline and
 | MCL/MNQ signals | Unavailable |
 | Paper trading mode | Active (LIVE_TRADING_ENABLED = False) |
 
-**Fix:** Edit `engine/.env`, add `API_KEY=<strong-random-string>`, then restart uvicorn.
+**Fix:** Edit `engine/.env`, add `API_KEY=[REDACTED] then restart uvicorn.
 
 ---
 

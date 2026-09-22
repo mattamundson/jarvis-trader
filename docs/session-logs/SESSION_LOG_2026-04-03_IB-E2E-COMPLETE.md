@@ -161,7 +161,7 @@ print(approval_id)
 Approved via API:
 ```bash
 curl -s -X POST "http://localhost:8010/pipeline/pending-approvals/{approval_id}/approve" \
-  -H "X-API-Key: jarvis-dev-key-change-me" \
+  -H "X-API-Key: [REDACTED]" \
   -H "Content-Type: application/json" \
   -d '{"entry_price": 68.50}'
 ```
@@ -267,7 +267,7 @@ print(approval_id)
 Approved via API:
 ```bash
 curl -s -X POST "http://localhost:8010/pipeline/pending-approvals/c1a41c5b-142f-4266-b622-d2ad286de2eb/approve" \
-  -H "X-API-Key: jarvis-dev-key-change-me" \
+  -H "X-API-Key: [REDACTED]" \
   -H "Content-Type: application/json" \
   -d '{"entry_price": 68.50}'
 ```
@@ -396,7 +396,7 @@ POST /pipeline/pending-approvals/{id}/approve  → approve + route to IB
 POST /pipeline/pending-approvals/{id}/reject   → reject approval
 ```
 
-Authentication: `X-API-Key: jarvis-dev-key-change-me` (local dev)
+Authentication: `X-API-Key: [REDACTED] (local dev)
 
 ---
 
@@ -454,7 +454,7 @@ INFO  jarvis_trader.main - Pending approval {approval_id[:8]} for MCL
 
 Then verify via:
 ```bash
-curl -H "X-API-Key: jarvis-dev-key-change-me" http://localhost:8010/pipeline/pending-approvals
+curl -H "X-API-Key: [REDACTED]" http://localhost:8010/pipeline/pending-approvals
 ```
 
 ### Verify Scheduler Approval Insertion (P0, blocked by credits)
@@ -546,7 +546,7 @@ print(approval_id)
 
 ### List Pending Approvals
 ```bash
-curl -s -H "X-API-Key: jarvis-dev-key-change-me" \
+curl -s -H "X-API-Key: [REDACTED]" \
   http://localhost:8010/pipeline/pending-approvals | python -m json.tool
 ```
 
@@ -554,7 +554,7 @@ curl -s -H "X-API-Key: jarvis-dev-key-change-me" \
 ```bash
 curl -s -X POST \
   "http://localhost:8010/pipeline/pending-approvals/{APPROVAL_ID}/approve" \
-  -H "X-API-Key: jarvis-dev-key-change-me" \
+  -H "X-API-Key: [REDACTED]" \
   -H "Content-Type: application/json" \
   -d '{"entry_price": 68.50}' | python -m json.tool
 ```
@@ -563,7 +563,7 @@ curl -s -X POST \
 ```bash
 curl -s -X POST \
   "http://localhost:8010/pipeline/pending-approvals/{APPROVAL_ID}/reject" \
-  -H "X-API-Key: jarvis-dev-key-change-me" \
+  -H "X-API-Key: [REDACTED]" \
   -H "Content-Type: application/json" \
   -d '{"reason": "test rejection"}' | python -m json.tool
 ```

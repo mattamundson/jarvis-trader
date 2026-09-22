@@ -3265,7 +3265,7 @@ class TestSanitizeMessage:
         assert sanitize_message(msg) == msg
 
     def test_anthropic_api_key_masked(self):
-        msg = "Using key sk-ant-api03-ABCDEFGHIJKLMNOPQRSTUVWXYZ123456789"
+        msg = "Using key [REDACTED_ANTHROPIC_KEY]"
         result = sanitize_message(msg)
         assert "sk-ant-***" in result
         assert "ABCDEFGHIJKLMNOPQRSTUVWXYZ" not in result
@@ -3335,7 +3335,7 @@ class TestSanitizeMessage:
         assert isinstance(result, str)
 
     def test_multiple_api_keys_in_one_message(self):
-        msg = "key1=sk-ant-api03-AAABBBCCCDDDEEEFFFGGGHHH key2=sk-ant-api03-ZZZYYYXXXWWWVVV"
+        msg = "key1=[REDACTED_ANTHROPIC_KEY] key2=[REDACTED_ANTHROPIC_KEY]"
         result = sanitize_message(msg)
         assert "sk-ant-***" in result
         assert "AAABBBCCCDDDEEEFFFGGGHHH" not in result
@@ -3398,7 +3398,7 @@ class TestSanitizingFormatter:
             logging.INFO,
             "",
             0,
-            "Key: sk-ant-api03-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+            "Key: [REDACTED_ANTHROPIC_KEY]",
             (),
             None,
         )
@@ -3440,7 +3440,7 @@ class TestSanitizingFormatter:
             "",
             0,
             "key=%(key)s value=%(val)s",
-            {"key": "sk-ant-api03-XYZXYZXYZXYZ123456789", "val": "normal"},
+            {"key": "[REDACTED_ANTHROPIC_KEY]", "val": "normal"},
             None,
         )
         try:
@@ -3457,7 +3457,7 @@ class TestSanitizingFormatter:
             "",
             0,
             "val=%s",
-            ("sk-ant-api03-XYZXYZXYZXYZ123456789",),
+            ("[REDACTED_ANTHROPIC_KEY]",),
             None,
         )
         try:

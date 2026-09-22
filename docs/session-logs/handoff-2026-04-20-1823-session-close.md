@@ -269,7 +269,7 @@ Prior handoff is canonical *strategy* doc. This close-out is narrower *state* do
 2. **Read prior handoff** (`handoff-2026-04-20-mes-profitability.md`, ~1,537 lines) — the canonical strategy reference.
 3. **Re-verify live state**:
    ```bash
-   curl -s -H "X-API-Key: xPRdYjkyUP20r29jrhAlgefneE1oYGSvFn3ri5C1OGc" \
+   curl -s -H "X-API-Key: [REDACTED]" \
      http://localhost:8010/health | jq '.llm_path_healthy, .status'
    ```
 4. **Group + commit concurrent-session uncommitted work** (TODO #11). Suggested commit groupings:
@@ -1504,7 +1504,7 @@ If successor is overwhelmed: read §23 checklist only. Every other section is op
 
 ## 26. Final one-liner
 
-**Successor's first action: `cd /c/Users/mattm/ThinkorSwim/jarvis-trader && git status && curl -s -H "X-API-Key: xPRdYjkyUP20r29jrhAlgefneE1oYGSvFn3ri5C1OGc" http://localhost:8010/health | jq '.status, .llm_path_healthy'`. Then execute §23 checklist. No other action until checklist complete.**
+**Successor's first action: `cd /c/Users/mattm/ThinkorSwim/jarvis-trader && git status && curl -s -H "X-API-Key: [REDACTED]" http://localhost:8010/health | jq '.status, .llm_path_healthy'`. Then execute §23 checklist. No other action until checklist complete.**
 
 ---
 

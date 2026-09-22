@@ -55,7 +55,7 @@
 ```bash
 # Train Run 8
 curl -X POST http://localhost:8010/strategies/rl/train \
-  -H "X-API-Key: jarvis-dev-key-change-me" \
+  -H "X-API-Key: [REDACTED]" \
   -H "Content-Type: application/json" \
   -d '{"symbol":"MES","timesteps":500000}'
 
@@ -64,7 +64,7 @@ python /tmp/eval_run7.py
 
 # Walk-forward (gates passed)
 curl -X POST http://localhost:8010/strategies/rl/train-walkforward \
-  -H "X-API-Key: jarvis-dev-key-change-me" \
+  -H "X-API-Key: [REDACTED]" \
   -H "Content-Type: application/json" \
   -d '{"symbol":"MES","timesteps":500000,"n_windows":8}'
 ```

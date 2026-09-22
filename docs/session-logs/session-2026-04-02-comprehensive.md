@@ -484,7 +484,7 @@ Output: 3 lines showing TCP 4002 LISTENING (PID 30600) + 2 ESTABLISHED connectio
 
 **Step 2: Engine health check**
 ```bash
-curl -s http://127.0.0.1:8010/health -H "x-api-key: jarvis-dev-key-change-me"
+curl -s http://127.0.0.1:8010/health -H "x-api-key: [REDACTED]"
 ```
 Response:
 ```json
@@ -509,7 +509,7 @@ Response:
 
 **Step 3: Position sizing calculation**
 ```bash
-curl -s "http://127.0.0.1:8010/safety/position-sizing/calculate?symbol=MCL&entry_price=65.50&stop_price=64.80&direction=LONG" -H "x-api-key: jarvis-dev-key-change-me"
+curl -s "http://127.0.0.1:8010/safety/position-sizing/calculate?symbol=MCL&entry_price=65.50&stop_price=64.80&direction=LONG" -H "x-api-key: [REDACTED]"
 ```
 Response:
 ```json
@@ -534,7 +534,7 @@ Result: 1 contract recommended. `$100 risk / $700 risk-per-contract = 0.14 contr
 ```bash
 curl -s -X POST http://127.0.0.1:8010/portfolio/paper/trade \
   -H "Content-Type: application/json" \
-  -H "x-api-key: jarvis-dev-key-change-me" \
+  -H "x-api-key: [REDACTED]" \
   -d '{"symbol":"MCL","direction":"LONG","entry_price":65.50,"stop_price":64.80,"target_price":66.80,"contracts":1,"source":"ib_gateway_e2e_test","conviction":8.0}'
 ```
 Response:
@@ -632,7 +632,7 @@ During the Wave 2 analysis of why pipeline tests were failing, a search for `cla
 # In engine/main.py (approximate location, top of file):
 class SimpleLLMClient:
     """Simple LLM client for the trading pipeline."""
-    api_key = settings.ANTHROPIC_API_KEY
+    api_key = [REDACTED]
     # That's it. No methods. No __init__. No call().
 ```
 
@@ -694,7 +694,7 @@ There was no check at startup that the LLM client had the required interface. Th
 # REMOVED from engine/main.py:
 class SimpleLLMClient:
     """Simple LLM client for the trading pipeline."""
-    api_key = settings.ANTHROPIC_API_KEY
+    api_key = [REDACTED]
 
 if settings.ANTHROPIC_API_KEY:
     llm_client = SimpleLLMClient()
@@ -705,7 +705,7 @@ else:
 from llm.client import JarvisLLMClient
 
 if settings.ANTHROPIC_API_KEY:
-    llm_client = JarvisLLMClient(api_key=settings.ANTHROPIC_API_KEY)
+    llm_client = JarvisLLMClient(api_key=[REDACTED]
     logger.info(f"✅ LLM client initialized: JarvisLLMClient")
 else:
     llm_client = None
@@ -854,7 +854,7 @@ Pipeline ran successfully using historical data. Price feed working again.
 2. Generate new key (free tier works)
 3. Edit `engine/.env`: Update `POLYGON_API_KEY=<new_key>`
 4. Run `.\restart_engine.ps1`
-5. Verify: `curl -s "http://127.0.0.1:8010/prices/snapshot" -H "x-api-key: jarvis-dev-key-change-me"`
+5. Verify: `curl -s "http://127.0.0.1:8010/prices/snapshot" -H "x-api-key: [REDACTED]"`
    Should show MCL current price from Polygon, not warning about CSV fallback
 
 ---
@@ -1058,7 +1058,7 @@ The 30-day forward test cannot start with stale test positions open. The `GET /p
 ```bash
 curl -s -X POST http://127.0.0.1:8010/portfolio/paper/trade \
   -H "Content-Type: application/json" \
-  -H "x-api-key: jarvis-dev-key-change-me" \
+  -H "x-api-key: [REDACTED]" \
   -d '{"trade_id":"92fefd04-...","action":"close","exit_price":72.50}'
 ```
 Response: `{"status":"closed","pnl":0.00,"exit_price":72.50}`
@@ -1071,7 +1071,7 @@ Response: `{"status":"closed","pnl":0.00,"exit_price":72.50}`
 ```bash
 curl -s -X POST http://127.0.0.1:8010/portfolio/paper/trade \
   -H "Content-Type: application/json" \
-  -H "x-api-key: jarvis-dev-key-change-me" \
+  -H "x-api-key: [REDACTED]" \
   -d '{"trade_id":"594fda13-fce8-4b96-b5c8-e19b9a35ad78","action":"close","exit_price":72.50}'
 ```
 Response: `{"status":"closed","pnl":7.00,"exit_price":72.50}`
@@ -1080,7 +1080,7 @@ Response: `{"status":"closed","pnl":7.00,"exit_price":72.50}`
 ### Verification
 
 ```bash
-curl -s http://127.0.0.1:8010/portfolio/paper/positions -H "x-api-key: jarvis-dev-key-change-me"
+curl -s http://127.0.0.1:8010/portfolio/paper/positions -H "x-api-key: [REDACTED]"
 ```
 Response: `{"positions":[],"count":0}`
 
@@ -1450,9 +1450,9 @@ All features in valid range: ✅
 ### Before Writing Any Code
 
 1. **Read this file** (or the handoff YAML at `docs/session-logs/handoff-2026-04-02-17.md`)
-2. **Check engine health**: `curl -s http://127.0.0.1:8010/health -H "x-api-key: jarvis-dev-key-change-me"`
-3. **Check open positions**: `curl -s http://127.0.0.1:8010/portfolio/paper/positions -H "x-api-key: jarvis-dev-key-change-me"` → should be 0
-4. **Check safety status**: `curl -s http://127.0.0.1:8010/safety/status -H "x-api-key: jarvis-dev-key-change-me"` → kill switch should be INACTIVE
+2. **Check engine health**: `curl -s http://127.0.0.1:8010/health -H "x-api-key: [REDACTED]"`
+3. **Check open positions**: `curl -s http://127.0.0.1:8010/portfolio/paper/positions -H "x-api-key: [REDACTED]"` → should be 0
+4. **Check safety status**: `curl -s http://127.0.0.1:8010/safety/status -H "x-api-key: [REDACTED]"` → kill switch should be INACTIVE
 
 ### Matt Must Do First (Blocking)
 
@@ -1464,7 +1464,7 @@ All features in valid range: ✅
    POLYGON_API_KEY=<your-new-key-here>
    ```
 4. Run `.\restart_engine.ps1` from the jarvis-trader directory
-5. Verify: `curl -s http://127.0.0.1:8010/prices/snapshot -H "x-api-key: jarvis-dev-key-change-me"`
+5. Verify: `curl -s http://127.0.0.1:8010/prices/snapshot -H "x-api-key: [REDACTED]"`
    - Look for actual MCL price in $60-85 range
    - Should NOT show "CSV cache fallback" warning in engine logs
 
@@ -1499,7 +1499,7 @@ print(result)
 The 30-day paper trading validation period (April–May 2026):
 - Instruments: MCL (WFE=0.82) + MNQ (WFE=0.57)
 - Pipeline auto-runs at 9:35 CT on each RTH open (scheduler already configured)
-- Monitor daily: `curl -s http://127.0.0.1:8010/portfolio/paper/performance -H "x-api-key: jarvis-dev-key-change-me"`
+- Monitor daily: `curl -s http://127.0.0.1:8010/portfolio/paper/performance -H "x-api-key: [REDACTED]"`
 - Success target: PF > 2.0, Sharpe > 1.5, no more than 2 consecutive losing weeks
 - Failure condition: Kill switch triggers twice during paper period → investigate before live
 

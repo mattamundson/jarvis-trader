@@ -1331,7 +1331,7 @@ The Two-Lever rl_config.py changes (applied at ~10:50 UTC) will only take effect
 ### Run 9 Command (after restart)
 ```bash
 curl -X POST http://localhost:8010/strategies/rl/train \
-  -H "X-API-Key: jarvis-dev-key-change-me" \
+  -H "X-API-Key: [REDACTED]" \
   -H "Content-Type: application/json" \
   -d '{"symbol":"MES","timesteps":500000}'
 ```

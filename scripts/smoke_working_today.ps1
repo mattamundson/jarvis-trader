@@ -19,7 +19,7 @@
 #>
 param(
     [string] $BaseUrl = "http://127.0.0.1:8010",
-    [string] $ApiKey = $env:JARVIS_API_KEY
+    [string] $ApiKey = [REDACTED]
 )
 
 $ErrorActionPreference = "Stop"
@@ -29,13 +29,13 @@ if (-not $ApiKey) {
     if (Test-Path $envFile) {
         foreach ($line in Get-Content $envFile) {
             if ($line -match '^\s*API_KEY\s*=\s*(.+)\s*$') {
-                $ApiKey = $Matches[1].Trim().Trim('"').Trim("'")
+                $ApiKey = [REDACTED]'"').Trim("'")
                 break
             }
         }
     }
     if (-not $ApiKey) {
-        $ApiKey = "jarvis-dev-key-change-me"
+        $ApiKey = "[REDACTED]"
     }
 }
 

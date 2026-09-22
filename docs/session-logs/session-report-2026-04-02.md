@@ -293,7 +293,7 @@ IB_ACCOUNT_ID=DUP662235
 # Market Data APIs
 FINNHUB_API_KEY=d77fmd1r01qp6aflg870d77fmd1r01qp6aflg87g
 POLYGON_API_KEY=pk_live_YOUR_POLYGON_KEY_HERE
-ANTHROPIC_API_KEY=sk-ant-api03-ubOC7ASzudWsvIN_...
+ANTHROPIC_API_KEY=[REDACTED_ANTHROPIC_KEY]...
 
 # LLM
 LLM_PROVIDER=anthropic
@@ -301,7 +301,7 @@ ANALYST_MODEL=claude-sonnet-4-6
 TRADER_MODEL=claude-opus-4-6
 
 # API Security
-API_KEY=jarvis-dev-key-change-me
+API_KEY=[REDACTED]
 
 # Logging
 LOG_LEVEL=INFO

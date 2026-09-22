@@ -134,7 +134,7 @@ def test_webhook_secret_mismatch_rejected_with_403():
 def test_webhook_secret_match_is_accepted():
     mod.WEBHOOK_SECRET = "correct-horse-battery-staple"
     r = _client().post(
-        "/webhook/tradingview", json=_payload(secret="correct-horse-battery-staple")
+        "/webhook/tradingview", json=_payload(secret=mod.WEBHOOK_SECRET)
     )
     assert r.status_code == 200, r.text
 

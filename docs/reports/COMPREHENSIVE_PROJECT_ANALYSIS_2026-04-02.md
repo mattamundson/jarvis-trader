@@ -200,7 +200,7 @@ Dashboard (Next.js 15, TypeScript, port 3010)
 | Polymarket | DISABLED by default |
 
 **Security concerns:**
-- Default `API_KEY = "jarvis-dev-key-change-me"` must be changed
+- Default `API_KEY = "[REDACTED]"` must be changed
 - Agents bypass centralized config: read `ANTHROPIC_API_KEY` directly from `os.environ`
 - `.schwab_token.json` at engine root (verify in .gitignore)
 - API keys exposed in git history (P0 remediation pending)

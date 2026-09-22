@@ -277,7 +277,7 @@ All verifiable commands were run against the live engine on 2026-04-03. Results:
 - 9 of 10 verifiable commands confirmed working on 2026-04-03
 - IB Gateway start marked UNVERIFIED only because it requires an interactive GUI login (cannot be automated in a script); the port 4002 connectivity check that follows it IS verified
 - Smoke test output noted: the script has a cosmetic `TypeError` when printing results if certain detail fields are `None`, but the core test result (PASS/FAIL) is correctly evaluated before that error
-- Auth header `X-API-Key: jarvis-dev-key-change-me` required for: `/safety/status`, `/scheduler/status`, `/safety/kill-switch/*`; NOT required for: `/health`, `/portfolio`, `/pipeline/pending-approvals` (GET)
+- Auth header `X-API-Key: [REDACTED] required for: `/safety/status`, `/scheduler/status`, `/safety/kill-switch/*`; NOT required for: `/health`, `/portfolio`, `/pipeline/pending-approvals` (GET)
 
 **Overall: US-1805 COMPLETE — Daily ops runbook written, all verifiable commands tested, verification log included in runbook.**
 

@@ -49,7 +49,7 @@ If the script fails to kill (edge case), nuclear fallback:
 # Then manually start uvicorn (see restart_engine.ps1 for exact command)
 ```
 
-Verify up: `curl -H "X-API-Key: jarvis-dev-key-change-me" http://localhost:8010/health`
+Verify up: `curl -H "X-API-Key: [REDACTED]" http://localhost:8010/health`
 
 ---
 
@@ -59,7 +59,7 @@ Only run this if `n_trades ≥ 60` AND all quality gates pass.
 
 ```bash
 curl -X POST http://localhost:8010/api/v1/strategies/rl/train-walkforward \
-  -H "X-API-Key: jarvis-dev-key-change-me" \
+  -H "X-API-Key: [REDACTED]" \
   -H "Content-Type: application/json" \
   -d '{"symbol":"MES","timesteps":500000,"n_windows":8}'
 ```
@@ -67,7 +67,7 @@ curl -X POST http://localhost:8010/api/v1/strategies/rl/train-walkforward \
 Poll for completion:
 
 ```bash
-curl -H "X-API-Key: jarvis-dev-key-change-me" \
+curl -H "X-API-Key: [REDACTED]" \
   http://localhost:8010/api/v1/strategies/rl/status
 # Wait until training_active=false
 ```
@@ -82,18 +82,18 @@ Only run after walk-forward passes all 8 windows.
 
 ```bash
 # Get best model path from status
-curl -H "X-API-Key: jarvis-dev-key-change-me" \
+curl -H "X-API-Key: [REDACTED]" \
   http://localhost:8010/api/v1/strategies/rl/status
 # Note the "best_model_path" value
 
 # Deploy
 curl -X POST http://localhost:8010/api/v1/strategies/rl/deploy \
-  -H "X-API-Key: jarvis-dev-key-change-me" \
+  -H "X-API-Key: [REDACTED]" \
   -H "Content-Type: application/json" \
   -d '{"symbol":"MES","model_path":"data/rl_models/MES_<timestamp>","active":true}'
 
 # Confirm executor is running
-curl -H "X-API-Key: jarvis-dev-key-change-me" \
+curl -H "X-API-Key: [REDACTED]" \
   http://localhost:8010/api/v1/strategies/rl/executor/status
 ```
 
@@ -118,14 +118,14 @@ Trains MNQ → MCL → MGC sequentially, 500k steps each. Each symbol runs throu
 
 ```bash
 # Engine health
-curl -H "X-API-Key: jarvis-dev-key-change-me" http://localhost:8010/health
+curl -H "X-API-Key: [REDACTED]" http://localhost:8010/health
 
 # RL strategy health
-curl -H "X-API-Key: jarvis-dev-key-change-me" \
+curl -H "X-API-Key: [REDACTED]" \
   http://localhost:8010/api/v1/strategies/rl/health
 
 # Executor status (confirm active=true after deploy)
-curl -H "X-API-Key: jarvis-dev-key-change-me" \
+curl -H "X-API-Key: [REDACTED]" \
   http://localhost:8010/api/v1/strategies/rl/executor/status
 ```
 

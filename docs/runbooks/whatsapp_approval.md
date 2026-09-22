@@ -47,7 +47,7 @@ Expected: `"POST /openclaw/webhook"` in the output.
 ```bash
 curl -X POST http://localhost:8010/openclaw/webhook \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: jarvis-dev-key-change-me" \
+  -H "X-API-Key: [REDACTED]" \
   -d '{"message": "yes", "from_number": "+17634520414"}'
 ```
 
@@ -61,7 +61,7 @@ Expected response:
 ```bash
 curl -X POST http://localhost:8010/openclaw/webhook \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: jarvis-dev-key-change-me" \
+  -H "X-API-Key: [REDACTED]" \
   -d '{"message": "no", "from_number": "+17634520414"}'
 ```
 
@@ -70,7 +70,7 @@ curl -X POST http://localhost:8010/openclaw/webhook \
 ```bash
 curl -X POST http://localhost:8010/openclaw/webhook \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: jarvis-dev-key-change-me" \
+  -H "X-API-Key: [REDACTED]" \
   -d '{"message": "maybe", "from_number": "+17634520414"}'
 ```
 

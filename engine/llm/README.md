@@ -104,11 +104,11 @@ for day in monthly["daily_breakdown"]:
 ```bash
 # Get daily stats
 curl -X GET http://localhost:8010/llm/stats \
-  -H "X-API-Key: jarvis-dev-key-change-me"
+  -H "X-API-Key: [REDACTED]"
 
 # Get monthly stats
 curl -X GET http://localhost:8010/llm/stats/monthly \
-  -H "X-API-Key: jarvis-dev-key-change-me"
+  -H "X-API-Key: [REDACTED]"
 ```
 
 ## Database Schema
@@ -166,7 +166,7 @@ from llm import JarvisLLMClient
 
 # In lifespan startup
 _llm_client = JarvisLLMClient(
-    api_key=settings.ANTHROPIC_API_KEY,
+    api_key=[REDACTED]
     db_path="data/llm_costs.db"
 )
 llm_client = _llm_client

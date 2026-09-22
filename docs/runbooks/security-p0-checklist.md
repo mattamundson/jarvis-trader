@@ -54,13 +54,13 @@ Revoking keys is the non-negotiable step. History scrubbing is best-effort clean
 **Verify old key is dead** (should return 401):
 ```bash
 curl -s -X GET https://api.anthropic.com/v1/models \
-  -H "x-api-key: sk-ant-api03-OLD-KEY-HERE" | python -m json.tool
+  -H "x-api-key: [REDACTED]" | python -m json.tool
 ```
 
 **Verify new key works**:
 ```bash
 curl -s -X POST https://api.anthropic.com/v1/messages \
-  -H "x-api-key: $ANTHROPIC_API_KEY" \
+  -H "x-api-key: [REDACTED]" \
   -H "anthropic-version: 2023-06-01" \
   -H "content-type: application/json" \
   -d '{"model":"claude-haiku-4-5-20251001","max_tokens":10,"messages":[{"role":"user","content":"ping"}]}'
@@ -83,7 +83,7 @@ curl -s -X POST https://api.anthropic.com/v1/messages \
 
 **Verify new key works**:
 ```bash
-curl -s "https://api.polygon.io/v2/aggs/ticker/SPY/prev?adjusted=true&apiKey=$POLYGON_API_KEY" \
+curl -s "https://api.polygon.io/v2/aggs/ticker/SPY/prev?adjusted=true&apiKey=[REDACTED]" \
   | python -m json.tool | head -20
 ```
 
@@ -105,7 +105,7 @@ Expected: JSON response with `"status": "OK"` and ticker results.
 
 **Verify new key works**:
 ```bash
-curl -s "https://finnhub.io/api/v1/quote?symbol=SPY&token=$FINNHUB_API_KEY" \
+curl -s "https://finnhub.io/api/v1/quote?symbol=SPY&token=[REDACTED]" \
   | python -m json.tool
 ```
 
@@ -198,7 +198,7 @@ ALPACA_PAPER=True
 
 **Verify**:
 ```bash
-curl -s "https://api.stlouisfed.org/fred/series?series_id=GDP&api_key=$FRED_API_KEY&file_type=json" \
+curl -s "https://api.stlouisfed.org/fred/series?series_id=GDP&api_key=[REDACTED]" \
   | python -m json.tool | head -10
 ```
 
@@ -216,7 +216,7 @@ rotated to a strong random value.
 ```
 
 **Update both locations**:
-- `engine/.env`: `API_KEY=<generated-value>`
+- `engine/.env`: `API_KEY=[REDACTED]
 - `dashboard/.env.local`: `NEXT_PUBLIC_ENGINE_API_KEY=<same-generated-value>`
 
 **Verify old key is rejected** (should return 401):
@@ -284,7 +284,7 @@ cd /tmp && git clone --mirror C:/Users/mattm/ThinkorSwim/jarvis-trader jarvis-tr
 
 # Create a file listing the exact secret strings to replace
 cat > /tmp/secrets.txt << 'SECRETS'
-sk-ant-api03-YOUROLDKEYVALUE
+[REDACTED_ANTHROPIC_KEY]
 YOURPOLYGONKEYVALUE
 YOURTWILIOAUTHTOKEN
 SECRETS

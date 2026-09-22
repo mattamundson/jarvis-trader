@@ -209,7 +209,7 @@ JARVIS TRADER ready. Dashboard: http://localhost:3010
 
 ### API key for curl calls:
 ```
-X-API-Key: jarvis-dev-key-change-me
+X-API-Key: [REDACTED]
 ```
 
 ---
@@ -222,7 +222,7 @@ X-API-Key: jarvis-dev-key-change-me
 ```bash
 curl -s -X POST http://localhost:8010/pipeline/run \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: jarvis-dev-key-change-me" \
+  -H "X-API-Key: [REDACTED]" \
   -d '{"symbol":"MCL","interval":"1h"}'
 ```
 
@@ -323,9 +323,9 @@ Polygon free tier supports historical minute bars for futures. MCL uses the symb
 
 ### Correct API key for engine calls:
 ```
-X-API-Key: jarvis-dev-key-change-me
+X-API-Key: [REDACTED]
 ```
-(set in `engine/.env` as `API_KEY=jarvis-dev-key-change-me`)
+(set in `engine/.env` as `API_KEY=[REDACTED]
 
 ### Engine start command (no --reload, avoids duplicate IB connections):
 ```bash
@@ -359,7 +359,7 @@ Wait 3 minutes for yfinance rate limit to clear, then:
 ```bash
 curl -s -X POST http://localhost:8010/pipeline/run \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: jarvis-dev-key-change-me" \
+  -H "X-API-Key: [REDACTED]" \
   -d '{"symbol":"MCL","interval":"1h"}'
 ```
 This should produce full technical analysis with CL=F price data via yfinance.
