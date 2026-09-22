@@ -42,9 +42,16 @@ test("public market brief snapshot strips sourcePath and preserves analysis-only
   assert.equal(publicSnapshot.risk_config_touched, false);
   assert.equal(publicSnapshot.publicContract.tradingControlsExposed, false);
   assert.equal(publicSnapshot.publicContract.localPathExposed, false);
+  assert.equal(publicSnapshot.publicContract.analysisContract, "deterministic_machine_payload_summary");
   assert.equal(publicSnapshot.scores.probability_source?.primary, "trailing_unconditional_base_rate");
   assert.equal(publicSnapshot.scores.conditional_diagnostic?.publish_as_edge, false);
   assert.equal(publicSnapshot.scores.conditional_diagnostic?.status, "provisional_no_measured_edge");
+  assert.ok(publicSnapshot.analysis.marketOverview.some((item) => item.includes("Machine distribution")));
+  assert.ok(publicSnapshot.analysis.auctionCues.some((item) => item.includes("acceptance")));
+  assert.equal(publicSnapshot.analysis.scenarioMap.length, 3);
+  assert.equal(publicSnapshot.analysis.scenarioMap[0].probability, 52.5);
+  assert.ok(publicSnapshot.analysis.esStructure.confirmation.includes("Continuation requires") || publicSnapshot.analysis.esStructure.confirmation.includes("Continuation confirms"));
+  assert.ok(publicSnapshot.analysis.nqStructure.invalidation.includes("Continuation invalidates"));
   assert.ok(!raw.includes("C:/Users"));
   assert.ok(!raw.includes("sourcePath"));
 });

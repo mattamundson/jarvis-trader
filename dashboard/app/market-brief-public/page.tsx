@@ -2,14 +2,14 @@ import type { Metadata } from "next";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { loadLatestMarketBrief } from "@/lib/marketBrief/server";
-import { toPublicMarketBrief } from "@/lib/marketBrief/public";
+import { toPublicMarketBrief, type PublicInstrumentStructure, type PublicScenario } from "@/lib/marketBrief/public";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export const metadata: Metadata = {
   title: "JARVIS Market Brief",
-  description: "Read-only, analysis-only market brief probability block.",
+  description: "Read-only, analysis-only market brief probability block and market-structure report.",
 };
 
 function fmt(n: number | null | undefined, dp = 2): string {
@@ -41,6 +41,70 @@ function Stat({ label, value, tone = "" }: { label: string; value: string; tone?
   );
 }
 
+function BulletCard({ title, items }: { title: string; items: string[] }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ul className="space-y-2 text-sm text-muted-foreground">
+          {items.map((item) => <li key={item} className="leading-relaxed">• {item}</li>)}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}
+
+function StructureCard({ structure }: { structure: PublicInstrumentStructure }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{structure.label} Structural Levels</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4 text-sm">
+        <div>
+          <div className="mb-1 text-[11px] uppercase tracking-widest text-muted-foreground">Resistance</div>
+          <ul className="space-y-1 text-muted-foreground">{structure.resistance.map((item) => <li key={item}>• {item}</li>)}</ul>
+        </div>
+        <div>
+          <div className="mb-1 text-[11px] uppercase tracking-widest text-muted-foreground">Support</div>
+          <ul className="space-y-1 text-muted-foreground">{structure.support.map((item) => <li key={item}>• {item}</li>)}</ul>
+        </div>
+        <div className="rounded-lg border border-border bg-background/40 p-3 text-muted-foreground">
+          <p><span className="font-semibold text-foreground">Confirmation:</span> {structure.confirmation}</p>
+          <p className="mt-2"><span className="font-semibold text-foreground">Invalidation:</span> {structure.invalidation}</p>
+        </div>
+        <p className="text-muted-foreground">{structure.bias}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ScenarioCard({ scenario }: { scenario: PublicScenario }) {
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-start justify-between gap-4">
+          <CardTitle>{scenario.name}</CardTitle>
+          <Badge variant="static" className="font-mono">{scenario.probability.toFixed(1)}%</Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm text-muted-foreground">
+        <div>
+          <div className="mb-1 text-[11px] uppercase tracking-widest">Conditions</div>
+          <ul className="space-y-1">{scenario.conditions.map((item) => <li key={item}>• {item}</li>)}</ul>
+        </div>
+        <div>
+          <div className="mb-1 text-[11px] uppercase tracking-widest">Targets</div>
+          <ul className="space-y-1">{scenario.targets.map((item) => <li key={item}>• {item}</li>)}</ul>
+        </div>
+        <p className="rounded-lg border border-border bg-background/40 p-3"><span className="font-semibold text-foreground">Invalidation:</span> {scenario.invalidation}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default async function PublicMarketBriefPage() {
   const snapshot = toPublicMarketBrief(await loadLatestMarketBrief());
   const probabilities = snapshot.scores.probabilities;
@@ -51,6 +115,7 @@ export default async function PublicMarketBriefPage() {
   const spy = snapshot.symbols.SPY;
   const qqq = snapshot.symbols.QQQ;
   const vix = snapshot.symbols["^VIX"];
+  const analysis = snapshot.analysis;
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -66,8 +131,7 @@ export default async function PublicMarketBriefPage() {
           <div>
             <h1 className="text-3xl font-black tracking-tight md:text-5xl">JARVIS Market Brief</h1>
             <p className="mt-2 max-w-3xl text-sm text-muted-foreground md:text-base">
-              Public read-only market intelligence. The published probability block is the trailing ES base rate;
-              state conditioning is shown only as a provisional diagnostic because walk-forward testing found no measurable edge.
+              Public read-only market intelligence. The scorecard stays measurable; the analysis layer restores the full market-structure read without exposing trading controls.
             </p>
           </div>
           <div className="text-xs text-muted-foreground">
@@ -76,9 +140,9 @@ export default async function PublicMarketBriefPage() {
         </header>
 
         <section className="grid gap-4 md:grid-cols-3">
-          <Stat label="Continuation" value={`${probabilities.continuation.toFixed(1)}%`} tone="text-bear" />
+          <Stat label="Continuation" value={`${probabilities.continuation.toFixed(1)}%`} tone="text-bull" />
           <Stat label="Rotation" value={`${probabilities.rotation.toFixed(1)}%`} tone="text-warn" />
-          <Stat label="Failure" value={`${probabilities.failure.toFixed(1)}%`} tone="text-bull" />
+          <Stat label="Failure" value={`${probabilities.failure.toFixed(1)}%`} tone="text-bear" />
         </section>
 
         <section className="mt-6 grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
@@ -127,6 +191,35 @@ export default async function PublicMarketBriefPage() {
           <Stat label="VIX Δ" value={pct(vix?.gap_pct, 2)} />
         </section>
 
+        <section className="mt-8 grid gap-4 lg:grid-cols-2">
+          <BulletCard title="Market Overview" items={analysis.marketOverview} />
+          <BulletCard title="Auction Market Theory Cues" items={analysis.auctionCues} />
+        </section>
+
+        <section className="mt-4 grid gap-4 lg:grid-cols-2">
+          <StructureCard structure={analysis.esStructure} />
+          <StructureCard structure={analysis.nqStructure} />
+        </section>
+
+        <section className="mt-4">
+          <BulletCard title="Volatility Regime" items={analysis.volatilityRegime} />
+        </section>
+
+        <section className="mt-8 space-y-4">
+          <div>
+            <h2 className="text-2xl font-black tracking-tight">Scenario Map</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Every branch is tied to explicit probabilities, conditions, targets, and invalidation.</p>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-3">
+            {analysis.scenarioMap.map((scenario) => <ScenarioCard key={scenario.name} scenario={scenario} />)}
+          </div>
+        </section>
+
+        <section className="mt-8 grid gap-4 lg:grid-cols-2">
+          <BulletCard title="Intraday Behavior Expectation" items={analysis.intradayPlan} />
+          <BulletCard title="Final Thoughts" items={analysis.finalThoughts} />
+        </section>
+
         {snapshot.warnings.length > 0 && (
           <section className="mt-6 rounded-xl border border-warn/40 bg-warn/5 p-4 text-sm text-warn">
             {snapshot.warnings.slice(0, 3).map((warning) => <p key={warning}>• {warning}</p>)}
@@ -134,7 +227,7 @@ export default async function PublicMarketBriefPage() {
         )}
 
         <footer className="mt-10 border-t border-border pt-5 text-xs text-muted-foreground">
-          Public contract: {snapshot.publicContract.surface} · trading controls exposed: {String(snapshot.publicContract.tradingControlsExposed)} · local path exposed: {String(snapshot.publicContract.localPathExposed)}
+          Public contract: {snapshot.publicContract.surface} · trading controls exposed: {String(snapshot.publicContract.tradingControlsExposed)} · local path exposed: {String(snapshot.publicContract.localPathExposed)} · analysis contract: {snapshot.publicContract.analysisContract}
         </footer>
       </main>
     </div>
