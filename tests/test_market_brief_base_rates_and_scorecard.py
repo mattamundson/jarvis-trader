@@ -211,6 +211,39 @@ class DailyPreregistrationTests(unittest.TestCase):
             self.assertEqual(len(rows), 1)
             self.assertEqual(sc.validate_brief(rows[0]), [])
 
+    def test_published_probability_block_uses_unconditional_base_rate(self):
+        """The walk-forward verdict demoted state conditioning; publish __all__, not matched state."""
+        bars = []
+        price = 100.0
+        for i in range(90):
+            # A deterministic mix: most historical days are not ATH closes, while the
+            # last signal day is an ATH + low-vol + acceleration state. This creates a
+            # matched-state diagnostic but the published block must still equal __all__.
+            if i < 84:
+                price += 1.0 if i % 3 else -0.8
+            else:
+                price += 4.0
+            bars.append(br.Bar(f"2026-01-{i + 1:03d}", price - 0.5, price + 1.0, price - 2.0, price))
+        vix = [br.Bar(b.date, 15.0, 15.5, 14.5, 15.0) for b in bars]
+        orig_fetch = br.fetch_daily
+        br.fetch_daily = lambda symbol, lookback=br.DEFAULT_LOOKBACK: vix if symbol == "^VIX" else bars
+        try:
+            payload = br.analyze()
+        finally:
+            br.fetch_daily = orig_fetch
+
+        self.assertEqual(payload["published_state"], "__all__")
+        self.assertEqual(payload["probability_source"]["primary"], "trailing_unconditional_base_rate")
+        self.assertFalse(payload["probability_source"]["walkforward"]["model_beats_base"])
+        self.assertFalse(payload["conditional_diagnostic"]["publish_as_edge"])
+        self.assertEqual(payload["conditional_diagnostic"]["status"], "provisional_no_measured_edge")
+        base = payload["states"]["__all__"]
+        self.assertEqual(payload["probabilities"]["continuation"], base["p_continuation"])
+        self.assertEqual(payload["probabilities"]["rotation"], base["p_rotation"])
+        self.assertEqual(payload["probabilities"]["failure"], base["p_failure"])
+        self.assertEqual(payload["probabilities"]["sum"], 100.0)
+        self.assertEqual(payload["conditional_diagnostic"]["probabilities"]["sum"], 100.0)
+
 
 class SettlementIntegrityTests(unittest.TestCase):
     """The scorer labels each brief's realised outcome from the NEXT bar. An in-progress bar

@@ -30,6 +30,18 @@ SAFETY = {"mode": "ANALYSIS_ONLY", "orders_enabled": False, "risk_config_touched
 MODEL_VERSION = "market-brief-base-rates-v1"
 DEFAULT_SYMBOL = "ES=F"  # the base-rate table is ES-specific
 DEFAULT_LOOKBACK = "5y"
+WALKFORWARD_VERDICT = {
+    "study": "market-brief-walkforward-v1",
+    "n": 1197,
+    "mean_brier_model": 0.594619,
+    "mean_brier_base": 0.596765,
+    "mean_brier_uniform": 0.666667,
+    "paired_diff_base_minus_model": 0.002146,
+    "paired_ci95": [-0.002225, 0.006517],
+    "paired_t": 0.962,
+    "model_beats_base": False,
+    "verdict": "state conditioning has no measurable edge over the trailing base rate",
+}
 
 
 @dataclass(frozen=True)
@@ -223,6 +235,7 @@ def analyze(lookback: str = DEFAULT_LOOKBACK) -> dict[str, Any]:
             table[st] = summarize(recs, es, st)
 
     matched = table.get(today["state"]) or table["__all__"]
+    base = table["__all__"]
     return {
         "model_version": MODEL_VERSION,
         "safety": SAFETY,
@@ -238,25 +251,53 @@ def analyze(lookback: str = DEFAULT_LOOKBACK) -> dict[str, Any]:
             "state": today["state"],
         },
         "states": {k: {**v.__dict__} for k, v in table.items()},
+        "published_state": "__all__",
         "matched_state": matched.label,
+        "probability_source": {
+            "primary": "trailing_unconditional_base_rate",
+            "conditional_status": "provisional_no_measured_edge",
+            "rationale": "No-lookahead walk-forward found no measurable Brier improvement from state conditioning over the trailing base rate.",
+            "walkforward": WALKFORWARD_VERDICT,
+        },
         "probabilities": {
-            "continuation": matched.p_continuation,
-            "rotation": matched.p_rotation,
-            "failure": matched.p_failure,
-            "sum": round(matched.p_continuation + matched.p_rotation + matched.p_failure, 1),
+            "continuation": base.p_continuation,
+            "rotation": base.p_rotation,
+            "failure": base.p_failure,
+            "sum": round(base.p_continuation + base.p_rotation + base.p_failure, 1),
         },
         "context": {
-            "p_higher_high": matched.p_higher_high,
-            "p_gap_down": matched.p_gap_down,
-            "p_up_5d": matched.p_up_5d,
-            "median_5d_pct": matched.median_5d,
-            "median_mae5_pct": matched.median_mae5,
-            "p_below_signal_low": matched.raw.get("below_signal_low"),
+            "p_higher_high": base.p_higher_high,
+            "p_gap_down": base.p_gap_down,
+            "p_up_5d": base.p_up_5d,
+            "median_5d_pct": base.median_5d,
+            "median_mae5_pct": base.median_mae5,
+            "p_below_signal_low": base.raw.get("below_signal_low"),
+        },
+        "conditional_diagnostic": {
+            "state": matched.label,
+            "n": matched.n,
+            "status": "provisional_no_measured_edge",
+            "publish_as_edge": False,
+            "probabilities": {
+                "continuation": matched.p_continuation,
+                "rotation": matched.p_rotation,
+                "failure": matched.p_failure,
+                "sum": round(matched.p_continuation + matched.p_rotation + matched.p_failure, 1),
+            },
+            "context": {
+                "p_higher_high": matched.p_higher_high,
+                "p_gap_down": matched.p_gap_down,
+                "p_up_5d": matched.p_up_5d,
+                "median_5d_pct": matched.median_5d,
+                "median_mae5_pct": matched.median_mae5,
+                "p_below_signal_low": matched.raw.get("below_signal_low"),
+            },
         },
         "limitations": [
             "Daily bars; no true premarket/Globex conditioning yet.",
             "Single-instrument (ES); NQ/VIX cross-conditioning is a follow-up.",
             "Historical base rates are not a forecast; they are the reference distribution.",
+            "State conditioning is shown only as a provisional diagnostic because walk-forward testing found no measurable edge over the base rate.",
         ],
     }
 
@@ -277,9 +318,12 @@ def render(payload: dict[str, Any]) -> str:
         "",
         f"- Date: `{t['date']}`  ·  ES close `{t['close']:.2f}`  ·  low `{t['low']:.2f}`",
         f"- New ATH close: `{t['is_ath_close']}`  ·  VIX `{t['vix']}`  ·  5d accel `{t['accel5_pct']}%`",
-        f"- Matched state: `{payload['matched_state']}`  (n={payload['states'][payload['matched_state']]['n']})",
+        f"- Published state: `{payload['published_state']}`  (n={payload['states'][payload['published_state']]['n']})",
+        f"- Matched state diagnostic: `{payload['matched_state']}`  (n={payload['states'][payload['matched_state']]['n']})",
         "",
-        "## Probability block (next session)",
+        "## Published probability block (next session)",
+        "",
+        "Primary source: **trailing unconditional base rate**. The matched-state block is provisional only; the no-lookahead walk-forward did not prove incremental edge.",
         "",
         "| Outcome | Probability |",
         "|---|---:|",
@@ -287,6 +331,12 @@ def render(payload: dict[str, Any]) -> str:
         f"| Rotation (down close, holds low) | **{pr['rotation']}%** |",
         f"| Failure (down close, breaks low) | **{pr['failure']}%** |",
         f"| Sum | {pr['sum']}% |",
+        "",
+        "## Conditional diagnostic (not published as edge)",
+        "",
+        f"- Status: `{payload['conditional_diagnostic']['status']}`",
+        f"- State: `{payload['conditional_diagnostic']['state']}`  ·  n={payload['conditional_diagnostic']['n']}",
+        f"- Walk-forward paired CI: `{payload['probability_source']['walkforward']['paired_ci95']}`; model_beats_base=`{payload['probability_source']['walkforward']['model_beats_base']}`",
         "",
         "## Context",
         "",
@@ -452,9 +502,10 @@ def main(argv: list[str] | None = None) -> int:
         payload["record_status"] = record_status
 
     if not a.quiet:
-        result = {"report": str(md_path), "state": payload["matched_state"],
+        result = {"report": str(md_path), "published_state": payload["published_state"],
+                  "diagnostic_state": payload["matched_state"],
                   "probabilities": payload["probabilities"],
-                  "n": payload["states"][payload["matched_state"]]["n"]}
+                  "n": payload["states"][payload["published_state"]]["n"]}
         if record_status is not None:
             result["record_status"] = record_status
         print(json.dumps(result, sort_keys=True))
