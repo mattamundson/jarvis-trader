@@ -41,6 +41,17 @@ def test_healthy_direct_uvicorn_remains_takeover_candidate(monkeypatch):
     assert killed == [4242]
 
 
+def test_healthy_python_holder_with_missing_command_line_is_not_killed(monkeypatch):
+    _base_main_mocks(monkeypatch, command_line=None)
+    monkeypatch.setattr(port_guardian, "_is_healthy", lambda port: True)
+
+    killed = []
+    monkeypatch.setattr(port_guardian, "_kill_pid", lambda pid: killed.append(pid) or True)
+
+    assert port_guardian.main() == 3
+    assert killed == []
+
+
 def test_transient_health_timeout_is_retried_before_kill(monkeypatch):
     _base_main_mocks(monkeypatch)
     responses = iter([False, True, True])

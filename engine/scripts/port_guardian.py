@@ -660,6 +660,26 @@ def main() -> int:
                     flush=True,
                 )
                 return 1
+            if not command_line and _is_healthy_with_retries(PORT):
+                # Windows command-line lookup is deliberately best-effort: on loaded
+                # desktops PowerShell/CIM can intermittently time out or return an
+                # empty value. A missing command line is not proof that a healthy
+                # python holder is an orphan, and killing it can create an outage
+                # when PM2 starts a replacement guardian while the prior in-process
+                # uvicorn instance is still serving.
+                _record_restart_event(
+                    "healthy-unclassified-python-holder-skip",
+                    {"pid": pid, "name": name, "port": PORT},
+                    RESTART_LOG,
+                )
+                print(
+                    f"[port_guardian] PID {pid} is a healthy python holder, but its "
+                    "command line could not be resolved. Refusing to kill it; exiting "
+                    "non-zero after backoff so PM2/operator can reconcile ownership.",
+                    flush=True,
+                )
+                time.sleep(HEALTHY_ORPHAN_BACKOFF)
+                return 3
             print(f"[port_guardian] killing orphan PID {pid}", flush=True)
             killed = _kill_pid(pid)
             if killed:
