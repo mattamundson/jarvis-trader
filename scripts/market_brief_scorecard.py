@@ -115,6 +115,47 @@ def read_ledger(ledger: Path = LEDGER) -> list[dict[str, Any]]:
     return out
 
 
+SETTLE_HOUR = 15
+SETTLE_MARGIN_MIN = 15
+
+
+def _us_central_utc_offset_hours(d: dt.date) -> int:
+    """Mirrors market_brief_base_rates._us_central_utc_offset_hours -- keep in sync.
+
+    test_scorer_and_base_rates_agree_on_settlement asserts the two implementations return
+    identical answers across a date/time grid, so drift fails the suite instead of
+    silently giving the two scripts different notions of a settled session.
+    """
+    mar = dt.date(d.year, 3, 1)
+    second_sun_mar = mar + dt.timedelta(days=(6 - mar.weekday()) % 7 + 7)
+    nov = dt.date(d.year, 11, 1)
+    first_sun_nov = nov + dt.timedelta(days=(6 - nov.weekday()) % 7)
+    return -5 if second_sun_mar <= d < first_sun_nov else -6
+
+
+def session_complete(bar_date: str, now: dt.datetime | None = None) -> bool:
+    """False when `bar_date`'s CME session has not settled yet.
+
+    See market_brief_base_rates.session_complete for the full rationale. This matters more
+    here than there: `score()` labels each brief's realised outcome from the *next* bar, and
+    an in-progress bar reports a partial close/low. Labelling from it can produce a WRONG
+    outcome, and the label is recomputed every run, so the reported Brier/hit-rate also
+    flickers between scored and pending. Wait for settlement.
+    """
+    try:
+        d = dt.date.fromisoformat(str(bar_date))
+    except (TypeError, ValueError):
+        return False
+    n = now or dt.datetime.now(dt.timezone.utc)
+    if n.tzinfo is None:
+        n = n.replace(tzinfo=dt.timezone.utc)
+    offset = _us_central_utc_offset_hours(d)
+    settle = (dt.datetime(d.year, d.month, d.day, SETTLE_HOUR, SETTLE_MARGIN_MIN,
+                          tzinfo=dt.timezone.utc)
+              - dt.timedelta(hours=offset))
+    return n.astimezone(dt.timezone.utc) >= settle
+
+
 def label_partition(next_close: float, next_low: float, signal_close: float, signal_low: float) -> str:
     if next_close > signal_close:
         return "continuation"
@@ -141,6 +182,12 @@ def score(entries: list[dict[str, Any]], lookback: str = "2y") -> dict[str, Any]
         sig_close = e.get("signal_close") if e.get("signal_close") is not None else sig.close
         sig_low = e.get("signal_low") if e.get("signal_low") is not None else sig.low
         nxt = bars[idx + 1]
+        if not session_complete(nxt.date):
+            # An unsettled bar's close/low are partial, so a label drawn from it can be
+            # wrong -- and the aggregate flickers run to run. Report pending instead of
+            # inventing an outcome.
+            pending.append({**e, "reason": "next session has not settled yet"})
+            continue
         realized = label_partition(nxt.close, nxt.low, sig_close, sig_low)
         probs = {k: float(e[k]) / 100.0 for k in CLASSES}
         brier = sum((probs[k] - (1.0 if realized == k else 0.0)) ** 2 for k in CLASSES)
@@ -181,6 +228,8 @@ def score(entries: list[dict[str, Any]], lookback: str = "2y") -> dict[str, Any]
             "Scores are only as honest as the ledger; missing briefs bias the sample.",
             "Small n early on: treat Brier/ skill numbers as directional until n is meaningful.",
             "Daily-bar outcome labels; no intraday touch scoring yet.",
+            ("A brief is scored only once its outcome session has settled (15:15 CT), so an "
+             "in-progress bar cannot label an outcome from a partial close/low."),
         ],
     }
 
