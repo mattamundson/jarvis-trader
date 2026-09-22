@@ -1,21 +1,22 @@
-# Plan — Market Brief Production Readiness: Base-Rate v1
+# Plan — Public Read-Only Market Brief Site
 
 ## Finish line
 
-Make the Market Brief production-ready within the defensible statistical scope established by the no-lookahead walk-forward study:
+Create the first safe 24/7-public tranche for Market Brief: a public-safe page and public JSON route that can be deployed to Vercel/Cloudflare without exposing trading controls.
 
-- publish the trailing unconditional base-rate probability block as the primary `ANALYSIS_ONLY` forecast;
-- demote matched-state conditioning to a clearly labelled provisional diagnostic, not claimed edge;
-- keep pre-registration/scoring/dead-man loops intact as prospective confirmation;
-- verify with Python tests, dashboard tests, typecheck/build, and route/API smoke where feasible;
-- avoid live trading, risk config, kill-switch, `.env`, broker, and DO_NOT_TRADE changes.
+## Scope
 
-## Steps
+- Add `/market-brief-public` as a read-only public page.
+- Add `/api/public-market-brief/latest` as a sanitized JSON route.
+- Exempt only these public paths from Basic Auth middleware.
+- Keep `/mission-control`, `/api/market-brief`, `/api/engine/*`, `/api/master/*`, trading routes and all control surfaces protected.
+- No broker, order routing, risk config, kill-switch, `.env`, or DO_NOT_TRADE changes.
 
-1. Clean the worktree and branch from current `origin/master` after PR #911.
-2. Patch `scripts/market_brief_base_rates.py` so `probabilities` is the trailing `__all__` base rate, with matched-state probabilities under `conditional_diagnostic` / `provisional` metadata.
-3. Update tests for exact-100 base-rate publication and provisional conditional disclosure.
-4. Update dashboard types/parser/card/tests so the UI says `BASE RATE` and shows conditional as `PROVISIONAL / NO MEASURED EDGE`.
-5. Run gates: Python compile/ruff/tests, dashboard node test, TypeScript, build, targeted Playwright smoke.
-6. Open/merge PR if local verification is clean and CI remains billing-blocked; deploy/cut over serving tree only after verified build.
-7. Update operational handoff/skills with the new verdict so stale `state conditioning edge` language does not persist.
+## Acceptance criteria
+
+1. Public JSON route returns `ANALYSIS_ONLY`, `orders_enabled=false`, `risk_config_touched=false`.
+2. Public JSON route excludes `sourcePath` and internal local filesystem paths.
+3. Public page renders the base-rate block and provisional/no-edge conditional disclosure.
+4. Middleware unit coverage proves public paths bypass auth while trading/control paths do not.
+5. Typecheck, build, and targeted route tests pass.
+6. Deploy guidance remains Vercel/Cloudflare-ready, but no paid/cloud resource is created without explicit approval.
