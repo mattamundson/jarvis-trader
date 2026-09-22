@@ -1,0 +1,201 @@
+{
+  "date": "2026-09-20",
+  "session_bias": {
+    "session_type": "uncertain",
+    "directional_bias": "neutral",
+    "conviction": 0.0,
+    "ib_bias": "not_mentioned",
+    "data_quality": "none",
+    "message_count": 0
+  },
+  "sentiment_score": null,
+  "sentiment_label": null,
+  "top_signals": [],
+  "corey_quote": "",
+  "commentary_health": [
+    {
+      "date": "2026-09-21",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    },
+    {
+      "date": "2026-09-20",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    },
+    {
+      "date": "2026-09-19",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    },
+    {
+      "date": "2026-09-18",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    },
+    {
+      "date": "2026-09-17",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    },
+    {
+      "date": "2026-09-16",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    },
+    {
+      "date": "2026-09-15",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    },
+    {
+      "date": "2026-09-14",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    },
+    {
+      "date": "2026-09-13",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    }
+  ],
+  "calibration_integrity": {
+    "total_outcomes": 0,
+    "rows_excluded_corrupt": 0,
+    "rows_excluded_duplicate": 0,
+    "alert": false,
+    "window_days": 30
+  },
+  "llm_provider_health": {
+    "engine_reachable": true,
+    "active_provider": "gemini",
+    "primary_provider": "ollama",
+    "primary_healthy": false,
+    "providers_available": 3,
+    "google_fallback_count": 3,
+    "vertex_failover_count": 0,
+    "llm_path_healthy": false,
+    "alert": true
+  },
+  "task_health": {
+    "present": true,
+    "stale": true,
+    "age_hours": 72.7,
+    "scanned": 111,
+    "failing_enabled": 13,
+    "failing_disabled": 1,
+    "failing_tasks": [
+      {
+        "name": "Hermes-Snapshot-Weekly",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-AlertSelfTest",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-DataIntegritySentinel",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-FinanceSync",
+        "result": "0x1"
+      },
+      {
+        "name": "jarvis-heartbeat-brief",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-PM2-AtLogon",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-PM2RestartWatch-15min",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-ScanCredentials",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-ScanHistorySecrets",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-Sentinel",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Jarvis-Sentinel-Dashboard",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-VaultBackup",
+        "result": "0x2"
+      },
+      {
+        "name": "Jarvis-VerdictRefresh-Weekly",
+        "result": "0x1"
+      }
+    ],
+    "alert": true
+  },
+  "gate_verdict_freshness": {
+    "active_symbols": [
+      "MES",
+      "MGC"
+    ],
+    "max_age_days": 7.0,
+    "symbols": {
+      "MES": {
+        "age_days": 0.8,
+        "newest": "2026-09-20T17:53:49.191206+00:00",
+        "files": 3,
+        "latest_verdict": "FAIL",
+        "active": true
+      },
+      "MGC": {
+        "age_days": 0.8,
+        "newest": "2026-09-20T17:56:24.838125+00:00",
+        "files": 1,
+        "latest_verdict": "PASS",
+        "active": true
+      },
+      "MNQ": {
+        "age_days": 2.3,
+        "newest": "2026-09-19T06:00:03.352143+00:00",
+        "files": 1,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "SPY": {
+        "age_days": 18.5,
+        "newest": "2026-09-03T01:19:37.088631+00:00",
+        "files": 1,
+        "latest_verdict": "FAIL",
+        "active": false
+      }
+    },
+    "stale_active": [],
+    "missing_active": [],
+    "alert": false
+  }
+}
