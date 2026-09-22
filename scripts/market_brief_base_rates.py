@@ -28,6 +28,7 @@ from typing import Any
 
 SAFETY = {"mode": "ANALYSIS_ONLY", "orders_enabled": False, "risk_config_touched": False}
 MODEL_VERSION = "market-brief-base-rates-v1"
+DEFAULT_SYMBOL = "ES=F"  # the base-rate table is ES-specific
 DEFAULT_LOOKBACK = "5y"
 
 
@@ -127,6 +128,25 @@ def build_records(bars: list[Bar], vix_by_date: dict[str, float]) -> list[dict[s
     return recs
 
 
+def _class_rates(counts: dict[str, int], n: int) -> tuple[float, float, float]:
+    """Percentages that sum to exactly 100.0, via largest-remainder rounding.
+
+    Rounding each class independently produces totals like 99.9, which contradicts the
+    published contract that the probability block sums to 100 -- and a 99.9 total is
+    itself a signal that something upstream is wrong.
+    """
+    keys = ("continuation", "rotation", "failure")
+    if n <= 0:
+        return 0.0, 0.0, 0.0
+    exact = {k: 1000.0 * counts[k] / n for k in keys}   # in tenths of a percent
+    base = {k: math.floor(exact[k]) for k in keys}
+    residual = round(1000 - sum(base.values()))
+    order = sorted(keys, key=lambda k: exact[k] - base[k], reverse=True)
+    for i in range(residual):
+        base[order[i % 3]] += 1
+    return tuple(round(base[k] / 10.0, 1) for k in keys)  # type: ignore[return-value]
+
+
 def summarize(recs: list[dict[str, Any]], bars: list[Bar], state: str) -> State:
     rows = [r for r in recs if r["state"] == state and r["i"] + 5 < len(bars)]
     s = State(label=state, n=len(rows))
@@ -153,9 +173,7 @@ def summarize(recs: list[dict[str, Any]], bars: list[Bar], state: str) -> State:
             up5 += 1
         mae5s.append(100.0 * (min(x.low for x in bars[i + 1:i + 6]) - r["close"]) / r["close"])
     n = len(rows)
-    s.p_continuation = round(100.0 * counts["continuation"] / n, 1)
-    s.p_rotation = round(100.0 * counts["rotation"] / n, 1)
-    s.p_failure = round(100.0 * counts["failure"] / n, 1)
+    s.p_continuation, s.p_rotation, s.p_failure = _class_rates(counts, n)
     s.p_higher_high = round(100.0 * high_high / n, 1)
     s.p_gap_down = round(100.0 * gap_down / n, 1)
     s.p_up_5d = round(100.0 * up5 / n, 1)
@@ -193,9 +211,7 @@ def analyze(lookback: str = DEFAULT_LOOKBACK) -> dict[str, Any]:
                 mae5s.append(100.0 * (min(x.low for x in es[i + 1:i + 6]) - r["close"]) / r["close"])
             n = len(rows)
             s.n = n
-            s.p_continuation = round(100.0 * counts["continuation"] / n, 1)
-            s.p_rotation = round(100.0 * counts["rotation"] / n, 1)
-            s.p_failure = round(100.0 * counts["failure"] / n, 1)
+            s.p_continuation, s.p_rotation, s.p_failure = _class_rates(counts, n)
             s.p_higher_high = round(100.0 * hh / n, 1)
             s.p_gap_down = round(100.0 * gd / n, 1)
             s.p_up_5d = round(100.0 * u5 / n, 1)
@@ -296,12 +312,128 @@ def render(payload: dict[str, Any]) -> str:
     return "\n".join(md)
 
 
+DEFAULT_LEDGER = Path("engine/data/market_brief_scorecard/brief_ledger.jsonl")
+
+
+def _ledger_rows(ledger: Path) -> list[dict]:
+    """Tolerant read of the append-only ledger; malformed lines are ignored."""
+    if not ledger.exists():
+        return []
+    rows = []
+    for line in ledger.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            rows.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return rows
+
+
+SETTLE_HOUR = 15     # CME equity-index futures settle 15:00 CT
+SETTLE_MARGIN_MIN = 15  # bars can finalise just after settlement
+
+
+def _us_central_utc_offset_hours(d: dt.date) -> int:
+    """UTC offset for US Central on `d`: -5 during CDT, -6 during CST.
+
+    Dependency-free on purpose. `zoneinfo` needs a tz database, which this Windows box
+    does not ship (`ZoneInfoNotFoundError`) even though a Linux CI runner would -- so a
+    guard built on it works in CI and fails in the scheduled job, the worst split. US DST
+    runs from 02:00 local on the 2nd Sunday in March to 02:00 local on the 1st Sunday in
+    November, which is all the precision a settlement boundary needs.
+    """
+    mar = dt.date(d.year, 3, 1)
+    second_sun_mar = mar + dt.timedelta(days=(6 - mar.weekday()) % 7 + 7)
+    nov = dt.date(d.year, 11, 1)
+    first_sun_nov = nov + dt.timedelta(days=(6 - nov.weekday()) % 7)
+    return -5 if second_sun_mar <= d < first_sun_nov else -6
+
+
+def session_complete(bar_date: str, now: dt.datetime | None = None) -> bool:
+    """False when `bar_date`'s CME session is still trading.
+
+    The equity-index futures session dated D runs from 17:00 CT on D-1 to 15:00 CT on D
+    (a Monday session starts Sunday 17:00 CT). A bar fetched before settlement is
+    *partial*, and pre-registering it records probabilities for a state the session never
+    actually held -- silently corrupting the calibration sample the ledger exists to build.
+
+    Live example: Monday 20:40 CT fetches a bar dated Tuesday, because Tuesday's session
+    opened Monday 17:00 CT. Without this guard that partial bar is recorded as "today".
+    """
+    try:
+        d = dt.date.fromisoformat(str(bar_date))
+    except (TypeError, ValueError):
+        return False
+    n = now or dt.datetime.now(dt.timezone.utc)
+    if n.tzinfo is None:
+        n = n.replace(tzinfo=dt.timezone.utc)
+    offset = _us_central_utc_offset_hours(d)
+    settle = (dt.datetime(d.year, d.month, d.day, SETTLE_HOUR, SETTLE_MARGIN_MIN,
+                          tzinfo=dt.timezone.utc)
+              - dt.timedelta(hours=offset))
+    return n.astimezone(dt.timezone.utc) >= settle
+
+
+def record_daily(payload: dict[str, Any], ledger: Path, symbol: str = DEFAULT_SYMBOL,
+                 force: bool = False) -> tuple[str, dict[str, Any]]:
+    """Pre-register today's measured probabilities into the scorecard ledger.
+
+    Calibration needs (predicted, realised) pairs. Waiting for a rare setup to recur
+    produces a trickle of samples; recording the matched-state probabilities every
+    session builds the sample at one row per day.
+
+    Idempotent on (date, symbol): a second run on the same session is a no-op unless
+    force=True, so a re-run (or a manual fire racing the scheduler) cannot duplicate a
+    row and silently double-weight that day in the Brier aggregate.
+
+    Returns (status, entry) where status is "recorded" | "exists" | "skipped".
+    """
+    today = payload.get("today") or {}
+    date = today.get("date")
+    probs = payload.get("probabilities") or {}
+    if not date or not probs:
+        return "skipped", {"reason": "payload has no date/probabilities"}
+    if not force and not session_complete(str(date)):
+        return "incomplete_session", {"date": date, "reason": "session has not settled yet"}
+
+    for row in _ledger_rows(ledger):
+        if row.get("date") == date and row.get("symbol") == symbol and not force:
+            return "exists", row
+
+    entry = {
+        "recorded_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "model_version": MODEL_VERSION,
+        "safety": SAFETY,
+        "date": date,
+        "symbol": symbol,
+        "continuation": probs.get("continuation"),
+        "rotation": probs.get("rotation"),
+        "failure": probs.get("failure"),
+        "signal_close": today.get("close"),
+        "signal_low": today.get("low"),
+        "state": today.get("state"),
+        "source": "base_rates_daily_preregistration",
+    }
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    with ledger.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(entry, sort_keys=True) + "\n")
+    return "recorded", entry
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--lookback", default=DEFAULT_LOOKBACK)
     ap.add_argument("--out-dir", default="docs/reports")
     ap.add_argument("--json-out", default=None)
     ap.add_argument("--quiet", action="store_true")
+    ap.add_argument("--record", action="store_true",
+                    help="Pre-register today's probabilities into the scorecard ledger")
+    ap.add_argument("--ledger", default=str(DEFAULT_LEDGER))
+    ap.add_argument("--symbol", default="ES=F")
+    ap.add_argument("--force", action="store_true",
+                    help="Re-record even if this session is already in the ledger")
     a = ap.parse_args(argv)
 
     payload = analyze(a.lookback)
@@ -313,10 +445,19 @@ def main(argv: list[str] | None = None) -> int:
     (out / "MARKET_BRIEF_BASE_RATES_LATEST.json").write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
     if a.json_out:
         Path(a.json_out).write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+
+    record_status = None
+    if a.record:
+        record_status, _entry = record_daily(payload, Path(a.ledger), a.symbol, a.force)
+        payload["record_status"] = record_status
+
     if not a.quiet:
-        print(json.dumps({"report": str(md_path), "state": payload["matched_state"],
-                          "probabilities": payload["probabilities"],
-                          "n": payload["states"][payload["matched_state"]]["n"]}, sort_keys=True))
+        result = {"report": str(md_path), "state": payload["matched_state"],
+                  "probabilities": payload["probabilities"],
+                  "n": payload["states"][payload["matched_state"]]["n"]}
+        if record_status is not None:
+            result["record_status"] = record_status
+        print(json.dumps(result, sort_keys=True))
     return 0
 
 
