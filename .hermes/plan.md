@@ -1,36 +1,21 @@
-# Plan — Options Decision Board / Volatility Regime Phase 1
+# Plan — Market Brief Production Readiness: Base-Rate v1
 
 ## Finish line
 
-Create a read-only, analysis-only options decision-board backend tranche that improves JARVIS market-analysis quality without touching live trading, risk config, kill-switches, `.env`, order routing, or DO_NOT_TRADE policy.
+Make the Market Brief production-ready within the defensible statistical scope established by the no-lookahead walk-forward study:
 
-## Scope constraints
+- publish the trailing unconditional base-rate probability block as the primary `ANALYSIS_ONLY` forecast;
+- demote matched-state conditioning to a clearly labelled provisional diagnostic, not claimed edge;
+- keep pre-registration/scoring/dead-man loops intact as prospective confirmation;
+- verify with Python tests, dashboard tests, typecheck/build, and route/API smoke where feasible;
+- avoid live trading, risk config, kill-switch, `.env`, broker, and DO_NOT_TRADE changes.
 
-- No live trading/risk/kill-switch/config changes.
-- No operational commands for MCL or MNQ.
-- Analysis-only outputs must label source quality and reject reasons.
-- Tests must verify numeric probability and payoff math.
+## Steps
 
-## Tranche 1 deliverables
-
-1. Repair/confirm the existing SPY/QQQ implied options snapshot probability ladder:
-   - include `p_touch` and `p_fail` per ladder row;
-   - enforce `p_touch >= p_close` where applicable;
-   - keep no-extrapolation behavior.
-2. Add a pure `analysis/options_opportunity_board.py` module that consumes the existing delayed CBOE snapshot shape and produces ranked, defined-risk candidates:
-   - bull call debit spread;
-   - bear put debit spread;
-   - put credit spread;
-   - call credit spread;
-   - no naked/unlimited-risk structures;
-   - max loss, max gain/credit, breakeven, POP proxy, EV proxy, EV/max_loss, liquidity score, reject reasons.
-3. Add `GET /options-signals/opportunity-board` as a read-only endpoint built from `latest.json`.
-4. Add unit/router tests covering payoff math, liquidity filters, reject reasons, and endpoint behavior.
-5. Verify with targeted pytest. If dashboard files are touched in a later tranche, verify with `tsc`, build, and Playwright.
-
-## Follow-on tranches
-
-- Tranche 2: dashboard opportunity-board card near Mission Control / signals, using `fetchEngine` only.
-- Tranche 3: battle-card report generator combining SPY/QQQ/VIX regime + touch/close/fail probabilities + candidate structures.
-- Tranche 4: chain snapshot ledger for calibration of implied move vs realized move and structure outcomes.
-- Tranche 5: journal/error taxonomy integration.
+1. Clean the worktree and branch from current `origin/master` after PR #911.
+2. Patch `scripts/market_brief_base_rates.py` so `probabilities` is the trailing `__all__` base rate, with matched-state probabilities under `conditional_diagnostic` / `provisional` metadata.
+3. Update tests for exact-100 base-rate publication and provisional conditional disclosure.
+4. Update dashboard types/parser/card/tests so the UI says `BASE RATE` and shows conditional as `PROVISIONAL / NO MEASURED EDGE`.
+5. Run gates: Python compile/ruff/tests, dashboard node test, TypeScript, build, targeted Playwright smoke.
+6. Open/merge PR if local verification is clean and CI remains billing-blocked; deploy/cut over serving tree only after verified build.
+7. Update operational handoff/skills with the new verdict so stale `state conditioning edge` language does not persist.
