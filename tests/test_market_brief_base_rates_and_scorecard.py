@@ -98,7 +98,7 @@ class ScorecardTests(unittest.TestCase):
 
 
 class DailyPreregistrationTests(unittest.TestCase):
-    def _payload(self, date="2026-09-21"):
+    def _payload(self, date="2026-06-15"):
         return {
             "today": {"date": date, "close": 7829.25, "low": 7713.75, "state": "ath_close_lowvol_accel_gt2"},
             "probabilities": {"continuation": 55.6, "rotation": 25.9, "failure": 18.5, "sum": 100.0},
@@ -110,7 +110,7 @@ class DailyPreregistrationTests(unittest.TestCase):
             led = pathlib.Path(td) / "ledger.jsonl"
             status, entry = br.record_daily(self._payload(), led)
             self.assertEqual(status, "recorded")
-            self.assertEqual(entry["date"], "2026-09-21")
+            self.assertEqual(entry["date"], "2026-06-15")
             self.assertEqual(entry["safety"]["mode"], "ANALYSIS_ONLY")
             self.assertFalse(entry["safety"]["orders_enabled"])
             self.assertEqual(len(led.read_text(encoding="utf-8").splitlines()), 1)
@@ -141,6 +141,59 @@ class DailyPreregistrationTests(unittest.TestCase):
             status, _info = br.record_daily({"today": {}, "probabilities": {}}, led)
             self.assertEqual(status, "skipped")
             self.assertFalse(led.exists())
+
+    def test_session_complete_refuses_an_in_progress_session(self):
+        # Monday 2026-09-21 20:40 CT == 2026-09-22 01:40 UTC. The bar dated 2026-09-22 is
+        # still forming, because Tuesday's session opened Monday 17:00 CT.
+        now = br.dt.datetime(2026, 9, 22, 1, 40, tzinfo=br.dt.timezone.utc)
+        self.assertFalse(br.session_complete("2026-09-22", now=now))
+
+    def test_session_complete_accepts_a_settled_session(self):
+        # Tuesday 2026-09-22 16:30 CT == 21:30 UTC; the session settled at 15:00 CT.
+        now = br.dt.datetime(2026, 9, 22, 21, 30, tzinfo=br.dt.timezone.utc)
+        self.assertTrue(br.session_complete("2026-09-22", now=now))
+
+    def test_session_complete_boundary_is_settlement_not_midnight(self):
+        # 2026-09-22 is CDT (offset -5): settlement 15:15 CT == 20:15 UTC.
+        now = br.dt.datetime(2026, 9, 22, 20, 10, tzinfo=br.dt.timezone.utc)   # 15:10 CT
+        self.assertFalse(br.session_complete("2026-09-22", now=now))
+        now = br.dt.datetime(2026, 9, 22, 20, 20, tzinfo=br.dt.timezone.utc)   # 15:20 CT
+        self.assertTrue(br.session_complete("2026-09-22", now=now))
+
+    def test_session_complete_handles_both_dst_regimes(self):
+        # CST (offset -6): 15:15 CT == 21:15 UTC.
+        now = br.dt.datetime(2026, 1, 15, 21, 10, tzinfo=br.dt.timezone.utc)
+        self.assertFalse(br.session_complete("2026-01-15", now=now))
+        now = br.dt.datetime(2026, 1, 15, 21, 20, tzinfo=br.dt.timezone.utc)
+        self.assertTrue(br.session_complete("2026-01-15", now=now))
+
+    def test_us_central_offset_across_dst_boundaries(self):
+        self.assertEqual(br._us_central_utc_offset_hours(br.dt.date(2026, 1, 15)), -6)
+        self.assertEqual(br._us_central_utc_offset_hours(br.dt.date(2026, 7, 15)), -5)
+        # DST starts 2026-03-08, ends 2026-11-01
+        self.assertEqual(br._us_central_utc_offset_hours(br.dt.date(2026, 3, 7)), -6)
+        self.assertEqual(br._us_central_utc_offset_hours(br.dt.date(2026, 3, 8)), -5)
+        self.assertEqual(br._us_central_utc_offset_hours(br.dt.date(2026, 10, 31)), -5)
+        self.assertEqual(br._us_central_utc_offset_hours(br.dt.date(2026, 11, 1)), -6)
+
+    def test_session_complete_rejects_malformed_date(self):
+        self.assertFalse(br.session_complete("not-a-date"))
+        self.assertFalse(br.session_complete(None))
+
+    def test_record_daily_refuses_a_partial_session(self):
+        with tempfile.TemporaryDirectory() as td:
+            led = pathlib.Path(td) / "ledger.jsonl"
+            status, info = br.record_daily(self._payload(date="2999-01-01"), led)
+            self.assertEqual(status, "incomplete_session")
+            self.assertIn("settled", info["reason"])
+            self.assertFalse(led.exists())
+
+    def test_record_daily_force_overrides_the_completeness_guard(self):
+        with tempfile.TemporaryDirectory() as td:
+            led = pathlib.Path(td) / "ledger.jsonl"
+            status, _info = br.record_daily(self._payload(date="2999-01-01"), led, force=True)
+            self.assertEqual(status, "recorded")
+            self.assertTrue(led.exists())
 
     def test_tolerates_malformed_ledger_lines(self):
         with tempfile.TemporaryDirectory() as td:

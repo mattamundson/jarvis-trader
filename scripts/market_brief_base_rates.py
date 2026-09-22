@@ -28,6 +28,7 @@ from typing import Any
 
 SAFETY = {"mode": "ANALYSIS_ONLY", "orders_enabled": False, "risk_config_touched": False}
 MODEL_VERSION = "market-brief-base-rates-v1"
+DEFAULT_SYMBOL = "ES=F"  # the base-rate table is ES-specific
 DEFAULT_LOOKBACK = "5y"
 
 
@@ -330,8 +331,53 @@ def _ledger_rows(ledger: Path) -> list[dict]:
     return rows
 
 
-def record_daily(payload: dict, ledger: Path, symbol: str = "ES=F",
-                 force: bool = False) -> tuple[str, dict]:
+SETTLE_HOUR = 15     # CME equity-index futures settle 15:00 CT
+SETTLE_MARGIN_MIN = 15  # bars can finalise just after settlement
+
+
+def _us_central_utc_offset_hours(d: dt.date) -> int:
+    """UTC offset for US Central on `d`: -5 during CDT, -6 during CST.
+
+    Dependency-free on purpose. `zoneinfo` needs a tz database, which this Windows box
+    does not ship (`ZoneInfoNotFoundError`) even though a Linux CI runner would -- so a
+    guard built on it works in CI and fails in the scheduled job, the worst split. US DST
+    runs from 02:00 local on the 2nd Sunday in March to 02:00 local on the 1st Sunday in
+    November, which is all the precision a settlement boundary needs.
+    """
+    mar = dt.date(d.year, 3, 1)
+    second_sun_mar = mar + dt.timedelta(days=(6 - mar.weekday()) % 7 + 7)
+    nov = dt.date(d.year, 11, 1)
+    first_sun_nov = nov + dt.timedelta(days=(6 - nov.weekday()) % 7)
+    return -5 if second_sun_mar <= d < first_sun_nov else -6
+
+
+def session_complete(bar_date: str, now: dt.datetime | None = None) -> bool:
+    """False when `bar_date`'s CME session is still trading.
+
+    The equity-index futures session dated D runs from 17:00 CT on D-1 to 15:00 CT on D
+    (a Monday session starts Sunday 17:00 CT). A bar fetched before settlement is
+    *partial*, and pre-registering it records probabilities for a state the session never
+    actually held -- silently corrupting the calibration sample the ledger exists to build.
+
+    Live example: Monday 20:40 CT fetches a bar dated Tuesday, because Tuesday's session
+    opened Monday 17:00 CT. Without this guard that partial bar is recorded as "today".
+    """
+    try:
+        d = dt.date.fromisoformat(str(bar_date))
+    except (TypeError, ValueError):
+        return False
+    n = now or dt.datetime.now(dt.timezone.utc)
+    if n.tzinfo is None:
+        n = n.replace(tzinfo=dt.timezone.utc)
+    offset = _us_central_utc_offset_hours(d)
+    settle = (dt.datetime(d.year, d.month, d.day, SETTLE_HOUR, SETTLE_MARGIN_MIN,
+                          tzinfo=dt.timezone.utc)
+              - dt.timedelta(hours=offset))
+    return n.astimezone(dt.timezone.utc) >= settle
+
+
+def record_daily(payload: dict[str, Any], ledger: Path, symbol: str = DEFAULT_SYMBOL,
+                 force: bool = False) -> tuple[str, dict[str, Any]]:
     """Pre-register today's measured probabilities into the scorecard ledger.
 
     Calibration needs (predicted, realised) pairs. Waiting for a rare setup to recur
@@ -349,6 +395,8 @@ def record_daily(payload: dict, ledger: Path, symbol: str = "ES=F",
     probs = payload.get("probabilities") or {}
     if not date or not probs:
         return "skipped", {"reason": "payload has no date/probabilities"}
+    if not force and not session_complete(str(date)):
+        return "incomplete_session", {"date": date, "reason": "session has not settled yet"}
 
     for row in _ledger_rows(ledger):
         if row.get("date") == date and row.get("symbol") == symbol and not force:
