@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { loadLatestMarketBrief } from "@/lib/marketBrief/server";
+import { loadLatestPublicMarketBrief } from "@/lib/marketBrief/server";
 import { toPublicMarketBrief, type PublicInstrumentStructure, type PublicScenario } from "@/lib/marketBrief/public";
 
 export const dynamic = "force-dynamic";
@@ -106,7 +106,7 @@ function ScenarioCard({ scenario }: { scenario: PublicScenario }) {
 }
 
 export default async function PublicMarketBriefPage() {
-  const snapshot = toPublicMarketBrief(await loadLatestMarketBrief());
+  const snapshot = toPublicMarketBrief(await loadLatestPublicMarketBrief());
   const probabilities = snapshot.scores.probabilities;
   const conditional = snapshot.scores.conditional_diagnostic;
   const walkforward = snapshot.scores.probability_source?.walkforward;

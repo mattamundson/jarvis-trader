@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { loadLatestMarketBrief } from "@/lib/marketBrief/server";
+import { loadLatestPublicMarketBrief } from "@/lib/marketBrief/server";
 import { toPublicMarketBrief } from "@/lib/marketBrief/public";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET() {
-  const snapshot = await loadLatestMarketBrief();
+  const snapshot = await loadLatestPublicMarketBrief();
   const payload = toPublicMarketBrief(snapshot);
   return NextResponse.json(payload, {
     status: 200,
