@@ -353,6 +353,21 @@ def test_c2_pass_when_non_mes_pass_is_actionable(tmp_verdicts_dir, monkeypatch):
     assert "FOO" in result.detail
 
 
+def test_c2_pass_when_options_watchlist_symbol_has_pass_without_paper_config(
+    tmp_verdicts_dir, monkeypatch
+):
+    _write_verdict(tmp_verdicts_dir, symbol="MES", verdict="PASS")
+    _write_verdict(tmp_verdicts_dir, symbol="QQQ", family="trend", rank=0, verdict="PASS")
+    monkeypatch.setattr("backtest.signals.DO_NOT_TRADE_SYMBOLS", frozenset())
+    monkeypatch.setattr("backtest.paper_config.PAPER_CONFIGS", {})
+    monkeypatch.setattr(lr, "_load_options_watchlist", lambda: {"SPY", "QQQ"})
+
+    result = lr.check_c2_second_symbol()
+
+    assert result.passed is True
+    assert "QQQ" in result.detail
+
+
 def test_c2_ignores_fail_verdicts(tmp_verdicts_dir):
     _write_verdict(tmp_verdicts_dir, symbol="MES", verdict="PASS")
     _write_verdict(tmp_verdicts_dir, symbol="M2K", verdict="FAIL")

@@ -23,8 +23,9 @@ Criteria checked:
         forward-test profit factor >= 1.0
 
     C2 — Second symbol validated
-        At least one additional gate v2 PASS verdict beyond MES (MGC, M2K, etc.)
-        with valid (non-stale) paper config
+        At least one additional actionable gate v2 PASS verdict beyond MES.
+        Futures require paper_config.enabled=True; options/equity underlyings
+        are governed by OPTIONS_WATCHLIST and may not have PAPER_CONFIGS rows.
 
     C3 — Phase 0 credential rotation complete
         Credential scanner returns 0 HIGH findings (or scanner output unavailable)
@@ -170,6 +171,28 @@ def _load_verdicts() -> list[dict[str, Any]]:
         except (json.JSONDecodeError, OSError):
             continue
     return rows
+
+
+def _load_options_watchlist() -> set[str]:
+    """Return configured options/equity underlyings.
+
+    SPY/QQQ live under the options module, not futures `PAPER_CONFIGS`.
+    Missing a futures paper_config row is therefore not the same as being
+    disabled, provided the symbol is explicitly listed for options.
+    """
+    fallback = {"SPY", "QQQ"}
+    try:
+        from config import settings
+    except Exception:
+        return fallback
+
+    raw = getattr(settings, "OPTIONS_WATCHLIST", fallback)
+    if isinstance(raw, str):
+        return {item.strip().upper() for item in raw.split(",") if item.strip()}
+    try:
+        return {str(item).strip().upper() for item in raw if str(item).strip()}
+    except TypeError:
+        return fallback
 
 
 # Curated paper-trade store. The forward-test reads the SQLite paper_trades
@@ -433,10 +456,17 @@ def check_c2_second_symbol() -> CheckResult:
             if sym:
                 pass_symbols.add(sym)
 
+    options_watchlist = _load_options_watchlist()
+
+    def _is_actionable_second_symbol(sym: str) -> bool:
+        if sym in DO_NOT_TRADE_SYMBOLS:
+            return False
+        if sym in PAPER_CONFIGS:
+            return bool(PAPER_CONFIGS[sym].get("enabled", False))
+        return sym in options_watchlist
+
     actionable_non_mes_passes = sorted(
-        sym
-        for sym in pass_symbols - {"MES"}
-        if sym not in DO_NOT_TRADE_SYMBOLS and PAPER_CONFIGS.get(sym, {}).get("enabled", False)
+        sym for sym in pass_symbols - {"MES"} if _is_actionable_second_symbol(sym)
     )
     blocked_or_disabled = sorted((pass_symbols - {"MES"}) - set(actionable_non_mes_passes))
     if not actionable_non_mes_passes:
@@ -447,7 +477,10 @@ def check_c2_second_symbol() -> CheckResult:
                 f"No actionable PASS verdicts beyond MES. PASS symbols={sorted(pass_symbols)}; "
                 f"blocked_or_disabled={blocked_or_disabled}"
             ),
-            fix="Need a non-MES symbol with PASS verdict, not in DO_NOT_TRADE_SYMBOLS, and paper_config.enabled=True",
+            fix=(
+                "Need a non-MES symbol with PASS verdict, not in DO_NOT_TRADE_SYMBOLS, "
+                "and actionable via paper_config.enabled=True or OPTIONS_WATCHLIST"
+            ),
         )
 
     return CheckResult(
