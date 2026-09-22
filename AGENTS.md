@@ -25,6 +25,21 @@ Two services make up the product: the **engine** (FastAPI, Python 3.12, port 801
   Environment Variables". Recreate it with at least `API_KEY=<any value>` plus
   `MAX_DRAWDOWN_PCT=0.20` (the paper-phase override; `test_drawdown_recurrence_prevention`
   asserts the runtime value is `0.20`, while `config.py`'s code default is `0.10`).
+
+  > **⚠️ `engine/.env` IS NOT A MINIMAL FILE — NEVER RECREATE IT WHOLESALE.**
+  > The "at least `API_KEY`" line above is for a throwaway cloud VM, never the production
+  > engine. The real file holds **142 keys**. On 2026-08-17/18 it was rebuilt as a 15-key
+  > minimal file, silently destroying **127 keys** — LLM credentials, all notification
+  > channels, the entry/exit price-sanity gates, routing gates, and most risk limits. The
+  > engine fell back to code defaults: LLM calls routed to a dead `ollama` endpoint, alerts
+  > stopped, and the missing price-sanity gate coincided with a fabricated exit price that
+  > tripped the kill switch and halted all trading for **31 days**.
+  >
+  > **Recovery: restore individual keys** from `Archive/2026/engine-env-backup-20260817.txt`.
+  > Never overwrite or truncate the file. Back it up first. Record the key count before and
+  > after. That backup's LLM section is itself stale (it sets `JARVIS_LLM_PROVIDER=ollama`,
+  > which is already the code default, and `JARVIS_CLAUDE_USE_VERTEX=1`, a quota-denied
+  > dead end) — prefer `engine/.env.example` for provider/fallback values, Vertex OFF.
 - `ANTHROPIC_API_KEY` is unset, so the LLM agent pipeline (`/pipeline/run`) cannot produce
   decisions — every pipeline call fails the LLM provider chain. Everything else (safety
   layer, health, portfolio, backtest tooling, dashboard) works without it. Add the key to
@@ -95,8 +110,19 @@ live Strategy-C signal has been generated; the page prints the command to create
 ### Lint / test / build
 
 - Engine lint: from `engine/`, `.venv/bin/ruff check . --config ruff.toml`.
-- Engine tests: from `engine/`, `.venv/bin/python -m pytest tests/ -m "not slow"`
-  (~2 min, 7000+ tests). `manual`/`integration_ib` tests auto-skip without IB Gateway.
+- Engine tests: from `engine/`, `env -u PYTHONPATH .venv/bin/python -m pytest tests/`
+  (~7000 tests). **Do NOT add a bare `-m`** (including `-m "not slow"`): `pyproject.toml`
+  `addopts` carries `-m "not manual and not integration_ib"` to keep the suite from
+  trading, and **a CLI `-m` REPLACES that exclusion** (pytest behaviour, per the
+  project's own pyproject comment). The re-selected `integration_ib` tests do NOT
+  self-skip when IB Gateway is reachable — they connect for real and **submit real paper
+  orders**: "2026-08-11: an ordinary `pytest tests/` run placed live BUY 1 MES/MCL/MNQ
+  orders this way" (MCL/MNQ are DO_NOT_TRADE). The `manual` tests additionally hang the
+  asyncio loop unrecoverably. For a quick subset use `-k` (it filters *after* marker
+  selection, so the exclusion still applies), never `-m`:
+  `env -u PYTHONPATH .venv/bin/python -m pytest tests/ -k "sanity or price or tracker"`.
+  **After any accidental run, verify nothing traded:** check `MAX(fill_time)` in
+  `ibkr_fills` and grep `engine/logs/*.log` for `placeOrder|BUY |SELL |submitted`.
 - Dashboard typecheck: from `dashboard/`, `./node_modules/.bin/tsc --noEmit` (this is the
   type/lint gate — `pnpm lint` / `next lint` is unconfigured and prompts interactively).
 - Dashboard build: from `dashboard/`, `pnpm run build`. Gotcha: running a production build
