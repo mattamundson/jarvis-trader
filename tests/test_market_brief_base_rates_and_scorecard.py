@@ -212,5 +212,82 @@ class DailyPreregistrationTests(unittest.TestCase):
             self.assertEqual(sc.validate_brief(rows[0]), [])
 
 
+class SettlementIntegrityTests(unittest.TestCase):
+    """The scorer labels each brief's realised outcome from the NEXT bar. An in-progress bar
+    reports a partial close/low, so labelling from it can produce a wrong outcome."""
+
+    def _with_bars(self, bars):
+        orig = sc.fetch_daily
+        sc.fetch_daily = lambda sym, lb: bars
+        return orig
+
+    def _entry(self, date):
+        return {"date": date, "symbol": "ES=F", "continuation": 60.0, "rotation": 25.0,
+                "failure": 15.0, "signal_close": 100.0, "signal_low": 99.0}
+
+    def test_far_future_outcome_is_pending_not_scored(self):
+        bars = [sc.Bar("2999-01-01", 100, 101, 99, 100),
+                sc.Bar("2999-01-02", 105, 106, 98, 104)]
+        orig = self._with_bars(bars)
+        try:
+            res = sc.score([self._entry("2999-01-01")])
+        finally:
+            sc.fetch_daily = orig
+        self.assertEqual(res["aggregate"]["n_scored"], 0)
+        self.assertEqual(res["aggregate"]["n_pending"], 1)
+        self.assertIn("settled", res["pending"][0]["reason"])
+        self.assertEqual(res["scored"], [])
+
+    def test_settled_outcome_is_scored(self):
+        bars = [sc.Bar("2026-01-02", 100, 101, 99, 100),
+                sc.Bar("2026-01-05", 104, 105, 99, 104)]
+        orig = self._with_bars(bars)
+        try:
+            res = sc.score([self._entry("2026-01-02")])
+        finally:
+            sc.fetch_daily = orig
+        self.assertEqual(res["aggregate"]["n_scored"], 1)
+        self.assertEqual(res["aggregate"]["n_pending"], 0)
+        self.assertIn(res["scored"][0]["realized"], sc.CLASSES)
+
+    def test_no_next_bar_at_all_is_still_pending(self):
+        bars = [sc.Bar("2026-01-02", 100, 101, 99, 100)]
+        orig = self._with_bars(bars)
+        try:
+            res = sc.score([self._entry("2026-01-02")])
+        finally:
+            sc.fetch_daily = orig
+        self.assertEqual(res["aggregate"]["n_pending"], 1)
+        self.assertIn("no realized next session", res["pending"][0]["reason"])
+
+    def test_scorer_and_base_rates_agree_on_settlement(self):
+        """The settlement rule is duplicated in both scripts; drift must fail the suite."""
+        grid = []
+        for m in (1, 2, 3, 4, 7, 10, 11, 12):
+            for day in (1, 7, 8, 14, 15, 21, 28):
+                try:
+                    grid.append(br.dt.date(2026, m, day))
+                except ValueError:
+                    pass
+        for d in grid:
+            self.assertEqual(br._us_central_utc_offset_hours(d),
+                             sc._us_central_utc_offset_hours(d),
+                             f"offset disagreement on {d}")
+            for h in range(0, 24, 3):
+                now = br.dt.datetime(d.year, d.month, d.day, h, 0, tzinfo=br.dt.timezone.utc)
+                a = br.session_complete(d.isoformat(), now=now)
+                b = sc.session_complete(d.isoformat(), now=now)
+                self.assertEqual(a, b, f"disagreement at {d} {h:02d}:00Z: br={a} sc={b}")
+
+    def test_limitations_disclose_the_settlement_guard(self):
+        bars = [sc.Bar("2026-01-02", 100, 101, 99, 100)]
+        orig = self._with_bars(bars)
+        try:
+            res = sc.score([])
+        finally:
+            sc.fetch_daily = orig
+        self.assertTrue(any("settled" in x for x in res["limitations"]))
+
+
 if __name__ == "__main__":
     unittest.main()

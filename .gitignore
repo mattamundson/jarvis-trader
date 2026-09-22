@@ -388,3 +388,11 @@ docs/ci-reports/
 
 # A-01 runtime truth artifact (machine-local, redacted but operational)
 /phase0_runtime_truth_snapshot.json
+
+# Per-run calibration reports (scripts/market_brief_base_rates.py,
+# scripts/market_brief_scorecard.py). Previously tracked, so every run added another
+# tracked file; the drivers are tracked and their timestamped outputs are not. Only the
+# *_LATEST.* snapshots stay tracked. Point --out-dir at a scratch dir to avoid writing
+# into the repo at all.
+docs/reports/MARKET_BRIEF_BASE_RATES_[0-9]*.md
+docs/reports/MARKET_BRIEF_SCORECARD_[0-9]*.md
