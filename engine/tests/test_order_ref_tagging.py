@@ -113,7 +113,11 @@ async def test_missing_order_ref_auto_generates_jarvis_tag():
     mgr, fake_ib = _build_manager_with_mocked_ib()
 
     order_id = await mgr.place_paper_order(
+<<<<<<< HEAD
         symbol="MGC",
+=======
+        symbol="MES",
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         action="SELL",
         quantity=1,
         order_type="MKT",

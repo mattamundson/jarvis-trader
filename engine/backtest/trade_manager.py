@@ -82,6 +82,18 @@ class BacktestResult:
     avg_win_loss_ratio: float = 0.0
     sharpe_ratio: float = 0.0
     sortino_ratio: float = 0.0
+<<<<<<< HEAD
+=======
+    # Trades/year actually used to annualize sharpe_ratio & sortino_ratio. Derived from the
+    # backtest window (2026-08-17 fix); falls back to 252 when the window is unknown or
+    # shorter than the guard rail. Recorded so any Sharpe can be audited or rescaled.
+    annualization_trades_per_year: float = 0.0
+    # Entries skipped because R:R < 1.2 on the signal bar or at actual entry
+    # (2026-08-18 T5 fix). Previously this filter was SILENT — a backtest with
+    # 0 trades and no error usually meant this, not a signal bug. Recorded so
+    # callers can distinguish "no signal" from "signals filtered".
+    rr_filtered_entries: int = 0
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     max_consecutive_losses: int = 0
     max_consecutive_wins: int = 0
     equity_curve: List[float] = field(default_factory=list)
@@ -156,6 +168,12 @@ class BacktestResult:
             f"Return: {self.total_return_pct:+.1%}  |  Max DD: {self.max_drawdown_pct:.1%}",
             "",
             f"Trades: {self.total_trades} total  |  Win Rate: {self.win_rate:.1%}",
+<<<<<<< HEAD
+=======
+            f"R:R<1.2 filtered entries: {self.rr_filtered_entries}"
+            + ("  [WARN: 0 trades + filters > 0 = entries dropped, not signal absence]"
+               if self.total_trades == 0 and self.rr_filtered_entries > 0 else ""),
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             f"Avg Win: ${self.avg_win:,.0f}  |  Avg Loss: ${self.avg_loss:,.0f}",
             f"Profit Factor: {self.profit_factor:.2f}",
             f"Sharpe: {self.sharpe_ratio:.2f}  |  Sortino: {self.sortino_ratio:.2f}",
@@ -212,6 +230,10 @@ class BacktestResult:
             "median_holding_bars": round(self.median_holding_bars, 2),
             "max_holding_bars": self.max_holding_bars,
             "trailing_stop_exits": self.trailing_stop_exits,
+<<<<<<< HEAD
+=======
+            "rr_filtered_entries": self.rr_filtered_entries,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             "max_drawdown_duration_bars": self.max_drawdown_duration_bars,
             "exposure_time_pct": round(self.exposure_time_pct, 2),
             "total_bars": self.total_bars,

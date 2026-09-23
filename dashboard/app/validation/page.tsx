@@ -1,3 +1,7 @@
+<<<<<<< HEAD
+=======
+
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 "use client";
 
 import React, { useState } from "react";
@@ -1789,8 +1793,17 @@ export default function ValidationPage() {
       </header>
 
       <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-6 space-y-6">
+<<<<<<< HEAD
         <ValidationChecklist />
         <TradingDaysCountdownCard />
+=======
+        <WidgetErrorBoundary name="Validation Checklist">
+          <ValidationChecklist />
+        </WidgetErrorBoundary>
+        <WidgetErrorBoundary name="Trading Days Countdown">
+          <TradingDaysCountdownCard />
+        </WidgetErrorBoundary>
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         <WidgetErrorBoundary name="Backtest vs Paper">
           <BacktestVsPaperWidget />
         </WidgetErrorBoundary>
@@ -1838,56 +1851,110 @@ export default function ValidationPage() {
         {/* Section 1: Strategy Validation Scorecard */}
         <section>
           <SectionLabel>1 — Strategy Validation Scorecard</SectionLabel>
+<<<<<<< HEAD
           <ValidationScorecardCard />
+=======
+          <WidgetErrorBoundary name="Validation Scorecard">
+            <ValidationScorecardCard />
+          </WidgetErrorBoundary>
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         </section>
 
         {/* Section 1B: Instrument Approval Gates (live, PRB-36) */}
         <section>
           <SectionLabel>1B — Instrument Approval Gates</SectionLabel>
+<<<<<<< HEAD
           <InstrumentEligibilityGatesCard />
+=======
+          <WidgetErrorBoundary name="Instrument Eligibility Gates">
+            <InstrumentEligibilityGatesCard />
+          </WidgetErrorBoundary>
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         </section>
 
         {/* Section 1C: MES Re-Validation Progress */}
         <section>
           <SectionLabel>1C — MES Re-Validation Progress</SectionLabel>
+<<<<<<< HEAD
           <MESRevalidationTracker />
+=======
+          <WidgetErrorBoundary name="MES Re-Validation">
+            <MESRevalidationTracker />
+          </WidgetErrorBoundary>
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         </section>
 
         {/* Section 1D: MES Forward-Recorder (observational experiment) */}
         <section>
           <SectionLabel>1D — MES Forward-Recorder (observational)</SectionLabel>
+<<<<<<< HEAD
           <MESForwardRecorderPanel />
+=======
+          <WidgetErrorBoundary name="MES Forward-Recorder">
+            <MESForwardRecorderPanel />
+          </WidgetErrorBoundary>
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         </section>
 
         {/* Section 2: Monte Carlo Confidence Intervals */}
         <section>
           <SectionLabel>2 — Monte Carlo Confidence Intervals</SectionLabel>
+<<<<<<< HEAD
           <MonteCarloCard />
+=======
+          <WidgetErrorBoundary name="Monte Carlo">
+            <MonteCarloCard />
+          </WidgetErrorBoundary>
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         </section>
 
         {/* Section 3: Parameter Sensitivity */}
         <section>
           <SectionLabel>3 — Parameter Sensitivity Analysis</SectionLabel>
+<<<<<<< HEAD
           <ParameterSensitivityCard />
+=======
+          <WidgetErrorBoundary name="Parameter Sensitivity">
+            <ParameterSensitivityCard />
+          </WidgetErrorBoundary>
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         </section>
 
         {/* Section 4: Statistical Significance */}
         <section>
           <SectionLabel>4 — Statistical Significance</SectionLabel>
+<<<<<<< HEAD
           <StatisticalSignificanceCard />
+=======
+          <WidgetErrorBoundary name="Statistical Significance">
+            <StatisticalSignificanceCard />
+          </WidgetErrorBoundary>
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         </section>
 
         {/* Section A: Backtest Reference */}
         <section>
           <SectionLabel>A — Backtest Reference Targets</SectionLabel>
+<<<<<<< HEAD
           <BacktestReferenceCard baseline={scorecardBaseline} />
+=======
+          <WidgetErrorBoundary name="Backtest Reference">
+            <BacktestReferenceCard baseline={scorecardBaseline} />
+          </WidgetErrorBoundary>
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         </section>
 
         {/* Section B: Live Paper Performance (only when data available) */}
         {!reportLoading && !reportError && report && (
           <section>
             <SectionLabel>B — Live Paper Trading Performance</SectionLabel>
+<<<<<<< HEAD
             <LivePerformanceCard report={report} />
+=======
+            <WidgetErrorBoundary name="Live Paper Performance">
+              <LivePerformanceCard report={report} />
+            </WidgetErrorBoundary>
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
           </section>
         )}
 
@@ -1901,32 +1968,62 @@ export default function ValidationPage() {
                 /analytics/performance/compare unavailable — using local metrics for comparison.
               </p>
             )}
+<<<<<<< HEAD
             <ComparisonTable report={report} compare={compare ?? null} baseline={scorecardBaseline} />
+=======
+            <WidgetErrorBoundary name="Comparison Table">
+              <ComparisonTable report={report} compare={compare ?? null} baseline={scorecardBaseline} />
+            </WidgetErrorBoundary>
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
           </section>
         )}
 
         {/* Section D: Phase Status */}
         <section>
           <SectionLabel>D — Trading Phase Status</SectionLabel>
+<<<<<<< HEAD
           <PhaseStatusCard report={report ?? null} baseline={scorecardBaseline} />
+=======
+          <WidgetErrorBoundary name="Phase Status">
+            <PhaseStatusCard report={report ?? null} baseline={scorecardBaseline} />
+          </WidgetErrorBoundary>
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         </section>
 
         {/* Section E: Simulate Trade */}
         <section>
           <SectionLabel>E — Simulate Trade</SectionLabel>
+<<<<<<< HEAD
           <SimulateTradePanel />
+=======
+          <WidgetErrorBoundary name="Simulate Trade">
+            <SimulateTradePanel />
+          </WidgetErrorBoundary>
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         </section>
 
         {/* Section F: Pipeline Run History */}
         <section>
           <SectionLabel>F — Pipeline Run History</SectionLabel>
+<<<<<<< HEAD
           <PipelineRunHistory />
+=======
+          <WidgetErrorBoundary name="Pipeline Run History">
+            <PipelineRunHistory />
+          </WidgetErrorBoundary>
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         </section>
 
         {/* Section G: Position Sizing Calculator */}
         <section>
           <SectionLabel>G — Position Sizing Calculator</SectionLabel>
+<<<<<<< HEAD
           <PositionSizingCalculator />
+=======
+          <WidgetErrorBoundary name="Position Sizing Calculator">
+            <PositionSizingCalculator />
+          </WidgetErrorBoundary>
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         </section>
 
         {/* Section H: Export Data */}
@@ -1948,7 +2045,13 @@ export default function ValidationPage() {
         {/* Section J: Go-Live Roadmap */}
         <section>
           <SectionLabel>J — Go-Live Roadmap</SectionLabel>
+<<<<<<< HEAD
           <GoLivePlanCard />
+=======
+          <WidgetErrorBoundary name="Go-Live Plan">
+            <GoLivePlanCard />
+          </WidgetErrorBoundary>
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         </section>
 
         {/* Section K: WFE Live Monitor */}
@@ -1962,9 +2065,19 @@ export default function ValidationPage() {
         {/* Section L: Portfolio P&L Chart */}
         <section>
           <SectionLabel>L — Portfolio Cumulative P&L</SectionLabel>
+<<<<<<< HEAD
           <PortfolioPLChart />
+=======
+          <WidgetErrorBoundary name="Portfolio P&L Chart">
+            <PortfolioPLChart />
+          </WidgetErrorBoundary>
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         </section>
       </main>
     </div>
   );
 }
+<<<<<<< HEAD
+=======
+
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2

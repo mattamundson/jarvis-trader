@@ -24,9 +24,16 @@ subset used here:
   DISPATCH (op=0) → handle MESSAGE_REACTION_ADD events
   RESUME (op=6)   → reconnect with last session_id + seq after disconnect
 
+<<<<<<< HEAD
 Intents bitmask (decimal 33281):
   GUILDS (1) | GUILD_MESSAGES (512) | GUILD_MESSAGE_REACTIONS (8192) |
   MESSAGE_CONTENT (32768) = 33281
+=======
+Intents bitmask (decimal 1537):
+  GUILDS (1) | GUILD_MESSAGES (512) | GUILD_MESSAGE_REACTIONS (1024) = 1537
+
+  (No MESSAGE_CONTENT -- not needed and not requested; see GATEWAY_INTENTS.)
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 Security: only reactions from DISCORD_PERSONAL_USER_ID are acted upon. All
 others are silently ignored and logged at DEBUG. The bot also verifies the
@@ -76,8 +83,34 @@ OP_RESUME = 6
 OP_HELLO = 10
 OP_HEARTBEAT_ACK = 11
 
+<<<<<<< HEAD
 # Gateway intents: GUILDS | GUILD_MESSAGES | GUILD_MESSAGE_REACTIONS | MESSAGE_CONTENT
 GATEWAY_INTENTS = 1 | 512 | 8192 | 32768  # 33281
+=======
+# Gateway intents: GUILDS | GUILD_MESSAGES | GUILD_MESSAGE_REACTIONS
+#
+# 2026-08-16: two corrections found while root-causing a persistent IDENTIFY
+# failure (live diagnostic: Discord closes with code 4004 "Authentication
+# failed" -- an invalid bot token, not an intents problem, but both bugs
+# below were real and worth fixing regardless).
+#
+# MESSAGE_CONTENT (privileged, 32768) removed: this listener only ever
+# dispatches on READY/RESUMED/MESSAGE_REACTION_ADD (see _gateway_session
+# below), none of which carry or require message content over the gateway --
+# the approval-message text is fetched separately via Discord REST
+# (_handle_reaction -> GET .../messages/{id}), unaffected by gateway intents.
+# Requesting an unused privileged intent only adds a Developer Portal
+# dependency (must be explicitly toggled on) for zero functional benefit.
+#
+# GUILD_MESSAGE_REACTIONS corrected from 8192 to 1024: PERSONAL_CHANNEL_ID
+# lives inside a guild (personal_mcp_server.py's DEFAULT_GUILD_ID), not a DM,
+# so the intent needed is GUILD_MESSAGE_REACTIONS (bit 10, 1024). The prior
+# value (8192, bit 13) is actually Discord's DIRECT_MESSAGE_REACTIONS --
+# mislabeled in this comment, and would never have delivered
+# MESSAGE_REACTION_ADD events for this guild channel even on a healthy
+# connection.
+GATEWAY_INTENTS = 1 | 512 | 1024  # 1537
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 # Personal channel (same constant as personal_mcp_server.py)
 PERSONAL_CHANNEL_ID = "1490851279180660819"
@@ -575,6 +608,22 @@ async def _gateway_session(
             should_resume = True
             break
 
+<<<<<<< HEAD
+=======
+    else:
+        # 2026-08-15 incident: the async-for ended by exhausting the iterator
+        # (connection dropped with no CLOSE/CLOSING/ERROR frame at all) --
+        # previously silent, so an extended run of these looked identical in
+        # the log to a healthy idle session. `for...else` skips this when a
+        # `break` fired one of the branches above, which already log their
+        # own reason.
+        logger.warning(
+            "reaction_watcher: gateway stream ended with no close frame "
+            "(session_id=%s, ready_this_cycle=%s)",
+            session_id, session_id is not None,
+        )
+
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     if heartbeat_task is not None and not heartbeat_task.done():
         heartbeat_task.cancel()
         try:
@@ -626,11 +675,24 @@ async def watch_approval_reactions() -> None:
                     timeout=30,
                     compress=0,
                 ) as ws:
+<<<<<<< HEAD
                     backoff = _INITIAL_BACKOFF_SECONDS  # reset on successful connect
+=======
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                     logger.info("reaction_watcher: WebSocket connected")
                     resume_session_id, resume_seq, should_resume = await _gateway_session(
                         ws, http_session, resume_session_id, resume_seq
                     )
+<<<<<<< HEAD
+=======
+                    if resume_session_id is not None:
+                        # Only reset backoff once the gateway actually authenticated
+                        # (READY/RESUMED set session_id). A raw TCP/TLS connect that
+                        # gets IDENTIFY-rejected and closed immediately must NOT reset
+                        # backoff, or a bad token/intents config spins the reconnect
+                        # loop at the 2s floor forever instead of backing off.
+                        backoff = _INITIAL_BACKOFF_SECONDS
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                     if not should_resume:
                         # Non-resumable close code — clear resume state and re-identify
                         resume_session_id = None

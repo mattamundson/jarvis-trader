@@ -1,9 +1,18 @@
 # jarvis-trader — project memory
 
 AI-powered futures & options trading engine for Matt Morrison.
+<<<<<<< HEAD
 Capital $10K total, $5K/instrument. Active paper instrument: MES (Tier-3 auth 2026-05-24).
 MCL, MNQ, M2K, and MGC are HALTED (`DO_NOT_TRADE_SYMBOLS`) — MGC joined 2026-07-31 after
 the honest-data-drain DSR correction invalidated its 2026-05-24 gate-v2 PASS.
+=======
+Capital $10K total, $5K/instrument. Active paper instruments: MES (Tier-3 auth 2026-05-24).
+MCL, MNQ, M2K, and MGC are HALTED (`DO_NOT_TRADE_SYMBOLS`). MGC's status has moved twice
+since: HALTED 2026-08-01 (PR #552) after the honest-data-drain DSR correction invalidated
+its 2026-05-24 PASS, REAUTHORIZED 2026-08-10 (PR #598) on a fresh honest gate-v2 CORE PASS,
+then RE-HALTED 2026-08-16 (PR #691) after a re-evaluation on refreshed data FAILed gate v2
+(pf_ci_lower 1.0681 < 1.1 floor; mc_95th_dd 4.4212% > 4.0 floor).
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 `engine/CLAUDE.md` "Active Instruments" is the authoritative status table. Paper mode on
 IB Gateway port 4002, account DUR375089 (confirmed live 2026-08-10 via `IB_ACCOUNT_ID` in
 `engine/.env` and IB position/execution queries — corrects a stale `DUP662235` reference).
@@ -27,7 +36,11 @@ IB Gateway port 4002, account DUR375089 (confirmed live 2026-08-10 via `IB_ACCOU
 - Engine restart: `.\restart_engine.ps1`. Never use `--reload` (causes duplicate IB connections).
 - Live IB Gateway port 4001 is permanently blocked — paper only (port 4002, account DUR375089).
 - Any change to `engine/config.py`, `engine/risk/`, or kill-switch code requires `[safety-review]` PR tag.
+<<<<<<< HEAD
 - `LIVE_TRADING_ENABLED = False` and `REQUIRE_HUMAN_APPROVAL = True` are invariants. Kill switch: -8% daily P&L / -10% drawdown — the drawdown limit is the `MAX_DRAWDOWN_PCT` config field (0.10 default), which the paper phase overrides higher via `engine/.env` (that file is the source of truth for the live value). The kill-switch logic is hardcoded, no LLM route.
+=======
+- `LIVE_TRADING_ENABLED = False` is an invariant. `REQUIRE_HUMAN_APPROVAL = False` as of 2026-08-11 (standing decision — full-visibility trade alerts replace per-trade approval; see `.claude/rules/safety.md`). Kill switch: -8% daily P&L / -20% drawdown — the drawdown limit is the `MAX_DRAWDOWN_PCT` config field (0.20 default as of 2026-06-25), and `engine/.env` remains the source of truth for the live value. The kill-switch logic is hardcoded, no LLM route.
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 - API auth header: `X-API-Key: <current value in `engine/.env`>` (value rotates — read at use time, do not hardcode here). Port 8010.
 
 ## Verification discipline (non-negotiable)

@@ -13,6 +13,10 @@ import { Badge } from "@/components/ui/badge";
 import { ConfidenceGauge } from "@/components/ConfidenceGauge";
 import { ResultLabel } from "@/components/ResultLabel";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
+<<<<<<< HEAD
+=======
+import { MesForwardExperimentPanel } from "@/components/MesForwardExperimentPanel";
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 const REFRESH_MS = 120_000;
 
@@ -235,6 +239,14 @@ export default function SignalOutcomesPage() {
         </WidgetErrorBoundary>
       </div>
 
+<<<<<<< HEAD
+=======
+      {/* MES forward experiment -- daily session-hypothesis recorder, coverage-first */}
+      <WidgetErrorBoundary name="MES Forward Experiment">
+        <MesForwardExperimentPanel />
+      </WidgetErrorBoundary>
+
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       {/* Outcomes table */}
       <div className="rounded-xl border border-border bg-card p-4 space-y-3">
         <div className="flex items-center justify-between">

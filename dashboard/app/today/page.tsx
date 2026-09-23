@@ -1,6 +1,10 @@
 "use client";
 
 import useSWR from "swr";
+<<<<<<< HEAD
+=======
+import dynamic from "next/dynamic";
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 import {
   Activity,
   AlertTriangle,
@@ -19,10 +23,23 @@ import {
 } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
 import { executionStatus, type ExecutionPathProbe } from "@/lib/executionPath";
+<<<<<<< HEAD
 import { MarketChart } from "@/components/charts/MarketChart";
 import { MarketContextStrip } from "@/components/charts/MarketContextStrip";
 import { getBannerVariant, type BannerVariant } from "@/lib/todayBanner";
 
+=======
+import { MarketContextStrip } from "@/components/charts/MarketContextStrip";
+import { getBannerVariant, type BannerVariant } from "@/lib/todayBanner";
+
+// lightweight-charts backed live chart, second-screen content below the status banner
+// and metric cards — defer the chunk instead of paying for it in the initial route JS.
+const MarketChart = dynamic(
+  () => import("@/components/charts/MarketChart").then((m) => ({ default: m.MarketChart })),
+  { ssr: false, loading: () => <div className="h-[320px] animate-pulse rounded-lg bg-muted/20" /> }
+);
+
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 // ── Constants ──────────────────────────────────────────────────────────────────
 
 const REFRESH_MS = 30_000;
@@ -184,12 +201,21 @@ function MetricCard({
   label,
   value,
   sub,
+<<<<<<< HEAD
+=======
+  subTitle,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
   valueColor,
 }: {
   icon: React.ReactNode;
   label: string;
   value: React.ReactNode;
   sub?: string;
+<<<<<<< HEAD
+=======
+  /** Hover/title disclosure for the sub line (e.g. metric-honesty notes). */
+  subTitle?: string;
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
   valueColor?: string;
 }) {
   return (
@@ -207,7 +233,16 @@ function MetricCard({
         {value}
       </p>
       {sub && (
+<<<<<<< HEAD
         <p className="font-mono text-[10px] text-muted-foreground truncate">{sub}</p>
+=======
+        <p
+          className="font-mono text-[10px] text-muted-foreground truncate"
+          title={subTitle}
+        >
+          {sub}
+        </p>
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       )}
     </div>
   );
@@ -404,6 +439,10 @@ export default function TodayPage() {
               sub={eod
                 ? `PF ${eod.validation_gates.pf?.toFixed(2) ?? "?"} · Sharpe ${eod.validation_gates.sharpe?.toFixed(2) ?? "?"} · ${eod.validation_gates.trades_count} trades`
                 : undefined}
+<<<<<<< HEAD
+=======
+              subTitle="Sharpe annualized by observed trading-days-per-year (not fixed 252)"
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
               valueColor={statusColor}
             />
           )}

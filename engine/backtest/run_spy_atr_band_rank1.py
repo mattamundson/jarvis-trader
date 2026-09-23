@@ -79,7 +79,11 @@ def main() -> int:
     pnls = (_CAPITAL * in_mkt).tolist()
 
     report = vs.validate(pnls, n_grid_trials=_N_GRID_TRIALS, initial_capital=_CAPITAL)
+<<<<<<< HEAD
     verdict = vs._evaluate_gate_v2(report)
+=======
+    verdict = vs._evaluate_gate_v2(report, strategy_class="equity_swing")
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
     out = {
         "strategy": "atr_band_breakout", "symbol": "SPY", "rank": 1,

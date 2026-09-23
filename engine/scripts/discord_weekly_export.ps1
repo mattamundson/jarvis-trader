@@ -13,7 +13,15 @@
 #   * indicator-alerts  (1133508659993915492) — signal overlay data
 #
 # Design notes (see docs/incident-notes/2026-04-17-t2.1-discord-staleness.md):
+<<<<<<< HEAD
 #   * Token read from .token file on each run — never embedded in script or logs
+=======
+#   * Token read from process DISCORD_TOKEN first, then engine\.env, then
+#     C:\Users\mattm\discord-export\.token fallback. Never embedded in scripts/logs and never passed via
+#     DCE --token/-t argv; DCE reads DISCORD_TOKEN from the process environment.
+#   * If DCE reports "Authentication token is invalid", rotate the token before
+#     rerunning; stale futures_sentiment is a credential-freshness blocker.
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 #   * `--after` rolling 3-day window; parser.py:55 handles "(after YYYY-MM-DD)"
 #     filenames; storage.py INSERT OR IGNORE on message_id dedupes overlap
 #   * Exits non-zero on any failure so Task Scheduler reports "Last Run Result != 0"
@@ -58,10 +66,34 @@ if (-not (Test-Path $LogDir)) { New-Item -ItemType Directory -Path $LogDir -Forc
 Write-Log 'INFO' "=== weekly export start ==="
 
 if (-not (Test-Path $Dce))       { Write-Log 'ERROR' "DCE not found at $Dce"; exit 2 }
+<<<<<<< HEAD
 if (-not (Test-Path $TokenFile)) { Write-Log 'ERROR' "Token file missing at $TokenFile"; exit 3 }
 
 $Token = (Get-Content $TokenFile -Raw).Trim()
 if ([string]::IsNullOrWhiteSpace($Token)) { Write-Log 'ERROR' 'Token file empty'; exit 5 }
+=======
+$Token = $null
+$TokenSource = $null
+$EngineEnv = Join-Path $EngineDir '.env'
+if (-not [string]::IsNullOrWhiteSpace($env:DISCORD_TOKEN)) {
+    $Token = $env:DISCORD_TOKEN.Trim()
+    $TokenSource = 'process_env'
+}
+if ([string]::IsNullOrWhiteSpace($Token) -and (Test-Path $EngineEnv)) {
+    $line = Get-Content $EngineEnv | Where-Object { $_ -match '^DISCORD_TOKEN=' } | Select-Object -First 1
+    if ($line) {
+        $Token = ($line -replace '^DISCORD_TOKEN=', '').Trim().Trim('"').Trim("'")
+        $TokenSource = 'engine_env'
+    }
+}
+if ([string]::IsNullOrWhiteSpace($Token) -and (Test-Path $TokenFile)) {
+    $Token = (Get-Content $TokenFile -Raw).Trim()
+    $TokenSource = 'token_file'
+}
+if ([string]::IsNullOrWhiteSpace($Token)) { Write-Log 'ERROR' "Discord token missing: neither $TokenFile nor engine\.env DISCORD_TOKEN is populated"; exit 3 }
+Write-Log 'INFO' "Discord token source: $TokenSource"
+$env:DISCORD_TOKEN = $Token
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 # ── Export each channel (incremental: last 3 days, daily overlap) ────────────
 # Full re-export of #general is 60k+ messages and rate-limits to ~12hr wall.
@@ -74,12 +106,27 @@ $failed = @()
 foreach ($ch in $Channels) {
     Write-Log 'INFO' "Exporting channel $($ch.Name) ($($ch.Id)) after $After"
     try {
+<<<<<<< HEAD
         & $Dce export -c $ch.Id -t $Token -o "$Exports\" -f Json --after $After --respect-rate-limits 2>&1 |
             ForEach-Object { Write-Log 'DCE' $_ }
         if ($LASTEXITCODE -ne 0) { throw "DCE exit $LASTEXITCODE" }
         Write-Log 'INFO' "Export OK: $($ch.Name)"
     } catch {
         Write-Log 'ERROR' "Export failed for $($ch.Name): $_"
+=======
+        $output = & $Dce export -c $ch.Id -o "$Exports\" -f Json --after $After --respect-rate-limits 2>&1
+        $output | ForEach-Object { Write-Log 'DCE' $_ }
+        if ($LASTEXITCODE -ne 0) { throw "DCE exit $LASTEXITCODE" }
+        Write-Log 'INFO' "Export OK: $($ch.Name)"
+    } catch {
+        $invalidToken = $false
+        try { $invalidToken = (($output -join "`n") -match 'Authentication token is invalid') } catch {}
+        if ($invalidToken) {
+            Write-Log 'ERROR' "Export failed for $($ch.Name): invalid Discord token blocks futures_sentiment freshness — rotate DISCORD_TOKEN and rerun exporter"
+        } else {
+            Write-Log 'ERROR' "Export failed for $($ch.Name): $_"
+        }
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         $failed += $ch.Name
     }
 }

@@ -436,3 +436,201 @@ def get_research_candidates() -> ResearchCandidatesResponse:
         total=len(rows),
         generated_at=datetime.now(timezone.utc).isoformat(),
     )
+<<<<<<< HEAD
+=======
+
+
+# ── Equity SMA-trend certification + forward evidence (non-authorizing) ──────
+#
+# Equity daily SMA-trend WFO certs (engine/backtest/run_equity_sma_cert.py)
+# write verdicts named <SYM>_sma_cert_<fast>_<slow>_<atr>.json into
+# gate_v2_verdicts/. They share the production verdict directory with futures
+# verdicts, but EQUITY verdicts are a separate research lineage: they certify
+# a daily-bar equity trend edge (SPY/QQQ PASS, 113 windows) and NEVER route
+# capital through the futures gate. This endpoint surfaces them plus the
+# closed-trades forward-evidence report so the dashboard can show (a) which
+# equity params survived WFO certification and (b) what the live closed-trades
+# ledger says about forward (post-cert) performance.
+
+class EquityCertRow(BaseModel):
+    """One equity daily SMA-trend WFO certification verdict."""
+
+    symbol: Optional[str] = None
+    fast: Optional[int] = None
+    slow: Optional[int] = None
+    atr_mult: Optional[float] = None
+    verdict: Optional[str] = None  # PASS | FAIL
+    passed_via: Optional[str] = None
+    n_windows: Optional[int] = None
+    pf_ci_lower: Optional[float] = None
+    p_edge: Optional[float] = None
+    dsr: Optional[float] = None
+    mc_95th_dd_pct: Optional[float] = None
+    total_oos_trades: Optional[int] = None
+    created_at: Optional[str] = None
+    source_file: Optional[str] = None
+    note: Optional[str] = None
+
+
+class ForwardCandidateRow(BaseModel):
+    """One candidate's forward-evidence block from forward_test_report.json."""
+
+    id: Optional[str] = None
+    symbol: Optional[str] = None
+    graduated: Optional[bool] = None
+    forward_n_windows: Optional[int] = None
+    forward_p_edge: Optional[float] = None
+    forward_pf_ci_lower: Optional[float] = None
+    forward_total_trades: Optional[int] = None
+    forward_total_pnl: Optional[float] = None
+    shuffle_p_value: Optional[float] = None
+    shuffle_passes: Optional[bool] = None
+    dsr: Optional[float] = None
+    stat_gate: Optional[Any] = None  # dict {enforced, ab..., passes, reasons} in the report
+    survives_family_fdr: Optional[bool] = None
+    reason: Optional[str] = None
+
+
+class EquityResearchResponse(BaseModel):
+    equity_certs: List[EquityCertRow]
+    forward_evidence: List[ForwardCandidateRow]
+    forward_generated_at: Optional[str] = None
+    forward_window_days: Optional[int] = None
+    forward_graduation_rule: Optional[Dict[str, Any]] = None
+    total: int
+    generated_at: str
+
+
+_EQUITY_CERT_SYMBOLS = {"SPY", "QQQ", "AAPL", "TSLA"}
+
+
+def _finite(v: Any) -> Optional[float]:
+    """Coerce to float; JSON cannot serialize inf/nan, so map them to None."""
+    if v is None:
+        return None
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return f if f == f and f not in (float("inf"), float("-inf")) else None
+
+
+def _parse_equity_cert(path: Path) -> Optional[Dict[str, Any]]:
+    """Parse one <SYM>_sma_cert_<f>_<s>_<a>.json into an EquityCertRow dict.
+
+    Only DAILY-bar certs count: the stem must be exactly
+    ``<SYM>_sma_cert_<fast>_<slow>_<atr>`` (6 underscore-parts). Suffix variants
+    (e.g. ``_daily_PRE_1h_cert``) are stale lineage files and are skipped.
+    """
+    name = path.stem  # e.g. SPY_sma_cert_10_40_2.0
+    parts = name.split("_")
+    if len(parts) != 6 or parts[1] != "sma" or parts[2] != "cert":
+        return None
+    sym = parts[0].upper()
+    if sym not in _EQUITY_CERT_SYMBOLS:
+        return None
+    try:
+        fast = int(parts[3])
+        slow = int(parts[4])
+        atr = float(parts[5])
+    except (ValueError, IndexError):
+        return None
+    try:
+        d = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    m = d.get("gate_v2_metrics", {}) or {}
+    wfo = d.get("wfo_config", {}) or {}
+    return {
+        "symbol": sym,
+        "fast": fast,
+        "slow": slow,
+        "atr_mult": atr,
+        "verdict": d.get("verdict"),
+        "passed_via": d.get("passed_via") or d.get("core_verdict"),
+        "n_windows": (wfo or {}).get("n_windows"),
+        "pf_ci_lower": _finite(m.get("pf_ci_lower")),
+        "p_edge": _finite(m.get("p_edge")),
+        "dsr": _finite(m.get("dsr")),
+        "mc_95th_dd_pct": _finite(m.get("mc_95th_dd_pct")),
+        "total_oos_trades": m.get("total_oos_trades"),
+        "created_at": d.get("created_at"),
+        "source_file": path.name,
+        "note": d.get("note") or d.get("class_note"),
+    }
+
+
+def _forward_report_path() -> Path:
+    return Path(__file__).resolve().parent.parent / "data" / "forward_test_report.json"
+
+
+def load_equity_research() -> Dict[str, Any]:
+    """Read equity cert verdicts + forward evidence (pure file reads)."""
+    certs: List[Dict[str, Any]] = []
+    vdir = _verdicts_dir()
+    if vdir.exists():
+        for path in sorted(vdir.glob("*_sma_cert_*.json")):
+            row = _parse_equity_cert(path)
+            if row is not None:
+                certs.append(row)
+
+    fwd_rows: List[Dict[str, Any]] = []
+    fwd_meta: Dict[str, Any] = {}
+    fp = _forward_report_path()
+    if fp.exists():
+        try:
+            fr = json.loads(fp.read_text(encoding="utf-8"))
+            fwd_meta = {
+                "forward_generated_at": fr.get("generated_at"),
+                "forward_window_days": fr.get("window_days"),
+                "forward_graduation_rule": fr.get("graduation_rule"),
+            }
+            for c in fr.get("candidates", []) or []:
+                fwd = c.get("forward", {}) or {}
+                shuf = c.get("trade_shuffle", {}) or {}
+                dsr = c.get("dsr", {}) or {}
+                fwd_rows.append({
+                    "id": c.get("id"),
+                    "symbol": c.get("symbol"),
+                    "graduated": c.get("graduated"),
+                    "forward_n_windows": fwd.get("n_oos_windows"),
+                    "forward_p_edge": fwd.get("p_edge"),
+                    "forward_pf_ci_lower": fwd.get("pf_ci_lower"),
+                    "forward_total_trades": fwd.get("total_trades"),
+                    "forward_total_pnl": fwd.get("total_pnl"),
+                    "shuffle_p_value": shuf.get("p_value"),
+                    "shuffle_passes": shuf.get("passes"),
+                    "dsr": dsr.get("dsr"),
+                    "stat_gate": c.get("stat_gate"),
+                    "survives_family_fdr": c.get("survives_family_fdr"),
+                    "reason": c.get("reason"),
+                })
+        except Exception as e:  # noqa: BLE001
+            logger.warning("forward_test_report parse failed: %s", e)
+
+    return {
+        "equity_certs": certs,
+        "forward_evidence": fwd_rows,
+        **fwd_meta,
+    }
+
+
+@router.get(
+    "/equity-research",
+    response_model=EquityResearchResponse,
+    summary="Equity SMA-trend WFO certs + forward evidence (non-authorizing)",
+)
+def get_equity_research() -> EquityResearchResponse:
+    data = load_equity_research()
+    certs = data["equity_certs"]
+    fwd = data["forward_evidence"]
+    return EquityResearchResponse(
+        equity_certs=[EquityCertRow(**r) for r in certs],
+        forward_evidence=[ForwardCandidateRow(**r) for r in fwd],
+        forward_generated_at=data.get("forward_generated_at"),
+        forward_window_days=data.get("forward_window_days"),
+        forward_graduation_rule=data.get("forward_graduation_rule"),
+        total=len(certs) + len(fwd),
+        generated_at=datetime.now(timezone.utc).isoformat(),
+    )
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2

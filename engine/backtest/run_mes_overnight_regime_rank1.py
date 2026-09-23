@@ -613,6 +613,12 @@ def run_wfo(cfg: RunConfig | None = None) -> dict:
     verdicts_dir = engine_root / "data" / "gate_v2_verdicts"
     verdicts_dir.mkdir(parents=True, exist_ok=True)
     verdict_file = verdicts_dir / "MES_overnight_regime_rank1.json"
+<<<<<<< HEAD
+=======
+    # Provenance (2026-09-17 audit): record which cache produced this verdict.
+    from backtest._gate_v2_helpers import inject_cache_provenance as _inject_prov  # noqa: E402
+    verdict_doc = _inject_prov(verdict_doc, data_file)
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     verdict_file.write_text(json.dumps(verdict_doc, indent=2, default=str))
     print(f"[{SYMBOL}] Verdict written -> {verdict_file}")
     return verdict_doc

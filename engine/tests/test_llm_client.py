@@ -308,5 +308,128 @@ class TestGeminiPrimaryRouting:
             assert agent not in llm_client.GEMINI_PRIMARY_AGENTS
 
 
+<<<<<<< HEAD
+=======
+class TestOrcaRouterLeg:
+    """OrcaRouter additive provider leg (2026-08-24). Default OFF; per-agent routing."""
+
+    def _make_client(self, tmp_path, monkeypatch, **env):
+        monkeypatch.setenv("JARVIS_LLM_PROVIDER", env.pop("JARVIS_LLM_PROVIDER", "anthropic"))
+        # Full isolation: clear any leaked OrcaRouter env (the shell/desktop may
+        # export it), then set exactly what the test asks for.
+        for key in ("ORCAROUTER_API_KEY", "ORCAROUTER_AGENTS", "ORCAROUTER_MODEL", "JARVIS_LLM_ORCAROUTER"):
+            monkeypatch.delenv(key, raising=False)
+        for key, val in env.items():
+            monkeypatch.setenv(key, val)
+        return JarvisLLMClient(api_key="test-key", db_path=str(tmp_path / "llm_costs.db"))
+
+    def test_disabled_without_key(self, tmp_path, monkeypatch):
+        client = self._make_client(tmp_path, monkeypatch)
+        assert client.orcarouter_enabled is False
+
+    def test_enabled_with_key(self, tmp_path, monkeypatch):
+        client = self._make_client(tmp_path, monkeypatch, ORCAROUTER_API_KEY="sk-test")
+        assert client.orcarouter_enabled is True
+
+    def test_agents_parsed_from_env(self, tmp_path, monkeypatch):
+        client = self._make_client(
+            tmp_path, monkeypatch,
+            ORCAROUTER_API_KEY="sk-test", ORCAROUTER_AGENTS="technical_analyst, deep_analyzer",
+        )
+        assert client.orcarouter_agents == {"technical_analyst", "deep_analyzer"}
+
+    def test_empty_agents_never_routes(self, tmp_path, monkeypatch):
+        client = self._make_client(tmp_path, monkeypatch, ORCAROUTER_API_KEY="sk-test")
+        assert client.orcarouter_agents == set()
+
+    def test_default_model_is_free_tier(self, tmp_path, monkeypatch):
+        client = self._make_client(tmp_path, monkeypatch, ORCAROUTER_API_KEY="sk-test")
+        assert client.orcarouter_model == "qwen/qwen3.8-27b-free"
+
+    @pytest.mark.asyncio
+    async def test_listed_agent_routes_to_orcarouter(self, tmp_path, monkeypatch):
+        client = self._make_client(
+            tmp_path, monkeypatch, ORCAROUTER_API_KEY="sk-test",
+            ORCAROUTER_AGENTS="technical_analyst",
+        )
+        from types import SimpleNamespace
+        called = {"hit": False}
+
+        async def fake_call(**kwargs):
+            called["hit"] = True
+            return SimpleNamespace(
+                usage=SimpleNamespace(input_tokens=10, output_tokens=5),
+                content=[SimpleNamespace(text="ORCA_OK")],
+            )
+
+        monkeypatch.setattr(client, "_call_orcarouter", fake_call)
+        result = await client.call(
+            model="claude-sonnet-4-6", system="sys",
+            messages=[{"role": "user", "content": "hi"}],
+            agent_name="technical_analyst", max_tokens=100,
+        )
+        assert called["hit"] is True
+        assert result.success is True
+        assert result.model == "qwen/qwen3.8-27b-free"
+        assert "ORCA_OK" in result.content
+
+    @pytest.mark.asyncio
+    async def test_unlisted_agent_does_not_route(self, tmp_path, monkeypatch):
+        client = self._make_client(
+            tmp_path, monkeypatch, ORCAROUTER_API_KEY="sk-test",
+            ORCAROUTER_AGENTS="technical_analyst",
+        )
+        called = {"hit": False}
+
+        async def should_not_call(**kwargs):
+            called["hit"] = True
+            from types import SimpleNamespace
+            return SimpleNamespace(
+                usage=SimpleNamespace(input_tokens=1, output_tokens=1),
+                content=[SimpleNamespace(text="x")],
+            )
+
+        monkeypatch.setattr(client, "_call_orcarouter", should_not_call)
+        # Make the normal (anthropic) chain fail fast without network.
+        async def _fast_fail(**kw):
+            raise RuntimeError("anthropic unavailable (test)")
+
+        monkeypatch.setattr(client.client.messages, "create", _fast_fail)
+        # Unlisted agent: must NOT route to OrcaRouter; normal chain fails fast.
+        result = await client.call(
+            model="claude-sonnet-4-6", system="",
+            messages=[{"role": "user", "content": "hi"}],
+            agent_name="trader", max_tokens=10, allow_fallback=False,
+        )
+        assert called["hit"] is False
+        assert result.success is False
+
+    @pytest.mark.asyncio
+    async def test_orca_failure_falls_through(self, tmp_path, monkeypatch):
+        client = self._make_client(
+            tmp_path, monkeypatch, ORCAROUTER_API_KEY="sk-test",
+            ORCAROUTER_AGENTS="technical_analyst",
+        )
+
+        async def boom(**kwargs):
+            raise RuntimeError("orca down")
+
+        monkeypatch.setattr(client, "_call_orcarouter", boom)
+        # Make the normal (anthropic) chain fail fast without network.
+        async def _fast_fail(**kw):
+            raise RuntimeError("anthropic unavailable (test)")
+
+        monkeypatch.setattr(client.client.messages, "create", _fast_fail)
+        # Orca fails -> falls through to the normal chain (also fails fast) -> success=False.
+        result = await client.call(
+            model="claude-sonnet-4-6", system="",
+            messages=[{"role": "user", "content": "hi"}],
+            agent_name="technical_analyst", max_tokens=10, allow_fallback=False,
+        )
+        assert result.success is False
+        assert client.orcarouter_fallback_count == 1
+
+
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

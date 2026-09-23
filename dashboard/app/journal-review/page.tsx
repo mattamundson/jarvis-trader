@@ -29,6 +29,10 @@ import {
   dedupCaveat,
   type HonestTradeSet,
 } from "@/lib/honestTrades";
+<<<<<<< HEAD
+=======
+import { ExploratoryBanner } from "@/components/ExploratoryBanner";
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -282,6 +286,11 @@ export default function JournalReviewPage() {
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100">
       <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+<<<<<<< HEAD
+=======
+        <ExploratoryBanner what="Journal review applies an AI coaching framework to your own trade history" />
+
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         {/* Header */}
         <div className="flex items-center gap-3">
           <Link

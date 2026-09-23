@@ -416,12 +416,25 @@ class TestPositionSizing(unittest.TestCase):
     # ── unknown symbol ─────────────────────────────────────────────────────
 
     def test_unknown_symbol(self) -> None:
+<<<<<<< HEAD
         """An unrecognised symbol must fall back to the default multiplier ($5/pt)."""
         from engine.utils.position_sizing import _DEFAULT_MULTIPLIER, INSTRUMENT_MULTIPLIERS
+=======
+        """An unrecognised symbol must raise (safe-fail) unless the opt-in
+        ALLOW_DEFAULT_MULTIPLIER=1 fallback is set — never silently size wrong."""
+        from engine.utils.position_sizing import (
+            _DEFAULT_MULTIPLIER,
+            INSTRUMENT_MULTIPLIERS,
+            UnknownInstrumentMultiplierError,
+        )
+
+        _ALLOW_ENV = "ALLOW_DEFAULT_MULTIPLIER"
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
         unknown = "UNKNOWN_XYZ"
         self.assertNotIn(unknown, INSTRUMENT_MULTIPLIERS)
 
+<<<<<<< HEAD
         result = self._calc(
             symbol=unknown,
             account_value=10_000.0,
@@ -432,6 +445,40 @@ class TestPositionSizing(unittest.TestCase):
         )
         # Should use _DEFAULT_MULTIPLIER — same as MES ($5/pt), same arithmetic as test_mes_standard
         # raw = floor(100 / 43.75) = 2, clamped to min(2, 5) = 2
+=======
+        # Default: refuse to size — raising is safer than opening a position
+        # whose P&L layer would reject the multiplier later.
+        with self.assertRaises(UnknownInstrumentMultiplierError):
+            self._calc(
+                symbol=unknown,
+                account_value=10_000.0,
+                atr=12.5,
+                risk_pct=0.01,
+                atr_stop_multiplier=0.70,
+                max_contracts=5,
+            )
+
+        # Opt-in fallback: ALLOW_DEFAULT_MULTIPLIER=1 forces the 1x default
+        # with a loud error log. Same arithmetic as test_mes_standard but at
+        # the default multiplier: raw = floor(100 / 8.75) = 11, clamped to 5.
+        old = os.environ.get(_ALLOW_ENV)
+        os.environ[_ALLOW_ENV] = "1"
+        try:
+            result = self._calc(
+                symbol=unknown,
+                account_value=10_000.0,
+                atr=12.5,
+                risk_pct=0.01,
+                atr_stop_multiplier=0.70,
+                max_contracts=5,
+            )
+        finally:
+            if old is None:
+                os.environ.pop(_ALLOW_ENV, None)
+            else:
+                os.environ[_ALLOW_ENV] = old
+
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         self.assertGreaterEqual(
             result.contracts, 1, "Unknown symbol must return at least 1 contract"
         )

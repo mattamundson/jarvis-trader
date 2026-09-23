@@ -1,0 +1,57 @@
+{
+  "schema_version": "1.0",
+  "strategy_id": "spy_supertrend_weekly_rank1",
+  "name": "SPY weekly long-only vol-trailing Supertrend filter (x-bookmark scan, rank 1)",
+  "source": {
+    "type": "x-bookmark-scan",
+    "repo_or_note": "x-bookmark edge scan 2026-07-02 (@QuantifiedStrat)",
+    "url": "https://x.com/QuantifiedStrat"
+  },
+  "hypothesis": "Holding SPY only while a weekly Supertrend (volatility-trailing) filter is bullish captures most of the index return with materially lower drawdown than buy-and-hold.",
+  "asset_class": "equity-index",
+  "symbols": ["SPY"],
+  "timeframe": "weekly",
+  "data_sources": [
+    {
+      "feed": "yfinance",
+      "adjusted": true,
+      "range_start": "1993-01-29",
+      "range_end": "2026-06-26"
+    }
+  ],
+  "feature_set": ["supertrend(weekly, vol-trailing)"],
+  "rules": {
+    "entry": "Long when the weekly Supertrend flips bullish.",
+    "exit": "Flat when the Supertrend flips bearish.",
+    "position_sizing": "All-in/out weekly in the scan model.",
+    "risk_limits": "None in scan model; JARVIS gates apply.",
+    "fees_and_slippage_model": "Gross in scan; weekly turnover implies minimal cost drag."
+  },
+  "windows": {
+    "train": { "start": "1993-01-29", "end": "2026-06-26" },
+    "test": null
+  },
+  "gate_verdict": {
+    "gate": "gate-v2",
+    "verdict": "FAIL",
+    "core_verdict": "FAIL",
+    "alt_verdict": "UNSCORED",
+    "reasons": [
+      "mbb_pf_ci_lower=1.2231 >= 1.1",
+      "p_positive_edge=1.0 >= 0.95",
+      "FAIL mc_95th_dd_pct=28.45 > 6.0",
+      "dsr=0.999817 >= 0.1 (not selection-bias)"
+    ],
+    "evidence_path": "docs/research/SPY_supertrendweekly_rank1.gate_v2.json"
+  },
+  "promotion_state": "rejected",
+  "known_failure_modes": [
+    "28.45% Monte Carlo 95th drawdown vs the 6.0% JARVIS floor — same floor-calibration question as the other monthly/weekly equity regime filters, not a strategy defect",
+    "71.6% time in market over 1,249 in-market trades / 21 buy signals; edge is drawdown-reduction, not return-enhancement (CAGR 7.99% < buy-and-hold 10.72%)"
+  ],
+  "evidence_paths": [
+    "docs/research/SPY_supertrendweekly_rank1.gate_v2.json"
+  ],
+  "owner": "amo",
+  "updated": "2026-09-12"
+}

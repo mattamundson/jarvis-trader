@@ -1,0 +1,227 @@
+{
+  "date": "2026-08-24",
+  "session_bias": null,
+  "sentiment_score": null,
+  "sentiment_label": null,
+  "top_signals": [
+    {
+      "symbol": "6E",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 1.1684,
+      "target2": 1.16975,
+      "stop1": null,
+      "win_rate": 84.67,
+      "rr": 0.67,
+      "timestamp": "2026-08-24T08:51:06.017-05:00"
+    },
+    {
+      "symbol": "6E",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 1.1684,
+      "target2": 1.16975,
+      "stop1": null,
+      "win_rate": 84.56,
+      "rr": 0.67,
+      "timestamp": "2026-08-24T07:51:05.995-05:00"
+    },
+    {
+      "symbol": "6E",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 1.1682,
+      "target2": 1.16955,
+      "stop1": null,
+      "win_rate": 84.46,
+      "rr": 0.67,
+      "timestamp": "2026-08-24T06:49:05.55-05:00"
+    },
+    {
+      "symbol": "6E",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 1.16825,
+      "target2": 1.1696,
+      "stop1": null,
+      "win_rate": 84.35,
+      "rr": 0.67,
+      "timestamp": "2026-08-24T02:57:10.342-05:00"
+    },
+    {
+      "symbol": "GC",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 4718.4,
+      "target2": 4721.1,
+      "stop1": null,
+      "win_rate": 82.68,
+      "rr": 0.6,
+      "timestamp": "2026-08-24T06:46:05.929-05:00"
+    }
+  ],
+  "corey_quote": null,
+  "commentary_health": [
+    {
+      "date": "2026-08-18",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 4
+    },
+    {
+      "date": "2026-08-17",
+      "data_quality": "stale",
+      "directional_bias": "bullish",
+      "conviction": 0.85,
+      "message_count": 10
+    }
+  ],
+  "calibration_integrity": {
+    "total_outcomes": 14,
+    "rows_excluded_corrupt": 0,
+    "rows_excluded_duplicate": 0,
+    "alert": false,
+    "window_days": 30
+  },
+  "llm_provider_health": {
+    "engine_reachable": true,
+    "active_provider": null,
+    "primary_provider": "deepseek",
+    "primary_healthy": true,
+    "providers_available": 1,
+    "google_fallback_count": 0,
+    "vertex_failover_count": 0,
+    "llm_path_healthy": true,
+    "alert": false
+  },
+  "task_health": {
+    "present": true,
+    "stale": false,
+    "age_hours": 0.5,
+    "scanned": 108,
+    "failing_enabled": 6,
+    "failing_disabled": 1,
+    "failing_tasks": [
+      {
+        "name": "Jarvis-DiskWatch",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-FinanceSync",
+        "result": "0x1"
+      },
+      {
+        "name": "jarvis-morning-framing-brief",
+        "result": "0x3"
+      },
+      {
+        "name": "jarvis-preclose-framing-brief",
+        "result": "0x3"
+      },
+      {
+        "name": "Jarvis-Sentinel",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Jarvis-VerdictRefresh-Weekly",
+        "result": "0x1"
+      }
+    ],
+    "alert": true
+  },
+  "gate_verdict_freshness": {
+    "active_symbols": [
+      "MES",
+      "MGC"
+    ],
+    "max_age_days": 7.0,
+    "symbols": {
+      "AAPL": {
+        "age_days": 7.2,
+        "newest": "2026-08-18T10:11:50.980568+00:00",
+        "files": 3,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "M2K": {
+        "age_days": 29.4,
+        "newest": "2026-07-27T04:22:26.852950+00:00",
+        "files": 5,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "MCL": {
+        "age_days": 3.3,
+        "newest": "2026-08-22T06:00:05.351575+00:00",
+        "files": 4,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "MES": {
+        "age_days": 0.9,
+        "newest": "2026-08-24T15:40:13.116957+00:00",
+        "files": 42,
+        "latest_verdict": "PASS",
+        "active": true
+      },
+      "MGC": {
+        "age_days": 1.9,
+        "newest": "2026-08-23T15:32:06.106813+00:00",
+        "files": 23,
+        "latest_verdict": "FAIL",
+        "active": true
+      },
+      "MNQ": {
+        "age_days": 3.3,
+        "newest": "2026-08-22T06:00:07.196071+00:00",
+        "files": 13,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "QQQ": {
+        "age_days": 6.7,
+        "newest": "2026-08-18T20:37:30.818561+00:00",
+        "files": 5,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "SPY": {
+        "age_days": 6.7,
+        "newest": "2026-08-18T20:37:23.164689+00:00",
+        "files": 5,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "TSLA": {
+        "age_days": 7.2,
+        "newest": "2026-08-18T09:38:18.712883+00:00",
+        "files": 4,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "ZB": {
+        "age_days": 68.4,
+        "newest": "2026-06-18T04:00:05.645209+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "ZN": {
+        "age_days": 68.4,
+        "newest": "2026-06-18T03:59:30.450756+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      }
+    },
+    "stale_active": [],
+    "missing_active": [],
+    "alert": false
+  }
+}

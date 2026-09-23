@@ -28,6 +28,10 @@ from __future__ import annotations
 
 import json
 import logging
+<<<<<<< HEAD
+=======
+import os
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 import warnings
 from datetime import datetime
 from pathlib import Path
@@ -647,7 +651,11 @@ class StrategyCEngine:
         Respects paper trading constraint (LIVE_TRADING_ENABLED = False).
         """
         instructions = {
+<<<<<<< HEAD
             "account": "DUP662235",
+=======
+            "account": os.environ.get("IB_ACCOUNT_ID", ""),
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             "mode": "PAPER",
             "gateway_port": 4002,
             "execution_timing": "MOO (Market On Open) — Monday morning",

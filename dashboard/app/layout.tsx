@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
+<<<<<<< HEAD
 import { EngineAvailabilityHint } from "@/components/EngineAvailabilityHint";
 import { IBDataDegradedBanner } from "@/components/IBDataDegradedBanner";
 import { LLMProviderBadge } from "@/components/LLMProviderBadge";
@@ -11,6 +12,9 @@ import { SafetyEventListener } from "@/components/SafetyEventListener";
 import { EngineWebSocketProvider } from "@/lib/engine-websocket-context";
 import { ToastProvider } from "@/lib/toast-context";
 import { Sidebar } from "@/components/Sidebar";
+=======
+import { AppShell } from "@/components/AppShell";
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 import "./globals.css";
 
 const inter = Inter({
@@ -39,6 +43,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
       <body className="min-h-screen bg-background font-sans antialiased">
+<<<<<<< HEAD
         <ToastProvider>
           <EngineWebSocketProvider>
             <PendingApprovalToastListener />
@@ -57,6 +62,9 @@ export default function RootLayout({
             </div>
           </EngineWebSocketProvider>
         </ToastProvider>
+=======
+        <AppShell>{children}</AppShell>
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       </body>
     </html>
   );

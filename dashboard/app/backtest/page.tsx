@@ -15,6 +15,10 @@ import { LongShortBalanceWidget } from "@/components/LongShortBalanceWidget";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import dynamic from "next/dynamic";
 import type { SeriesPoint } from "@/components/charts/LightweightSeriesChart";
+<<<<<<< HEAD
+=======
+import { ExploratoryBanner } from "@/components/ExploratoryBanner";
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 const DynamicDecisionBreakdownCard = dynamic(
   () => import("@/components/DecisionBreakdownCard").then(mod => ({ default: mod.DecisionBreakdownCard })),
@@ -506,6 +510,10 @@ export default function BacktestPage() {
       </header>
 
       <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-6 space-y-6">
+<<<<<<< HEAD
+=======
+        <ExploratoryBanner what="Backtest results are historical simulations, not live performance" />
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         {/* Strategy Parameters reference card */}
         <StrategyParamsCard />
 

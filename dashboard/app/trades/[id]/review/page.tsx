@@ -3,15 +3,43 @@
 import { useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+<<<<<<< HEAD
+=======
+import dynamic from "next/dynamic";
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 import useSWR from "swr";
 import { fetchTradeFullReview, fetchBars, type TradeFullReview, type OHLCVBar } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+<<<<<<< HEAD
 import { CandlestickChart } from "@/components/command-center/charts/CandlestickChart";
 import { ExcursionPanel } from "@/components/ExcursionPanel";
 import { EntryTimingScenarios } from "@/components/EntryTimingScenarios";
 import type { SeriesMarker, Time } from "lightweight-charts";
 
+=======
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
+import type { SeriesMarker, Time } from "lightweight-charts";
+
+// lightweight-charts backed candle view — only renders once `bars` has loaded, so defer
+// the chunk instead of paying for it in the initial route JS.
+const CandlestickChart = dynamic(
+  () => import("@/components/command-center/charts/CandlestickChart").then((m) => ({ default: m.CandlestickChart })),
+  { ssr: false, loading: () => <div className="h-[420px] animate-pulse rounded-md bg-muted/20" /> }
+);
+
+// Both panels are gated behind `Boolean(t.symbol)` at render time (i.e. only after the
+// trade record has loaded) — defer their JS the same way.
+const ExcursionPanel = dynamic(
+  () => import("@/components/ExcursionPanel").then((m) => ({ default: m.ExcursionPanel })),
+  { ssr: false, loading: () => <div className="h-40 animate-pulse rounded-md bg-muted/20" /> }
+);
+const EntryTimingScenarios = dynamic(
+  () => import("@/components/EntryTimingScenarios").then((m) => ({ default: m.EntryTimingScenarios })),
+  { ssr: false, loading: () => <div className="h-40 animate-pulse rounded-md bg-muted/20" /> }
+);
+
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 /** Pick a bar timeframe + lookback window sized to how old the trade is. */
 function chartWindow(entryTime: string | null | undefined): { timeframe: string; days: number } {
   if (!entryTime) return { timeframe: "15m", days: 14 };
@@ -184,7 +212,13 @@ export default function TradeReviewPage() {
           </CardHeader>
           <CardContent>
             {bars && bars.length ? (
+<<<<<<< HEAD
               <CandlestickChart bars={bars} markers={markers} priceLines={priceLines} height={420} />
+=======
+              <WidgetErrorBoundary name="Price Chart">
+                <CandlestickChart bars={bars} markers={markers} priceLines={priceLines} height={420} />
+              </WidgetErrorBoundary>
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             ) : (
               <p className="text-xs text-muted-foreground py-8 text-center">
                 No bar data available for {String(t.symbol ?? "this symbol")} in the trade window.
@@ -320,12 +354,24 @@ export default function TradeReviewPage() {
 
         {/* MAE/MFE POST-TRADE EXCURSION — how far adverse vs favorable it ran */}
         {Boolean(t.symbol) && (
+<<<<<<< HEAD
           <ExcursionPanel tradeId={String(t.trade_id ?? id)} symbol={String(t.symbol)} />
+=======
+          <WidgetErrorBoundary name="Excursion">
+            <ExcursionPanel tradeId={String(t.trade_id ?? id)} symbol={String(t.symbol)} />
+          </WidgetErrorBoundary>
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         )}
 
         {/* ENTRY-TIMING WHAT-IF — PnL if entered ±N bars (exit held constant) */}
         {Boolean(t.symbol) && (
+<<<<<<< HEAD
           <EntryTimingScenarios tradeId={String(t.trade_id ?? id)} symbol={String(t.symbol)} />
+=======
+          <WidgetErrorBoundary name="Entry Timing Scenarios">
+            <EntryTimingScenarios tradeId={String(t.trade_id ?? id)} symbol={String(t.symbol)} />
+          </WidgetErrorBoundary>
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         )}
       </div>
     </div>

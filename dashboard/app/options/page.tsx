@@ -88,7 +88,11 @@ export default function OptionsPage() {
             </div>
             <div>
               <h1 className="font-bold text-foreground tracking-tight">JARVIS TRADER</h1>
+<<<<<<< HEAD
               <p className="text-xs text-muted-foreground">Options Automation</p>
+=======
+              <p className="text-xs text-muted-foreground">Options Readiness Surface</p>
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             </div>
             <nav className="hidden lg:flex items-center gap-4 ml-6">
               {[
@@ -127,6 +131,35 @@ export default function OptionsPage() {
 
       <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-6 space-y-6">
 
+<<<<<<< HEAD
+=======
+        {/* Readiness truth banner */}
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+          <div className="grid gap-2 font-mono text-[10px] text-muted-foreground md:grid-cols-2 xl:grid-cols-4">
+            <div>
+              <span className="font-bold uppercase tracking-wider text-amber-300">Mode:</span>{" "}
+              <span className="text-foreground">readiness surface</span>
+            </div>
+            <div>
+              <span className="font-bold uppercase tracking-wider text-amber-300">Source:</span>{" "}
+              <code className="rounded bg-background/60 px-1 text-foreground">/options/module/{"{status,scan,pnl}"}</code>
+            </div>
+            <div>
+              <span className="font-bold uppercase tracking-wider text-amber-300">Premium:</span>{" "}
+              <span className="text-foreground">heuristic estimate, not live executable quote</span>
+            </div>
+            <div>
+              <span className="font-bold uppercase tracking-wider text-amber-300">Authenticated live payload verified:</span>{" "}
+              <span className="text-foreground">No — env/API-key readback not authorized in unattended cron; timestamp unavailable</span>
+            </div>
+          </div>
+          <p className="mt-3 font-mono text-[10px] text-muted-foreground">
+            This page proves dashboard-to-engine contract availability and fail-closed behavior;
+            it does not certify options edge or permission to route orders.
+          </p>
+        </div>
+
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         {/* Status + VIX regime */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
@@ -253,7 +286,11 @@ export default function OptionsPage() {
             </div>
           ) : !scan?.scan_results?.length ? (
             <p className="font-mono text-[10px] text-muted-foreground/50 text-center py-6">
+<<<<<<< HEAD
               No scan results — run a scan or wait for the next scheduled scan
+=======
+              No readiness scan results from /options/module/scan
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             </p>
           ) : (
             <div className="font-mono text-xs">
@@ -262,7 +299,11 @@ export default function OptionsPage() {
                 <span>Strategy</span>
                 <span className="text-right">IV Rank</span>
                 <span className="text-right">Expiry</span>
+<<<<<<< HEAD
                 <span className="text-right">Est. Premium</span>
+=======
+                <span className="text-right">Est. Premium (heuristic)</span>
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
               </div>
               {scan.scan_results.map((r, i) => (
                 <div key={i} className="grid grid-cols-5 gap-2 py-2 border-b border-border/40">

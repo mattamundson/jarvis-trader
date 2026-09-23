@@ -45,6 +45,7 @@ export type PipelineWsEvent =
   | AnalystSignalsEvent;
 
 // ── URL resolution ────────────────────────────────────────────────────────
+<<<<<<< HEAD
 
 function resolveWsUrl(): string {
   // In the browser, use the engine origin from the env var when available,
@@ -65,6 +66,31 @@ function resolveWsUrl(): string {
 // WebSocket pages" for why that fallback still carries the key client-side.
 function resolveApiKey(): string {
   return process.env.NEXT_PUBLIC_ENGINE_API_KEY ?? "";
+=======
+//
+// SECURITY (2026-08-17): client-side WS now ALWAYS connects same-origin so
+// the Next.js rewrite in next.config.ts injects the server-only ENGINE_API_KEY
+// (see /ws/pipeline rewrite). We removed the NEXT_PUBLIC_ENGINE_URL direct-
+// connect path and the NEXT_PUBLIC_ENGINE_API_KEY fallback: shipping the engine
+// key to the browser was an active secret-leak vector (any visitor could
+// extract it from the bundle). Deploy targets that need direct-connect must
+// configure the rewrite server-side instead of exposing the key client-side.
+
+function resolveWsUrl(): string {
+  // Same-origin only — the Next.js proxy rewrite handles the WS upgrade and
+  // injects the server-only ENGINE_API_KEY.
+  if (typeof window === "undefined") return "";
+  return window.location.origin;
+}
+
+// /ws/pipeline requires api_key auth (browsers can't send custom headers on a
+// WS upgrade — see engine/routers/pipeline_ws_router.py). With same-origin
+// resolution the Next.js rewrite (next.config.ts) injects the server-only key,
+// so the client must NOT append one. Direct-connect deployments must use the
+// rewrite, not a client key.
+function resolveApiKey(): string {
+  return "";
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 }
 
 // ── usePipelineSocket hook ─────────────────────────────────────────────────

@@ -6,6 +6,7 @@
   "passed_via": null,
   "core_verdict": "FAIL",
   "alt_verdict": "FAIL",
+<<<<<<< HEAD
   "n_core_passed": 3,
   "n_alt_passed": 3,
   "created_at": "2026-05-06T09:10:28.240278+00:00",
@@ -13,17 +14,31 @@
     "rolling_wfo": "2026-05-06T09:10:28.240278+00:00",
     "fixed_params": "2026-05-06T09:10:28.240278+00:00",
     "cost_sweep": "2026-05-06T09:10:28.240278+00:00"
+=======
+  "n_core_passed": 1,
+  "n_alt_passed": 3,
+  "created_at": "2026-07-27T03:26:02.152250+00:00",
+  "aux_freshness": {
+    "rolling_wfo": "2026-07-27T03:26:02.152250+00:00",
+    "fixed_params": "2026-07-27T03:26:02.152250+00:00",
+    "cost_sweep": "2026-07-27T03:26:02.152250+00:00"
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
   },
   "gate_v2": {
     "verdict": "FAIL",
     "passed_via": null,
     "core_verdict": "FAIL",
     "alt_verdict": "FAIL",
+<<<<<<< HEAD
     "n_core_passed": 3,
+=======
+    "n_core_passed": 1,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     "n_core_criteria": 4,
     "n_alt_passed": 3,
     "n_alt_criteria": 5,
     "core_reasons": [
+<<<<<<< HEAD
       "pf_ci_lower=7.1432 >= 1.1",
       "FAIL p_edge=0.7500 >= 0.95",
       "mc_95th_dd_pct=0.2310 <= 5.0",
@@ -48,16 +63,49 @@
       "mc_95th_dd_pct_alt=0.2310 <= 7.000000000000001"
     ],
     "n_passed": 3,
+=======
+      "FAIL pf_ci_lower=1.0379 >= 1.1",
+      "FAIL p_edge=0.7143 >= 0.95",
+      "mc_95th_dd_pct=0.7269 <= 5.0",
+      "FAIL dsr=0.0000 >= 0.1"
+    ],
+    "alt_reasons": [
+      "FAIL dsr_alt=0.0000 >= 0.3",
+      "wfo_consistency=MODERATE",
+      "FAIL fixed_params_min_pf=0.0000 >= 1.2",
+      "cost_survives_through=catastrophic >= realistic",
+      "mc_95th_dd_pct_alt=0.7269 <= 4.0"
+    ],
+    "reasons": [
+      "FAIL pf_ci_lower=1.0379 >= 1.1",
+      "FAIL p_edge=0.7143 >= 0.95",
+      "mc_95th_dd_pct=0.7269 <= 5.0",
+      "FAIL dsr=0.0000 >= 0.1",
+      "FAIL dsr_alt=0.0000 >= 0.3",
+      "wfo_consistency=MODERATE",
+      "FAIL fixed_params_min_pf=0.0000 >= 1.2",
+      "cost_survives_through=catastrophic >= realistic",
+      "mc_95th_dd_pct_alt=0.7269 <= 4.0"
+    ],
+    "n_passed": 1,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     "n_criteria": 4
   },
   "wfo_config": {
     "train_months": 6,
     "test_months": 1,
     "step_months": 1,
+<<<<<<< HEAD
     "n_windows": 18,
     "n_oos_windows": 18,
     "n_oos_windows_with_trades": 4,
     "total_oos_trades": 5,
+=======
+    "n_windows": 24,
+    "n_oos_windows": 24,
+    "n_oos_windows_with_trades": 7,
+    "total_oos_trades": 10,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     "grid_combos": 54,
     "grid_fast_period": [
       40,
@@ -80,6 +128,7 @@
     ]
   },
   "gate_v2_metrics": {
+<<<<<<< HEAD
     "pf_ci_lower": 7.1432,
     "p_edge": 0.75,
     "mc_95th_dd": 0.00231,
@@ -89,6 +138,17 @@
     "fixed_params_min_pf": 0.0,
     "fixed_params_mean_pf": 0.7648,
     "fixed_params_max_pf": 2.5231,
+=======
+    "pf_ci_lower": 1.0379,
+    "p_edge": 0.7143,
+    "mc_95th_dd": 0.007269,
+    "mc_95th_dd_pct": 0.7269,
+    "dsr": 0.0,
+    "wfo_consistency": "MODERATE",
+    "fixed_params_min_pf": 0.0,
+    "fixed_params_mean_pf": 0.9734,
+    "fixed_params_max_pf": 2.8011,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     "n_combos_with_trades": 54,
     "combo_results": [
       {
@@ -96,14 +156,20 @@
         "slow": 150,
         "atr_trail_mult": 1.5,
         "min_rv_annualized": 0.0,
+<<<<<<< HEAD
         "pf": 0.4871,
         "trades": 28
+=======
+        "pf": 0.8673,
+        "trades": 31
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       },
       {
         "fast": 40,
         "slow": 150,
         "atr_trail_mult": 1.5,
         "min_rv_annualized": 20.0,
+<<<<<<< HEAD
         "pf": 0.6219,
         "trades": 33
       },
@@ -225,10 +291,14 @@
         "atr_trail_mult": 2.5,
         "min_rv_annualized": 0.0,
         "pf": 0.8008,
+=======
+        "pf": 0.5181,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         "trades": 20
       },
       {
         "fast": 40,
+<<<<<<< HEAD
         "slow": 250,
         "atr_trail_mult": 2.5,
         "min_rv_annualized": 20.0,
@@ -321,30 +391,261 @@
         "atr_trail_mult": 2.5,
         "min_rv_annualized": 0.0,
         "pf": 0.5825,
+=======
+        "slow": 150,
+        "atr_trail_mult": 2.0,
+        "min_rv_annualized": 0.0,
+        "pf": 0.7099,
+        "trades": 29
+      },
+      {
+        "fast": 40,
+        "slow": 150,
+        "atr_trail_mult": 2.0,
+        "min_rv_annualized": 20.0,
+        "pf": 0.3972,
+        "trades": 17
+      },
+      {
+        "fast": 40,
+        "slow": 150,
+        "atr_trail_mult": 2.5,
+        "min_rv_annualized": 0.0,
+        "pf": 0.4677,
+        "trades": 23
+      },
+      {
+        "fast": 40,
+        "slow": 150,
+        "atr_trail_mult": 2.5,
+        "min_rv_annualized": 20.0,
+        "pf": 0.0505,
+        "trades": 13
+      },
+      {
+        "fast": 40,
+        "slow": 200,
+        "atr_trail_mult": 1.5,
+        "min_rv_annualized": 0.0,
+        "pf": 0.415,
+        "trades": 15
+      },
+      {
+        "fast": 40,
+        "slow": 200,
+        "atr_trail_mult": 1.5,
+        "min_rv_annualized": 20.0,
+        "pf": 0.2608,
+        "trades": 12
+      },
+      {
+        "fast": 40,
+        "slow": 200,
+        "atr_trail_mult": 2.0,
+        "min_rv_annualized": 0.0,
+        "pf": 0.2466,
+        "trades": 13
+      },
+      {
+        "fast": 40,
+        "slow": 200,
+        "atr_trail_mult": 2.0,
+        "min_rv_annualized": 20.0,
+        "pf": 0.9377,
+        "trades": 29
+      },
+      {
+        "fast": 40,
+        "slow": 200,
+        "atr_trail_mult": 2.5,
+        "min_rv_annualized": 0.0,
+        "pf": 0.8324,
+        "trades": 20
+      },
+      {
+        "fast": 40,
+        "slow": 200,
+        "atr_trail_mult": 2.5,
+        "min_rv_annualized": 20.0,
+        "pf": 0.8452,
         "trades": 11
+      },
+      {
+        "fast": 40,
+        "slow": 250,
+        "atr_trail_mult": 1.5,
+        "min_rv_annualized": 0.0,
+        "pf": 0.7505,
+        "trades": 39
+      },
+      {
+        "fast": 40,
+        "slow": 250,
+        "atr_trail_mult": 1.5,
+        "min_rv_annualized": 20.0,
+        "pf": 0.7997,
+        "trades": 26
+      },
+      {
+        "fast": 40,
+        "slow": 250,
+        "atr_trail_mult": 2.0,
+        "min_rv_annualized": 0.0,
+        "pf": 0.7159,
+        "trades": 36
+      },
+      {
+        "fast": 40,
+        "slow": 250,
+        "atr_trail_mult": 2.0,
+        "min_rv_annualized": 20.0,
+        "pf": 0.8209,
+        "trades": 24
+      },
+      {
+        "fast": 40,
+        "slow": 250,
+        "atr_trail_mult": 2.5,
+        "min_rv_annualized": 0.0,
+        "pf": 0.7563,
+        "trades": 19
+      },
+      {
+        "fast": 40,
+        "slow": 250,
+        "atr_trail_mult": 2.5,
+        "min_rv_annualized": 20.0,
+        "pf": 0.6898,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
+        "trades": 11
+      },
+      {
+        "fast": 50,
+<<<<<<< HEAD
+        "slow": 200,
+        "atr_trail_mult": 2.5,
+        "min_rv_annualized": 20.0,
+        "pf": 0.4919,
+        "trades": 6
+=======
+        "slow": 150,
+        "atr_trail_mult": 1.5,
+        "min_rv_annualized": 0.0,
+        "pf": 1.1277,
+        "trades": 27
+      },
+      {
+        "fast": 50,
+        "slow": 150,
+        "atr_trail_mult": 1.5,
+        "min_rv_annualized": 20.0,
+        "pf": 1.0378,
+        "trades": 21
+      },
+      {
+        "fast": 50,
+        "slow": 150,
+        "atr_trail_mult": 2.0,
+        "min_rv_annualized": 0.0,
+        "pf": 0.7811,
+        "trades": 27
+      },
+      {
+        "fast": 50,
+        "slow": 150,
+        "atr_trail_mult": 2.0,
+        "min_rv_annualized": 20.0,
+        "pf": 0.7826,
+        "trades": 19
+      },
+      {
+        "fast": 50,
+        "slow": 150,
+        "atr_trail_mult": 2.5,
+        "min_rv_annualized": 0.0,
+        "pf": 0.451,
+        "trades": 21
+      },
+      {
+        "fast": 50,
+        "slow": 150,
+        "atr_trail_mult": 2.5,
+        "min_rv_annualized": 20.0,
+        "pf": 0.7008,
+        "trades": 14
+      },
+      {
+        "fast": 50,
+        "slow": 200,
+        "atr_trail_mult": 1.5,
+        "min_rv_annualized": 0.0,
+        "pf": 0.7698,
+        "trades": 45
+      },
+      {
+        "fast": 50,
+        "slow": 200,
+        "atr_trail_mult": 1.5,
+        "min_rv_annualized": 20.0,
+        "pf": 0.4223,
+        "trades": 16
+      },
+      {
+        "fast": 50,
+        "slow": 200,
+        "atr_trail_mult": 2.0,
+        "min_rv_annualized": 0.0,
+        "pf": 1.0102,
+        "trades": 44
+      },
+      {
+        "fast": 50,
+        "slow": 200,
+        "atr_trail_mult": 2.0,
+        "min_rv_annualized": 20.0,
+        "pf": 0.7903,
+        "trades": 31
+      },
+      {
+        "fast": 50,
+        "slow": 200,
+        "atr_trail_mult": 2.5,
+        "min_rv_annualized": 0.0,
+        "pf": 2.0642,
+        "trades": 20
       },
       {
         "fast": 50,
         "slow": 200,
         "atr_trail_mult": 2.5,
         "min_rv_annualized": 20.0,
-        "pf": 0.4919,
-        "trades": 6
+        "pf": 2.5547,
+        "trades": 13
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       },
       {
         "fast": 50,
         "slow": 250,
         "atr_trail_mult": 1.5,
         "min_rv_annualized": 0.0,
+<<<<<<< HEAD
         "pf": 0.2641,
         "trades": 17
+=======
+        "pf": 0.7928,
+        "trades": 33
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       },
       {
         "fast": 50,
         "slow": 250,
         "atr_trail_mult": 1.5,
         "min_rv_annualized": 20.0,
+<<<<<<< HEAD
         "pf": 0.5329,
+=======
+        "pf": 0.7137,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         "trades": 24
       },
       {
@@ -352,7 +653,11 @@
         "slow": 250,
         "atr_trail_mult": 2.0,
         "min_rv_annualized": 0.0,
+<<<<<<< HEAD
         "pf": 0.5734,
+=======
+        "pf": 0.8614,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         "trades": 33
       },
       {
@@ -360,7 +665,11 @@
         "slow": 250,
         "atr_trail_mult": 2.0,
         "min_rv_annualized": 20.0,
+<<<<<<< HEAD
         "pf": 1.141,
+=======
+        "pf": 0.8372,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         "trades": 22
       },
       {
@@ -368,43 +677,92 @@
         "slow": 250,
         "atr_trail_mult": 2.5,
         "min_rv_annualized": 0.0,
+<<<<<<< HEAD
         "pf": 0.7637,
         "trades": 18
+=======
+        "pf": 0.4728,
+        "trades": 15
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       },
       {
         "fast": 50,
         "slow": 250,
         "atr_trail_mult": 2.5,
         "min_rv_annualized": 20.0,
+<<<<<<< HEAD
         "pf": 1.4892,
         "trades": 11
+=======
+        "pf": 0.0,
+        "trades": 7
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       },
       {
         "fast": 60,
         "slow": 150,
         "atr_trail_mult": 1.5,
         "min_rv_annualized": 0.0,
+<<<<<<< HEAD
         "pf": 0.0,
         "trades": 9
+=======
+        "pf": 1.0779,
+        "trades": 21
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       },
       {
         "fast": 60,
         "slow": 150,
         "atr_trail_mult": 1.5,
         "min_rv_annualized": 20.0,
+<<<<<<< HEAD
         "pf": 0.0479,
         "trades": 11
+=======
+        "pf": 0.74,
+        "trades": 21
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       },
       {
         "fast": 60,
         "slow": 150,
         "atr_trail_mult": 2.0,
         "min_rv_annualized": 0.0,
+<<<<<<< HEAD
         "pf": 0.0488,
+=======
+        "pf": 0.8828,
+        "trades": 27
+      },
+      {
+        "fast": 60,
+        "slow": 150,
+        "atr_trail_mult": 2.0,
+        "min_rv_annualized": 20.0,
+        "pf": 0.9517,
+        "trades": 28
+      },
+      {
+        "fast": 60,
+        "slow": 150,
+        "atr_trail_mult": 2.5,
+        "min_rv_annualized": 0.0,
+        "pf": 0.9648,
+        "trades": 21
+      },
+      {
+        "fast": 60,
+        "slow": 150,
+        "atr_trail_mult": 2.5,
+        "min_rv_annualized": 20.0,
+        "pf": 1.0581,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         "trades": 12
       },
       {
         "fast": 60,
+<<<<<<< HEAD
         "slow": 150,
         "atr_trail_mult": 2.0,
         "min_rv_annualized": 20.0,
@@ -434,69 +792,115 @@
         "min_rv_annualized": 0.0,
         "pf": 1.4301,
         "trades": 37
+=======
+        "slow": 200,
+        "atr_trail_mult": 1.5,
+        "min_rv_annualized": 0.0,
+        "pf": 1.3245,
+        "trades": 43
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       },
       {
         "fast": 60,
         "slow": 200,
         "atr_trail_mult": 1.5,
         "min_rv_annualized": 20.0,
+<<<<<<< HEAD
         "pf": 1.9673,
         "trades": 26
+=======
+        "pf": 1.4456,
+        "trades": 27
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       },
       {
         "fast": 60,
         "slow": 200,
         "atr_trail_mult": 2.0,
         "min_rv_annualized": 0.0,
+<<<<<<< HEAD
         "pf": 1.3152,
         "trades": 37
+=======
+        "pf": 1.3602,
+        "trades": 43
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       },
       {
         "fast": 60,
         "slow": 200,
         "atr_trail_mult": 2.0,
         "min_rv_annualized": 20.0,
+<<<<<<< HEAD
         "pf": 2.0896,
         "trades": 26
+=======
+        "pf": 1.7126,
+        "trades": 27
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       },
       {
         "fast": 60,
         "slow": 200,
         "atr_trail_mult": 2.5,
         "min_rv_annualized": 0.0,
+<<<<<<< HEAD
         "pf": 2.2283,
         "trades": 19
+=======
+        "pf": 2.8011,
+        "trades": 21
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       },
       {
         "fast": 60,
         "slow": 200,
         "atr_trail_mult": 2.5,
         "min_rv_annualized": 20.0,
+<<<<<<< HEAD
         "pf": 2.5231,
         "trades": 13
+=======
+        "pf": 1.9958,
+        "trades": 12
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       },
       {
         "fast": 60,
         "slow": 250,
         "atr_trail_mult": 1.5,
         "min_rv_annualized": 0.0,
+<<<<<<< HEAD
         "pf": 0.2595,
         "trades": 14
+=======
+        "pf": 1.1917,
+        "trades": 34
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       },
       {
         "fast": 60,
         "slow": 250,
         "atr_trail_mult": 1.5,
         "min_rv_annualized": 20.0,
+<<<<<<< HEAD
         "pf": 0.5098,
         "trades": 24
+=======
+        "pf": 1.3957,
+        "trades": 20
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       },
       {
         "fast": 60,
         "slow": 250,
         "atr_trail_mult": 2.0,
         "min_rv_annualized": 0.0,
+<<<<<<< HEAD
         "pf": 0.7664,
+=======
+        "pf": 1.1706,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         "trades": 34
       },
       {
@@ -504,6 +908,7 @@
         "slow": 250,
         "atr_trail_mult": 2.0,
         "min_rv_annualized": 20.0,
+<<<<<<< HEAD
         "pf": 0.568,
         "trades": 22
       },
@@ -513,20 +918,38 @@
         "atr_trail_mult": 2.5,
         "min_rv_annualized": 0.0,
         "pf": 0.7266,
+=======
+        "pf": 1.6919,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         "trades": 20
       },
       {
         "fast": 60,
         "slow": 250,
         "atr_trail_mult": 2.5,
+<<<<<<< HEAD
         "min_rv_annualized": 20.0,
         "pf": 0.6865,
         "trades": 12
+=======
+        "min_rv_annualized": 0.0,
+        "pf": 1.4674,
+        "trades": 14
+      },
+      {
+        "fast": 60,
+        "slow": 250,
+        "atr_trail_mult": 2.5,
+        "min_rv_annualized": 20.0,
+        "pf": 2.0802,
+        "trades": 8
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       }
     ],
     "cost_survives_through": "catastrophic",
     "cost_tier_results": {
       "optimistic": {
+<<<<<<< HEAD
         "pf": 1.781,
         "trades": 18,
         "passes": true
@@ -543,6 +966,24 @@
       },
       "catastrophic": {
         "pf": 1.517,
+=======
+        "pf": 2.1067,
+        "trades": 20,
+        "passes": true
+      },
+      "realistic": {
+        "pf": 2.0642,
+        "trades": 20,
+        "passes": true
+      },
+      "pessimistic": {
+        "pf": 1.9826,
+        "trades": 20,
+        "passes": true
+      },
+      "catastrophic": {
+        "pf": 1.915,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         "trades": 18,
         "passes": true
       }
@@ -552,7 +993,11 @@
     "pf_ci_lower": 1.1,
     "p_edge": 0.95,
     "mc_95th_dd_core": 0.05,
+<<<<<<< HEAD
     "mc_95th_dd_alt": 0.07,
+=======
+    "mc_95th_dd_alt": 0.04,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     "dsr_core": 0.1,
     "dsr_alt": 0.3,
     "fixed_params_min_pf_alt": 1.2,
@@ -563,24 +1008,43 @@
     "cost_survives_through_min": "realistic"
   },
   "champion_params": {
+<<<<<<< HEAD
     "fast": 40,
     "slow": 200,
     "atr_trail_mult": 2.5,
     "min_rv_annualized": 20.0
+=======
+    "fast": 50,
+    "slow": 200,
+    "atr_trail_mult": 2.5,
+    "min_rv_annualized": 0.0
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
   },
   "windows": [
     {
       "window": 1,
+<<<<<<< HEAD
       "is_period": "2024-04 -> 2024-10",
       "oos_period": "2024-10 -> 2024-11",
       "best_params": {
         "fast": 40,
         "slow": 250,
+=======
+      "is_period": "2024-01 -> 2024-07",
+      "oos_period": "2024-07 -> 2024-08",
+      "best_params": {
+        "fast": 50,
+        "slow": 200,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         "atr_trail_mult": 2.5,
         "min_rv_annualized": 20.0
       },
       "is_pf": Infinity,
+<<<<<<< HEAD
       "is_trades": 2,
+=======
+      "is_trades": 3,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       "oos_pf": 0.0,
       "oos_dd": 0.0,
       "oos_sharpe": 0.0,
@@ -588,16 +1052,25 @@
     },
     {
       "window": 2,
+<<<<<<< HEAD
       "is_period": "2024-05 -> 2024-11",
       "oos_period": "2024-11 -> 2024-12",
       "best_params": {
         "fast": 50,
         "slow": 150,
+=======
+      "is_period": "2024-02 -> 2024-08",
+      "oos_period": "2024-08 -> 2024-09",
+      "best_params": {
+        "fast": 50,
+        "slow": 200,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         "atr_trail_mult": 2.5,
         "min_rv_annualized": 20.0
       },
       "is_pf": Infinity,
       "is_trades": 2,
+<<<<<<< HEAD
       "oos_pf": 0.0,
       "oos_dd": 0.0,
       "oos_sharpe": 0.0,
@@ -610,6 +1083,20 @@
       "best_params": {
         "fast": 50,
         "slow": 150,
+=======
+      "oos_pf": Infinity,
+      "oos_dd": 0.0001,
+      "oos_sharpe": 0.0,
+      "oos_trades": 1
+    },
+    {
+      "window": 3,
+      "is_period": "2024-03 -> 2024-09",
+      "oos_period": "2024-09 -> 2024-10",
+      "best_params": {
+        "fast": 50,
+        "slow": 200,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         "atr_trail_mult": 2.5,
         "min_rv_annualized": 20.0
       },
@@ -622,15 +1109,60 @@
     },
     {
       "window": 4,
+<<<<<<< HEAD
       "is_period": "2024-07 -> 2025-01",
       "oos_period": "2025-01 -> 2025-02",
       "best_params": {
         "fast": 50,
         "slow": 150,
+=======
+      "is_period": "2024-04 -> 2024-10",
+      "oos_period": "2024-10 -> 2024-11",
+      "best_params": {
+        "fast": 50,
+        "slow": 200,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         "atr_trail_mult": 2.5,
         "min_rv_annualized": 20.0
       },
       "is_pf": Infinity,
+<<<<<<< HEAD
+=======
+      "is_trades": 3,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0005,
+      "oos_sharpe": 0.0,
+      "oos_trades": 1
+    },
+    {
+      "window": 5,
+      "is_period": "2024-05 -> 2024-11",
+      "oos_period": "2024-11 -> 2024-12",
+      "best_params": {
+        "fast": 50,
+        "slow": 200,
+        "atr_trail_mult": 2.5,
+        "min_rv_annualized": 0.0
+      },
+      "is_pf": 73.087,
+      "is_trades": 4,
+      "oos_pf": Infinity,
+      "oos_dd": 0.0001,
+      "oos_sharpe": 0.0,
+      "oos_trades": 1
+    },
+    {
+      "window": 6,
+      "is_period": "2024-06 -> 2024-12",
+      "oos_period": "2024-12 -> 2025-01",
+      "best_params": {
+        "fast": 40,
+        "slow": 200,
+        "atr_trail_mult": 2.5,
+        "min_rv_annualized": 0.0
+      },
+      "is_pf": 2.845,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       "is_trades": 2,
       "oos_pf": 0.0,
       "oos_dd": 0.0,
@@ -638,7 +1170,28 @@
       "oos_trades": 0
     },
     {
+<<<<<<< HEAD
       "window": 5,
+=======
+      "window": 7,
+      "is_period": "2024-07 -> 2025-01",
+      "oos_period": "2025-01 -> 2025-02",
+      "best_params": {
+        "fast": 60,
+        "slow": 150,
+        "atr_trail_mult": 2.5,
+        "min_rv_annualized": 20.0
+      },
+      "is_pf": Infinity,
+      "is_trades": 2,
+      "oos_pf": Infinity,
+      "oos_dd": 0.0001,
+      "oos_sharpe": 0.0,
+      "oos_trades": 1
+    },
+    {
+      "window": 8,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       "is_period": "2024-08 -> 2025-02",
       "oos_period": "2025-02 -> 2025-03",
       "best_params": {
@@ -649,6 +1202,7 @@
       },
       "is_pf": Infinity,
       "is_trades": 1,
+<<<<<<< HEAD
       "oos_pf": Infinity,
       "oos_dd": 0.0001,
       "oos_sharpe": 0.0,
@@ -700,6 +1254,8 @@
       },
       "is_pf": Infinity,
       "is_trades": 4,
+=======
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       "oos_pf": 0.0,
       "oos_dd": 0.0,
       "oos_sharpe": 0.0,
@@ -707,11 +1263,70 @@
     },
     {
       "window": 9,
+<<<<<<< HEAD
       "is_period": "2024-12 -> 2025-06",
       "oos_period": "2025-06 -> 2025-07",
       "best_params": {
         "fast": 60,
         "slow": 200,
+=======
+      "is_period": "2024-09 -> 2025-03",
+      "oos_period": "2025-03 -> 2025-04",
+      "best_params": {
+        "fast": 60,
+        "slow": 150,
+        "atr_trail_mult": 2.5,
+        "min_rv_annualized": 20.0
+      },
+      "is_pf": Infinity,
+      "is_trades": 1,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 0
+    },
+    {
+      "window": 10,
+      "is_period": "2024-10 -> 2025-04",
+      "oos_period": "2025-04 -> 2025-05",
+      "best_params": {
+        "fast": 40,
+        "slow": 250,
+        "atr_trail_mult": 1.5,
+        "min_rv_annualized": 20.0
+      },
+      "is_pf": Infinity,
+      "is_trades": 2,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 0
+    },
+    {
+      "window": 11,
+      "is_period": "2024-11 -> 2025-05",
+      "oos_period": "2025-05 -> 2025-06",
+      "best_params": {
+        "fast": 40,
+        "slow": 200,
+        "atr_trail_mult": 2.5,
+        "min_rv_annualized": 20.0
+      },
+      "is_pf": Infinity,
+      "is_trades": 1,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 0
+    },
+    {
+      "window": 12,
+      "is_period": "2024-12 -> 2025-06",
+      "oos_period": "2025-06 -> 2025-07",
+      "best_params": {
+        "fast": 50,
+        "slow": 150,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         "atr_trail_mult": 2.5,
         "min_rv_annualized": 0.0
       },
@@ -723,7 +1338,11 @@
       "oos_trades": 0
     },
     {
+<<<<<<< HEAD
       "window": 10,
+=======
+      "window": 13,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       "is_period": "2025-01 -> 2025-07",
       "oos_period": "2025-07 -> 2025-08",
       "best_params": {
@@ -740,6 +1359,7 @@
       "oos_trades": 0
     },
     {
+<<<<<<< HEAD
       "window": 11,
       "is_period": "2025-02 -> 2025-08",
       "oos_period": "2025-08 -> 2025-09",
@@ -779,11 +1399,19 @@
       "oos_period": "2025-10 -> 2025-11",
       "best_params": {
         "fast": 50,
+=======
+      "window": 14,
+      "is_period": "2025-02 -> 2025-08",
+      "oos_period": "2025-08 -> 2025-09",
+      "best_params": {
+        "fast": 60,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         "slow": 200,
         "atr_trail_mult": 2.5,
         "min_rv_annualized": 20.0
       },
       "is_pf": Infinity,
+<<<<<<< HEAD
       "is_trades": 1,
       "oos_pf": Infinity,
       "oos_dd": 0.0001,
@@ -801,6 +1429,8 @@
         "min_rv_annualized": 20.0
       },
       "is_pf": 66.115,
+=======
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       "is_trades": 2,
       "oos_pf": 0.0,
       "oos_dd": 0.0,
@@ -809,6 +1439,7 @@
     },
     {
       "window": 15,
+<<<<<<< HEAD
       "is_period": "2025-06 -> 2025-12",
       "oos_period": "2025-12 -> 2026-01",
       "best_params": {
@@ -821,11 +1452,26 @@
       "is_trades": 7,
       "oos_pf": 0.0,
       "oos_dd": 0.0094,
+=======
+      "is_period": "2025-03 -> 2025-09",
+      "oos_period": "2025-09 -> 2025-10",
+      "best_params": {
+        "fast": 50,
+        "slow": 200,
+        "atr_trail_mult": 2.5,
+        "min_rv_annualized": 0.0
+      },
+      "is_pf": Infinity,
+      "is_trades": 3,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0085,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       "oos_sharpe": 0.0,
       "oos_trades": 1
     },
     {
       "window": 16,
+<<<<<<< HEAD
       "is_period": "2025-07 -> 2026-01",
       "oos_period": "2026-01 -> 2026-02",
       "best_params": {
@@ -853,6 +1499,35 @@
       },
       "is_pf": 2.721,
       "is_trades": 6,
+=======
+      "is_period": "2025-04 -> 2025-10",
+      "oos_period": "2025-10 -> 2025-11",
+      "best_params": {
+        "fast": 50,
+        "slow": 200,
+        "atr_trail_mult": 2.5,
+        "min_rv_annualized": 0.0
+      },
+      "is_pf": Infinity,
+      "is_trades": 4,
+      "oos_pf": 1.133,
+      "oos_dd": 0.0075,
+      "oos_sharpe": 0.725,
+      "oos_trades": 3
+    },
+    {
+      "window": 17,
+      "is_period": "2025-05 -> 2025-11",
+      "oos_period": "2025-11 -> 2025-12",
+      "best_params": {
+        "fast": 60,
+        "slow": 200,
+        "atr_trail_mult": 1.5,
+        "min_rv_annualized": 20.0
+      },
+      "is_pf": Infinity,
+      "is_trades": 4,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       "oos_pf": 0.0,
       "oos_dd": 0.0,
       "oos_sharpe": 0.0,
@@ -860,6 +1535,7 @@
     },
     {
       "window": 18,
+<<<<<<< HEAD
       "is_period": "2025-09 -> 2026-03",
       "oos_period": "2026-03 -> 2026-03",
       "best_params": {
@@ -870,6 +1546,120 @@
       },
       "is_pf": 2.551,
       "is_trades": 5,
+=======
+      "is_period": "2025-06 -> 2025-12",
+      "oos_period": "2025-12 -> 2026-01",
+      "best_params": {
+        "fast": 40,
+        "slow": 200,
+        "atr_trail_mult": 1.5,
+        "min_rv_annualized": 20.0
+      },
+      "is_pf": 6.265,
+      "is_trades": 7,
+      "oos_pf": 1.056,
+      "oos_dd": 0.006,
+      "oos_sharpe": 0.305,
+      "oos_trades": 2
+    },
+    {
+      "window": 19,
+      "is_period": "2025-07 -> 2026-01",
+      "oos_period": "2026-01 -> 2026-02",
+      "best_params": {
+        "fast": 60,
+        "slow": 200,
+        "atr_trail_mult": 2.5,
+        "min_rv_annualized": 0.0
+      },
+      "is_pf": 2.922,
+      "is_trades": 7,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 0
+    },
+    {
+      "window": 20,
+      "is_period": "2025-08 -> 2026-02",
+      "oos_period": "2026-02 -> 2026-03",
+      "best_params": {
+        "fast": 60,
+        "slow": 200,
+        "atr_trail_mult": 2.5,
+        "min_rv_annualized": 0.0
+      },
+      "is_pf": 3.2,
+      "is_trades": 7,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 0
+    },
+    {
+      "window": 21,
+      "is_period": "2025-09 -> 2026-03",
+      "oos_period": "2026-03 -> 2026-04",
+      "best_params": {
+        "fast": 60,
+        "slow": 250,
+        "atr_trail_mult": 2.5,
+        "min_rv_annualized": 20.0
+      },
+      "is_pf": Infinity,
+      "is_trades": 1,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 0
+    },
+    {
+      "window": 22,
+      "is_period": "2025-10 -> 2026-04",
+      "oos_period": "2026-04 -> 2026-05",
+      "best_params": {
+        "fast": 60,
+        "slow": 250,
+        "atr_trail_mult": 2.5,
+        "min_rv_annualized": 0.0
+      },
+      "is_pf": Infinity,
+      "is_trades": 1,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 0
+    },
+    {
+      "window": 23,
+      "is_period": "2025-11 -> 2026-05",
+      "oos_period": "2026-05 -> 2026-06",
+      "best_params": {
+        "fast": 50,
+        "slow": 200,
+        "atr_trail_mult": 2.5,
+        "min_rv_annualized": 0.0
+      },
+      "is_pf": Infinity,
+      "is_trades": 2,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 0
+    },
+    {
+      "window": 24,
+      "is_period": "2025-12 -> 2026-06",
+      "oos_period": "2026-06 -> 2026-07",
+      "best_params": {
+        "fast": 50,
+        "slow": 200,
+        "atr_trail_mult": 2.5,
+        "min_rv_annualized": 0.0
+      },
+      "is_pf": Infinity,
+      "is_trades": 1,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       "oos_pf": 0.0,
       "oos_dd": 0.0,
       "oos_sharpe": 0.0,

@@ -503,4 +503,98 @@ class TestCorrelationPreviewEndpoint:
         assert resp.status_code == 200
         body = resp.json()
         assert body["pairs"] == {}
+<<<<<<< HEAD
         assert body["wired_into_live_sizing"] is False
+=======
+
+
+class TestPipelineFunnel:
+    """Pipeline funnel endpoint: shape, monotone stages, and cache-hit path."""
+
+    # fetch_one call order in _compute_pipeline_funnel:
+    # runs, signals, approved, executed, filled,
+    # human_approved (paq), human_approved2 (pta), human_rejected (pta)
+    COUNTS = [100, 10, 5, 3, 3, 2, 1, 4]
+
+    @pytest.fixture(autouse=True)
+    def _clear_funnel_cache(self):
+        import routers.analytics_router as ar
+
+        ar._funnel_cache.clear()
+        yield
+        ar._funnel_cache.clear()
+
+    @pytest.fixture
+    def mock_db(self):
+        import routers.analytics_router as ar
+
+        class _FakeDB:
+            def __init__(self, counts):
+                self._counts = list(counts)
+                self._i = 0
+
+            def fetch_one(self, sql, params=None):
+                n = self._counts[self._i] if self._i < len(self._counts) else 0
+                self._i += 1
+                return {"n": n}
+
+        db = _FakeDB(self.COUNTS)
+        ar.set_db_manager(db)
+        return db
+
+    def test_funnel_shape_and_rates(self, client, mock_db):
+        """GET /analytics/pipeline-funnel returns the monotone 5-stage funnel."""
+        resp = client.get("/analytics/pipeline-funnel?days=30")
+        assert resp.status_code == 200
+        body = resp.json()
+
+        assert body["period"] == "30d"
+        assert body["days"] == 30
+        assert body["funnel"] == {
+            "runs": 100,
+            "signals": 10,
+            "approved": 5,
+            "executed": 3,
+            "filled": 3,
+        }
+        # Monotone: each stage <= previous (runs 100 >= signals 10 >= ... >= filled 3)
+        stages = list(body["funnel"].values())
+        assert all(stages[i] >= stages[i + 1] for i in range(len(stages) - 1))
+
+        assert body["conversion_rates"]["runs_to_signals"] == 10.0
+        assert body["conversion_rates"]["signals_to_approved"] == 50.0
+        assert body["conversion_rates"]["approved_to_executed"] == 60.0
+        assert body["conversion_rates"]["executed_to_filled"] == 100.0
+        assert body["conversion_rates"]["overall_conversion"] == 3.0
+
+        # Human lanes are reported separately, not folded into the chain
+        assert body["details"]["human_approved"] == 3
+        assert body["details"]["human_rejected"] == 4
+        assert body["details"]["cache_hit"] is False
+
+    def test_funnel_cache_hit_returns_200(self, client, mock_db):
+        """Regression: second request inside the TTL must NOT 500.
+
+        The cache entry is {"computed_at", "payload"}; the cache-hit path
+        previously read cached["details"] (KeyError -> 500) instead of
+        cached["payload"]["details"]. Live symptom: first poll OK, every
+        repeat poll within 60s returned 500 and the dashboard showed zeros.
+        """
+        first = client.get("/analytics/pipeline-funnel?days=30")
+        assert first.status_code == 200
+
+        second = client.get("/analytics/pipeline-funnel?days=30")
+        assert second.status_code == 200
+        body = second.json()
+        assert body["funnel"]["runs"] == 100
+        assert body["details"]["cache_hit"] is True
+
+    def test_funnel_windows_are_independent(self, client, mock_db):
+        """30d and 90d cache entries must not collide."""
+        r30 = client.get("/analytics/pipeline-funnel?days=30").json()
+        r90 = client.get("/analytics/pipeline-funnel?days=90").json()
+        assert r30["period"] == "30d"
+        assert r90["period"] == "90d"
+        assert r30["days"] == 30
+        assert r90["days"] == 90
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2

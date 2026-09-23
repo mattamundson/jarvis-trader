@@ -29,6 +29,10 @@ from typing import Optional
 
 import httpx
 
+<<<<<<< HEAD
+=======
+from llm.client import resolve_agent_model
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 from utils.llm_json import parse_llm_json
 
 logger = logging.getLogger(__name__)
@@ -587,10 +591,18 @@ Respond with JSON in exactly this format:
         data_quality = "partial" if any_source_unavailable else "ok"
 
         try:
+<<<<<<< HEAD
             if hasattr(self._llm, "call"):
                 # Primary: use JarvisLLMClient (retry, fallback, cost tracking built-in)
                 llm_result = await self._llm.call(
                     model="claude-haiku-4-5-20251001",
+=======
+            model = resolve_agent_model(self._llm, "claude-haiku-4-5-20251001", fast=True)
+            if hasattr(self._llm, "call"):
+                # Primary: use JarvisLLMClient (retry, fallback, cost tracking built-in)
+                llm_result = await self._llm.call(
+                    model=model,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                     system=self.SYSTEM_PROMPT,
                     messages=[{"role": "user", "content": prompt}],
                     max_tokens=500,
@@ -614,7 +626,11 @@ Respond with JSON in exactly this format:
                             "content-type": "application/json",
                         },
                         json={
+<<<<<<< HEAD
                             "model": "claude-haiku-4-5-20251001",
+=======
+                            "model": model,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                             "max_tokens": 500,
                             "system": self.SYSTEM_PROMPT,
                             "messages": [{"role": "user", "content": prompt}],
@@ -625,7 +641,11 @@ Respond with JSON in exactly this format:
                 _latency_ms = int((time.time() - _t0) * 1000)
                 if hasattr(self._llm, "track_raw_call"):
                     await self._llm.track_raw_call(
+<<<<<<< HEAD
                         model="claude-haiku-4-5-20251001",
+=======
+                        model=model,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                         input_tokens=payload.get("usage", {}).get("input_tokens", 0),
                         output_tokens=payload.get("usage", {}).get("output_tokens", 0),
                         latency_ms=_latency_ms,

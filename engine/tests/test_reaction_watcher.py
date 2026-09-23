@@ -6,8 +6,16 @@ Uses mocks for all Discord gateway and engine HTTP calls — no live connections
 
 from __future__ import annotations
 
+<<<<<<< HEAD
 from unittest.mock import AsyncMock, MagicMock, patch
 
+=======
+import asyncio
+import json
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import aiohttp
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 import pytest
 
 # ---------------------------------------------------------------------------
@@ -140,6 +148,47 @@ def test_disabled_without_user_id():
 
 
 # ---------------------------------------------------------------------------
+<<<<<<< HEAD
+=======
+# 3. GATEWAY_INTENTS — no unused privileged intent, correct reaction scope
+# ---------------------------------------------------------------------------
+
+# Discord gateway intent bits (subset relevant here).
+_MESSAGE_CONTENT_BIT = 1 << 15  # 32768, privileged
+_DIRECT_MESSAGE_REACTIONS_BIT = 1 << 13  # 8192
+_GUILD_MESSAGE_REACTIONS_BIT = 1 << 10  # 1024
+
+
+def test_gateway_intents_excludes_unused_privileged_message_content():
+    """MESSAGE_CONTENT is privileged (requires Developer Portal opt-in) and this
+    listener never dispatches on a gateway event that carries message content --
+    only READY/RESUMED/MESSAGE_REACTION_ADD (see _gateway_session). Approval
+    message text is fetched via Discord REST instead (_handle_reaction), which
+    is unaffected by gateway intents. Requesting it is pure downside: an extra
+    Developer Portal dependency for zero functional benefit, and (2026-08-16
+    live diagnostic) was a candidate root cause for the IDENTIFY being rejected
+    before the real cause (an invalid bot token, close code 4004) was isolated."""
+    from discord.reaction_watcher import GATEWAY_INTENTS
+
+    assert GATEWAY_INTENTS & _MESSAGE_CONTENT_BIT == 0
+
+
+def test_gateway_intents_targets_guild_reactions_not_direct_message_reactions():
+    """PERSONAL_CHANNEL_ID lives inside a guild (personal_mcp_server.py's
+    DEFAULT_GUILD_ID), not a DM -- so the listener needs GUILD_MESSAGE_REACTIONS
+    (bit 10, 1024), not DIRECT_MESSAGE_REACTIONS (bit 13, 8192). The prior value
+    requested the DM variant under a comment that mislabeled it "GUILD_MESSAGE_
+    REACTIONS" -- functionally correct-looking but would never have delivered
+    MESSAGE_REACTION_ADD events for this guild channel even on a healthy
+    connection."""
+    from discord.reaction_watcher import GATEWAY_INTENTS
+
+    assert GATEWAY_INTENTS & _GUILD_MESSAGE_REACTIONS_BIT == _GUILD_MESSAGE_REACTIONS_BIT
+    assert GATEWAY_INTENTS & _DIRECT_MESSAGE_REACTIONS_BIT == 0
+
+
+# ---------------------------------------------------------------------------
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 # 3. test_reaction_from_wrong_user_ignored
 # ---------------------------------------------------------------------------
 
@@ -322,3 +371,117 @@ def test_extract_candidate_id_returns_none_for_no_match():
     from discord.reaction_watcher import _extract_candidate_id
 
     assert _extract_candidate_id("Just a normal message") is None
+<<<<<<< HEAD
+=======
+
+
+# ---------------------------------------------------------------------------
+# Extra: reconnect backoff must not reset before authentication succeeds
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_backoff_grows_when_gateway_rejects_identify_before_ready():
+    """
+    Regression test: a WebSocket connect that gets IDENTIFY-rejected and closed
+    before READY must NOT reset the reconnect backoff to the 2s floor.
+
+    Previously, backoff was reset immediately after the raw ws_connect() call
+    succeeded — before the gateway ever authenticated. A bad token/intents
+    config (or any close-before-READY) then spun the reconnect loop at the 2s
+    floor forever instead of backing off exponentially (2, 4, 8, ...).
+    """
+    from discord import reaction_watcher
+
+    backoff_sleep_calls: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        if seconds > 10:
+            # Heartbeat-loop sleep (41.25s) — not part of the reconnect backoff
+            # under test. Cancel it immediately so it can't interleave.
+            raise asyncio.CancelledError()
+        backoff_sleep_calls.append(seconds)
+        if len(backoff_sleep_calls) >= 3:
+            raise asyncio.CancelledError()
+
+    class FakeWS:
+        close_code = 4004  # Discord: Authentication failed (non-resumable)
+
+        def __init__(self) -> None:
+            self._msgs = [
+                MagicMock(
+                    type=aiohttp.WSMsgType.TEXT,
+                    data=json.dumps({"op": 10, "d": {"heartbeat_interval": 41250}}),
+                ),
+                MagicMock(type=aiohttp.WSMsgType.CLOSE, data=None),
+            ]
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if not self._msgs:
+                raise StopAsyncIteration
+            return self._msgs.pop(0)
+
+        async def send_str(self, _s: str) -> None:
+            return None
+
+    class FakeWSConnectCM:
+        async def __aenter__(self):
+            return FakeWS()
+
+        async def __aexit__(self, *_a):
+            return False
+
+    class FakeClientSession:
+        def ws_connect(self, *_a, **_kw):
+            return FakeWSConnectCM()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_a):
+            return False
+
+    with (
+        patch.dict("os.environ", _env_with_both(), clear=True),
+        patch("asyncio.sleep", side_effect=fake_sleep),
+        patch("aiohttp.ClientSession", return_value=FakeClientSession()),
+    ):
+        await reaction_watcher.watch_approval_reactions()
+
+    assert backoff_sleep_calls == [2, 4, 8]
+
+
+@pytest.mark.asyncio
+async def test_stream_end_with_no_close_frame_logs_warning(caplog):
+    """
+    2026-08-15 incident: when the gateway's async-for iterator simply ends
+    (connection dropped with no CLOSE/CLOSING/ERROR frame at all — the
+    exact failure mode observed live, 14,632 times in one session), this
+    previously logged nothing. A `for...else` on the message loop now logs
+    a WARNING so this termination path is distinguishable from a healthy
+    idle session in the logs.
+    """
+    import logging
+
+    from discord import reaction_watcher
+
+    class FakeWS:
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            raise StopAsyncIteration
+
+    with caplog.at_level(logging.WARNING, logger="discord.reaction_watcher"):
+        session_id, last_seq, should_resume = await reaction_watcher._gateway_session(
+            FakeWS(), MagicMock(), None, None
+        )
+
+    assert session_id is None
+    assert any(
+        "gateway stream ended with no close frame" in r.message for r in caplog.records
+    )
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2

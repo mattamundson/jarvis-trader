@@ -310,3 +310,43 @@ def test_board_missing_as_of_or_source_counts_as_stale():
     board = derive_actionable_board([_row(entry=5000.0)], no_source, now=NOW, now_ts=NOW_TS)
     assert board["items"][0]["status"] == "unknown"
     assert board["items"][0]["price_stale"] is True
+<<<<<<< HEAD
+=======
+
+
+# ── empty-reason diagnostics (raw_count / shown) ─────────────────────────────
+
+
+def test_board_reports_raw_count_when_everything_is_rejected():
+    # The live-DB failure mode: the queue HAS recent rows, but they are all
+    # rejected, so the board shows nothing. The delta (raw_count > 0, shown
+    # == 0) must be visible so the UI can explain WHY instead of claiming
+    # "no opportunities".
+    rows = [
+        _row(symbol="MES", action="buy", status="rejected"),
+        _row(symbol="MES", action="sell", status="rejected"),
+        {**_row(symbol="MGC"), "action": "hold"},
+    ]
+    board = derive_actionable_board(rows, _prices(MES=4990.0), now=NOW, now_ts=NOW_TS)
+    assert board["available"] is True
+    assert board["items"] == []
+    assert board["count"] == 0
+    assert board["shown"] == 0
+    assert board["raw_count"] == 3
+
+
+def test_board_raw_count_matches_shown_when_items_survive():
+    board = derive_actionable_board([_row(symbol="MES")], _prices(MES=4990.0), now=NOW, now_ts=NOW_TS)
+    assert board["raw_count"] == 1
+    assert board["shown"] == 1
+    assert board["count"] == 1
+
+
+def test_board_dedup_counted_in_raw_not_shown():
+    # Two rows same (symbol, side): raw_count 2, shown 1.
+    newer = _row(created_at="2026-07-16T10:00:00+00:00", entry=5002.0)
+    older = _row(created_at="2026-07-15T10:00:00+00:00", entry=4900.0)
+    board = derive_actionable_board([newer, older], _prices(MES=5000.0), now=NOW, now_ts=NOW_TS)
+    assert board["raw_count"] == 2
+    assert board["shown"] == 1
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2

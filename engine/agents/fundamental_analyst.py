@@ -710,7 +710,15 @@ Respond with JSON in exactly this format:
                 raise RuntimeError("LLM client does not expose call(); cannot synthesize fundamentals locally")
 
             model = getattr(self._llm, "default_model", os.getenv("OLLAMA_MODEL", "hermes3:latest"))
+<<<<<<< HEAD
             max_tokens = min(256, int(os.getenv("OLLAMA_NUM_PREDICT", "256")))
+=======
+            # 2026-08-17: raised from min(256, OLLAMA_NUM_PREDICT) — the 5-field
+            # JSON (with multi-sentence summary+reasoning) truncates at 256
+            # tokens, causing "no JSON object found" on every analyst call.
+            # Match the 1600 budget used by technical_analyst (PR #712).
+            max_tokens = min(1600, int(os.getenv("OLLAMA_NUM_PREDICT", "1600")))
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             result_obj = await self._llm.call(
                 model=model,
                 system=self.SYSTEM_PROMPT,

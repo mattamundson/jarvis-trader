@@ -85,6 +85,17 @@ FUTURES_PRICE_BAND: dict[str, tuple[float, float]] = {
     # convergence (#279) is conflict-free for this dict.
     "M6B": (0.90, 1.80),    # Micro GBP/USD
     "M6E": (0.80, 1.70),    # Micro EUR/USD
+<<<<<<< HEAD
+=======
+    # Options-underlying single-name equities (2026-08-15, GT-52 equities
+    # validation-gap fill -- see engine/CLAUDE.md "Active Instruments >
+    # Equities"). No futures-ticker-collision risk (there's no "AAPL the
+    # futures contract"), so like the ETFs above these are just generous
+    # split/dividend-adjusted full-history range guards, sized from this
+    # cache's observed range with margin.
+    "AAPL": (0.02, 450.0),  # observed ~0.037-339.8 (split-adjusted back to 1980 IPO)
+    "TSLA": (0.5, 700.0),   # observed ~1.05-489.9 (split-adjusted back to 2010 IPO)
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 }
 
 

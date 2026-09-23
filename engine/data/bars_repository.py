@@ -275,17 +275,30 @@ def save_bars(
     if not rows:
         return 0
 
+<<<<<<< HEAD
+=======
+    conn = None
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     try:
         conn = _connect(db)
         cur = conn.executemany(_INSERT_SQL, rows)
         conn.commit()
         inserted = cur.rowcount
+<<<<<<< HEAD
         conn.close()
+=======
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         logger.debug("[bars_repo] save_bars %s %s: %d rows offered, %d new", symbol, interval, len(rows), inserted)
         return max(inserted, 0)
     except Exception as exc:
         logger.warning("[bars_repo] save_bars failed for %s %s: %s", symbol, interval, exc)
         return 0
+<<<<<<< HEAD
+=======
+    finally:
+        if conn is not None:
+            conn.close()
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 
 def load_bars(
@@ -321,14 +334,27 @@ def load_bars(
         WHERE {where}
         ORDER BY ts_utc
     """
+<<<<<<< HEAD
     try:
         conn = _connect(db)
         df = pd.read_sql_query(sql, conn, params=params, parse_dates=["timestamp"])
         conn.close()
+=======
+    conn = None
+    try:
+        conn = _connect(db)
+        df = pd.read_sql_query(sql, conn, params=params, parse_dates=["timestamp"])
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         return df
     except Exception as exc:
         logger.warning("[bars_repo] load_bars failed for %s %s: %s", symbol, interval, exc)
         return pd.DataFrame()
+<<<<<<< HEAD
+=======
+    finally:
+        if conn is not None:
+            conn.close()
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 
 def latest_bar(
@@ -349,11 +375,24 @@ def latest_bar(
         ORDER BY ts_utc DESC
         LIMIT 1
     """
+<<<<<<< HEAD
     try:
         conn = _connect(db)
         row = conn.execute(sql, (symbol.upper(), interval)).fetchone()
         conn.close()
+=======
+    conn = None
+    try:
+        conn = _connect(db)
+        row = conn.execute(sql, (symbol.upper(), interval)).fetchone()
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         return dict(row) if row else None
     except Exception as exc:
         logger.warning("[bars_repo] latest_bar failed for %s %s: %s", symbol, interval, exc)
         return None
+<<<<<<< HEAD
+=======
+    finally:
+        if conn is not None:
+            conn.close()
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2

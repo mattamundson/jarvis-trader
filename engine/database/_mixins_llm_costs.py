@@ -14,7 +14,16 @@ from typing import Any, Dict, List
 logger = logging.getLogger("jarvis_trader.database")
 
 # Token cost rates (per million tokens)
+<<<<<<< HEAD
 MODEL_RATES: Dict[str, Dict[str, float]] = {
+=======
+# NOTE: keep in sync with llm/client.py COST_PER_MTOK (single source of truth).
+# 2026-09-01: kimi-k3 was missing — T4 persisted 212 rows at $0.00 for the
+# production model. Added all rates present in COST_PER_MTOK.
+MODEL_RATES: Dict[str, Dict[str, float]] = {
+    "claude-opus-4-7": {"input": 15.0, "output": 75.0},
+    "claude-opus-4-6": {"input": 15.0, "output": 75.0},
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     "claude-sonnet-4-6": {
         "input": 3.0,  # $3 per million input tokens
         "output": 15.0,  # $15 per million output tokens
@@ -23,6 +32,22 @@ MODEL_RATES: Dict[str, Dict[str, float]] = {
         "input": 0.80,  # $0.80 per million input tokens
         "output": 4.00,  # $4.00 per million output tokens
     },
+<<<<<<< HEAD
+=======
+    "claude-haiku-4-5-20251001": {"input": 0.80, "output": 4.0},
+    "gemini-2.5-pro": {"input": 1.25, "output": 10.0},
+    "gemini-2.5-flash": {"input": 0.30, "output": 2.50},
+    "gemini-2.0-flash": {"input": 0.10, "output": 0.40},
+    "gpt-4o": {"input": 5.0, "output": 15.0},
+    "gpt-4o-mini": {"input": 0.15, "output": 0.60},
+    "deepseek-reasoner": {"input": 0.55, "output": 2.19},
+    # Kimi K3 (Moonshot AI) — live production model as of 2026-08. Rates match
+    # llm/client.py COST_PER_MTOK (cache-miss rate, conservative).
+    "kimi-k3": {"input": 3.0, "output": 15.0},
+    "hermes3:latest": {"input": 0.0, "output": 0.0},
+    "qwen/qwen3.8-27b": {"input": 0.33, "output": 2.40},
+    "qwen/qwen3.8-27b-free": {"input": 0.0, "output": 0.0},
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 }
 
 

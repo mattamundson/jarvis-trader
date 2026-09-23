@@ -3,6 +3,10 @@
 import { useMemo } from "react";
 import useSWR from "swr";
 import { Badge } from "@/components/ui/badge";
+<<<<<<< HEAD
+=======
+import { ExploratoryBanner } from "@/components/ExploratoryBanner";
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 import { fetchDomflow, type DomflowHistoryResponse, type DomflowSnapshot } from "@/lib/api";
 
 const POLL_MS = 10_000; // spec: live gauge polls every 5-10s
@@ -97,6 +101,10 @@ export default function DomflowPage() {
 
   return (
     <div className="space-y-4 p-4">
+<<<<<<< HEAD
+=======
+      <ExploratoryBanner what="DOM order-flow imbalance is a research signal, not a live trading input" />
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-lg font-semibold">MES DOM / Order-Flow</h1>
         <Badge variant={label}>{label}</Badge>

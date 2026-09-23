@@ -47,6 +47,15 @@ router = APIRouter(prefix="/approvals", tags=["approvals", "autonomous-queue"])
 
 _safety_layer = None
 _db_path: Optional[str] = None
+<<<<<<< HEAD
+=======
+# PaperTradeTracker injected at startup so an approved candidate writes its
+# ledger row (paper_trades) alongside the broker submission. Without this the
+# queue-approve path routed orders to IB but the dashboard ledger never saw
+# them (386 approved queue rows with order_ids matched ZERO paper_trades rows,
+# 2026-08-16 audit). The scanner path already does this via add_paper_trade.
+_paper_tracker = None
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 # Shared cross-path submission dedup: this queue and the systematic bridge
 # consult the SAME ledger so the same (symbol, action, trading_date) is never
 # submitted twice when both paths are armed. Lazily created; overridable for tests.
@@ -64,14 +73,25 @@ def _get_dedup() -> SubmissionDedup:
 
 
 def inject_approval_queue_deps(
+<<<<<<< HEAD
     safety_layer, db_path: str, dedup: Optional[SubmissionDedup] = None
 ) -> None:
     """Called from main.py during lifespan startup."""
     global _safety_layer, _db_path, _dedup
+=======
+    safety_layer, db_path: str, dedup: Optional[SubmissionDedup] = None, paper_tracker=None
+) -> None:
+    """Called from main.py during lifespan startup."""
+    global _safety_layer, _db_path, _dedup, _paper_tracker
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     _safety_layer = safety_layer
     _db_path = db_path
     if dedup is not None:
         _dedup = dedup
+<<<<<<< HEAD
+=======
+    _paper_tracker = paper_tracker
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     # Ensure the approval queue table exists when the router is first wired.
     _ensure_schema(db_path)
     logger.info("ApprovalQueueRouter: dependencies injected (db=%s)", db_path)
@@ -324,6 +344,21 @@ class ApproveBody(BaseModel):
         default=None,
         description="Override entry price (uses pipeline snapshot price if absent)",
     )
+<<<<<<< HEAD
+=======
+    quantity: Optional[int] = Field(
+        default=None,
+        description="Override quantity (uses pipeline final_quantity if absent)",
+    )
+    stop_price: Optional[float] = Field(
+        default=None,
+        description="Override stop price (uses pipeline trade_decision.stop_price if absent)",
+    )
+    take_profit: Optional[float] = Field(
+        default=None,
+        description="Override profit target (uses pipeline trade_decision.target_1 if absent)",
+    )
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 
 class RejectBody(BaseModel):
@@ -510,15 +545,54 @@ async def approve_candidate(
             ),
         )
 
+<<<<<<< HEAD
     # Submit via the existing safety_layer.submit_paper_order path
+=======
+    # Submit via the existing safety_layer.submit_paper_order path.
+    # 2026-08-18 fix: the queue-approve path hardcoded quantity=1 and dropped
+    # stop_price — the verdict's final_quantity (2) and stop (7715.44) never
+    # reached the ledger, so approved trades opened with no stop/target and
+    # half the intended size. Thread both through now.
+    _verdict = row.get("verdict") or {}
+    _trade_dec = _verdict.get("trade_decision") or {}
+    _fund_dec = _verdict.get("fund_decision") or {}
+    _final_qty = int(
+        _fund_dec.get("final_quantity")
+        or _trade_dec.get("quantity")
+        or body.quantity
+        or 1
+    )
+    _stop_price = (
+        _trade_dec.get("stop_price")
+        or _trade_dec.get("stop_loss")
+        or body.stop_price
+        or None
+    )
+    _take_profit = (
+        _trade_dec.get("target_1")
+        or _trade_dec.get("target_price")
+        or _trade_dec.get("take_profit")
+        or body.take_profit
+        or None
+    )
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     try:
         result = await _safety_layer.submit_paper_order(
             symbol=symbol,
             action=action,
+<<<<<<< HEAD
             quantity=1,
             price=entry_price,
             order_type="MKT",
             limit_price=None,
+=======
+            quantity=_final_qty,
+            price=entry_price,
+            order_type="MKT",
+            limit_price=None,
+            stop_price=float(_stop_price) if _stop_price is not None else None,
+            take_profit=float(_take_profit) if _take_profit is not None else None,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         )
     except Exception as exc:
         _audit("approve_submit_error", candidate_id, {"error": str(exc)})
@@ -534,6 +608,51 @@ async def approve_candidate(
 
     order_id = str(result.get("order_id") or result.get("fill_id") or "")
     _update_status(db, candidate_id, "approved", order_id=order_id)
+<<<<<<< HEAD
+=======
+
+    # ── Ledger write: the queue-approve path previously routed the order to IB
+    # but never recorded the paper_trades row, so the dashboard/validation
+    # ledger never saw queue-approved trades (386 approved rows matched ZERO
+    # paper_trades, 2026-08-16 audit). Mirror the scanner path: write the ledger
+    # row with stop/target lifted from the pipeline snapshot. Best-effort — a
+    # ledger failure must not fail the already-submitted order (the queue row is
+    # the audit record of the broker submission).
+    if _paper_tracker is not None:
+        try:
+            _snap = row.get("verdict") or {}
+            _td = _snap.get("trade_decision") or {}
+            _stop = _td.get("stop_price") or _td.get("stop_loss") or None
+            _tgt = (
+                _td.get("target_1")
+                or _td.get("target_price")
+                or _td.get("take_profit")
+                or _td.get("target_2")
+                or None
+            )
+            _ledger_trade_id = _paper_tracker.add_paper_trade(
+                symbol=symbol,
+                side=action.lower(),
+                quantity=float(_final_qty),
+                entry_price=float(entry_price),
+                stop_loss=float(_stop) if _stop is not None else None,
+                take_profit=float(_tgt) if _tgt is not None else None,
+                strategy_params={
+                    "source": "approval_queue",
+                    "candidate_id": candidate_id,
+                    "direction": direction.upper(),
+                },
+            )
+            _audit("ledger_written", candidate_id, {"trade_id": _ledger_trade_id})
+        except Exception as _ledger_exc:
+            logger.warning(
+                "ApprovalQueue: ledger write failed for approved candidate %d "
+                "(order already submitted): %s",
+                candidate_id,
+                _ledger_exc,
+            )
+
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     # Claim the shared cross-path slot only on an APPROVED submit, so a rejected
     # order never blocks the other path. Idempotent (no-op if already recorded).
     dedup.record(

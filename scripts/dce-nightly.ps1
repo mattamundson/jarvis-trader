@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # dce-nightly.ps1 — Nightly DCE export for #market-updates + ingest chain.
 #
 # 1. Exports Corey's #market-updates and #general for the last 48 hours via
@@ -163,3 +164,26 @@ try {
 
 Write-Log 'INFO' "=== dce-nightly complete ==="
 exit 0
+=======
+# dce-nightly.ps1 — stable launcher for Python DCE runner.
+# Real logic lives in scripts/dce_nightly_runner.py to avoid PowerShell 5.1
+# quoting pitfalls. Tokens are never passed in argv; the runner sets
+# DISCORD_TOKEN in the child process environment for DiscordChatExporter.
+
+$ErrorActionPreference = 'Stop'
+$RepoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
+$Python = if ($env:JARVIS_ENGINE_PYTHON) { $env:JARVIS_ENGINE_PYTHON } else { Join-Path $RepoRoot 'engine\.venv\Scripts\python.exe' }
+$Runner = Join-Path $RepoRoot 'scripts\dce_nightly_runner.py'
+
+if (-not (Test-Path $Python)) {
+    Write-Error "Python venv not found at $Python"
+    exit 20
+}
+if (-not (Test-Path $Runner)) {
+    Write-Error "DCE runner not found at $Runner"
+    exit 20
+}
+
+& $Python $Runner
+exit $LASTEXITCODE
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2

@@ -23,8 +23,15 @@ is ever made.
 
 from __future__ import annotations
 
+<<<<<<< HEAD
 import math
 import os
+=======
+import asyncio
+import math
+import os
+import time
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -35,7 +42,11 @@ from fastapi.testclient import TestClient
 from analytics.metrics import calmar, max_drawdown_pct, sharpe, total_return_pct
 from config import settings
 from data import market_data as market_data_module
+<<<<<<< HEAD
 from data.market_data import MarketDataManager
+=======
+from data.market_data import IBKRDataConnector, MarketDataManager
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 from data.provenance import derive_is_live
 from main import app
 
@@ -263,3 +274,149 @@ class TestPricesSnapshotHonestUnderIBBlind:
         assert data["source"] == "unavailable"
         assert data["is_live"] is False
         assert data["last_price"] is None
+<<<<<<< HEAD
+=======
+
+
+# ── (d) Wedged, not blind: socket alive but the API never answers ───────────
+
+
+def _never_returns():
+    """A coroutine function that never completes — models a wedged Gateway."""
+
+    async def _inner(*_args, **_kwargs):
+        await asyncio.sleep(3600)
+
+    return _inner
+
+
+class TestIBWedgedNotBlind:
+    """The 2026-08-15 outage mode, which every test above misses.
+
+    All the 'blind' cases set ``is_connected = False`` — IB failing *loudly*.
+    The real incident failed by *silence*: the Gateway socket stayed open (so
+    ``is_connected``, which is only a local ``ib_async.IB.isConnected()`` socket
+    check, kept returning True and ``/health`` kept reporting
+    ``ibkr_data_connected: true``) while every data request simply never came
+    back. Nothing raises, so no ``except`` branch ever runs and Tiers 2-5 of the
+    waterfall — including the CSV cache built for exactly this — are
+    unreachable. Every price-serving endpoint hung indefinitely.
+
+    ``services/ib_freshness_heartbeat.py`` already guards this call with
+    ``asyncio.wait_for(..., timeout=8.0)``; the three price-serving call sites
+    in ``market_data.py`` did not.
+    """
+
+    @pytest.mark.asyncio
+    async def test_wedged_snapshot_returns_bounded_instead_of_hanging(self, monkeypatch):
+        """get_snapshot_price must bound its IB awaits. Un-fixed, this hangs
+        forever and the outer wait_for raises TimeoutError."""
+        monkeypatch.setattr(market_data_module, "_IBKR_DATA_REQUEST_TIMEOUT_S", 0.2)
+
+        conn = IBKRDataConnector.__new__(IBKRDataConnector)
+        conn._connected = True
+        conn._ib = MagicMock()
+        conn._ib.isConnected.return_value = True
+        conn._qualified_contract = _never_returns()
+        conn.get_historical_bars = _never_returns()
+
+        started = time.monotonic()
+        result = await asyncio.wait_for(
+            conn.get_snapshot_price("MES", is_futures=True), timeout=10
+        )
+        elapsed = time.monotonic() - started
+
+        # Bounded by the two guarded awaits, not by the 3600s sleep.
+        assert elapsed < 5, f"get_snapshot_price took {elapsed:.1f}s — not bounded"
+        assert result["last_price"] is None
+        assert result["source"] != "ibkr"
+
+    @pytest.mark.asyncio
+    async def test_wedged_ib_tick_price_still_reaches_csv_cache(self, monkeypatch):
+        """The trader-facing invariant: a wedged Gateway must degrade to a
+        lower tier, not hang the request. This is what zeroed the 'did it trade
+        today, did it profit' surface."""
+        monkeypatch.setattr(market_data_module, "_IBKR_DATA_REQUEST_TIMEOUT_S", 0.2)
+
+        conn = IBKRDataConnector.__new__(IBKRDataConnector)
+        conn._connected = True
+        conn._ib = MagicMock()
+        conn._ib.isConnected.return_value = True
+        conn._qualified_contract = _never_returns()
+        conn.get_historical_bars = _never_returns()
+
+        mgr = MarketDataManager.__new__(MarketDataManager)
+        mgr.ibkr = conn
+        mgr.schwab = None
+        mgr.polygon_streamer = None
+        mgr.polygon = None
+        mgr._load_csv_cache = MagicMock(return_value=_fresh_bars())
+        mgr._last_price_source = None
+        mgr._record_ibkr_freshness = MagicMock()
+
+        result = await asyncio.wait_for(
+            mgr.get_tick_price("MES", is_futures=True), timeout=10
+        )
+
+        assert result["source"] == "csv_cache"
+        assert result["last_price"] is not None
+        assert result["source"] != "ibkr"
+
+
+class TestDataLegHealthCheckVerifiesRoundTrip:
+    """health_check()'s own `_connected` read had the exact same blind spot as
+    get_snapshot_price -- it trusted the shallow socket flag with no round-trip
+    probe at all, so /health's `ibkr_data_connected` could never observe a
+    wedge (only a full disconnect). Mirrors the execution connector's
+    reqCurrentTimeAsync probe pattern."""
+
+    @pytest.mark.asyncio
+    async def test_reports_wedged_when_shallow_connected_but_roundtrip_fails(
+        self, monkeypatch
+    ):
+        monkeypatch.setattr(market_data_module, "_IBKR_DATA_REQUEST_TIMEOUT_S", 0.2)
+        conn = IBKRDataConnector.__new__(IBKRDataConnector)
+        conn._connected = True
+        conn._port = 4002
+        conn._host = "127.0.0.1"
+        conn._client_id = 226
+        conn._ib = MagicMock()
+        conn._ib.reqCurrentTimeAsync = _never_returns()
+
+        result = await asyncio.wait_for(conn.health_check(), timeout=5)
+
+        assert result["connected"] is False
+        assert result["status"] == "wedged"
+
+    @pytest.mark.asyncio
+    async def test_reports_connected_when_roundtrip_succeeds(self, monkeypatch):
+        conn = IBKRDataConnector.__new__(IBKRDataConnector)
+        conn._connected = True
+        conn._port = 4002
+        conn._host = "127.0.0.1"
+        conn._client_id = 226
+        conn._ib = MagicMock()
+        conn._ib.reqCurrentTimeAsync = AsyncMock(return_value=None)
+
+        result = await conn.health_check()
+
+        assert result["connected"] is True
+        assert result["status"] == "connected"
+        assert result["latency_ms"] is not None
+
+    @pytest.mark.asyncio
+    async def test_reports_disconnected_without_probing_when_shallow_false(self):
+        conn = IBKRDataConnector.__new__(IBKRDataConnector)
+        conn._connected = False
+        conn._port = 4002
+        conn._host = "127.0.0.1"
+        conn._client_id = 226
+        conn._ib = MagicMock()
+        conn._ib.reqCurrentTimeAsync = AsyncMock(return_value=None)
+
+        result = await conn.health_check()
+
+        assert result["connected"] is False
+        assert result["status"] == "disconnected"
+        conn._ib.reqCurrentTimeAsync.assert_not_called()
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2

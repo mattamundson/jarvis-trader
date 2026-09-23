@@ -1,0 +1,56 @@
+name: CI Startup Canary
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/ci-startup-diagnostics-20260911
+    paths:
+      - ".github/workflows/ci-startup-canary.yml"
+      - "scripts/ci/collect_github_actions_startup_failure.py"
+      - "docs/runbooks/GITHUB_ACTIONS_STARTUP_FAILURE_DIAGNOSTICS.md"
+  schedule:
+    - cron: "17 11 * * *"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ci-startup-canary-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  startup-canary:
+    name: startup-canary
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Safe: this diagnostic workflow only prints GitHub-provided metadata and
+      # does not interpolate issue/PR/comment/user-controlled text into shell.
+      - name: pre-checkout runner marker
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "CANARY_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "GITHUB_RUN_ID=${GITHUB_RUN_ID}"
+          echo "GITHUB_RUN_ATTEMPT=${GITHUB_RUN_ATTEMPT}"
+          echo "GITHUB_WORKFLOW_REF=${GITHUB_WORKFLOW_REF}"
+          echo "GITHUB_REF=${GITHUB_REF}"
+          echo "GITHUB_SHA=${GITHUB_SHA}"
+          uname -a
+      - name: checkout
+        uses: actions/checkout@v4
+      - name: repository sanity marker
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f .github/workflows/ci-startup-canary.yml
+          git rev-parse --short HEAD
+          echo "CANARY_REPOSITORY_CONTENT_OK=1"
+      - name: upload canary marker
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-startup-canary-marker
+          retention-days: 7
+          path: .github/workflows/ci-startup-canary.yml

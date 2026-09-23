@@ -8,6 +8,13 @@ import { ExploratoryBanner } from "@/components/ExploratoryBanner";
 import { SectionHeader } from "./SectionHeader";
 import { HowItWorksPanel } from "./HowItWorksPanel";
 import { StrategyDiscoveryBrowser } from "@/components/StrategyDiscoveryBrowser";
+<<<<<<< HEAD
+=======
+// Aliased: this file already defines its own local `Badge` (label/color API, below) which
+// shadows the shared honesty-badge component — import the shared one under a distinct name.
+import { Badge as HonestyBadge } from "@/components/ui/badge";
+import { STC_BENCHMARKS, CAPTURED_AT as STC_CAPTURED_AT, SOURCE as STC_SOURCE } from "@/lib/stcBenchmarks";
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -718,6 +725,7 @@ function WalkForwardResultsPanel({ models, latestResult }: { models: SavedModel[
 }
 
 // ── RL vs STC Comparison ──────────────────────────────────────────────────────
+<<<<<<< HEAD
 
 // HARDCODED STC backtest benchmarks captured from a prior validated walk-forward.
 // These are static constants, NOT recomputed live — keep them clearly labelled as
@@ -728,6 +736,12 @@ const STC_BENCHMARKS: Record<string, { pf: number; sharpe: number; wr: number; s
   MGC: { pf: 2.60, sharpe: 2.04, wr: 51.1, symbol: "MGC", tf: "1d" },
   MES: { pf: 0.96, sharpe: -0.12, wr: 42.9, symbol: "MES", tf: "1h" },
 };
+=======
+//
+// STC_BENCHMARKS itself now lives in @/lib/stcBenchmarks (moved out of this page component
+// so the frozen-snapshot status — CAPTURED_AT / SOURCE — is a value the UI can render, not
+// just a comment only visible in source).
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 function RLvsSTC({ latestResult }: { latestResult: TrainingResult | null }) {
   if (!latestResult?.metrics) {
@@ -840,7 +854,24 @@ function RLvsSTC({ latestResult }: { latestResult: TrainingResult | null }) {
               >
                 <td className="py-2.5 px-3 font-semibold" style={{ color: "#e0e0e0" }}>{metric}</td>
                 <td className="py-2.5 px-3 text-center tabular-nums font-bold" style={{ color: rlColor }}>{rlVal}</td>
+<<<<<<< HEAD
                 <td className="py-2.5 px-3 text-center tabular-nums" style={{ color: stcColor }}>{stcVal}</td>
+=======
+                <td className="py-2.5 px-3 text-center tabular-nums" style={{ color: stcColor }}>
+                  <span className="inline-flex items-center gap-1.5">
+                    {stcVal}
+                    {stc && stcVal !== "N/A" && (
+                      <HonestyBadge
+                        variant="static"
+                        className="text-[9px] px-1.5 py-0 leading-4"
+                        title={`${STC_SOURCE}. Captured ${STC_CAPTURED_AT} — frozen, not recomputed live.`}
+                      >
+                        {STC_CAPTURED_AT}
+                      </HonestyBadge>
+                    )}
+                  </span>
+                </td>
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                 <td className="py-2.5 px-3 text-center tabular-nums font-semibold" style={{ color: deltaColor }}>{delta}</td>
               </tr>
             ))}

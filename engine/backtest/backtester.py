@@ -90,6 +90,7 @@ class Backtester:
         self.max_drawdown = max_drawdown
         self.t1_exit_pct = t1_exit_pct
         self.t2_exit_pct = t2_exit_pct
+<<<<<<< HEAD
         # Pull from config if not explicitly overridden by caller
         cfg = _get_settings()
         self.commission_per_contract = (
@@ -99,6 +100,36 @@ class Backtester:
         )
         self.slippage_ticks = slippage_ticks if slippage_ticks is not None else cfg.SLIPPAGE_TICKS
         self.spread_ticks = spread_ticks if spread_ticks is not None else cfg.SPREAD_TICKS
+=======
+        # Runtime settings are unnecessary when a research harness supplies all
+        # execution-cost assumptions explicitly. Keeping that path config-free
+        # makes offline backtests reproducible without loading service secrets.
+        cfg = (
+            _get_settings()
+            if commission_per_contract is None
+            or slippage_ticks is None
+            or spread_ticks is None
+            else None
+        )
+        self.commission_per_contract = (
+            commission_per_contract
+            if commission_per_contract is not None
+            else cfg.COMMISSION_PER_CONTRACT  # type: ignore[union-attr]
+        )
+        self.slippage_ticks = (
+            slippage_ticks
+            if slippage_ticks is not None
+            else cfg.SLIPPAGE_TICKS  # type: ignore[union-attr]
+        )
+        self.spread_ticks = (
+            spread_ticks
+            if spread_ticks is not None
+            else cfg.SPREAD_TICKS  # type: ignore[union-attr]
+        )
+        self.commission_enabled = True if cfg is None else cfg.COMMISSION_ENABLED
+        self.slippage_enabled = self.slippage_ticks > 0 if cfg is None else cfg.SLIPPAGE_ENABLED
+        self.spread_enabled = self.spread_ticks > 0 if cfg is None else cfg.SPREAD_ENABLED
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         self.trailing_stop = trailing_stop
         self.trailing_atr_mult = trailing_atr_mult
         self.trailing_post_t1 = trailing_post_t1
@@ -149,6 +180,14 @@ class Backtester:
         # impact surcharge (unchanged behavior).
         self.max_volume_pct = max_volume_pct
 
+<<<<<<< HEAD
+=======
+        # Entries skipped for R:R < 1.2 (signal-bar pre-check or actual-entry
+        # recalc). Reset per run(); stamped onto BacktestResult as
+        # rr_filtered_entries so 0-trade runs are diagnosable (T5, 2026-08-18).
+        self._rr_filtered_entries = 0
+
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     def _pov_impact_multiplier(self, contracts: int, bar_volume: Optional[float]) -> float:
         """Almgren-Chriss-style quadratic temporary impact multiplier for slippage.
 
@@ -246,24 +285,41 @@ class Backtester:
         Long exit → sell at bid (mid - half_spread). Short exit → buy at ask (mid + half_spread).
         Cost = contracts * spread_ticks * tick_size * multiplier.
         """
+<<<<<<< HEAD
         cfg = _get_settings()
         if not cfg.SPREAD_ENABLED:
+=======
+        if not self.spread_enabled:
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             return 0.0
         return contracts * self.spread_ticks * tick_size * multiplier
 
     def _round_trip_cost(self, contracts: int, commission_per_contract: float) -> float:
         """Full round-trip commission (entry + exit combined)."""
+<<<<<<< HEAD
         return contracts * commission_per_contract
+=======
+        return 2.0 * contracts * commission_per_contract
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
     def _transaction_cost(self, contracts: int, tick_size: float = 0.25) -> float:
         """Round-trip commission cost per contract.
         Note: slippage is applied as adverse fill price in _apply_execution_costs(), not doubled here.
               Exit spread cost is applied separately via _exit_spread_cost().
         """
+<<<<<<< HEAD
         cfg = _get_settings()
         return (
             self._round_trip_cost(contracts, self.commission_per_contract)
             if cfg.COMMISSION_ENABLED
+=======
+        # Reading A (2026-09-18): COMMISSION_PER_CONTRACT is the ROUND TRIP, so a contract is
+        # charged it ONCE. Together with charging only at the closing exit, this yields exactly one
+        # round trip per contract (previously: 2x per leg, charged at entry AND every exit).
+        return (
+            contracts * self.commission_per_contract
+            if self.commission_enabled
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             else 0.0
         )
 
@@ -307,9 +363,18 @@ class Backtester:
         # slippage_ticks is optionally scaled by current-vs-trailing-mean ATR
         # (volatility_scaled_slippage) and by a POV/impact surcharge
         # (max_volume_pct) before being applied — both no-ops unless configured.
+<<<<<<< HEAD
         cfg = _get_settings()
         effective_spread = self.spread_ticks if cfg.SPREAD_ENABLED else 0.0
         effective_slippage_ticks = self.slippage_ticks if cfg.SLIPPAGE_ENABLED else 0.0
+=======
+        # Uses self.slippage_enabled/self.spread_enabled (resolved once in __init__)
+        # rather than a fresh _get_settings() call here, so a Backtester constructed
+        # with all three costs explicit stays config-free for the whole run — see
+        # test_backtester_explicit_costs.py.
+        effective_spread = self.spread_ticks if self.spread_enabled else 0.0
+        effective_slippage_ticks = self.slippage_ticks if self.slippage_enabled else 0.0
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         if effective_slippage_ticks and self.volatility_scaled_slippage:
             mean_atr = self._trailing_mean_atr(df, idx)
             effective_slippage_ticks *= self._volatility_slippage_multiplier(atr_val, mean_atr)
@@ -329,7 +394,11 @@ class Backtester:
             effective_slippage_ticks *= self._pov_impact_multiplier(
                 approx_contracts, row.get("volume")
             )
+<<<<<<< HEAD
         if cfg.SLIPPAGE_ENABLED or cfg.SPREAD_ENABLED:
+=======
+        if self.slippage_enabled or self.spread_enabled:
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             entry_price = self._apply_execution_costs(
                 raw_entry_price,
                 direction,
@@ -356,6 +425,13 @@ class Backtester:
 
         rr = abs(target_1 - entry_price) / stop_dist
         if rr < 1.2:
+<<<<<<< HEAD
+=======
+            # T5 metric-honesty pass (2026-08-18): count these instead of
+            # dropping silently — 0 trades + no error used to look like a
+            # signal bug when it was actually the R:R filter.
+            self._rr_filtered_entries += 1
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             return None, 0, 0, 0, [], 0.0
 
         if self.fixed_contracts is not None:
@@ -384,7 +460,13 @@ class Backtester:
             regime=pending_entry.get("regime", ""),
             bias=pending_entry["bias"],
         )
+<<<<<<< HEAD
         capital_used = self._transaction_cost(total_contracts, tick_size)
+=======
+        # Commission is charged at the closing exit (see _transaction_cost); charging it here
+        # as well double-charged every trade.
+        capital_used = 0.0
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         return open_trade, t1_contracts, t2_contracts, t3_contracts, [], capital_used
 
     def _check_targets_exit(
@@ -793,6 +875,12 @@ class Backtester:
 
         tick_size = self._get_tick_size(symbol, multiplier)
 
+<<<<<<< HEAD
+=======
+        # Reset per-run counters (the instance may be reused across backtests).
+        self._rr_filtered_entries = 0
+
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         capital = self.initial_capital
         high_water_mark = capital
         completed_trades: List[Trade] = []
@@ -997,6 +1085,12 @@ class Backtester:
                     # R:R pre-check on signal bar (Bug 6: lowered from 1.5 to 1.2)
                     rr = abs(target_1 - signal_price) / stop_dist
                     if rr < 1.2:
+<<<<<<< HEAD
+=======
+                        # T5 metric-honesty pass (2026-08-18): count, don't drop
+                        # silently (0 trades + no error was misread as a signal bug).
+                        self._rr_filtered_entries += 1
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                         continue
 
                     pending_entry = {
@@ -1015,15 +1109,35 @@ class Backtester:
                 high_water_mark = capital
 
         # Compute total spread cost across all trades (entry half-spread + exit half-spread)
+<<<<<<< HEAD
         cfg = _get_settings()
         if cfg.SPREAD_ENABLED:
             spread_cost_total = sum(
                 t.contracts * self.spread_ticks * tick_size * multiplier * 2  # entry + exit
+=======
+        if self.spread_enabled:
+            spread_cost_total = sum(
+                t.contracts * self.spread_ticks * tick_size * multiplier  # exit side only (entry cancels in the realised distance)
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                 for t in completed_trades
             )
         else:
             spread_cost_total = 0.0
 
+<<<<<<< HEAD
+=======
+        # Ledger reconciliation (2026-09-18): attribute the costs actually debited from capital
+        # onto the trades that incurred them, proportionally to contracts (costs are charged per
+        # contract), so sum(trade.pnl) == final_capital - initial_capital EXACTLY. Without this the
+        # trade ledger excludes all cost while the equity curve includes it, making PF/Sharpe
+        # optimistic and CAGR/drawdown pessimistic at the same time.
+        _ledger_gap = sum(t.pnl for t in completed_trades) - (capital - self.initial_capital)
+        _total_contracts_all = sum(t.contracts for t in completed_trades)
+        if completed_trades and _total_contracts_all and abs(_ledger_gap) > 1e-12:
+            for _t in completed_trades:
+                _t.pnl -= _ledger_gap * (_t.contracts / _total_contracts_all)
+
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         result = BacktestResult(
             symbol=symbol,
             start_date=str(df.index[0].date()) if len(df) > 0 else "",
@@ -1034,6 +1148,10 @@ class Backtester:
             equity_curve=equity_curve,
             total_bars=len(df),
             spread_cost_total=spread_cost_total,
+<<<<<<< HEAD
+=======
+            rr_filtered_entries=self._rr_filtered_entries,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         )
 
         return calculate_metrics(result)

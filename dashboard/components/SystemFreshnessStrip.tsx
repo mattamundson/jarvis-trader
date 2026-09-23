@@ -1,9 +1,20 @@
 "use client";
 
+<<<<<<< HEAD
+=======
+import useSWR from "swr";
+import { useEffect, useState } from "react";
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 import { Wifi, WifiOff, Activity, Clock } from "lucide-react";
 import { useEngineStatus } from "@/hooks/useEngineStatus";
 import { useEngineWebSocketContext } from "@/lib/engine-websocket-context";
 import { StalenessIndicator } from "@/components/ui/staleness-indicator";
+<<<<<<< HEAD
+=======
+import { Badge } from "@/components/ui/badge";
+import { fetchMasterStatus, aggregationBannerState } from "@/lib/masterApi";
+import { POLL_INTERVAL } from "@/lib/polling-config";
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 import { cn } from "@/lib/utils";
 
 function fmtEventType(type: string | undefined): string {
@@ -34,6 +45,32 @@ export function SystemFreshnessStrip() {
   const { isConnected, lastEvent } = useEngineWebSocketContext();
   const lastEventTime = fmtEventTime(eventTimestamp(lastEvent));
 
+<<<<<<< HEAD
+=======
+  // Hydration-safe rendering: SSR paints the neutral "checking" state, and the
+  // real online/offline state only renders after mount. Without this, a fast
+  // failing /health probe flips the client text (offline) while the server
+  // HTML still says "online", producing a React hydration mismatch (#418).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const engineLabel = !mounted ? "checking…" : isOnline ? "online" : "offline";
+
+  // Master-API reachability (Phase 10.1). Shares the "master-status" SWR key
+  // with app/master/page.tsx so both consumers dedupe onto one poll.
+  // aggregationBannerState() (lib/masterApi.ts) already distinguishes
+  // unreachable (fetch failed / no body) from degraded-with-named-stale-
+  // domains from healthy -- reused as-is rather than re-deriving the logic.
+  const { data: masterStatus, error: masterError, isLoading: masterLoading } = useSWR(
+    "master-status",
+    fetchMasterStatus,
+    { refreshInterval: POLL_INTERVAL.HEALTH },
+  );
+  const masterBanner = masterLoading
+    ? null
+    : aggregationBannerState(masterStatus ?? null, !!masterError);
+  const masterUnreachable = !masterLoading && (!!masterError || masterStatus == null);
+
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
   return (
     <div
       role="status"
@@ -52,7 +89,11 @@ export function SystemFreshnessStrip() {
             isOnline ? "bg-bull animate-pulse" : "bg-bear animate-pulse",
           )}
         />
+<<<<<<< HEAD
         Engine {isOnline ? "online" : "offline"}
+=======
+        Engine {engineLabel}
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       </span>
 
       <span className="flex items-center gap-1.5">
@@ -87,6 +128,33 @@ export function SystemFreshnessStrip() {
           />
         )}
       </span>
+<<<<<<< HEAD
+=======
+
+      <span className="flex items-center gap-1.5">
+        {masterLoading ? (
+          <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50" />
+        ) : masterBanner?.degraded ? (
+          <WifiOff className="h-3 w-3 text-warn" />
+        ) : (
+          <Wifi className="h-3 w-3 text-bull" />
+        )}
+        Master API{" "}
+        {masterLoading ? (
+          "checking…"
+        ) : masterBanner?.degraded ? (
+          <Badge
+            variant="warn"
+            className="h-5 px-1.5 text-[10px] font-normal"
+            title={masterBanner.reason}
+          >
+            {masterUnreachable ? "unreachable" : "degraded"}
+          </Badge>
+        ) : (
+          "reachable"
+        )}
+      </span>
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     </div>
   );
 }

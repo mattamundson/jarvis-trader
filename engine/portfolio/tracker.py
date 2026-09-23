@@ -71,6 +71,17 @@ INSTRUMENT_MULTIPLIERS: dict = {
     "NQ": 20.0,
     "CL": 1000.0,
     "GC": 100.0,
+<<<<<<< HEAD
+=======
+    # Equities / ETFs: $1 per $1 of price movement, per share. These are the
+    # OPTIONS_WATCHLIST names the pipeline trades; without them _resolve_multiplier
+    # RAISED on every equity while utils.position_sizing silently sized the same
+    # symbol at 5.0 -- the engine could open a position it then refused to price.
+    "SPY": 1.0,
+    "QQQ": 1.0,
+    "AAPL": 1.0,
+    "TSLA": 1.0,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 }
 _DEFAULT_MULTIPLIER = 1.0
 
@@ -237,6 +248,11 @@ class PortfolioTracker:
         analyst_signals: Optional[Dict[str, float]] = None,
         candidate_id: Optional[str] = None,
         decision_identity: Optional[Dict[str, Any]] = None,
+<<<<<<< HEAD
+=======
+        stop_loss: Optional[float] = None,
+        take_profit: Optional[float] = None,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     ) -> str:
         """
         Log a new simulated entry.
@@ -256,6 +272,19 @@ class PortfolioTracker:
             forward-test loop can attribute the trade at the precise
             candidate_id level and let it count toward graduation.
             Purely additive -- omit it and behaviour is unchanged.
+<<<<<<< HEAD
+=======
+        stop_loss : float, optional
+            Initial stop price, persisted to ``paper_trades.stop_loss``.
+            None (default) preserves the pre-2026-08-16 behavior of writing
+            NULL (the caller is responsible for bracket placement if needed).
+        take_profit : float, optional
+            Initial profit target, persisted to ``paper_trades.take_profit``.
+            None (default) preserves the pre-2026-08-16 behavior of writing
+            NULL.  Signals compute target_1/target_2; callers that have them
+            should pass the nearer target here so the dashboard can render
+            entry/stop/target like a recommendation card.
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         """
         # ── Idempotency key: compute before generating trade_id so that a
         # duplicate call within the same 5-second window can be collapsed to
@@ -328,8 +357,13 @@ class PortfolioTracker:
                 quantity=trade.quantity,
                 entry_price=trade.entry_price,
                 entry_time=trade.entry_time,
+<<<<<<< HEAD
                 stop_loss=None,
                 take_profit=None,
+=======
+                stop_loss=stop_loss,
+                take_profit=take_profit,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                 strategy_params=_sp,
                 idempotency_key=idem_key,
             )

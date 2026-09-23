@@ -131,6 +131,15 @@ def _find_data_file() -> Path | None:
     local_cache = engine_root / "backtest" / "cache"
     pattern = f"{SYMBOL}_*_1h.csv"
 
+<<<<<<< HEAD
+=======
+    # 2026-08-19 forced DEEP cache (12y, verified clean). The completeness
+    # checker demotes to shallow because the 08-18 file is truncated.
+    _deep = [p for p in local_cache.glob("MGC_2015-01-01_2026-08-16_1h.csv")]
+    if _deep:
+        return _deep[0]
+
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     if local_cache.exists() and list(local_cache.glob(pattern)):
         return _find_latest_cache(local_cache, SYMBOL)
 
@@ -145,7 +154,14 @@ def _find_data_file() -> Path | None:
 
 
 def _load_data(data_file: Path) -> pd.DataFrame:
+<<<<<<< HEAD
     df = pd.read_csv(data_file)
+=======
+    df = pd.read_csv(data_file)    # Cache provenance (2026-09-17 audit: 0/76 verdicts recorded which cache they ran on).
+    from backtest._gate_v2_helpers import cache_provenance as _cp  # noqa: E402
+    df.attrs["cache_provenance"] = _cp(data_file)
+
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     df.columns = [c.lower() for c in df.columns]
     ts_col = "timestamp" if "timestamp" in df.columns else "datetime"
     df[ts_col] = pd.to_datetime(df[ts_col], utc=True)
@@ -194,15 +210,31 @@ def build_daily_regime(df: pd.DataFrame) -> pd.Series:
     daily_regime_bull_shifted = daily_regime_bull.shift(1)
 
     # Build a date -> bool mapping (normalize to date for the lookup)
+<<<<<<< HEAD
     # daily_regime_bull_shifted has a DatetimeIndex; normalize to midnight
     date_to_regime = pd.Series(
         daily_regime_bull_shifted.values,
         index=daily_regime_bull_shifted.index.normalize(),
+=======
+    # daily_regime_bull_shifted has a DatetimeIndex; normalize to midnight.
+    # Both sides go through _daily_date_index so a tz-aware bar index (deep cache
+    # timestamps carry +00:00 offsets) cannot raise a pandas-3 mixed-tz comparison
+    # against the naive date key. See trend_signals._daily_date_index.
+    from backtest.trend_signals import _daily_date_index
+
+    date_to_regime = pd.Series(
+        daily_regime_bull_shifted.values,
+        index=_daily_date_index(daily_regime_bull_shifted.index),
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     )
 
     # Map each 1h bar's date onto the daily regime (forward-fill NaN days,
     # e.g. weekends -- safe because weekend bars are absent from futures data)
+<<<<<<< HEAD
     bar_dates = df.index.normalize()
+=======
+    bar_dates = _daily_date_index(df.index)
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     mapped = date_to_regime.reindex(bar_dates, method=None)
     mapped.index = df.index
 
@@ -714,6 +746,12 @@ def main() -> None:
         if verdict:
             fname = f"MGC_trend_{variant}.json"
             out_path = verdicts_dir / fname
+<<<<<<< HEAD
+=======
+            # Record the provenance carried on the frame (see loader).
+            from backtest._gate_v2_helpers import inject_cache_provenance as _ip  # noqa: E402
+            verdict = _ip(verdict, df=df)
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             out_path.write_text(json.dumps(verdict, indent=2, default=str))
             print(f"[{SYMBOL}/{variant}] Verdict written -> {out_path}")
 

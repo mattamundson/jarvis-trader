@@ -22,6 +22,10 @@ import logging
 import os
 import subprocess
 from datetime import datetime
+<<<<<<< HEAD
+=======
+from typing import Any, Awaitable
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 from zoneinfo import ZoneInfo
 
 from notifications import discord_notifier as _discord
@@ -134,6 +138,90 @@ async def send_raw(message: str, phone: str = _PHONE_TO) -> bool:
     return await _send(message, phone)
 
 
+<<<<<<< HEAD
+=======
+def _record_alert_failure(
+    *,
+    alert_type: str,
+    channel: str,
+    message: str,
+    symbol: str | None = None,
+    error: str | None = None,
+) -> None:
+    """Best-effort durable trace for a failed alert send, beyond the loud
+    ERROR log from `_track_fire_and_forget`.
+
+    Reuses the existing `alert_log` table (schema already has `status` /
+    `error` columns for exactly this, and it is already surfaced live via
+    `GET /alerts/history` and `/alerts/stats`, consumed by the dashboard) --
+    intentionally NOT new infrastructure. Only wired into the two trade
+    execution-confirmation alerts (`notify_trade_opened` / `notify_trade_closed`):
+    those are the sole human-visible record of an autonomous paper trade
+    since REQUIRE_HUMAN_APPROVAL=False, so a failed send there getting lost
+    is the highest-risk case. Non-fatal: never raises into the caller.
+    """
+    try:
+        from database.schema import get_db
+
+        db = get_db()
+    except Exception:
+        return
+    try:
+        db.insert_alert_log(
+            alert_type=alert_type,
+            message=message[:500],
+            channel=channel,
+            symbol=symbol,
+            status="failed",
+            error=(error[:500] if error else None),
+        )
+    except Exception as log_err:
+        logger.debug("alert_log insert failed (non-fatal): %s", log_err)
+
+
+def _track_fire_and_forget(
+    coro: Awaitable[Any],
+    *,
+    label: str,
+    record_failure: dict[str, Any] | None = None,
+) -> asyncio.Task:
+    """Schedule `coro` fire-and-forget (same non-blocking behavior as a raw
+    `asyncio.ensure_future(coro)`), but attach a done-callback that surfaces
+    any exception loudly instead of leaving it as an unretrieved asyncio Task
+    exception -- Python's default GC-time "Task exception was never
+    retrieved" warning, which nothing in this codebase reads.
+
+    `label` identifies the notification type and whatever symbol/trade
+    context is available at the call site, e.g.
+    "discord_trade_opened symbol=MES action=BUY".
+
+    `record_failure`, if given, is forwarded as kwargs to
+    `_record_alert_failure()` whenever the coroutine raises OR returns a
+    falsy result (a clean "send failed" signal, not just an exception) --
+    only the trade-open/trade-close callers pass this; every other call
+    site keeps loud-log-only behavior.
+    """
+    task = asyncio.ensure_future(coro)
+
+    def _on_done(t: asyncio.Task) -> None:
+        if t.cancelled():
+            return
+        exc = t.exception()
+        if exc is not None:
+            logger.error(
+                "Fire-and-forget notification task failed: %s", label, exc_info=exc
+            )
+            if record_failure is not None:
+                _record_alert_failure(error=f"{type(exc).__name__}: {exc}", **record_failure)
+            return
+        if record_failure is not None and t.result() is False:
+            _record_alert_failure(error="send returned False (see logs)", **record_failure)
+
+    task.add_done_callback(_on_done)
+    return task
+
+
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 async def notify_signal(
     *,
     symbol: str,
@@ -185,10 +273,18 @@ async def notify_signal(
     sent = await _send(msg)
     if sent:
         _mark_sent(cooldown_key)
+<<<<<<< HEAD
     asyncio.ensure_future(
         _discord.discord_signal(
             symbol=symbol, action=action, confidence=confidence, reason=reason
         )
+=======
+    _track_fire_and_forget(
+        _discord.discord_signal(
+            symbol=symbol, action=action, confidence=confidence, reason=reason
+        ),
+        label=f"discord_signal symbol={symbol} action={action}",
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     )
     return sent
 
@@ -223,8 +319,14 @@ async def notify_kill_switch(
         + "\nAll trading halted. Deactivate at localhost:3010"
     )
     result = await _send(msg)
+<<<<<<< HEAD
     asyncio.ensure_future(
         _discord.discord_kill_switch(reason=reason, message=message)
+=======
+    _track_fire_and_forget(
+        _discord.discord_kill_switch(reason=reason, message=message),
+        label=f"discord_kill_switch reason={reason}",
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     )
     return result
 
@@ -270,10 +372,18 @@ async def notify_approval_required(
         f"Approve at localhost:3010/trades/pending-approvals"
     )
     result = await _send(msg)
+<<<<<<< HEAD
     asyncio.ensure_future(
         _discord.discord_approval_required(
             symbol=symbol, action=action, confidence=0.0,
         )
+=======
+    _track_fire_and_forget(
+        _discord.discord_approval_required(
+            symbol=symbol, action=action, confidence=0.0,
+        ),
+        label=f"discord_approval_required symbol={symbol} action={action}",
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     )
     return result
 
@@ -322,12 +432,36 @@ async def notify_trade_closed(
         f"P&L: {pnl_str} ({result_word})"
     )
     sent = await _send(msg)
+<<<<<<< HEAD
     if sent:
         _mark_sent(cooldown_key)
     asyncio.ensure_future(
         _discord.discord_trade_closed(
             symbol=symbol, action=action, pnl=pnl
         )
+=======
+    if not sent:
+        _record_alert_failure(
+            alert_type="trade_closed",
+            channel="whatsapp",
+            message=msg,
+            symbol=symbol,
+            error="OpenClaw WhatsApp send returned False (see logs)",
+        )
+    if sent:
+        _mark_sent(cooldown_key)
+    _track_fire_and_forget(
+        _discord.discord_trade_closed(
+            symbol=symbol, action=action, pnl=pnl
+        ),
+        label=f"discord_trade_closed symbol={symbol} action={action}",
+        record_failure={
+            "alert_type": "trade_closed",
+            "channel": "discord",
+            "message": msg,
+            "symbol": symbol,
+        },
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     )
     return sent
 
@@ -366,13 +500,36 @@ async def notify_trade_opened(
     lines.append(f"({source}, paper)")
     msg = "\n".join(lines)
     sent = await _send(msg)
+<<<<<<< HEAD
     asyncio.ensure_future(
+=======
+    if not sent:
+        _record_alert_failure(
+            alert_type="trade_opened",
+            channel="whatsapp",
+            message=msg,
+            symbol=symbol,
+            error="OpenClaw WhatsApp send returned False (see logs)",
+        )
+    _track_fire_and_forget(
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         _discord.discord_trade_opened(
             symbol=symbol,
             action=action,
             quantity=float(quantity) if quantity else 1.0,
             entry_price=float(entry_price),
+<<<<<<< HEAD
         )
+=======
+        ),
+        label=f"discord_trade_opened symbol={symbol} action={action}",
+        record_failure={
+            "alert_type": "trade_opened",
+            "channel": "discord",
+            "message": msg,
+            "symbol": symbol,
+        },
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     )
     return sent
 
@@ -417,8 +574,14 @@ async def notify_target(
     sent = await _send(msg)
     if sent:
         _mark_sent(cooldown_key)
+<<<<<<< HEAD
     asyncio.ensure_future(
         _discord.discord_target(market=market, pnl=pnl, target=target)
+=======
+    _track_fire_and_forget(
+        _discord.discord_target(market=market, pnl=pnl, target=target),
+        label=f"discord_target market={market}",
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     )
     return sent
 
@@ -449,8 +612,14 @@ async def notify_ib_disconnect(last_connected_at: str = "") -> bool:
         f"Restart IB Gateway and reconnect."
     )
     result = await _send(msg)
+<<<<<<< HEAD
     asyncio.ensure_future(
         _discord.discord_ib_disconnect(last_connected_at=last_connected_at)
+=======
+    _track_fire_and_forget(
+        _discord.discord_ib_disconnect(last_connected_at=last_connected_at),
+        label="discord_ib_disconnect",
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     )
     return result
 
@@ -468,8 +637,14 @@ async def notify_kill_switch_cleared(*, authorized_by: str = "") -> bool:
         f"Review positions before new entries."
     )
     result = await _send(msg)
+<<<<<<< HEAD
     asyncio.ensure_future(
         _discord.discord_kill_switch_deactivated()
+=======
+    _track_fire_and_forget(
+        _discord.discord_kill_switch_deactivated(),
+        label="discord_kill_switch_cleared",
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     )
     return result
 
@@ -496,8 +671,14 @@ async def notify_kill_switch_deactivated(
         f"Review positions before new entries."
     )
     result = await _send(msg)
+<<<<<<< HEAD
     asyncio.ensure_future(
         _discord.discord_kill_switch_deactivated()
+=======
+    _track_fire_and_forget(
+        _discord.discord_kill_switch_deactivated(),
+        label="discord_kill_switch_deactivated",
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     )
     return result
 
@@ -582,10 +763,18 @@ async def notify_regime_change(symbol: str, old_regime: str, new_regime: str) ->
     ts = _ct_time()
     msg = f"JARVIS Regime Alert\n" f"{symbol}: {old_regime} → {new_regime}\n" f"Time: {ts} CT"
     result = await _send(msg)
+<<<<<<< HEAD
     asyncio.ensure_future(
         _discord.discord_regime_change(
             symbol=symbol, old_regime=old_regime, new_regime=new_regime
         )
+=======
+    _track_fire_and_forget(
+        _discord.discord_regime_change(
+            symbol=symbol, old_regime=old_regime, new_regime=new_regime
+        ),
+        label=f"discord_regime_change symbol={symbol}",
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     )
     return result
 

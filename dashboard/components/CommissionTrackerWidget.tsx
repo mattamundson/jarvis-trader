@@ -67,14 +67,24 @@ export function CommissionTrackerWidget() {
     );
   }
 
+<<<<<<< HEAD
   const totalCommissions = data.total_commissions;
   const avgPerTrade = data.avg_commission_per_trade;
+=======
+  const totalCommissions = data.total_commissions ?? 0;
+  const avgPerTrade = data.avg_commission_per_trade ?? 0;
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
   // data.gross_pnl / net_pnl / trade_count are the RAW un-deduped P&L figures
   // (gross +$3,899.97 across 19 re-logged rows) — the same fabrication this
   // migration removed elsewhere. They are NOT commission data, so they are not
   // shown here; honest P&L lives in the Profit Factor / Performance cards.
+<<<<<<< HEAD
   const rawFills = data.trade_count;
   const bySymbol = data.by_symbol;
+=======
+  const rawFills = data.trade_count ?? 0;
+  const bySymbol = data.by_symbol ?? {};
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
   const headerBadgeVariant: "warn" | "neutral" =
     totalCommissions > 100 ? "warn" : "neutral";
@@ -129,7 +139,11 @@ export function CommissionTrackerWidget() {
             {Object.entries(bySymbol).map(([sym, cost]) => (
               <div key={sym} className="flex justify-between text-xs">
                 <span className="font-mono text-muted-foreground">{sym}</span>
+<<<<<<< HEAD
                 <span className="font-mono">${cost.toFixed(2)}</span>
+=======
+                <span className="font-mono">${(cost ?? 0).toFixed(2)}</span>
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
               </div>
             ))}
           </div>

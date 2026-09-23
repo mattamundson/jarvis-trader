@@ -291,6 +291,20 @@ class IBGatewayManager:
         self._status = IBConnectionStatus.DISCONNECTED
         self._connect_time: Optional[float] = None
         self._last_error: Optional[str] = None
+<<<<<<< HEAD
+=======
+        # Set when get_positions() finds reqPositionsAsync() AND the local
+        # position cache BOTH empty while is_connected() reports True — the
+        # 2026-08-03/08-10 failure signature where the execution leg's own
+        # position subscription is desynced even though the socket is alive.
+        # Cleared on a successful get_positions() call that returns real data
+        # or is legitimately flat (confirmed by a matching fill on record, or
+        # by resyncing via a fresh reconnect()). See classify_positions_staleness()
+        # below (module-level — shared with IBKRDataConnector.get_positions()
+        # in data/market_data.py).
+        self._positions_stale: bool = False
+        self._last_known_positions: dict[str, float] = {}
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
         logger.info(
             "IBGatewayManager created | broker=%s host=%s port=%d client_id=%d account=%s",
@@ -701,6 +715,26 @@ class IBGatewayManager:
         if action_upper is None:
             return None
 
+<<<<<<< HEAD
+=======
+        # Defense-in-depth: SafetyLayer._check_do_not_trade_symbols() is the
+        # designed choke point for this halt list, but not every caller routes
+        # through SafetyLayer first (2026-08-11: a test called this method
+        # directly, which would have bypassed the halt entirely for a
+        # DO_NOT_TRADE_SYMBOLS instrument had a client-ID collision not
+        # incidentally prevented the connection). Mirror the check here too.
+        from backtest.signals import DO_NOT_TRADE_SYMBOLS
+
+        symbol_upper = symbol.upper()
+        if symbol_upper in DO_NOT_TRADE_SYMBOLS:
+            logger.error(
+                "place_paper_order: REJECTED — %s is on the DO_NOT_TRADE_SYMBOLS "
+                "halt list (backtest/signals.py); refusing to route to IB",
+                symbol_upper,
+            )
+            return None
+
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         order_type_upper = order_type.upper()
 
         # Tag every JARVIS-routed order so reconciliation can filter our fills
@@ -1088,7 +1122,11 @@ class IBGatewayManager:
 
     # ── Positions ─────────────────────────────────────────────────────────
 
+<<<<<<< HEAD
     async def get_positions(self) -> list[dict]:
+=======
+    async def get_positions(self, _retrying: bool = False) -> list[dict]:
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         """
         Return current IB positions as a list of dicts.
 
@@ -1153,12 +1191,59 @@ class IBGatewayManager:
                         "account": pos.account,
                     }
                 )
+<<<<<<< HEAD
             return result
+=======
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
         except Exception as exc:
             logger.error("get_positions failed: %s", exc, exc_info=True)
             return []
 
+<<<<<<< HEAD
+=======
+        return await self._reconcile_positions_staleness(result, _retrying=_retrying)
+
+    async def _reconcile_positions_staleness(
+        self, result: list[dict], _retrying: bool
+    ) -> list[dict]:
+        """See ``classify_positions_staleness`` (module-level, below this class)
+        for the shared decision logic -- also used by ``IBKRDataConnector`` in
+        ``data/market_data.py``."""
+        is_stale, updated_last_known, unexplained = classify_positions_staleness(
+            result, self._last_known_positions, self._ib
+        )
+        self._last_known_positions = updated_last_known
+        self._positions_stale = is_stale
+
+        if not is_stale:
+            return result
+
+        logger.critical(
+            "get_positions: %s previously held non-zero but now reads EMPTY with "
+            "NO explaining fill on record — treating as a stale/desynced execution "
+            "leg, not a real flatten (2026-08-03/08-10 failure signature).%s",
+            unexplained,
+            " Retry after reconnect also came back this way." if _retrying else "",
+        )
+
+        if not _retrying:
+            logger.warning("get_positions: attempting one reconnect + retry to resync.")
+            if await self.reconnect():
+                return await self.get_positions(_retrying=True)
+
+        # Don't fabricate the last-known data as if it were fresh — an
+        # unreachable retry means we genuinely don't know current state.
+        # Surface the uncertainty via positions_stale() rather than guessing.
+        return result
+
+    def positions_stale(self) -> bool:
+        """True when the last get_positions() call hit the double-empty /
+        no-explaining-fill staleness signature and couldn't resync via
+        reconnect."""
+        return self._positions_stale
+
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     def get_cached_position(self, symbol: str) -> Optional[float]:
         """
         Sync, no-I/O net position for ``symbol`` from ib_async's continuously-
@@ -1264,6 +1349,11 @@ class IBGatewayManager:
           open_orders     (int)
           last_error      (str | None)
           ib_library      (str)
+<<<<<<< HEAD
+=======
+          broker_probe_ok (bool)        — socket up AND all RPC probes responded
+          degraded_reason (str | None)  — which probe(s) failed, when degraded
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         """
         start = time.monotonic()
 
@@ -1271,13 +1361,32 @@ class IBGatewayManager:
         latency_ms: Optional[float] = None
         net_liq: float = 0.0
         open_order_count: int = 0
+<<<<<<< HEAD
 
         if connected:
             # Measure round-trip latency with a lightweight reqCurrentTime call
+=======
+        # Honesty signal: a socket that is "connected" can still have every RPC
+        # probe time out / auth-fail. Narrow the excepts so a degraded broker is
+        # surfaced (broker_probe_ok=False) rather than masquerading as healthy
+        # with latency_ms=null / net_liq=0 behind connected=True.
+        probe_errors: list[str] = []
+
+        if connected:
+            # Measure round-trip latency with a lightweight reqCurrentTime call.
+            # `connected` above is only the shallow is_connected() flag, captured
+            # before this probe runs -- a wedged Gateway (socket open, API dead)
+            # previously still reported connected=True here even when this exact
+            # probe failed, since nothing revised it afterward. Same class of bug
+            # as the 2026-08-15 data-leg incident (data/market_data.py's
+            # IBKRDataConnector.health_check) -- a failed round-trip means we are
+            # not actually connected, whatever the socket flag says.
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             try:
                 t0 = time.monotonic()
                 await asyncio.wait_for(self._ib.reqCurrentTimeAsync(), timeout=5.0)
                 latency_ms = (time.monotonic() - t0) * 1000
+<<<<<<< HEAD
             except Exception:
                 latency_ms = None
 
@@ -1285,12 +1394,36 @@ class IBGatewayManager:
                 net_liq = await self.get_portfolio_value()
             except Exception:
                 pass
+=======
+            except (asyncio.TimeoutError, ConnectionError, OSError) as exc:
+                latency_ms = None
+                probe_errors.append(f"latency:{type(exc).__name__}")
+                logger.warning("health_check latency probe failed: %s", exc)
+                # NOTE: `connected` stays the shallow socket flag (is_connected());
+                # probe failure is surfaced via broker_probe_ok/degraded_reason so
+                # /health can flip to "degraded" while still distinguishing a
+                # socket-up broker from a fully disconnected one (A2). Master's
+                # 2026-08-15 data-leg incident fix lives on the data-connector
+                # path (data/market_data.py + health_router round-trip probe).
+
+            try:
+                net_liq = await self.get_portfolio_value()
+            except (asyncio.TimeoutError, ConnectionError, OSError, AttributeError) as exc:
+                probe_errors.append(f"net_liq:{type(exc).__name__}")
+                logger.warning("health_check portfolio_value probe failed: %s", exc)
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
             try:
                 orders = await self.get_open_orders()
                 open_order_count = len(orders)
+<<<<<<< HEAD
             except Exception:
                 pass
+=======
+            except (asyncio.TimeoutError, ConnectionError, OSError, AttributeError) as exc:
+                probe_errors.append(f"open_orders:{type(exc).__name__}")
+                logger.warning("health_check open_orders probe failed: %s", exc)
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
         uptime: Optional[float] = None
         if self._connect_time is not None:
@@ -1312,6 +1445,11 @@ class IBGatewayManager:
             "last_error": self._last_error,
             "ib_library": lib_name,
             "paper_trading_only": True,  # SAFETY: always True — port 4001 is disabled
+<<<<<<< HEAD
+=======
+            "broker_probe_ok": connected and not probe_errors,
+            "degraded_reason": ("; ".join(probe_errors) or None),
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         }
 
         elapsed = (time.monotonic() - start) * 1000
@@ -1337,3 +1475,46 @@ class IBGatewayManager:
             f"status={self._status.value}, "
             f"account={self._config.account!r})"
         )
+<<<<<<< HEAD
+=======
+
+
+def classify_positions_staleness(
+    result: list[dict], last_known: dict, ib_client
+) -> tuple[bool, dict, list[str]]:
+    """
+    Shared decision logic for both the order-routing ``IBGatewayManager``
+    above and the always-on ``IBKRDataConnector`` (data leg, in
+    ``data/market_data.py``) -- 2026-08-10 follow-up to the 2026-08-03 MES
+    overage incident (see ``IBGatewayManager._reconcile_positions_staleness``).
+
+    reqPositionsAsync() AND the local position cache can BOTH come back empty
+    even though a real position exists on the account. Emptiness alone can't
+    be the staleness signal -- that's ALSO what a genuinely flat account looks
+    like. Instead, compare against the caller's last confirmed non-zero
+    snapshot: if it flips to empty with no fill on record that would explain
+    the close, that's suspicious rather than a legitimate flatten.
+
+    Deliberately a plain module-level function, not a method on either
+    connector class -- it has no connector state of its own and both
+    IBGatewayManager and IBKRDataConnector need to call it identically.
+
+    Returns (is_stale, updated_last_known_positions, unexplained_symbols).
+    """
+    current_map = {r["symbol"]: r["position"] for r in result if r["position"] != 0}
+
+    if current_map or not last_known:
+        return False, current_map, []
+
+    try:
+        fills = ib_client.fills()
+    except Exception:
+        fills = []
+    filled_symbols = {f.contract.symbol for f in fills}
+    unexplained = sorted(set(last_known) - filled_symbols)
+
+    if not unexplained:
+        return False, {}, []
+
+    return True, last_known, unexplained
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2

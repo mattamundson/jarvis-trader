@@ -632,8 +632,35 @@ async def _get_ib_gateway_health() -> dict:
     elif data_ib is not None and ib_gw is data_ib:
         health.setdefault("source", "market_data_connector")
 
+<<<<<<< HEAD
     health["execution_connected"] = execution_connected
     health["data_connected"] = data_connected
+=======
+    # Data-leg round-trip verification, independent of which connector `ib_gw`
+    # resolved to above -- the shallow `_ib_is_connected()` flag stays True
+    # through a wedge (socket open, API dead), which is exactly what let
+    # `ibkr_data_connected` report true for hours during the 2026-08-15
+    # incident. `data_ib.health_check()` now does a bounded round-trip probe
+    # (`data/market_data.py`); consult it here instead of trusting the shallow
+    # flag alone. Bounded + best-effort: any failure here silently keeps the
+    # pre-existing shallow signal rather than 500ing /health. Only probes when
+    # the shallow flag is already True — no wedge to detect otherwise.
+    if data_connected and data_ib is not None and hasattr(data_ib, "health_check"):
+        try:
+            data_probe = await asyncio.wait_for(data_ib.health_check(), timeout=3.0)
+            if "connected" in data_probe:
+                data_connected = bool(data_probe["connected"])
+        except Exception:
+            pass
+
+    health["execution_connected"] = execution_connected
+    health["data_connected"] = data_connected
+    # A2: surface broker-probe honesty. health_check() sets these; the no-
+    # health_check fallback (and a fully-disconnected broker) defaults to safe
+    # values so a disconnected paper broker does NOT read as "degraded".
+    health.setdefault("broker_probe_ok", execution_connected or data_connected)
+    health.setdefault("degraded_reason", None)
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
     # Data-leg observability — which tier is actually serving data, and the
     # auto-reconnect watchdog state, so silent degrade is visible (north-star).
@@ -669,6 +696,16 @@ async def _get_ib_gateway_health() -> dict:
 # badge Amo looks at and the gate that decides fundability agree.
 DATA_INTEGRITY_STALE_AFTER_S = 900.0
 
+<<<<<<< HEAD
+=======
+# P3-1 (roadmap-drain, actual): /system/data-integrity above reports staleness
+# but never affected /health's own `status` -- a `market:latest:MES` entry
+# could go stale (or the whole Redis fabric could die) for days with /health
+# still reading "ok". Reuses the SAME 900s threshold as /system/data-integrity
+# (not a third, divergent number) so /health and the readiness gate agree.
+MARKET_DATA_STALE_AFTER_S = DATA_INTEGRITY_STALE_AFTER_S
+
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 @router.get("/system/data-integrity")
 async def get_data_integrity():
@@ -679,7 +716,16 @@ async def get_data_integrity():
     try:
         import redis.asyncio as redis
 
+<<<<<<< HEAD
         r = redis.from_url(settings.REDIS_URL or "redis://localhost:6379/0", decode_responses=True)
+=======
+        r = redis.from_url(
+            settings.REDIS_URL or "redis://localhost:6379/0",
+            decode_responses=True,
+            socket_connect_timeout=3.0,
+            socket_timeout=3.0,
+        )
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
         keys = await r.keys("datasource:*:last_update")
         results = []
@@ -857,7 +903,54 @@ async def _health_inner() -> dict:
     except Exception:
         pass
 
+<<<<<<< HEAD
     status = "ok" if (db_ok and llm_path_healthy) else "degraded"
+=======
+    # Market-data freshness (P3-1): a `market:latest:{symbol}` Redis fabric
+    # entry that goes stale (or the whole fabric dying) previously had zero
+    # effect on /health -- this endpoint would read "ok" indefinitely while
+    # the badge fed from this same source silently served an old price.
+    # Checked only for the currently-authorized/tradeable symbol set (derives
+    # from the single canonical backtest.signals authority, never a hardcoded
+    # list here) so a halted instrument's dead feed can't page anyone.
+    market_data_fresh = True
+    market_data_stale_symbols: list[str] = []
+    try:
+        from backtest.signals import DO_NOT_TRADE_SYMBOLS, TREND_INSTRUMENTS
+
+        active_symbols = sorted(TREND_INSTRUMENTS - DO_NOT_TRADE_SYMBOLS)
+        if data_manager is not None and active_symbols:
+            freshness = await data_manager.check_redis_fabric_freshness(
+                active_symbols, stale_after_s=MARKET_DATA_STALE_AFTER_S
+            )
+            market_data_stale_symbols = sorted(
+                sym for sym, v in freshness.items() if v.get("stale")
+            )
+            market_data_fresh = not market_data_stale_symbols
+    except Exception:
+        # Can't prove it's stale -- and this signal is defense-in-depth on top
+        # of ibgateway_alive/tv_mcp_healthy/llm_path_healthy, not the only
+        # liveness signal /health has. Fail open here, not closed.
+        pass
+
+    # A2 (branch 1353bdb): a broker that reports connected but whose RPC probes
+    # failed is "degraded", not "ok" — it must not read green with
+    # latency=null/net_liq=0. A fully-disconnected broker (no `connected` key)
+    # is the known paper-hours state and does NOT degrade /health here.
+    broker_degraded = bool(ib_health.get("connected")) and not ib_health.get(
+        "broker_probe_ok", True
+    )
+    status = (
+        "ok"
+        if (
+            db_ok
+            and llm_path_healthy
+            and market_data_fresh
+            and not broker_degraded
+        )
+        else "degraded"
+    )
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
     # Defensive read: a config missing this flag must never report live trading
     # (default False = paper). Also keeps /health resilient to a settings object
@@ -884,6 +977,11 @@ async def _health_inner() -> dict:
         # dead (logged out) — a silent stop-enforcement hazard made observable.
         "ib_execution_stale": ib_execution_stale,
         "ibkr_data_connected": ib_health.get("data_connected", False),
+<<<<<<< HEAD
+=======
+        "ibkr_broker_probe_ok": ib_health.get("broker_probe_ok", True),
+        "ibkr_degraded_reason": ib_health.get("degraded_reason"),
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         "ibgateway_alive": ibgateway_alive,
         "ibgateway_port": ibgateway_port,
         "schwab_connected": bool(schwab_connector and schwab_connector.is_connected),
@@ -899,6 +997,11 @@ async def _health_inner() -> dict:
         "pending_approvals": pending_approvals,
         "futures_sentiment": futures_sentiment,
         "batch_jobs_health": batch_jobs_health,
+<<<<<<< HEAD
+=======
+        "market_data_fresh": market_data_fresh,
+        "market_data_stale_symbols": market_data_stale_symbols,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     }
     if llm_path_details:
         response["llm_path_details"] = llm_path_details
@@ -1554,12 +1657,65 @@ async def api_health():
     }
 
 
+<<<<<<< HEAD
 @router.get(
     "/health/pm2",
     description="pm2 process status for jarvis-engine — restart count, uptime, memory.",
 )
 async def pm2_status():
     """Query pm2 for jarvis-engine process stats. Returns empty on non-pm2 deployments."""
+=======
+def classify_pm2_one_shot(pm2_env: dict) -> bool:
+    """True iff this pm2 app is a one-shot cron job, not a long-lived daemon.
+
+    (Phase 4.4 / P4-4) A pm2 app configured with `cron_restart` + `autorestart:
+    false` is DESIGNED to sit `status: "stopped"` between cron fires — that is
+    its correct idle state, not a failure. `jarvis-health-check`,
+    `jarvis-morning-brief`, `jarvis-eod-summary`, `jarvis-rolling-wfe`,
+    `jarvis-weekly-tearsheet`, `jarvis-discord-export`, the `jarvis-vault-*`
+    jobs, and `down-alert` are all this shape (see engine/ecosystem.config.js).
+    Naively reading raw pm2 `status` for these produces a false "X is dead"
+    report — confirmed 2026-08-01 for `down-alert` (it was healthy the whole
+    time; its log showed `OK (HTTP 200)` every minute while pm2 correctly
+    reported `stopped` between cron fires). Any consumer of pm2 status for a
+    one-shot app must check log recency instead of `status == "online"`.
+    """
+    return bool(pm2_env.get("cron_restart")) and pm2_env.get("autorestart") is False
+
+
+def _log_age_seconds(log_path: str | None) -> float | None:
+    """Seconds since `log_path` was last written, or None if missing/unreadable.
+
+    Pure/cheap (single stat call) so it's safe to call per-request without a
+    cache — mirrors the mtime-staleness check down-alert-watchdog/run.ps1
+    already uses for down-alert.mjs specifically; this generalizes the same
+    pattern to any pm2 app so future watchdogs don't have to reinvent it.
+    """
+    if not log_path:
+        return None
+    try:
+        return max(0.0, time.time() - os.path.getmtime(log_path))
+    except OSError:
+        return None
+
+
+@router.get(
+    "/health/pm2",
+    description="pm2 process status for a named app (default jarvis-engine) — "
+    "restart count, uptime, memory, and one-shot/log-recency classification "
+    "for cron_restart apps so callers don't misread a correctly-idle "
+    "one-shot job's pm2 `status:stopped` as dead (Phase 4.4).",
+)
+async def pm2_status(name: str = "jarvis-engine"):
+    """Query pm2 for `name`'s process stats. Returns empty on non-pm2 deployments.
+
+    For a one-shot app (`cron_restart` set + `autorestart:false`), `status`
+    alone does NOT indicate health — `stopped` is its correct resting state
+    between cron fires. Callers must use `is_one_shot` + `log_age_seconds`
+    (how long since its log file last got a write) rather than
+    `status == "online"` to judge whether it's actually dead vs. just idle.
+    """
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     import asyncio
     import json as _json
 
@@ -1572,9 +1728,17 @@ async def pm2_status():
         stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
         processes = _json.loads(stdout.decode())
         for p in processes:
+<<<<<<< HEAD
             if p.get("name") == "jarvis-engine":
                 monit = p.get("monit", {})
                 pm2_env = p.get("pm2_env", {})
+=======
+            if p.get("name") == name:
+                monit = p.get("monit", {})
+                pm2_env = p.get("pm2_env", {})
+                is_one_shot = classify_pm2_one_shot(pm2_env)
+                log_path = pm2_env.get("pm_out_log_path")
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                 return {
                     "found": True,
                     "status": pm2_env.get("status"),
@@ -1584,8 +1748,22 @@ async def pm2_status():
                     "memory_mb": round(monit.get("memory", 0) / 1_048_576, 1),
                     "cpu_pct": monit.get("cpu", 0),
                     "pid": p.get("pid"),
+<<<<<<< HEAD
                 }
         return {"found": False, "note": "jarvis-engine not found in pm2 list"}
+=======
+                    # One-shot classification (Phase 4.4) — a one-shot app sitting
+                    # "stopped" is HEALTHY, not dead. Consumers must gate any
+                    # "is this dead" verdict on is_one_shot before trusting
+                    # status == "online"; for one-shot apps, check log recency
+                    # (log_age_seconds) against that app's own cron cadence instead.
+                    "is_one_shot": is_one_shot,
+                    "cron_restart": pm2_env.get("cron_restart"),
+                    "log_path": log_path,
+                    "log_age_seconds": _log_age_seconds(log_path),
+                }
+        return {"found": False, "note": f"{name} not found in pm2 list"}
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     except Exception as exc:
         return {"found": False, "error": str(exc)}
 
@@ -1913,7 +2091,10 @@ async def ib_connection_test():
             "account_id": None,
             "error": str(exc),
         }
+<<<<<<< HEAD
     latency_ms = round((_time.perf_counter() - start) * 1000.0, 1)
+=======
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     connected = bool(health.get("execution_connected") or health.get("data_connected"))
 
     execution_ib = getattr(safety_layer, "_ib_gateway", None) if safety_layer else None
@@ -1924,6 +2105,22 @@ async def ib_connection_test():
         (v for v in (getattr(ib_gw, a, None) for a in ("port", "_port")) if isinstance(v, int)),
         None,
     )
+<<<<<<< HEAD
+=======
+    if port is None and connected:
+        # Some connector instances expose connection state but not their port. The
+        # live TCP probe is the authoritative paper/live boundary already used by
+        # /health, so only backfill the dashboard-facing port when that probe is
+        # currently alive. This avoids connected=true/port=null ambiguity without
+        # overstating a dead gateway as usable.
+        try:
+            alive, probed_port = _check_ibgateway_alive()
+            if alive and isinstance(probed_port, int):
+                port = probed_port
+        except Exception:
+            pass
+    latency_ms = round((_time.perf_counter() - start) * 1000.0, 1)
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     account_id = next(
         (
             v

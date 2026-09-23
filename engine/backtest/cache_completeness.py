@@ -69,7 +69,11 @@ _DEFAULT_GAP_THRESHOLD_FACTOR = 1.5
 _INTERVAL_RE = re.compile(r"^(\d+)([mhd])$")
 _WEEKEND = (5, 6)  # Saturday, Sunday (datetime.weekday)
 
+<<<<<<< HEAD
 #: CME equity-index / NYSE full-closure dates 2024-2026 (the calendar the MES /
+=======
+#: CME equity-index / NYSE full-closure dates 2019-2026 (the calendar the MES /
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 #: ES / MNQ caches follow). Pass as `holiday_dates` so genuine data holes aren't
 #: drowned out by legitimate exchange closures. Includes the 2025-01-09 Carter
 #: National Day of Mourning. Early-close half-days are intentionally OMITTED --
@@ -83,9 +87,115 @@ _WEEKEND = (5, 6)  # Saturday, Sunday (datetime.weekday)
 #: "suspicious" (see cache_completeness.CACHE_README or the vwap-sharpe
 #: 2026-07-06 incident) purely because the corresponding 2024 date wasn't
 #: whitelisted yet -- not because the data was actually holed.
+<<<<<<< HEAD
 US_MARKET_HOLIDAYS = frozenset(
     date(*ymd)
     for ymd in [
+=======
+#:
+#: 2026-08-18 correction (E2): this list previously started at 2024-01-01,
+#: which meant the DEEP validation cache (MES_2015-01-01_2026-08-16_1h.csv,
+#: true span 2019-05-05 -> 2026-08-14) was judged "holed" on every 2019-2023
+#: holiday -- a false positive that made `_find_latest_cache(prefer_complete=True)`
+#: veto the 7.3y deep cache in favor of a 2.3y shallow cache, producing the
+#: 2026-08-17 fake-'deep' verdicts (n_windows=20 instead of 82). Calendar now
+#: covers the full deep span. Extend as years roll.
+#:
+#: 2026-08-18 correction (E7-FOLLOWUP): extended back to 2015 so the deep
+#: equity 1d caches (SPY_/QQQ_2015-01-01_2026-08-17_1d.csv) are not flagged on
+#: 2015-2018 holiday closures. Independent verification (cross-check of every
+#: missing weekday in those caches against the NYSE closure calendar, incl.
+#: Juneteenth 2022+ and the Days of Mourning 2018-12-05 / 2025-01-09) showed
+#: ZERO missing non-holiday trading days -- all 36 flagged gaps per symbol were
+#: 2015-2018 holidays missing from this whitelist. This extension can only
+#: explain away genuine closures; a real hole on a non-holiday still flags.
+US_MARKET_HOLIDAYS = frozenset(
+    date(*ymd)
+    for ymd in [
+        (2015, 1, 1),
+        (2015, 1, 19),
+        (2015, 2, 16),
+        (2015, 4, 3),
+        (2015, 5, 25),
+        (2015, 7, 3),
+        (2015, 9, 7),
+        (2015, 11, 26),
+        (2015, 12, 25),
+        (2016, 1, 1),
+        (2016, 1, 18),
+        (2016, 2, 15),
+        (2016, 3, 25),
+        (2016, 5, 30),
+        (2016, 7, 4),
+        (2016, 9, 5),
+        (2016, 11, 24),
+        (2016, 12, 26),
+        (2017, 1, 2),
+        (2017, 1, 16),
+        (2017, 2, 20),
+        (2017, 4, 14),
+        (2017, 5, 29),
+        (2017, 7, 4),
+        (2017, 9, 4),
+        (2017, 11, 23),
+        (2017, 12, 25),
+        (2018, 1, 1),
+        (2018, 1, 15),
+        (2018, 2, 19),
+        (2018, 3, 30),
+        (2018, 5, 28),
+        (2018, 7, 4),
+        (2018, 9, 3),
+        (2018, 11, 22),
+        (2018, 12, 5),
+        (2018, 12, 25),
+        (2019, 1, 1),
+        (2019, 1, 21),
+        (2019, 2, 18),
+        (2019, 4, 19),
+        (2019, 5, 27),
+        (2019, 7, 4),
+        (2019, 9, 2),
+        (2019, 11, 28),
+        (2019, 12, 25),
+        (2020, 1, 1),
+        (2020, 1, 20),
+        (2020, 2, 17),
+        (2020, 4, 10),
+        (2020, 5, 25),
+        (2020, 7, 3),
+        (2020, 9, 7),
+        (2020, 11, 26),
+        (2020, 12, 25),
+        (2021, 1, 1),
+        (2021, 1, 18),
+        (2021, 2, 15),
+        (2021, 4, 2),
+        (2021, 5, 31),
+        (2021, 7, 5),
+        (2021, 9, 6),
+        (2021, 11, 25),
+        (2021, 12, 24),
+        (2022, 1, 17),
+        (2022, 2, 21),
+        (2022, 4, 15),
+        (2022, 5, 30),
+        (2022, 6, 20),
+        (2022, 7, 4),
+        (2022, 9, 5),
+        (2022, 11, 24),
+        (2022, 12, 26),
+        (2023, 1, 2),
+        (2023, 1, 16),
+        (2023, 2, 20),
+        (2023, 4, 7),
+        (2023, 5, 29),
+        (2023, 6, 19),
+        (2023, 7, 4),
+        (2023, 9, 4),
+        (2023, 11, 23),
+        (2023, 12, 25),
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         (2024, 1, 1),
         (2024, 1, 15),
         (2024, 2, 19),
@@ -120,7 +230,11 @@ US_MARKET_HOLIDAYS = frozenset(
     ]
 )
 
+<<<<<<< HEAD
 #: CME reduced-hours ("early close") session dates 2024-2026: quarterly
+=======
+#: CME reduced-hours ("early close") session dates 2019-2026: quarterly
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 #: triple-witching Fridays (3rd Friday of Mar/Jun/Sep/Dec, when the equity-index
 #: futures pit closes early), the day before Independence Day, and Christmas
 #: Eve. These do NOT fully close the exchange, but empirically the plain (non-
@@ -130,9 +244,49 @@ US_MARKET_HOLIDAYS = frozenset(
 #: previously documented for early closes. Pass alongside `US_MARKET_HOLIDAYS`
 #: (e.g. `US_MARKET_HOLIDAYS | US_MARKET_EARLY_CLOSES`) wherever a caller wants
 #: both closure classes explained away. Extend as years roll.
+<<<<<<< HEAD
 US_MARKET_EARLY_CLOSES = frozenset(
     date(*ymd)
     for ymd in [
+=======
+#:
+#: 2026-08-18 correction (E2): extended back to 2019 so the DEEP validation
+#: cache (true span 2019-05-05 -> 2026-08-14) is not flagged on pre-2024 early
+#: closes -- same false-'holed' class as the 2026-08-17 contamination.
+US_MARKET_EARLY_CLOSES = frozenset(
+    date(*ymd)
+    for ymd in [
+        (2019, 3, 15),
+        (2019, 6, 21),
+        (2019, 7, 3),
+        (2019, 9, 20),
+        (2019, 12, 20),
+        (2019, 12, 24),
+        (2020, 3, 20),
+        (2020, 6, 19),
+        (2020, 7, 2),
+        (2020, 9, 18),
+        (2020, 12, 18),
+        (2020, 12, 24),
+        (2021, 3, 19),
+        (2021, 6, 18),
+        (2021, 7, 2),
+        (2021, 9, 17),
+        (2021, 12, 17),
+        (2021, 12, 23),
+        (2022, 3, 18),
+        (2022, 6, 17),
+        (2022, 7, 1),
+        (2022, 9, 16),
+        (2022, 12, 16),
+        (2022, 12, 23),
+        (2023, 3, 17),
+        (2023, 6, 16),
+        (2023, 7, 3),
+        (2023, 9, 15),
+        (2023, 12, 15),
+        (2023, 12, 22),
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         (2024, 3, 15),
         (2024, 6, 21),
         (2024, 7, 3),

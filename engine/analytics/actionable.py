@@ -283,4 +283,19 @@ def derive_actionable_board(
          "invalidated", "expired", "unknown")
     )}
     items.sort(key=lambda it: (order.get(it["status"], 99), -(it.get("confidence") or 0.0)))
+<<<<<<< HEAD
     return {"items": items, "count": len(items), "available": True}
+=======
+    return {
+        "items": items,
+        "count": len(items),
+        "available": True,
+        # raw_count = rows fetched before the buy/sell + rejected/error +
+        # per-(symbol, direction) dedup filters; shown = what the board
+        # displays. The delta tells the UI WHY an otherwise-populated queue
+        # shows an empty board (e.g. every recent decision was rejected)
+        # instead of a misleading "no opportunities" claim.
+        "raw_count": len(rows),
+        "shown": len(items),
+    }
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2

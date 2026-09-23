@@ -1,0 +1,144 @@
+{
+  "created_at": "2026-09-12T05:38:26.576881+00:00",
+  "scope": "research-only family-level deflation; no runtime/risk/kill-switch/paper_config changes",
+  "cache": "MES_2019-05-05_2026-08-26_1h.csv",
+  "trial_count": 8,
+  "months": 75,
+  "combos": [
+    {
+      "key": "60/200/2.0",
+      "trades": 122,
+      "total_pnl": 11789.36,
+      "monthly_sharpe": 0.441,
+      "trade_sharpe_recalc": 0.8777,
+      "skew": 0.4808,
+      "kurt": 2.4054,
+      "dsr": {
+        "sr_star_trials": 1.459014,
+        "z": -6.940727,
+        "p_deflated": 1.0,
+        "pass_5pct": false
+      }
+    },
+    {
+      "key": "60/200/1.8",
+      "trades": 122,
+      "total_pnl": 10793.27,
+      "monthly_sharpe": 0.3097,
+      "trade_sharpe_recalc": 0.7714,
+      "skew": 0.4201,
+      "kurt": 2.169,
+      "dsr": {
+        "sr_star_trials": 1.459014,
+        "z": -8.205015,
+        "p_deflated": 1.0,
+        "pass_5pct": false
+      }
+    },
+    {
+      "key": "55/190/2.0",
+      "trades": 127,
+      "total_pnl": 8982.76,
+      "monthly_sharpe": 0.269,
+      "trade_sharpe_recalc": 0.6633,
+      "skew": 0.5742,
+      "kurt": 2.5262,
+      "dsr": {
+        "sr_star_trials": 1.459014,
+        "z": -10.067791,
+        "p_deflated": 1.0,
+        "pass_5pct": false
+      }
+    },
+    {
+      "key": "55/200/2.0",
+      "trades": 128,
+      "total_pnl": 7445.58,
+      "monthly_sharpe": 0.2251,
+      "trade_sharpe_recalc": 0.5631,
+      "skew": 0.5723,
+      "kurt": 2.5354,
+      "dsr": {
+        "sr_star_trials": 1.459014,
+        "z": -11.292107,
+        "p_deflated": 1.0,
+        "pass_5pct": false
+      }
+    },
+    {
+      "key": "55/190/1.8",
+      "trades": 127,
+      "total_pnl": 7061.5,
+      "monthly_sharpe": 0.1964,
+      "trade_sharpe_recalc": 0.529,
+      "skew": 0.608,
+      "kurt": 2.5615,
+      "dsr": {
+        "sr_star_trials": 1.459014,
+        "z": -11.763154,
+        "p_deflated": 1.0,
+        "pass_5pct": false
+      }
+    },
+    {
+      "key": "60/190/2.0",
+      "trades": 122,
+      "total_pnl": 3586.98,
+      "monthly_sharpe": 0.1039,
+      "trade_sharpe_recalc": 0.2917,
+      "skew": 0.4977,
+      "kurt": 2.3136,
+      "dsr": {
+        "sr_star_trials": 1.459014,
+        "z": -13.666908,
+        "p_deflated": 1.0,
+        "pass_5pct": false
+      }
+    },
+    {
+      "key": "60/190/1.8",
+      "trades": 122,
+      "total_pnl": 2930.63,
+      "monthly_sharpe": 0.077,
+      "trade_sharpe_recalc": 0.2347,
+      "skew": 0.5382,
+      "kurt": 2.2277,
+      "dsr": {
+        "sr_star_trials": 1.459014,
+        "z": -14.271101,
+        "p_deflated": 1.0,
+        "pass_5pct": false
+      }
+    },
+    {
+      "key": "55/200/1.8",
+      "trades": 50,
+      "total_pnl": -237.73,
+      "monthly_sharpe": -0.0131,
+      "trade_sharpe_recalc": -0.0289,
+      "skew": 0.7418,
+      "kurt": 2.62,
+      "dsr": {
+        "sr_star_trials": 1.459014,
+        "z": -10.303842,
+        "p_deflated": 1.0,
+        "pass_5pct": false
+      }
+    }
+  ],
+  "pbo": {
+    "folds": 70,
+    "method": "8 chronological month-groups choose 4 test groups; rank selected in OOS; lambda<0.5 is overfit",
+    "pbo": 0.3714,
+    "selection_counts": {
+      "60/200/2.0": 31,
+      "60/200/1.8": 20,
+      "55/190/1.8": 9,
+      "55/200/2.0": 6,
+      "55/190/2.0": 2,
+      "60/190/1.8": 1,
+      "55/200/1.8": 1
+    }
+  },
+  "verdict": "Best aggregate remains 60/200/2.0, but family-level deflation is not clean promotion evidence; PBO and non-significant paired tests keep status at robustness support only."
+}

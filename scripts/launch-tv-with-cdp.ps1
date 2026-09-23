@@ -41,16 +41,27 @@ param(
 $ErrorActionPreference = "Stop"
 
 # ── Config ─────────────────────────────────────────────────────────────────────
+<<<<<<< HEAD
 $cdpPort       = 9222
+=======
+$cdpPort = 9222
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 # Discover the installed TV Desktop version dir via wildcard resolve — survives
 # Microsoft Store auto-updates that rotate the version-stamped folder name (e.g.
 # 3.0.0.7652 → 3.0.0.7800). Resolve-Path with wildcards works from user context
 # without admin rights; Get-ChildItem on WindowsApps usually does not. Fallback
 # to the last-known path keeps old behaviour if discovery silently returns null.
+<<<<<<< HEAD
 $tvResolved    = Resolve-Path "C:\Program Files\WindowsApps\TradingView.Desktop_*_x64__*\TradingView.exe" -ErrorAction SilentlyContinue | Select-Object -Last 1
 $tvBinary      = if ($tvResolved) { $tvResolved.Path } else { "C:\Program Files\WindowsApps\TradingView.Desktop_3.0.0.7652_x64__n534cwy3pjxzj\TradingView.exe" }
 $logPath       = Join-Path $env:USERPROFILE "jarvis-tv-cdp.log"
 $maxLogBytes   = 1MB
+=======
+$tvResolved = Resolve-Path "C:\Program Files\WindowsApps\TradingView.Desktop_*_x64__*\TradingView.exe" -ErrorAction SilentlyContinue | Select-Object -Last 1
+$tvBinary = if ($tvResolved) { $tvResolved.Path } else { "C:\Program Files\WindowsApps\TradingView.Desktop_3.0.0.7652_x64__n534cwy3pjxzj\TradingView.exe" }
+$logPath = Join-Path $env:USERPROFILE "jarvis-tv-cdp.log"
+$maxLogBytes = 1MB
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 $launchTimeoutSec = 30  # 2026-04-24: bumped from 15s — TV cold-start observed at 22s (23:33) and 26s (failed at 23:23). 15s triggered false-failure on the 2026-04-23 22:23 scheduled-task fire (LastResult=1).
 
 # ── Logging ────────────────────────────────────────────────────────────────────
@@ -75,7 +86,12 @@ function Test-CdpAlive {
     try {
         $resp = Invoke-WebRequest -Uri "http://localhost:$cdpPort/json/version" -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop
         return $resp.StatusCode -eq 200
+<<<<<<< HEAD
     } catch {
+=======
+    }
+    catch {
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         return $false
     }
 }
@@ -113,9 +129,15 @@ if ($tvProcs.Count -gt 0) {
         # Fall through to Step 3 (fresh launch)
     } else {
         $reason = if ($AutoHeal) { "-AutoHeal set but outside safe-kill window (weekday 07:00-18:00 CT)" } else { "-AutoHeal not set" }
+<<<<<<< HEAD
         Write-Log "TV Desktop is running ($($tvProcs.Count) processes) but CDP port $cdpPort is not responding. $reason. Not killing the session — user may have unsaved layouts. Relaunch manually via: taskkill /IM TradingView.exe /F; then rerun this script. Or set \$env:JARVIS_FORCE_TV_RELAUNCH='1' and rerun with -AutoHeal." "WARN"
         exit 2
     }
+=======
+        Write-Log "TV Desktop is running ($($tvProcs.Count) processes) but CDP port $cdpPort is not responding. $reason. Not killing the session — user may have unsaved layouts. Relaunch manually via: taskkill /IM TradingView.exe /F; then rerun this script. Or set `$env:JARVIS_FORCE_TV_RELAUNCH='1' and rerun with -AutoHeal." "WARN"
+    exit 2
+}
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 }
 
 # ── Step 3: Launch TV with CDP flag ────────────────────────────────────────────

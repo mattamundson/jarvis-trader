@@ -28,6 +28,15 @@ router = APIRouter(prefix="/trades", tags=["trades"])
 _db_manager: Any = None
 _llm_client: Any = None
 
+<<<<<<< HEAD
+=======
+# /trades/journal response cache. Paper trades resolve minutes apart (a fill,
+# a close), so a short TTL absorbs dashboard polling bursts and shields the
+# SQLite connection from concurrent write-lock stalls under engine load.
+JOURNAL_CACHE_TTL_SECONDS = 5.0
+_journal_cache: dict[tuple, tuple[float, list[dict]]] = {}
+
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 def inject_dependencies(db_manager: Any, llm_client: Any) -> None:
     global _db_manager, _llm_client
@@ -119,13 +128,44 @@ def get_trades_journal(
     regime: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=200),
 ) -> List[TradeJournalEntry]:
+<<<<<<< HEAD
+=======
+    import time as _time
+
+    # Narrow column list: only the fields the response model exposes. SELECT *
+    # pulled all 36 paper_trades columns including large TEXT blobs
+    # (strategy_params, notes) — the dominant cost once a connection is open.
+    # Narrow column list: only the fields the response model exposes that also
+    # EXIST in paper_trades. SELECT * pulled all 36 columns including large
+    # TEXT blobs (strategy_params, notes) — the dominant cost once a connection
+    # is open. Model fields with no backing column (regime_tier, deciding_stage,
+    # bull/bear_score, debate_confidence, timeframe) are intentionally omitted —
+    # they were never populated under SELECT * either, so they stay None.
+    _JOURNAL_COLUMNS = (
+        "id", "trade_id", "symbol", "side", "quantity", "entry_price",
+        "exit_price", "entry_time", "exit_time", "pnl", "status",
+        "strategy_params", "notes", "regime", "structure_position", "bias",
+        "composite_score", "stc_contrib", "orb_contrib", "vwap_contrib",
+    )
+    cache_key = (symbol, regime, limit)
+    now = _time.monotonic()
+    cached = _journal_cache.get(cache_key)
+    if cached is not None and (now - cached[0]) < JOURNAL_CACHE_TTL_SECONDS:
+        return [TradeJournalEntry(**t) for t in cached[1]]
+
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     try:
         from database import get_db as get_db_manager
 
         db = get_db_manager()
         conn = db._connect()  # type: ignore[attr-defined]
 
+<<<<<<< HEAD
         query = "SELECT * FROM paper_trades WHERE 1=1"
+=======
+        cols = ", ".join(_JOURNAL_COLUMNS)
+        query = f"SELECT {cols} FROM paper_trades WHERE 1=1"
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         params: List[Any] = []
 
         if symbol:
@@ -143,6 +183,11 @@ def get_trades_journal(
         col_names = [d[0] for d in cursor.description]
         trades = [dict(zip(col_names, row, strict=False)) for row in rows]
         conn.close()
+<<<<<<< HEAD
+=======
+
+        _journal_cache[cache_key] = (_time.monotonic(), trades)
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         return [TradeJournalEntry(**t) for t in trades]
 
     except sqlite3.OperationalError as exc:

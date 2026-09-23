@@ -27,6 +27,10 @@ Grid (3 combos, identical to rank11):
 Usage (from engine/ directory):
     .venv/Scripts/python backtest/run_mes_trend_rv_filter.py
 """
+<<<<<<< HEAD
+=======
+
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 from __future__ import annotations
 
 import itertools
@@ -213,9 +217,25 @@ from backtest._constants import (  # noqa: E402
     GATE_FIXED_PARAMS_MIN_PF,
     GATE_WFO_CONSISTENCY_VALUES,
 )
+<<<<<<< HEAD
 from backtest._gate_v2_helpers import _find_latest_cache  # noqa: E402
 from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower  # noqa: E402
 from backtest._gate_v2_helpers import (  # noqa: E402
+=======
+from backtest._gate_v2_helpers import (  # noqa: E402
+    GATE_DSR,
+    GATE_DSR_ALT,
+    GATE_MC_DD_ALT,
+    GATE_MC_DD_CORE,
+    GATE_P_EDGE,
+    GATE_PF_CI_LOWER,
+    _find_latest_cache,  # noqa: E402
+)
+from backtest._gate_v2_helpers import (
+    bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower,  # noqa: E402
+)
+from backtest._gate_v2_helpers import (
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     classify_wfo_consistency as _classify_wfo_consistency,  # noqa: E402
 )
 
@@ -719,6 +739,12 @@ def run_wfo() -> dict:
         },
     }
 
+<<<<<<< HEAD
+=======
+    # Provenance (2026-09-17 audit): record which cache produced this verdict.
+    from backtest._gate_v2_helpers import inject_cache_provenance as _inject_prov  # noqa: E402
+    verdict_doc = _inject_prov(verdict_doc, data_file)
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     verdict_file.write_text(json.dumps(verdict_doc, indent=2, default=str))
     print(f"\n[MES-RV] Verdict written -> {verdict_file}")
 

@@ -20,6 +20,18 @@
 2. If engine shows disconnected after gateway bounce: **restart engine** ([restart_engine.ps1](../../restart_engine.ps1)) after confirming Gateway login.
 3. Complete [P0_PAPER_IB_VERIFICATION.md](P0_PAPER_IB_VERIFICATION.md) once per environment change.
 
+<<<<<<< HEAD
+=======
+## Dashboard widget
+
+`/health` mounts `IBGatewayStatus` (`dashboard/components/IBGatewayStatus.tsx`), which polls
+`GET /ib/connection-test` and offers a **Connect** button when disconnected. That button only
+calls `POST /data/reconnect` — the engine's existing idempotent data-leg reconnect (GT-38). It
+cannot start the IB Gateway OS process itself (a FastAPI handler has no way to launch a desktop
+app); Gateway startup/login stays a manual operator action per §Operator actions above. No
+`/ib/connect` engine endpoint exists or is planned for this.
+
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 ## Health endpoints
 
 See [HEALTH_API_CONTRACT.md](HEALTH_API_CONTRACT.md) for JSON fields the dashboard and scripts should rely on.

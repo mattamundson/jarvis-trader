@@ -9,6 +9,10 @@ from fastapi import APIRouter, HTTPException
 from pydantic import ValidationError
 
 from schemas.decision_log import DecisionRecord, parse_decision_row
+<<<<<<< HEAD
+=======
+from utils.data_provenance import build_data_provenance, stamp_signal_data
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +24,12 @@ _decision_log: list[dict] = []
 # SQLite DatabaseManager — injected at startup via set_db_manager()
 _db_manager = None
 
+<<<<<<< HEAD
+=======
+# MarketDataManager — injected at startup via set_data_manager() (decision provenance)
+_data_manager = None
+
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 def set_db_manager(db) -> None:
     """Inject the application-level SQLite DatabaseManager into this router."""
@@ -27,6 +37,19 @@ def set_db_manager(db) -> None:
     _db_manager = db
 
 
+<<<<<<< HEAD
+=======
+def set_data_manager(dm) -> None:
+    """Inject the application-level MarketDataManager into this router.
+
+    Used only to stamp {last_bar_source, serve_age_s} data-provenance onto
+    persisted decisions (matches main.py's _log_decision, PR #286).
+    """
+    global _data_manager
+    _data_manager = dm
+
+
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 @router.get("/decisions/recent")
 async def get_recent_decisions(limit: int = 20, symbol: str = None, agent: str = None):
     """Return most recent agent decisions from SQLite, falling back to in-memory log"""
@@ -279,12 +302,27 @@ async def log_decision(decision: dict):
 
     if _db_manager is not None:
         try:
+<<<<<<< HEAD
             _db_manager.insert_decision(
                 symbol=decision.get("symbol", "UNKNOWN"),
                 action=decision.get("action", "hold"),
                 confidence=float(decision.get("confidence", 0.0)),
                 regime=decision.get("regime"),
                 signal_data=decision,
+=======
+            # Data-truth: stamp *what data* this decision was based on (tier +
+            # per-symbol serve-age), matching main.py's _log_decision (PR #286).
+            # Additive only — never changes a trade decision, never raises.
+            symbol = decision.get("symbol", "UNKNOWN")
+            provenance = build_data_provenance(_data_manager, symbol)
+            sig = stamp_signal_data(decision, provenance)
+            _db_manager.insert_decision(
+                symbol=symbol,
+                action=decision.get("action", "hold"),
+                confidence=float(decision.get("confidence", 0.0)),
+                regime=decision.get("regime"),
+                signal_data=sig,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                 reasoning=decision.get("reasoning") or decision.get("summary", ""),
                 timestamp=entry["timestamp"],
                 full_pipeline_data=decision.get("full_pipeline_data"),

@@ -20,6 +20,10 @@ import {
 import { fetchEngine, postEngine } from "@/lib/api";
 import { buildAdditionalMetricsTiles } from "@/lib/strategyCTiles";
 import { Badge } from "@/components/ui/badge";
+<<<<<<< HEAD
+=======
+import { ExploratoryBanner } from "@/components/ExploratoryBanner";
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -111,8 +115,23 @@ interface Metrics {
   };
   optimal_params?: Record<string, unknown>;
   deflated_sharpe?: {
+<<<<<<< HEAD
     p_value: number;
     verdict: string;
+=======
+    // C3 metric-honesty pass: DSR computed on the NATIVE weekly Sharpe (raw
+    // frequency) — never an annualized input (2026-07-10 incident rule).
+    dsr?: number; // p-value 0..1; >= 0.10 passes the selection-bias penalty
+    p_value?: number; // alias for older payloads
+    verdict?: string;
+    raw_sharpe?: number;
+    expected_max_sharpe?: number;
+    sharpe_std_error?: number;
+    passes_at_10pct?: boolean;
+    dsr_degenerate?: boolean;
+    n_trials?: number;
+    n_obs?: number;
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
   };
 }
 
@@ -280,10 +299,25 @@ export default function StrategyCPage() {
     !signal.layers.macro_filter
   ) {
     return (
+<<<<<<< HEAD
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 m-4 text-sm text-slate-400">
         Strategy-C signal payload is incomplete — the engine returned a partial
         response (missing layer or holdings data). Showing nothing rather than
         crashing; retry after the next refresh.
+=======
+      <div className="m-4 space-y-3">
+        {/* The provenance banner belongs here too, not only on the happy path.
+            A partial payload is precisely when a reader is most at risk of
+            over-reading whatever IS on screen, so dropping the "exploratory,
+            not validated" disclosure in the degraded state gets the honesty
+            guarantee exactly backwards. */}
+        <ExploratoryBanner what="Strategy C+ is an in-development signal" />
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 text-sm text-slate-400">
+          Strategy-C signal payload is incomplete — the engine returned a partial
+          response (missing layer or holdings data). Showing nothing rather than
+          crashing; retry after the next refresh.
+        </div>
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       </div>
     );
   }
@@ -309,6 +343,13 @@ export default function StrategyCPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans">
+<<<<<<< HEAD
+=======
+      <div className="px-6 pt-4">
+        <ExploratoryBanner what="Strategy C+ is an in-development signal" />
+      </div>
+
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       {/* ── Header ───────────────────────────────────────────────────────── */}
       <div className="border-b border-slate-800 px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
@@ -623,28 +664,44 @@ export default function StrategyCPage() {
                 {
                   label: "CAGR",
                   live: metrics.full_period?.cagr != null,
+<<<<<<< HEAD
                   value: metrics.full_period?.cagr != null ? fmtPct(metrics.full_period.cagr) : "17.09%",
+=======
+                  value: fmtPct(metrics.full_period?.cagr),
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                   target: "17.4%",
                   good: true,
                 },
                 {
                   label: "Sharpe",
                   live: metrics.full_period?.sharpe != null,
+<<<<<<< HEAD
                   value: metrics.full_period?.sharpe != null ? fmtNum(metrics.full_period.sharpe) : "2.12",
+=======
+                  value: fmtNum(metrics.full_period?.sharpe),
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                   target: "2.13",
                   good: true,
                 },
                 {
                   label: "Max DD",
                   live: metrics.full_period?.max_drawdown != null,
+<<<<<<< HEAD
                   value: metrics.full_period?.max_drawdown != null ? fmtPct(metrics.full_period.max_drawdown) : "-8.16%",
+=======
+                  value: fmtPct(metrics.full_period?.max_drawdown),
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                   target: "-7.7%",
                   good: false,
                 },
                 {
                   label: "Volatility",
                   live: metrics.full_period?.volatility != null,
+<<<<<<< HEAD
                   value: metrics.full_period?.volatility != null ? fmtPct(metrics.full_period.volatility) : "7.57%",
+=======
+                  value: fmtPct(metrics.full_period?.volatility),
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                   target: "7.7%",
                   good: true,
                 },
@@ -716,6 +773,78 @@ export default function StrategyCPage() {
                 </div>
               ))}
             </div>
+<<<<<<< HEAD
+=======
+
+            {/* Deflated Sharpe (re-deflated) — C3 metric-honesty pass */}
+            {metrics.deflated_sharpe && (
+              <div className="mt-4 border-t border-slate-800 pt-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Shield className="w-4 h-4 text-violet-400" />
+                    <p className="text-sm font-semibold text-white">
+                      Deflated Sharpe Ratio (re-deflated)
+                    </p>
+                  </div>
+                  {(() => {
+                    const dsrVal = metrics.deflated_sharpe?.dsr ?? metrics.deflated_sharpe?.p_value;
+                    const degenerate = metrics.deflated_sharpe?.dsr_degenerate ?? false;
+                    const passes = metrics.deflated_sharpe?.passes_at_10pct ?? (dsrVal != null ? dsrVal >= 0.1 : false);
+                    if (dsrVal == null || degenerate) {
+                      return (
+                        <Badge variant="static" className="text-xs">
+                          UNAVAILABLE
+                        </Badge>
+                      );
+                    }
+                    return (
+                      <Badge variant={passes ? "bull" : "bear"} className="text-xs">
+                        {passes ? "PASSES at 10%" : "FAILS at 10%"}
+                      </Badge>
+                    );
+                  })()}
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                  <div className="bg-slate-800/50 rounded-lg p-3">
+                    <p className="text-slate-500 mb-1">DSR p-value</p>
+                    <p className="text-white font-semibold font-mono">
+                      {(() => {
+                        const v = metrics.deflated_sharpe?.dsr ?? metrics.deflated_sharpe?.p_value;
+                        return v != null ? v.toFixed(4) : "—";
+                      })()}
+                    </p>
+                  </div>
+                  <div className="bg-slate-800/50 rounded-lg p-3">
+                    <p className="text-slate-500 mb-1">Raw Sharpe (weekly)</p>
+                    <p className="text-white font-semibold font-mono">
+                      {metrics.deflated_sharpe?.raw_sharpe != null
+                        ? metrics.deflated_sharpe.raw_sharpe.toFixed(4)
+                        : "—"}
+                    </p>
+                  </div>
+                  <div className="bg-slate-800/50 rounded-lg p-3">
+                    <p className="text-slate-500 mb-1">E[max SR | trials]</p>
+                    <p className="text-white font-semibold font-mono">
+                      {metrics.deflated_sharpe?.expected_max_sharpe != null
+                        ? `${metrics.deflated_sharpe.expected_max_sharpe.toFixed(4)} (n=${metrics.deflated_sharpe.n_trials ?? "?"})`
+                        : "—"}
+                    </p>
+                  </div>
+                  <div className="bg-slate-800/50 rounded-lg p-3">
+                    <p className="text-slate-500 mb-1">Sample</p>
+                    <p className="text-white font-semibold font-mono">
+                      {metrics.deflated_sharpe?.n_obs != null ? `${metrics.deflated_sharpe.n_obs} weeks` : "—"}
+                    </p>
+                  </div>
+                </div>
+                <p className="text-[11px] text-slate-600 mt-2 leading-snug">
+                  Bailey–López de Prado DSR computed on the native weekly Sharpe (raw frequency) with
+                  the grid-search trial count — never an annualized input. A degenerate estimate is
+                  treated as a failure, not a pass.
+                </p>
+              </div>
+            )}
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
           </div>
         )}
 

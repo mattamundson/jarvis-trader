@@ -41,13 +41,26 @@ def _wrap(underlying: Exception) -> RetryError:
 
 
 @pytest.fixture(autouse=True)
+<<<<<<< HEAD
 def _reset_state():
+=======
+def _reset_state(monkeypatch):
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     """Each test starts with a clean healthy state."""
     _LLM_PATH_STATE["healthy"] = True
     _LLM_PATH_STATE["last_failure_ts"] = None
     _LLM_PATH_STATE["last_failure_reason"] = None
     _LLM_PATH_STATE["last_failure_agent"] = None
+<<<<<<< HEAD
     os.environ["TESTING"] = "true"  # suppress actual WhatsApp send
+=======
+    # monkeypatch (not raw os.environ) so this reverts to the conftest.py
+    # default after every test -- a raw assignment here previously leaked
+    # TESTING="true" into every test file collected after this one for the
+    # rest of the session (surfaced by test_openclaw_fire_and_forget.py,
+    # which depends on TESTING being unset to exercise its real send path).
+    monkeypatch.setenv("TESTING", "true")  # suppress actual WhatsApp send
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     yield
 
 

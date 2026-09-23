@@ -17,6 +17,10 @@ Contract multipliers ($ per point):
 
 import logging
 import math
+<<<<<<< HEAD
+=======
+import os
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -41,10 +45,45 @@ INSTRUMENT_MULTIPLIERS: dict[str, float] = {
     "NQ=F": 2.0,
     "CL=F": 100.0,
     "GC=F": 10.0,
+<<<<<<< HEAD
 }
 
 # Default multiplier when symbol is unknown — conservative $5 (same as MES)
 _DEFAULT_MULTIPLIER = 5.0
+=======
+    # Equities / ETFs — $1 per $1 of price movement, per SHARE. These are the
+    # OPTIONS_WATCHLIST names (SPY,QQQ,AAPL,TSLA), which the pipeline trades and
+    # the ledger already holds 19 closed rows for. Without them every equity fell
+    # through to the old $5.0 default and was sized as if it were a micro future
+    # -- TSLA at ~$390 with a $151 risk budget and a ~$2 stop should be ~75
+    # shares; the engine computed 15, then clamped to 2. Equity signals were
+    # effectively no-ops. portfolio.tracker resolves the same names to 1.0.
+    "SPY": 1.0,
+    "QQQ": 1.0,
+    "AAPL": 1.0,
+    "TSLA": 1.0,
+}
+
+# Fail-closed on unknown symbols, mirroring portfolio.tracker._resolve_multiplier
+# (same env escape, same 1.0 fallback). The old behaviour silently returned 5.0 --
+# a FUTURES multiplier -- for anything unlisted, which is precisely what tracker's
+# own docstring warns about ("a futures fill priced at a silent 1x multiplier
+# mis-states P&L by 5x-1000x"). Worse, the two layers disagreed: sizing invented
+# 5.0 while tracker RAISED on the very same symbol, so the engine could size a
+# position it then refused to account for. Sizing and P&L must resolve a symbol
+# identically or not at all.
+_DEFAULT_MULTIPLIER = 1.0
+
+
+class UnknownInstrumentMultiplierError(ValueError):
+    """Raised when a symbol has no configured contract multiplier.
+
+    Deliberately mirrors ``portfolio.tracker.UnknownInstrumentMultiplierError``:
+    refusing to size is safer than opening a position whose P&L layer will
+    reject it. Add the symbol to INSTRUMENT_MULTIPLIERS, or set
+    ALLOW_DEFAULT_MULTIPLIER=1 to force the 1x fallback with a loud log.
+    """
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 # Spot crypto symbols sized by price, not per-point multiplier. See
 # `calculate_crypto_position_size` below. This set is consulted by the order
@@ -98,11 +137,28 @@ def get_contract_multiplier(symbol: str) -> float:
     if multiplier is not None:
         return multiplier
 
+<<<<<<< HEAD
     logger.warning(
         f"[PositionSizing] Unknown symbol '{symbol}' — defaulting multiplier to "
         f"${_DEFAULT_MULTIPLIER}/pt. Add it to INSTRUMENT_MULTIPLIERS if needed."
     )
     return _DEFAULT_MULTIPLIER
+=======
+    if os.getenv("ALLOW_DEFAULT_MULTIPLIER", "0") == "1":
+        logger.error(
+            "[PositionSizing] No contract multiplier configured for %s — falling "
+            "back to %.1fx (ALLOW_DEFAULT_MULTIPLIER=1). Size for this symbol "
+            "may be wrong.",
+            symbol,
+            _DEFAULT_MULTIPLIER,
+        )
+        return _DEFAULT_MULTIPLIER
+    raise UnknownInstrumentMultiplierError(
+        f"No contract multiplier configured for {symbol!r}. Add it to "
+        f"INSTRUMENT_MULTIPLIERS (engine/utils/position_sizing.py) or set "
+        f"ALLOW_DEFAULT_MULTIPLIER=1 to force a 1x fallback."
+    )
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 
 def validate_size(contracts: int, max_contracts: int) -> int:

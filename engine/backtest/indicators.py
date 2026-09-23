@@ -45,17 +45,32 @@ def kama(
     fast_sc = 2.0 / (fast_period + 1)
     slow_sc = 2.0 / (slow_period + 1)
 
+<<<<<<< HEAD
     result = pd.Series(index=close.index, dtype=float)
     result.iloc[:period] = np.nan
+=======
+    result = pd.Series(np.nan, index=close.index, dtype=float)
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
     if len(close) < period:
         return result
 
+<<<<<<< HEAD
     result.iloc[period - 1] = close.iloc[period - 1]
 
     for i in range(period, len(close)):
         change = abs(close.iloc[i] - close.iloc[i - period])
         volatility = close.diff().abs().iloc[i - period + 1 : i + 1].sum()
+=======
+    close_values = close.to_numpy(dtype=float)
+    result_values = np.full(len(close), np.nan, dtype=float)
+    volatility_values = close.diff().abs().rolling(period).sum().to_numpy(dtype=float)
+    result_values[period - 1] = close_values[period - 1]
+
+    for i in range(period, len(close)):
+        change = abs(close_values[i] - close_values[i - period])
+        volatility = volatility_values[i]
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
         if volatility == 0:
             er = 0.0
@@ -63,9 +78,15 @@ def kama(
             er = change / volatility
 
         sc = (er * (fast_sc - slow_sc) + slow_sc) ** 2
+<<<<<<< HEAD
         result.iloc[i] = result.iloc[i - 1] + sc * (close.iloc[i] - result.iloc[i - 1])
 
     return result
+=======
+        result_values[i] = result_values[i - 1] + sc * (close_values[i] - result_values[i - 1])
+
+    return pd.Series(result_values, index=close.index, dtype=float)
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 
 def stc(

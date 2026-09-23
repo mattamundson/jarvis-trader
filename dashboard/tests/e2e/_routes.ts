@@ -49,6 +49,11 @@ export const ROUTES: RouteSpec[] = [
 
   // ---- critical: operator decision surfaces --------------------------------
   { path: "/command-center", name: "command center", kind: "page", criticality: "critical", landmark: /JARVIS TRADER.*COMMAND CENTER/i },
+<<<<<<< HEAD
+=======
+  { path: "/command-center-v2", name: "command center v2", kind: "page", criticality: "critical", landmark: /Command Center V2/i },
+  { path: "/command-center-v2/trade", name: "command center v2 manual trade intent", kind: "page", criticality: "critical", landmark: /Manual Paper Trade Intent/i },
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
   { path: "/trades/pending-approvals", name: "pending approvals", kind: "page", criticality: "critical", landmark: /Pending trade approvals/i },
   { path: "/paper", name: "paper trading", kind: "page", criticality: "critical", landmark: null },
   { path: "/portfolio", name: "portfolio", kind: "page", criticality: "critical", landmark: null },
@@ -84,9 +89,18 @@ export const ROUTES: RouteSpec[] = [
   { path: "/strategy-ledger", name: "strategy ledger", kind: "page", criticality: "standard", landmark: /Strategy Ledger/i },
   { path: "/parallel-paper", name: "parallel paper", kind: "page", criticality: "standard", landmark: /Parallel Paper A\/B Comparison/i },
   { path: "/strategy-c-command", name: "strategy c command", kind: "page", criticality: "standard", landmark: null },
+<<<<<<< HEAD
 
   // ---- research: must carry an exploratory provenance banner ---------------
   { path: "/analysis", name: "analysis", kind: "page", criticality: "research", landmark: /JARVIS TRADER . Analysis/i },
+=======
+  { path: "/pipeline-board", name: "pipeline board", kind: "page", criticality: "standard", landmark: /Pipeline Board/i },
+  { path: "/vault", name: "vault", kind: "page", criticality: "standard", landmark: /Vault/i },
+
+  // ---- research: must carry an exploratory provenance banner ---------------
+  { path: "/analysis", name: "analysis", kind: "page", criticality: "research", landmark: /JARVIS TRADER . Analysis/i },
+  { path: "/analysis/spx", name: "spx intraday analysis", kind: "page", criticality: "research", landmark: /SPX INTRADAY ANALYSIS/i },
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
   { path: "/backtest", name: "backtest results", kind: "page", criticality: "research", landmark: /JARVIS TRADER . Backtest Results/i },
   { path: "/strategy-research", name: "strategy research", kind: "page", criticality: "research", landmark: /Strategy Research/i },
   { path: "/research-log", name: "research log", kind: "page", criticality: "research", landmark: /RESEARCH JOURNAL/i },
@@ -99,6 +113,10 @@ export const ROUTES: RouteSpec[] = [
   // The first <h1> here is literally "Signal Unavailable" -- a fallback state, not
   // a page title. Asserting on it would lock in the empty state as expected.
   { path: "/strategy-c", name: "strategy c", kind: "page", criticality: "research", landmark: null },
+<<<<<<< HEAD
+=======
+  { path: "/thinkscript", name: "thinkscript", kind: "page", criticality: "research", landmark: /ThinkScript/i },
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
   { path: "/domflow", name: "domflow", kind: "page", criticality: "research", landmark: /MES DOM \/ Order-Flow/i },
 

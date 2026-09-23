@@ -244,6 +244,16 @@ async def test_get_tick_price_redis_fabric_serves_fresh_data(monkeypatch) -> Non
 
     assert out["source"] == "redis_fabric"
     assert out["last_price"] == 325.89
+<<<<<<< HEAD
+=======
+    # P3-1: as_of must carry the REAL observation time so a downstream
+    # build_envelope() can honestly re-derive is_live, not trust this tier
+    # forever just because it got past its own internal gate.
+    assert out["as_of"] is not None
+    import time as _time
+
+    assert abs(_time.time() - out["as_of"]) < 5.0
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 
 @pytest.mark.asyncio
@@ -318,3 +328,99 @@ async def test_get_tick_price_redis_fabric_falls_through_when_no_freshness_marke
 
     assert out["source"] == "ibkr"
     assert out["last_price"] == 325.89
+<<<<<<< HEAD
+=======
+
+
+# ── check_redis_fabric_freshness — P3-1 /health observability path ─────────
+#
+# Same Redis fabric as get_tick_price's Tier 0 above, but observes freshness
+# for a symbol set WITHOUT serving a price -- the mechanism /health uses to
+# decide market_data_fresh. Shares _redis_fabric_freshness() with Tier 0 so
+# the two can never disagree on what counts as stale.
+
+
+@pytest.mark.asyncio
+async def test_check_redis_fabric_freshness_reports_fresh_entry(monkeypatch) -> None:
+    import json
+    from datetime import datetime, timezone
+
+    store = {
+        "market:latest:MES": json.dumps({"close": 5300.25, "open": 5290.0}),
+        "datasource:ticks:MES:last_update": datetime.now(timezone.utc).isoformat(),
+    }
+    _install_fake_redis(monkeypatch, store)
+    mgr = MarketDataManager(_MinimalConfig())
+
+    out = await mgr.check_redis_fabric_freshness(["MES"], stale_after_s=60.0)
+
+    assert out["MES"]["present"] is True
+    assert out["MES"]["stale"] is False
+    assert out["MES"]["age_s"] is not None and out["MES"]["age_s"] < 5.0
+
+
+@pytest.mark.asyncio
+async def test_check_redis_fabric_freshness_reports_stale_entry(monkeypatch) -> None:
+    """The literal P3-1 proof scenario: a market:latest:MES key with a
+    30-day-old ts must be reported stale, not silently trusted."""
+    import json
+    from datetime import datetime, timedelta, timezone
+
+    stale_ts = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    store = {
+        "market:latest:MES": json.dumps({"close": 5300.25, "open": 5290.0}),
+        "datasource:ticks:MES:last_update": stale_ts,
+    }
+    _install_fake_redis(monkeypatch, store)
+    mgr = MarketDataManager(_MinimalConfig())
+
+    out = await mgr.check_redis_fabric_freshness(["MES"], stale_after_s=900.0)
+
+    assert out["MES"]["present"] is True
+    assert out["MES"]["stale"] is True
+    assert out["MES"]["age_s"] > 900.0
+
+
+@pytest.mark.asyncio
+async def test_check_redis_fabric_freshness_reports_absent_not_stale(monkeypatch) -> None:
+    """No cached entry at all is present=False, stale=False -- distinct from
+    a present-but-expired entry. Nothing to be stale about."""
+    _install_fake_redis(monkeypatch, {})
+    mgr = MarketDataManager(_MinimalConfig())
+
+    out = await mgr.check_redis_fabric_freshness(["MES"], stale_after_s=900.0)
+
+    assert out["MES"] == {"present": False, "age_s": None, "stale": False}
+
+
+@pytest.mark.asyncio
+async def test_check_redis_fabric_freshness_uses_same_threshold_as_get_tick_price(
+    monkeypatch,
+) -> None:
+    """The two must agree on what counts as fresh -- one shared helper, not a
+    second, potentially-divergent staleness rule. (Their configured windows
+    legitimately differ -- /health uses the longer 900s DATA_INTEGRITY_STALE_
+    AFTER_S, get_tick_price's hot path uses the tighter 60s DEFAULT_STALE_
+    AFTER_S -- so this uses an age fresh under BOTH to prove shared math, not
+    a coincidentally-matching threshold.)"""
+    import json
+    from datetime import datetime, timedelta, timezone
+
+    ts = (datetime.now(timezone.utc) - timedelta(seconds=15)).isoformat()
+    store = {
+        "market:latest:MES": json.dumps({"close": 5300.25, "open": 5290.0}),
+        "datasource:ticks:MES:last_update": ts,
+    }
+    _install_fake_redis(monkeypatch, store)
+    mgr = MarketDataManager(_MinimalConfig())
+
+    health_view = await mgr.check_redis_fabric_freshness(["MES"], stale_after_s=900.0)
+    assert health_view["MES"]["stale"] is False
+
+    mgr.ibkr = MagicMock()
+    mgr.ibkr.is_connected = False
+    mgr.schwab = None
+    mgr.polygon = MagicMock()
+    tick = await mgr.get_tick_price("MES", is_futures=True)
+    assert tick["source"] == "redis_fabric"  # still fresh under the 60s gate too
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2

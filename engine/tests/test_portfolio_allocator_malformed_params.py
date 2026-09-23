@@ -86,3 +86,39 @@ def test_covariance_get_strategy_malformed_logs(caplog):
         alloc._adjust_for_covariance(raw, trades)
 
     assert any("Malformed strategy_params" in r.getMessage() for r in caplog.records)
+<<<<<<< HEAD
+=======
+
+
+def test_covariance_constant_pnl_column_yields_no_nan_allocation():
+    """A zero-variance (constant-P&L) cell makes pandas .corr() emit a NaN
+    column. The scaling at portfolio_allocator.py uses ``max(0, avg_corr)`` so
+    that a NaN average correlation degrades to 0 -> scaling 1.0 (treated as
+    uncorrelated), never propagating NaN into the money-path allocation.
+
+    This pins that safe behavior: flipping the args to ``max(avg_corr, 0)``
+    would leak NaN and fail this test. The varying cell still gets scaled.
+    """
+    import math
+
+    alloc = _allocator()
+    trades = [
+        # Varying cell -> well-defined correlation column
+        {"strategy_params": json.dumps({"strategy_name": "trend"}), "symbol": "MES",
+         "pnl": 10.0, "exit_time": "2026-06-01T15:00:00"},
+        {"strategy_params": json.dumps({"strategy_name": "trend"}), "symbol": "MES",
+         "pnl": -5.0, "exit_time": "2026-06-02T15:00:00"},
+        # Constant cell -> zero variance -> NaN correlation column
+        {"strategy_params": json.dumps({"strategy_name": "trend"}), "symbol": "MGC",
+         "pnl": 7.0, "exit_time": "2026-06-01T15:00:00"},
+        {"strategy_params": json.dumps({"strategy_name": "trend"}), "symbol": "MGC",
+         "pnl": 7.0, "exit_time": "2026-06-02T15:00:00"},
+    ]
+    raw = {("trend", "MES"): 0.5, ("trend", "MGC"): 0.5}
+    adjusted = alloc._adjust_for_covariance(raw, trades)
+
+    # No NaN may reach any allocation.
+    assert all(math.isfinite(v) for v in adjusted.values())
+    # The degenerate (NaN-correlation) cell falls back to scaling 1.0.
+    assert adjusted[("trend", "MGC")] == 0.5
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2

@@ -17,6 +17,10 @@ from analysis.options_implied import (
     build_regime_block,
     build_snapshot,
     build_symbol_block,
+<<<<<<< HEAD
+=======
+    build_yfinance_vix_raw,
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     classify_term_structure,
     parse_chain,
     parse_occ,
@@ -82,6 +86,91 @@ def _chain_fixture(timestamp="2026-07-15 18:20:00"):
     }
 
 
+<<<<<<< HEAD
+=======
+def _vix_yfinance_raw_fixture(timestamp="2026-07-15 18:20:00"):
+    calls_by_expiry = {
+        "2026-07-16": [
+            {
+                "contractSymbol": "VIX260716C00016000",
+                "strike": 16.0,
+                "bid": 0.95,
+                "ask": 1.05,
+                "lastPrice": 1.0,
+                "impliedVolatility": 0.82,
+                "openInterest": 100,
+                "volume": 25,
+            },
+            {
+                # Missing OCC symbol: adapter should synthesize VIX260716C00017000.
+                "strike": 17.0,
+                "bid": 0.45,
+                "ask": 0.55,
+                "lastPrice": 0.5,
+                "impliedVolatility": 0.84,
+                "openInterest": float("nan"),
+                "volume": float("nan"),
+            },
+        ],
+        "2026-07-23": [
+            {
+                "contractSymbol": "VIX260723C00016000",
+                "strike": 16.0,
+                "bid": 1.40,
+                "ask": 1.60,
+                "lastPrice": 1.5,
+                "impliedVolatility": 0.80,
+                "openInterest": 90,
+                "volume": 10,
+            }
+        ],
+    }
+    puts_by_expiry = {
+        "2026-07-16": [
+            {
+                "contractSymbol": "VIX260716P00016000",
+                "strike": 16.0,
+                "bid": 0.55,
+                "ask": 0.65,
+                "lastPrice": 0.6,
+                "impliedVolatility": 0.83,
+                "openInterest": 70,
+                "volume": 9,
+            },
+            {
+                "contractSymbol": "VIX260716P00017000",
+                "strike": 17.0,
+                "bid": 1.10,
+                "ask": 1.30,
+                "lastPrice": 1.2,
+                "impliedVolatility": 0.85,
+                "openInterest": 60,
+                "volume": 7,
+            },
+        ],
+        "2026-07-23": [
+            {
+                "contractSymbol": "VIX260723P00016000",
+                "strike": 16.0,
+                "bid": 0.80,
+                "ask": 1.00,
+                "lastPrice": 0.9,
+                "impliedVolatility": 0.81,
+                "openInterest": 50,
+                "volume": 6,
+            }
+        ],
+    }
+    return build_yfinance_vix_raw(
+        spot=16.4,
+        expirations=["2026-07-16", "2026-07-23"],
+        calls_by_expiry=calls_by_expiry,
+        puts_by_expiry=puts_by_expiry,
+        quote_ts=timestamp,
+    )
+
+
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 # ---------------------------------------------------------------------------
 # parse_occ
 # ---------------------------------------------------------------------------
@@ -148,6 +237,50 @@ class TestParseChain:
         assert _parse_quote_ts("2026-07-16 18:55:31") == expected
 
 
+<<<<<<< HEAD
+=======
+class TestYfinanceVixAdapter:
+    def test_build_yfinance_vix_raw_parses_as_vix_contracts(self):
+        raw = _vix_yfinance_raw_fixture()
+        spot, quote_ts, contracts = parse_chain(raw, "VIX")
+
+        assert spot == pytest.approx(16.4)
+        assert quote_ts is not None
+        assert len(contracts) == 6
+        assert all(c.root == "VIX" for c in contracts)
+        assert {c.expiry for c in contracts} == {date(2026, 7, 16), date(2026, 7, 23)}
+        synthesized = next(c for c in contracts if c.expiry == date(2026, 7, 16) and c.right == "C" and c.strike == 17.0)
+        assert synthesized.mid == pytest.approx(0.50)
+
+    def test_build_snapshot_routes_vix_to_yfinance_fetcher_not_cboe(self):
+        async def fake_cboe_fetch(url):  # pragma: no cover - should never be called for VIX
+            raise AssertionError(f"VIX should not call CBOE fetcher: {url}")
+
+        async def fake_vix_fetch():
+            return _vix_yfinance_raw_fixture()
+
+        snapshot, code = asyncio.run(
+            build_snapshot(
+                ("VIX",),
+                fetch_json=fake_cboe_fetch,
+                fetch_yfinance_vix=fake_vix_fetch,
+                regime=_regime_fixture(),
+                now_ct=_NOW,
+            )
+        )
+
+        assert code == 0
+        assert snapshot["data_quality"] == "ok"
+        assert snapshot["errors"] == []
+        block = snapshot["symbols"]["VIX"]
+        assert block["spot"] == pytest.approx(16.4)
+        assert block["source"].startswith("yfinance ^VIX")
+        assert block["horizons"][0]["expected_move_abs"] == pytest.approx(1.6)
+        assert all(row["p_above"] is None for row in block["horizons"][0]["prob_ladder"])
+        assert any("vendor deltas unavailable" in note for note in block["horizons"][0]["notes"])
+
+
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 # ---------------------------------------------------------------------------
 # select_expiries
 # ---------------------------------------------------------------------------
@@ -296,6 +429,56 @@ class TestProbLadder:
         ladder = prob_ladder(contracts, self.near, 628.42, 3.00)
         assert all(r["p_above"] is None for r in ladder)
 
+<<<<<<< HEAD
+=======
+    # -- touch / failure columns (reflection rule) --------------------------
+
+    def test_touch_is_double_otm_close_prob_above_spot(self):
+        # +1.0 EM row (upper barrier): level 631.42, p_above = .2435
+        # → p_touch = 2 × p_above = 0.4870 (reflection rule)
+        ladder = prob_ladder(self.contracts, self.near, 628.42, 3.00)
+        row = next(r for r in ladder if r["multiple"] == 1.0)
+        assert row["p_touch"] == pytest.approx(2 * 0.2435, abs=1e-3)
+        assert row["p_fail"] == pytest.approx(1 - row["p_touch"], abs=1e-6)
+
+    def test_touch_reflection_directional(self):
+        # Upper barrier: p_touch = 2*p_above; lower barrier: p_touch
+        # = 2*(1-p_above); both clamped at 1.0.
+        ladder = prob_ladder(self.contracts, self.near, 628.42, 3.00)
+        for r in ladder:
+            if r["p_above"] is None:
+                continue
+            expected = 2 * r["p_above"] if r["level"] >= 628.42 else 2 * (1 - r["p_above"])
+            assert r["p_touch"] == pytest.approx(min(1.0, expected), abs=1e-6)
+
+    def test_spot_row_touch_near_one(self):
+        # ATM delta ≈ 0.5 → p_touch = 2*(1-~0.5) ≈ 1.0 (spot is touched by
+        # construction); must be clamped at exactly 1.0, never above.
+        ladder = prob_ladder(self.contracts, self.near, 628.42, 3.00)
+        row = next(r for r in ladder if r["multiple"] == 0.0)
+        assert 0.9 <= row["p_touch"] <= 1.0
+
+    def test_fail_is_one_minus_touch_and_monotone(self):
+        # Deeper OTM (further above spot) → lower touch, higher failure.
+        ladder = prob_ladder(self.contracts, self.near, 628.42, 3.00)
+        above = [r for r in ladder if r["multiple"] in (0.5, 1.0)]
+        t05 = next(r for r in above if r["multiple"] == 0.5)
+        t10 = next(r for r in above if r["multiple"] == 1.0)
+        assert t10["p_touch"] < t05["p_touch"]
+        assert t10["p_fail"] > t05["p_fail"]
+
+    def test_touch_none_where_level_out_of_range(self):
+        ladder = prob_ladder(self.contracts, self.near, 628.42, 50.0)
+        top = next(r for r in ladder if r["multiple"] == 1.0)
+        assert top["p_above"] is None
+        assert top["p_touch"] is None
+        assert top["p_fail"] is None
+
+    def test_empty_ladder_when_no_expected_move(self):
+        # regression guard: touch columns must not resurrect the empty ladder
+        assert prob_ladder(self.contracts, self.near, 628.42, None) == []
+
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 # ---------------------------------------------------------------------------
 # build_symbol_block

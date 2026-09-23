@@ -46,7 +46,11 @@ class ContractSpec:
 
 CONTRACT_SPECS: Dict[str, ContractSpec] = {
     # Equity index micros
+<<<<<<< HEAD
     "MES": ContractSpec(multiplier=5.0,  tick_size=0.25, commission=0.62, slippage_ticks=1),
+=======
+    "MES": ContractSpec(multiplier=5.0, tick_size=0.25, commission=0.71, slippage_ticks=1),
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     "MNQ": ContractSpec(multiplier=2.0,  tick_size=0.25, commission=0.62, slippage_ticks=2),
     "M2K": ContractSpec(multiplier=5.0,  tick_size=0.10, commission=0.62, slippage_ticks=1),
     "MYM": ContractSpec(multiplier=0.5,  tick_size=1.00, commission=0.62, slippage_ticks=1),

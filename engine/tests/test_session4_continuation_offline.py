@@ -119,6 +119,7 @@ class TestSession4ContinuationOffline:
 
     def test_performance_endpoint(self) -> None:
         """
+<<<<<<< HEAD
         GET /analytics/performance — must return 200 with a 'status' field.
 
         The endpoint has an explicit db_manager=None guard that returns a
@@ -130,6 +131,22 @@ class TestSession4ContinuationOffline:
         ), f"Expected 200 from /analytics/performance, got {r.status_code}. Body: {r.text}"
         body = r.json()
         assert "status" in body, f"/analytics/performance missing 'status' field. Body: {body}"
+=======
+        GET /analytics/performance — returns 200 with a 'status' field when a
+        database is available, 503 when the db_manager is not injected
+        (documented contract: 'Returns 503 if database is not ready').
+
+        Offline runs have no injected db_manager, so 503 is the expected path.
+        """
+        r = client.get("/analytics/performance", headers=_AUTH)
+        assert r.status_code in (
+            200,
+            503,
+        ), f"Expected 200 or 503 from /analytics/performance, got {r.status_code}. Body: {r.text}"
+        if r.status_code == 200:
+            body = r.json()
+            assert "status" in body, f"/analytics/performance missing 'status' field. Body: {body}"
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
     # ── GET /analytics/performance/rolling?days=7 ─────────────────────────
 

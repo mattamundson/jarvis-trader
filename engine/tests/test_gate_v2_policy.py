@@ -459,6 +459,112 @@ def test_is_strategy_authorized_stale_verdict_not_authorized(tmp_verdicts_dir):
 
 
 # ---------------------------------------------------------- #
+<<<<<<< HEAD
+=======
+# is_strategy_authorized — strategy-family scoping           #
+#                                                              #
+# A paper config that routes through generate_sma_trend_signals #
+# (strategy="sma_trend") must only be authorized by a gate v2   #
+# PASS in the trend family (trend or trend_*). An unrelated     #
+# family PASS (e.g. mean_reversion) must NEVER green-light the  #
+# configured code path — policy-layer counterpart of PRB-02.    #
+# ---------------------------------------------------------- #
+
+_ENABLED_TREND_CONFIGS = {
+    "XYZ": {"enabled": True, "symbol": "XYZ", "strategy": "sma_trend"},
+}
+
+
+def test_strategy_authorized_unrelated_family_pass_does_not_authorize_trend(tmp_verdicts_dir):
+    """An unrelated-family PASS must not authorize a sma_trend config."""
+    from unittest.mock import patch
+
+    _write_verdict(
+        tmp_verdicts_dir,
+        symbol="XYZ",
+        family="mean_reversion",
+        rank=1,
+        verdict="PASS",
+        passed_via="core",
+        age_days=0.5,
+    )
+
+    with patch("agents.pipeline.VALIDATION_ONLY_INSTRUMENTS", frozenset()):
+        with patch("backtest.paper_config.PAPER_CONFIGS", _ENABLED_TREND_CONFIGS):
+            authorized, reason = is_strategy_authorized("XYZ")
+
+    assert authorized is False
+    assert "family" in reason
+
+
+def test_strategy_authorized_trend_family_pass_authorizes_trend(tmp_verdicts_dir):
+    """A trend-family PASS authorizes a sma_trend config."""
+    from unittest.mock import patch
+
+    _write_verdict(
+        tmp_verdicts_dir,
+        symbol="XYZ",
+        family="trend",
+        rank=1,
+        verdict="PASS",
+        passed_via="core",
+        age_days=0.5,
+    )
+
+    with patch("agents.pipeline.VALIDATION_ONLY_INSTRUMENTS", frozenset()):
+        with patch("backtest.paper_config.PAPER_CONFIGS", _ENABLED_TREND_CONFIGS):
+            authorized, reason = is_strategy_authorized("XYZ")
+
+    assert authorized is True
+    assert reason == "authorized"
+
+
+def test_strategy_authorized_trend_variant_pass_authorizes_trend(tmp_verdicts_dir):
+    """A trend_* variant PASS (same SMA code path, PRB-02 semantics) authorizes."""
+    from unittest.mock import patch
+
+    _write_verdict(
+        tmp_verdicts_dir,
+        symbol="XYZ",
+        family="trend_rv_filter",
+        rank=1,
+        verdict="PASS",
+        passed_via="core",
+        age_days=0.5,
+    )
+
+    with patch("agents.pipeline.VALIDATION_ONLY_INSTRUMENTS", frozenset()):
+        with patch("backtest.paper_config.PAPER_CONFIGS", _ENABLED_TREND_CONFIGS):
+            authorized, reason = is_strategy_authorized("XYZ")
+
+    assert authorized is True
+    assert reason == "authorized"
+
+
+def test_strategy_authorized_no_strategy_field_falls_back_to_all_families(tmp_verdicts_dir):
+    """Config without a strategy field keeps the historical any-family behavior."""
+    from unittest.mock import patch
+
+    _write_verdict(
+        tmp_verdicts_dir,
+        symbol="XYZ",
+        family="mean_reversion",
+        rank=1,
+        verdict="PASS",
+        passed_via="core",
+        age_days=0.5,
+    )
+
+    with patch("agents.pipeline.VALIDATION_ONLY_INSTRUMENTS", frozenset()):
+        with patch("backtest.paper_config.PAPER_CONFIGS", _ENABLED_PAPER_CONFIGS):
+            authorized, reason = is_strategy_authorized("XYZ")
+
+    assert authorized is True
+    assert reason == "authorized"
+
+
+# ---------------------------------------------------------- #
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 # is_strategy_authorized — MES carve-out (PR #564)            #
 #                                                              #
 # Amo's standing directive (2026-06-26, emphatic): MES must   #

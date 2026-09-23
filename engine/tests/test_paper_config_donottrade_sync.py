@@ -345,6 +345,7 @@ class TestDispatcherCrossCheckLogic:
         """
         paper_configs = {
             "MES": {"symbol": "MES", "interval": "1h", "enabled": True},
+<<<<<<< HEAD
             "MGC": {"symbol": "MGC", "interval": "1h", "enabled": True},
             "MNQ": {"symbol": "MNQ", "interval": "1h", "enabled": True},   # should be blocked
             "MCL": {"symbol": "MCL", "interval": "1h", "enabled": False},  # disabled
@@ -354,6 +355,17 @@ class TestDispatcherCrossCheckLogic:
         accepted, rejected = self._run_dispatcher_filter(paper_configs, do_not_trade)
 
         assert set(accepted) == {"MES", "MGC"}, f"Unexpected accepted: {accepted}"
+=======
+            "MGC": {"symbol": "MGC", "interval": "1h", "enabled": False},  # disabled 2026-08-16 fresh FAIL
+            "MNQ": {"symbol": "MNQ", "interval": "1h", "enabled": True},   # should be blocked
+            "MCL": {"symbol": "MCL", "interval": "1h", "enabled": False},  # disabled
+        }
+        do_not_trade = frozenset({"MGC", "MCL", "MNQ", "M2K"})
+
+        accepted, rejected = self._run_dispatcher_filter(paper_configs, do_not_trade)
+
+        assert set(accepted) == {"MES"}, f"Unexpected accepted: {accepted}"
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         assert set(rejected) == {"MNQ"}, f"Unexpected rejected: {rejected}"
 
     def test_dispatcher_empty_configs_returns_empty(self):
@@ -379,13 +391,23 @@ class TestDoNotTradeSymbolsConstant:
         assert isinstance(DO_NOT_TRADE_SYMBOLS, frozenset)
 
     def test_donottrade_symbols_contains_expected_blocked(self):
+<<<<<<< HEAD
         """MCL, MNQ, M2K are all in DO_NOT_TRADE_SYMBOLS. MGC removed
         2026-08-04 (fresh honest gate-v2 PASS, PR #597/#598)."""
+=======
+        """MCL, MNQ, M2K are all in DO_NOT_TRADE_SYMBOLS. MGC re-added
+        2026-08-16 (fresh rank4 gate-v2 FAIL — the 08-04 PASS degraded on the
+        refreshed cache window; see paper_config.py / signals.py)."""
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         from backtest.signals import DO_NOT_TRADE_SYMBOLS
         assert "MCL" in DO_NOT_TRADE_SYMBOLS
         assert "MNQ" in DO_NOT_TRADE_SYMBOLS
         assert "M2K" in DO_NOT_TRADE_SYMBOLS
+<<<<<<< HEAD
         assert "MGC" not in DO_NOT_TRADE_SYMBOLS
+=======
+        assert "MGC" in DO_NOT_TRADE_SYMBOLS
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
     def test_donottrade_symbols_does_not_block_mes(self):
         """MES (gate v2 PASS, still active) must NOT be in DO_NOT_TRADE_SYMBOLS."""
@@ -395,6 +417,7 @@ class TestDoNotTradeSymbolsConstant:
         )
 
     def test_donottrade_symbols_includes_mgc(self):
+<<<<<<< HEAD
         """MGC's 2026-07-31 blocklist addition is REVERSED: the fresh rank4
         gate-v2 PASS at the corrected trial count (empirical DSR 0.9952, PR
         #597) plus Amo's explicit re-authorization (PR #598) satisfied the
@@ -404,6 +427,18 @@ class TestDoNotTradeSymbolsConstant:
         assert "MGC" not in DO_NOT_TRADE_SYMBOLS, (
             "MGC re-authorized on fresh honest gate-v2 PASS (PR #597/#598, "
             "2026-08-04) — it must NOT stay in DO_NOT_TRADE_SYMBOLS."
+=======
+        """MGC's 2026-08-04 blocklist removal (fresh rank4 PASS, PR #597/#598)
+        is REVERSED 2026-08-16: a fresh re-evaluation FAILs gate v2 (pf_ci_lower
+        1.0681 < 1.1, mc_95th_dd 4.42% > ALT ceiling, on the completeness-
+        preferred refreshed cache). The blocklist removal contract (\"fresh PASS
+        + explicit auth\") is no longer satisfied, so MGC is blocked again until
+        a fresh honest gate-v2 CORE PASS."""
+        from backtest.signals import DO_NOT_TRADE_SYMBOLS
+        assert "MGC" in DO_NOT_TRADE_SYMBOLS, (
+            "MGC re-added to DO_NOT_TRADE_SYMBOLS on fresh gate-v2 FAIL "
+            "(2026-08-16) — it must stay blocked until a fresh honest PASS."
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         )
 
 
@@ -447,17 +482,30 @@ class TestCapitalAllocatorUsesSingleAuthority:
         )
 
     def test_rebalance_blocks_m2k_and_mgc(self):
+<<<<<<< HEAD
         """M2K is blocked by the shared authority. MGC was re-authorized
         2026-08-04 (PR #597/#598: fresh honest gate-v2 PASS + Amo's explicit
         re-authorization) so it must NOT be zeroed by rebalance() — the
         allocator reads DO_NOT_TRADE_SYMBOLS directly, so it picked up the
         change with zero code edits here, which is exactly the
         single-authority guarantee this class exists to pin."""
+=======
+        """M2K is blocked by the shared authority. MGC was RE-ADDED 2026-08-16
+        (fresh rank4 gate-v2 FAIL superseded the 08-04 PASS — see
+        signals.py DO_NOT_TRADE contract) so it must be zeroed by rebalance()
+        again, exactly like M2K — the allocator reads DO_NOT_TRADE_SYMBOLS
+        directly, so it picked up the change with zero code edits here, which
+        is exactly the single-authority guarantee this class exists to pin."""
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         from orchestrator.capital_allocator import CapitalAllocator
 
         perf = {
             "M2K": {"sharpe": 2.0, "current_allocation": 0.25},  # blocked authority
+<<<<<<< HEAD
             "MGC": {"sharpe": 2.0, "current_allocation": 0.25},  # re-authorized 2026-08-04
+=======
+            "MGC": {"sharpe": 2.0, "current_allocation": 0.25},  # re-added 2026-08-16
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             "MES": {"sharpe": 2.0, "current_allocation": 0.25},  # tradeable
         }
         allocator = CapitalAllocator(
@@ -468,9 +516,15 @@ class TestCapitalAllocatorUsesSingleAuthority:
         assert new_alloc.get("M2K", 1.0) == 0.0, (
             "M2K is in DO_NOT_TRADE_SYMBOLS and must be zeroed by rebalance()."
         )
+<<<<<<< HEAD
         assert new_alloc.get("MGC", 0.0) > 0.0, (
             "MGC is NOT in DO_NOT_TRADE_SYMBOLS (re-authorized 2026-08-04, "
             "PR #598) and must receive a non-zero allocation."
+=======
+        assert new_alloc.get("MGC", 0.0) == 0.0, (
+            "MGC is back in DO_NOT_TRADE_SYMBOLS (2026-08-16 fresh FAIL, "
+            "PR pending) and must be zeroed by rebalance()."
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         )
         assert new_alloc.get("MES", 0.0) > 0.0, (
             "MES is tradeable and must receive a non-zero allocation."

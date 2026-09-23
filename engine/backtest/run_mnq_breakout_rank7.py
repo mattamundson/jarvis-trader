@@ -70,6 +70,12 @@ MIN_OOS_TRADES = 5
 
 def _load_data(data_file: Path) -> pd.DataFrame:
     df = pd.read_csv(data_file)
+<<<<<<< HEAD
+=======
+    # Cache provenance (2026-09-17 audit: 0/76 verdicts recorded which cache they ran on).
+    from backtest._gate_v2_helpers import cache_provenance as _cp  # noqa: E402
+    df.attrs["cache_provenance"] = _cp(data_file)
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     df.columns = [c.lower() for c in df.columns]
     ts_col = "timestamp" if "timestamp" in df.columns else "datetime"
     df[ts_col] = pd.to_datetime(df[ts_col])
@@ -373,6 +379,12 @@ def run_wfo():
         },
     }
     vf = verdicts_dir / "MNQ_breakout_rank7.json"
+<<<<<<< HEAD
+=======
+    # Record the provenance carried on the frame (see loader).
+    from backtest._gate_v2_helpers import inject_cache_provenance as _ip  # noqa: E402
+    verdict_doc = _ip(verdict_doc, df=df)
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     vf.write_text(json.dumps(verdict_doc, indent=2, default=str))
     print(f"[MNQ-R7] Verdict -> {vf}")
     return verdict_doc

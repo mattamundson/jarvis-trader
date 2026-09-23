@@ -1,0 +1,58 @@
+{
+  "schema_version": "1.0",
+  "strategy_id": "spy_sma12_momentum_rank1",
+  "name": "SPY SMA-12-month momentum regime filter (x-bookmark scan, rank 1)",
+  "source": {
+    "type": "x-bookmark-scan",
+    "repo_or_note": "x-bookmark edge scan 2026-07-02 (@QuantifiedStrat)",
+    "url": "https://x.com/QuantifiedStrat"
+  },
+  "hypothesis": "Holding SPY only while price is above the 12-month SMA (monthly regime filter) captures most of the index return with materially lower drawdown than buy-and-hold.",
+  "asset_class": "equity-index",
+  "symbols": ["SPY"],
+  "timeframe": "monthly",
+  "data_sources": [
+    {
+      "feed": "yfinance",
+      "adjusted": true,
+      "range_start": "1993-01-31",
+      "range_end": "2026-06-30"
+    }
+  ],
+  "feature_set": ["sma(12-month)"],
+  "rules": {
+    "entry": "Long when price closes above the 12-month SMA at the monthly bar.",
+    "exit": "Flat when price closes below the 12-month SMA.",
+    "position_sizing": "All-in/out monthly in the scan model.",
+    "risk_limits": "None in scan model; JARVIS gates apply.",
+    "fees_and_slippage_model": "Gross in scan; monthly turnover implies minimal cost drag."
+  },
+  "windows": {
+    "train": { "start": "1993-01-31", "end": "2026-06-30" },
+    "test": null
+  },
+  "gate_verdict": {
+    "gate": "gate-v2",
+    "verdict": "FAIL",
+    "core_verdict": "FAIL",
+    "alt_verdict": "UNSCORED",
+    "reasons": [
+      "mbb_pf_ci_lower=1.7385 >= 1.1",
+      "p_positive_edge=1.0 >= 0.95",
+      "FAIL mc_95th_dd_pct=21.9141 > 6.0",
+      "dsr=1.0 >= 0.1 (not selection-bias)"
+    ],
+    "evidence_path": "docs/research/SPY_sma12momentum_rank1.gate_v2.json"
+  },
+  "promotion_state": "rejected",
+  "known_failure_modes": [
+    "Monthly 21.9% Monte Carlo 95th drawdown exceeds the 6.0% JARVIS floor even though the filter reduces absolute DD",
+    "The mc_95th_dd floor is sized for JARVIS's low-drawdown paper targets, not equity-index regime filters — a candidate floor-calibration question for the gate policy, not a strategy defect"
+  ],
+  "evidence_paths": [
+    "docs/research/SPY_sma12momentum_rank1.gate_v2.json",
+    "docs/research/backtest-critique-checklist.md"
+  ],
+  "owner": "amo",
+  "updated": "2026-09-12"
+}

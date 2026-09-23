@@ -1,0 +1,115 @@
+{
+  "schema_version": "strategy-forward-evidence-contract.v1",
+  "candidate_id": "MGC_trend_rv_filter_rank1",
+  "symbol": "MGC",
+  "family": "trend_rv_filter",
+  "status": "data_contract_scaffolded_no_fresh_forward_evidence",
+  "instrument_boundary": {
+    "mgc_status": "halted_do_not_trade",
+    "may_route_orders": false,
+    "requires_safety_review_for_any_runtime_change": true,
+    "zero_exposure_only": true
+  },
+  "locked_hypothesis": {
+    "source": "engine/backtest/candidate_registry.json",
+    "source_sha256": "00d8ac6760df5e7e0657cc2be70a1f761727a1a744fabfb890baa11881485389",
+    "params": {
+      "fast": 50,
+      "slow": 120,
+      "atr_trail_mult": 2.0,
+      "min_rv_annualized": 9.0
+    },
+    "hypothesis": "On MGC, a 50/120 EMA trend entry, gated by realized volatility >= 9% annualized and trailed at 2.0x ATR, carries positive out-of-sample expectancy.",
+    "deployed_live": false
+  },
+  "historical_artifacts": [
+    {
+      "path": "engine/data/gate_v2_verdicts/archive/MGC_trend_rv_filter_rank1_deep-2026-08-16.json",
+      "sha256": "b88a7fa797597bd3d0eebd39ddbab44fc20eaf536ca5c8194658cc479d72c0e6",
+      "created_at": "2026-08-16T17:53:39.437734+00:00",
+      "verdict": "PASS",
+      "passed_via": "alt",
+      "core_verdict": "FAIL",
+      "p_edge": 0.625,
+      "dsr": 0.8868,
+      "total_oos_trades": 37,
+      "note": "Historical archived artifact only; it does not re-authorize MGC and is not fresh forward evidence."
+    }
+  ],
+  "fresh_evidence_blockers": [
+    "MGC is halted and must remain non-routable unless a future safety-review promotion path exists.",
+    "No fresh non-archived gate-v2 artifact is linked for this candidate.",
+    "No candidate_id-tagged zero-exposure forward ledger exists for this candidate.",
+    "Symbol-only MGC paper trades, if any exist, are context only and cannot graduate this candidate."
+  ],
+  "forward_evidence_contract": {
+    "ledger_mode": "zero_exposure_research_only",
+    "allowed_sources": [
+      "candidate_id-tagged offline shadow ledger",
+      "params-matched offline shadow ledger with exact locked params"
+    ],
+    "forbidden_sources": [
+      "live orders",
+      "paper order routing changes",
+      "symbol-only attribution used as graduation evidence",
+      "runtime config flips"
+    ],
+    "required_trade_fields": [
+      "candidate_id",
+      "symbol",
+      "entry_time_utc",
+      "exit_time_utc",
+      "side",
+      "entry_price",
+      "exit_price",
+      "quantity",
+      "gross_pnl",
+      "fees",
+      "slippage",
+      "net_pnl",
+      "strategy_params",
+      "source_ledger",
+      "zero_exposure"
+    ],
+    "required_summary_fields": [
+      "ledger_sha256",
+      "first_trade_utc",
+      "last_trade_utc",
+      "trade_count",
+      "non_overlapping_window_days",
+      "profitable_window_count",
+      "total_window_count",
+      "pf_ci_lower",
+      "p_edge",
+      "dsr_true_trial_count",
+      "max_drawdown_pct",
+      "cost_model"
+    ],
+    "minimum_review_sample": {
+      "candidate_id_tagged_trades": 60,
+      "non_overlapping_windows": 8,
+      "window_days": 30
+    },
+    "graduation_policy": "Fresh forward evidence can update research status only; runtime promotion still requires every queue gate plus explicit human approval and safety-review where applicable."
+  },
+  "blocked_influence": [
+    "strategy_registry_promotion",
+    "candidate_registry_deployed_live_flip",
+    "live_or_paper_order_routing",
+    "active_instrument_gate_change",
+    "risk_limit_changes",
+    "kill_switch_changes",
+    "env_or_secret_changes",
+    "pm2_or_scheduler_changes",
+    "broker_configuration"
+  ],
+  "safety_boundary": {
+    "live_order_routing_changed": false,
+    "paper_order_routing_changed": false,
+    "runtime_config_changed": false,
+    "risk_limit_or_kill_switch_changed": false,
+    "active_instrument_gate_changed": false,
+    "secret_or_env_changed": false,
+    "pm2_or_schedule_changed": false
+  }
+}

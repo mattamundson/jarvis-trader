@@ -71,6 +71,30 @@ class TestIBConnectionTest:
         assert set(out) == {"connected", "port", "mode", "latency_ms", "account_id", "error"}
         assert out["error"] is not None
 
+<<<<<<< HEAD
+=======
+    def test_connected_without_connector_port_uses_live_gateway_probe(self, monkeypatch):
+        class _ConnectedNoPort:
+            is_connected = True
+
+            async def health_check(self):
+                return {"status": "connected"}
+
+        class _SafetyLayer:
+            _ib_gateway = _ConnectedNoPort()
+
+        monkeypatch.setattr(health_router, "safety_layer", _SafetyLayer())
+        monkeypatch.setattr(health_router, "data_manager", None)
+        monkeypatch.setattr(health_router, "_check_ibgateway_alive", lambda: (True, 4002))
+
+        out = _run(health_router.ib_connection_test())
+
+        assert out["connected"] is True
+        assert out["port"] == 4002
+        assert out["mode"] == "paper"
+        assert out["error"] is None
+
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 class TestHoldTimeTZFix:
     def test_mixed_naive_aware_rows_no_typeerror(self, monkeypatch):

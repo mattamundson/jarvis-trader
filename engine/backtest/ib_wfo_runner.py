@@ -113,7 +113,14 @@ def _commission_for(symbol: str) -> float:
 
 
 def _load_data(data_file: Path) -> pd.DataFrame:
+<<<<<<< HEAD
     df = pd.read_csv(data_file)
+=======
+    df = pd.read_csv(data_file)    # Cache provenance (2026-09-17 audit: 0/76 verdicts recorded which cache they ran on).
+    from backtest._gate_v2_helpers import cache_provenance as _cp  # noqa: E402
+    df.attrs["cache_provenance"] = _cp(data_file)
+
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     df.columns = [c.lower() for c in df.columns]
     ts_col = "timestamp" if "timestamp" in df.columns else "datetime"
     df[ts_col] = pd.to_datetime(df[ts_col])
@@ -407,6 +414,12 @@ def run_one(symbol: str, mode: str) -> dict:
             "kill_switch": "Backtester max_drawdown=0.05 (-5%)",
         },
     }
+<<<<<<< HEAD
+=======
+    # Record the provenance carried on the frame (see loader).
+    from backtest._gate_v2_helpers import inject_cache_provenance as _ip  # noqa: E402
+    doc = _ip(doc, df=df)
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     out.write_text(json.dumps(doc, indent=2, default=str))
     print(f"[IB-{symbol}-{mode}] verdict -> {out.name}")
     return doc

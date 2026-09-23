@@ -33,6 +33,10 @@ function ItemCard({ it }: { it: ActionableItem }) {
   const dead = it.status === "invalidated" || it.status === "expired";
   return (
     <div
+<<<<<<< HEAD
+=======
+      data-testid="actionable-item"
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       className={`rounded-lg border border-border bg-card/50 p-3 space-y-1.5 ${
         dead ? "opacity-60" : ""
       }`}
@@ -138,9 +142,33 @@ export function ActionableBoardWidget() {
           there are no opportunities.
         </p>
       ) : data.items.length === 0 ? (
+<<<<<<< HEAD
         <p className="text-xs text-muted-foreground">
           No recent directional decisions — nothing actionable right now.
         </p>
+=======
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">
+            Nothing on the board right now.
+          </p>
+          {typeof data.raw_count === "number" && data.raw_count > 0 ? (
+            <p className="text-[11px] text-muted-foreground/80">
+              The decision queue has {data.raw_count} recent row
+              {data.raw_count === 1 ? "" : "s"}, but none qualify as
+              actionable — every recent decision was rejected, errored, or a
+              HOLD. This is the queue state, not a claim that the market is
+              offering nothing.
+            </p>
+          ) : (
+            <p className="text-[11px] text-muted-foreground/80">
+              The decision queue has no recent directional decisions (or the
+              engine has not run the pipeline recently). A new pipeline pass
+              that emits a buy/sell decision will populate this board within
+              one refresh.
+            </p>
+          )}
+        </div>
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       ) : (
         <div className="space-y-2">
           {data.items.map((it) => (

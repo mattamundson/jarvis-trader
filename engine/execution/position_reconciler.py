@@ -101,6 +101,35 @@ class PositionReconciler:
 
         except Exception as e:
             logger.error(f"[RECONCILER] Encountered an error: {e}", exc_info=True)
+<<<<<<< HEAD
+=======
+            # This is the sole crash-recovery sweep that detects positions left
+            # without a stop-loss after an engine restart (2026-08-11
+            # fail-open-safety-checks audit finding #5). A failure here means
+            # the sweep never ran at all -- any real orphaned position stays
+            # silently unprotected with no signal beyond this log line. Alert
+            # separately from the per-position failure below, which fires only
+            # once a specific orphan was already found.
+            await self._alert(
+                f"🚨 POSITION RECONCILER FAILED: {e}\n"
+                "Crash-recovery orphaned-position sweep did not complete -- "
+                "any position missing a stop-loss after a restart may be "
+                "unprotected right now. Check engine logs and current "
+                "positions/orders manually."
+            )
+
+    async def _alert(self, message: str) -> None:
+        """Best-effort WhatsApp alert -- a notifier failure must never mask
+        the original exception it's reporting on."""
+        try:
+            from notifications.whatsapp import get_notifier
+
+            notifier = get_notifier()
+            if getattr(notifier, "enabled", False):
+                await notifier.send(message)
+        except Exception as notify_exc:
+            logger.warning("[RECONCILER] alert notify failed: %s", notify_exc)
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
     async def _handle_orphaned_position(self, symbol: str, quantity: int, avg_cost: float) -> None:
         # Default emergency stop-loss: 2% adverse from avg fill price.
@@ -137,6 +166,7 @@ class PositionReconciler:
                     stop_loss_price=stop_price
                 )
 
+<<<<<<< HEAD
             # Send notification
             try:
                 from notifications.whatsapp import get_notifier
@@ -152,3 +182,23 @@ class PositionReconciler:
 
         except Exception as e:
             logger.error(f"[RECONCILER] Failed to attach emergency stop for {symbol}: {e}")
+=======
+            await self._alert(
+                f"🚨 ORPHANED POSITION ALERT: {symbol} qty={quantity}.\n"
+                f"Crash recovery active. Force-attached emergency 2% STP @ {stop_price:.2f}."
+            )
+
+        except Exception as e:
+            logger.error(f"[RECONCILER] Failed to attach emergency stop for {symbol}: {e}")
+            # A known orphaned position (already detected, unlike the sweep
+            # failure above) still has no stop-loss after this failure -- the
+            # highest-urgency case in this file, since the risk is confirmed,
+            # not hypothetical.
+            await self._alert(
+                f"🚨 EMERGENCY STOP ATTACH FAILED: {symbol} qty={quantity} is "
+                f"ORPHANED (no stop-loss) and the crash-recovery attempt to "
+                f"protect it also failed: {e}\n"
+                "This position is unprotected right now -- attach a stop-loss "
+                "manually."
+            )
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2

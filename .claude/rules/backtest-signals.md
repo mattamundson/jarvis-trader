@@ -32,9 +32,19 @@ Any parameter change requires a new walk-forward evaluation:
 Current status — authoritative source is `engine/CLAUDE.md` "Active Instruments"
 (update that table, not this line):
 
+<<<<<<< HEAD
 - APPROVED, paper active (Tier-3 auth 2026-05-24): **MES** (p_edge 0.75), **MGC** (p_edge 0.68)
 - HALTED, in `DO_NOT_TRADE_SYMBOLS`: **MCL**, **MNQ**
 - REJECTED: **M2K**, **SPY**
+=======
+- APPROVED, paper active: **MES** (Tier-3 auth 2026-05-24, p_edge 0.75)
+- HALTED, in `DO_NOT_TRADE_SYMBOLS`: **MCL**, **MNQ**, **M2K**, **MGC** (re-halted
+  2026-08-16, PR #691 — a re-evaluation on refreshed data FAILed gate v2 after its
+  2026-08-10 reauthorization, PR #598; see `engine/CLAUDE.md` "Active Instruments"
+  for full history)
+- REJECTED (separately from the blocklist above): **SPY** — see `engine/CLAUDE.md`
+  "Active Instruments" for why it (and QQQ/AAPL/TSLA) trade anyway as equities
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 Note: MES/MGC were validated via the gate-v2 rolling walk-forward (p_edge / DSR),
 which superseded the older single-number WFE figures once quoted here (the prior

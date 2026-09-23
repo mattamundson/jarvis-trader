@@ -618,10 +618,21 @@ export default function TrustPanePage() {
             </WidgetErrorBoundary>
 
             {/* 6. Post-trade quality — book-wide MAE/MFE + entry-timing regret (J1/J2) */}
+<<<<<<< HEAD
             <PostTradeSnippet />
 
             {/* 7. Data integrity — bar coverage/health (live after engine restart) */}
             <BarDepthCard />
+=======
+            <WidgetErrorBoundary name="Post-Trade Quality">
+              <PostTradeSnippet />
+            </WidgetErrorBoundary>
+
+            {/* 7. Data integrity — bar coverage/health (live after engine restart) */}
+            <WidgetErrorBoundary name="Bar Depth">
+              <BarDepthCard />
+            </WidgetErrorBoundary>
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
           </section>
 
           {/* ───────── AMO-ARBITRAGE column ───────── */}

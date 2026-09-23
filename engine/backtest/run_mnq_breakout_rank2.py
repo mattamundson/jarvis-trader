@@ -427,6 +427,12 @@ def run_wfo(fast: bool = False) -> dict:
         },
     }
 
+<<<<<<< HEAD
+=======
+    # Provenance (2026-09-17 audit): record which cache produced this verdict.
+    from backtest._gate_v2_helpers import inject_cache_provenance as _inject_prov  # noqa: E402
+    verdict_doc = _inject_prov(verdict_doc, data_file)
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     verdict_file.write_text(json.dumps(verdict_doc, indent=2, default=str))
     print(f"\n[MNQ-WFO] Verdict written -> {verdict_file}")
 

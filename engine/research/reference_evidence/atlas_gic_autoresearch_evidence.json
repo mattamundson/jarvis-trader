@@ -1,0 +1,86 @@
+{
+  "source_repo": "mattamundson/atlas-gic",
+  "source_url": "https://github.com/mattamundson/atlas-gic",
+  "reference_commit": "fcfc40dcf628f6af091c28cb2c33827f42cef8fd",
+  "default_branch": "main",
+  "license_spdx": "NOASSERTION",
+  "classification": "reference-only",
+  "jarvis_status": "research_control_not_alpha_evidence",
+  "downloaded_via": "GitHub API",
+  "local_source_dir": "C:/Users/mattm/AppData/Local/Temp/repo_consolidation_sources/wave27_atlas_autoresearch",
+  "selected_files": [
+    {
+      "path": "README.md",
+      "local_file": "atlas_README.md",
+      "bytes": 12298,
+      "sha256": "1897ae3893898e9a6162a070cb2ebca2892391f4e11b8261e0b9a991668071fe"
+    },
+    {
+      "path": "architecture/autoresearch.md",
+      "local_file": "atlas_autoresearch.md",
+      "bytes": 6687,
+      "sha256": "f7dc38a94430f00e90ae912e30b08c50f1bb46f173632ab3037d3a9ced679883"
+    },
+    {
+      "path": "architecture/overview.md",
+      "local_file": "atlas_overview.md",
+      "bytes": 7919,
+      "sha256": "3114609ef491184832c79f0dfde0cb0e0f3912d6047669cba5edf9abfde52e45"
+    },
+    {
+      "path": "architecture/layers.md",
+      "local_file": "atlas_layers.md",
+      "bytes": 5292,
+      "sha256": "ccec6c5f2774bac157701b93b41f101c94689ab70626d6c89008eaff9f998c7b"
+    },
+    {
+      "path": "results/summary.json",
+      "local_file": "atlas_summary.json",
+      "bytes": 912,
+      "sha256": "39312a313c17b8d61e2ec6c8f8707cd674f71fc95264957f05c076c14b354799"
+    },
+    {
+      "path": "results/autoresearch_log.json",
+      "local_file": "atlas_autoresearch_log.json",
+      "bytes": 4277,
+      "sha256": "2bd70d847e169223ae3c68b9c5719f508956ddc71ac63f4d0e7702a715251600"
+    }
+  ],
+  "campaign_evidence": {
+    "period": "2024-09-01 to 2026-03-07",
+    "trading_days": 378,
+    "starting_value": 1000000.0,
+    "ending_value": 940937.77,
+    "total_return_pct": -5.91,
+    "total_modifications": 54,
+    "kept": 16,
+    "reverted": 37,
+    "keep_rate_pct": 29.6,
+    "parsed_log_rows": 17,
+    "parsed_prepost_rows": 16,
+    "parsed_prepost_improved": 14,
+    "parsed_post_sharpe_nonpositive": 15,
+    "min_weight_agents": [
+      "central_bank",
+      "institutional_flow",
+      "semiconductor",
+      "cio"
+    ],
+    "max_weight_agents": [
+      "geopolitical",
+      "commodities",
+      "volatility",
+      "energy",
+      "industrials",
+      "aschenbrenner",
+      "ackman"
+    ]
+  },
+  "jarvis_import_rules": [
+    "Treat as prompt-autoresearch process evidence only, not alpha evidence.",
+    "Require campaign-level PnL/CAGR/drawdown/cost/trade-count improvement before keep/promotion.",
+    "Do not allow Darwinian weights to alter risk gates, position sizing, broker routing, symbols, or orders.",
+    "Keep spawned agents quarantined as research-only until deterministic evidence and safety scans pass.",
+    "Any runtime, risk, kill-switch, broker, PM2, .env, or instrument-gate change requires a separate safety-review PR."
+  ]
+}

@@ -40,7 +40,15 @@ async def _fetch_html(url: str) -> str | None:
                 logger.info("url_handler: %s returned %s", url, r.status_code)
                 return None
             return r.text
+<<<<<<< HEAD
     except httpx.RequestError as e:
+=======
+    except (httpx.RequestError, httpx.InvalidURL) as e:
+        # InvalidURL is raised at request-build time (e.g. a bookmarked link
+        # with a malformed port like "http://host:8010`") and is NOT a subclass
+        # of RequestError, so it must be caught explicitly. Degrade gracefully
+        # to the embed/URL-only prompt instead of failing the whole row.
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         logger.info("url_handler: fetch error %s on %s", e, url)
         return None
 

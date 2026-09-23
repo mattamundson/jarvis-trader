@@ -3801,3 +3801,123 @@ class TestSubmitPaperBracketOrder:
         assert result["approved"] is True
         assert result["routed_to_ib"] is False
         assert "broker placement failed" in result["reason"].lower()
+<<<<<<< HEAD
+=======
+
+
+class TestContractLimitAggregation:
+    """Real-underlying-instrument exposure aggregation (2026-07-13 trade-frequency
+    plan, PR-A). Previously _check_contract_limits only checked an order's own
+    quantity against MAX_CONTRACTS_PER_INSTRUMENT -- it never summed existing
+    open positions, so combined exposure across strategies sharing one real
+    instrument could silently exceed the configured cap."""
+
+    def _mock_db_with_open_trades(self, trades: list[dict]):
+        db = Mock()
+        db.get_open_trades = Mock(return_value=trades)
+        return db
+
+    def test_no_db_manager_preserves_prior_single_order_behavior(self, mock_settings):
+        """Backward-compat: SafetyLayer(config) with no db_manager (how most
+        existing tests and callers construct it) must behave EXACTLY as
+        before -- existing_qty always 0, so only the order's own quantity
+        is checked."""
+        mock_settings.LIVE_TRADING_ENABLED = True
+        mock_settings.REQUIRE_HUMAN_APPROVAL = False
+        mock_settings.MAX_CONTRACTS_PER_INSTRUMENT = 2
+        mock_settings.MAX_OVERNIGHT_CONTRACTS = 5  # wall-clock-independent, matches sibling test
+        safety = SafetyLayer(mock_settings)  # no db_manager
+
+        order = OrderRequest(symbol="MES", quantity=2, order_type="market", is_futures=True)
+        result = safety.check_order(order, 100_000.0)
+        assert result.approved is True
+
+    def test_rejects_when_combined_with_existing_open_position_exceeds_cap(
+        self, mock_settings
+    ):
+        """The money case: a NEW order that is within the cap on its own gets
+        rejected because an EXISTING open position on the same real
+        instrument would push combined exposure over MAX_CONTRACTS_PER_INSTRUMENT.
+        This is exactly the gap that made it possible for two strategies
+        trading the same real instrument to silently exceed the cap."""
+        mock_settings.LIVE_TRADING_ENABLED = True
+        mock_settings.REQUIRE_HUMAN_APPROVAL = False
+        mock_settings.MAX_CONTRACTS_PER_INSTRUMENT = 2
+        db = self._mock_db_with_open_trades(
+            [{"symbol": "MES", "quantity": 1, "status": "open"}]
+        )
+        safety = SafetyLayer(mock_settings, db_manager=db)
+
+        # 1 existing + 2 new = 3 > cap of 2 -- must reject, even though 2
+        # alone would have been within the cap.
+        order = OrderRequest(symbol="MES", quantity=2, order_type="market", is_futures=True)
+        result = safety.check_order(order, 100_000.0)
+
+        assert result.approved is False
+        assert "contracts exceeds max" in result.rejection_reason
+        assert "combined with 1 already open" in result.rejection_reason
+
+    def test_allows_when_combined_with_existing_stays_within_cap(self, mock_settings):
+        """Non-regression: combined exposure at or under the cap still approves."""
+        mock_settings.LIVE_TRADING_ENABLED = True
+        mock_settings.REQUIRE_HUMAN_APPROVAL = False
+        mock_settings.MAX_CONTRACTS_PER_INSTRUMENT = 2
+        mock_settings.MAX_OVERNIGHT_CONTRACTS = 5  # wall-clock-independent, matches sibling test
+        db = self._mock_db_with_open_trades(
+            [{"symbol": "MES", "quantity": 1, "status": "open"}]
+        )
+        safety = SafetyLayer(mock_settings, db_manager=db)
+
+        order = OrderRequest(symbol="MES", quantity=1, order_type="market", is_futures=True)
+        result = safety.check_order(order, 100_000.0)
+
+        assert result.approved is True
+
+    def test_aggregates_across_pseudo_symbols_sharing_one_underlying(
+        self, mock_settings, monkeypatch
+    ):
+        """Two DIFFERENT PAPER_CONFIGS keys (e.g. a future "MES" trend strategy
+        and "MES_VA30" value-area re-entry) that both resolve to the same real
+        underlying instrument must aggregate together, not be tracked as
+        independent instruments. Simulated here via UNDERLYING_INSTRUMENT so
+        this test doesn't depend on PR-C's config actually existing yet."""
+        import backtest.paper_config as paper_config_module
+
+        monkeypatch.setitem(paper_config_module.UNDERLYING_INSTRUMENT, "MES_VA30", "MES")
+
+        mock_settings.LIVE_TRADING_ENABLED = True
+        mock_settings.REQUIRE_HUMAN_APPROVAL = False
+        mock_settings.MAX_CONTRACTS_PER_INSTRUMENT = 2
+        # Existing open position is under the OTHER pseudo-symbol key.
+        db = self._mock_db_with_open_trades(
+            [{"symbol": "MES_VA30", "quantity": 1, "status": "open"}]
+        )
+        safety = SafetyLayer(mock_settings, db_manager=db)
+
+        # New order under the real "MES" key -- must still see the
+        # MES_VA30 position as combined MES exposure.
+        order = OrderRequest(symbol="MES", quantity=2, order_type="market", is_futures=True)
+        result = safety.check_order(order, 100_000.0)
+
+        assert result.approved is False
+        assert "combined with 1 already open" in result.rejection_reason
+
+    def test_db_error_degrades_to_zero_existing_not_a_crash(self, mock_settings):
+        """A DB error while aggregating must not crash order checking --
+        degrades to existing_qty=0 (prior single-order-only behavior), logged
+        as a warning rather than raised."""
+        mock_settings.LIVE_TRADING_ENABLED = True
+        mock_settings.REQUIRE_HUMAN_APPROVAL = False
+        mock_settings.MAX_CONTRACTS_PER_INSTRUMENT = 2
+        mock_settings.MAX_OVERNIGHT_CONTRACTS = 5  # wall-clock-independent, matches sibling test
+        db = Mock()
+        db.get_open_trades = Mock(side_effect=RuntimeError("db unavailable"))
+        safety = SafetyLayer(mock_settings, db_manager=db)
+
+        order = OrderRequest(symbol="MES", quantity=2, order_type="market", is_futures=True)
+        result = safety.check_order(order, 100_000.0)
+
+        assert result.approved is True  # 0 existing + 2 new == cap of 2
+
+
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2

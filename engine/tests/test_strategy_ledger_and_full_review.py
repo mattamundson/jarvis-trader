@@ -104,7 +104,11 @@ def seeded_db():
         entry_price=5300.0,
         entry_time="2026-06-12T17:40:35+00:00",
         status="open",
+<<<<<<< HEAD
         strategy_params=json.dumps({"source": "scanner", "conviction": 0.65, "direction": "BUY"}),
+=======
+        strategy_params={"source": "scanner", "conviction": 0.65, "direction": "BUY"},
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     )
     # explaining decision: same symbol, ~same time, with a full 5-stage pipeline
     db.insert_decision(

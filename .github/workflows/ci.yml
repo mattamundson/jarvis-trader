@@ -370,10 +370,37 @@ jobs:
       # Output is tee'd so the bundle-budget gate below can read the route table
       # instead of paying for a second ~2 minute build to reprint numbers this
       # one already produced. pipefail keeps a build failure fatal through tee.
+<<<<<<< HEAD
       - name: Build Next.js
         run: |
           set -euo pipefail
           pnpm run build 2>&1 | tee ../build-output.log
+=======
+      # Retry once for the transient next/font/google network flake (fonts.gstatic.com
+      # intermittently times out on the runner — proven flaky: the same build passed
+      # on rerun with identical code, and master's own pre-deploy check failed the
+      # same way on 2026-08-16). The retry stays visible (::warning::) so a genuine
+      # build regression is never silently masked. A fresh process is required —
+      # the failed font fetch leaves .next/font cache state that an in-place retry
+      # would not necessarily clear.
+      - name: Build Next.js
+        run: |
+          set -euo pipefail
+          set +e
+          attempts=2
+          ec=0
+          for i in $(seq 1 "$attempts"); do
+            echo "::group::next build (attempt $i/$attempts)"
+            pnpm run build 2>&1 | tee ../build-output.log
+            ec=${PIPESTATUS[0]}
+            echo "::endgroup::"
+            [ "$ec" -eq 0 ] && break
+            if [ "$i" -lt "$attempts" ]; then
+              echo "::warning title=dashboard-build retry::attempt $i failed (exit $ec); retrying once in a fresh process (intermittent next/font/google font-fetch flake)"
+            fi
+          done
+          exit "$ec"
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         working-directory: dashboard
         env:
           NODE_ENV: production
@@ -386,7 +413,18 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
         working-directory: dashboard
 
+<<<<<<< HEAD
       - name: Golden-path e2e (overview must not white-screen on degraded data)
+=======
+      # No --project filter: this runs BOTH playwright.config.ts projects --
+      # `smoke` (table-driven, all 50 manifest routes x degraded/offline/slow)
+      # and `golden-path` (the hand-written domain specs, incl. the API-key-leak
+      # security check). reuseExistingServer is false in CI (see
+      # playwright.config.ts), so this always exercises the build just produced
+      # above, never a stale server. Step name predates the smoke suite --
+      # kept the misnomer fixed here so CI logs describe what actually runs.
+      - name: E2E -- smoke (50 routes) + golden-path
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         run: pnpm exec playwright test
         working-directory: dashboard
 
@@ -478,9 +516,19 @@ jobs:
             exit 1
           fi
 
-      - name: Check for hardcoded secrets
+      # INC-15 (2026-08-16): Secret-Value.csv sat undetected at the repo tip for 48
+      # days because no check ever looked at the filename — the content scan below
+      # only covers *.py/*.ts/*.tsx/*.js, and a credential export named after its
+      # own shape (a 1Password/Perplexity-style CSV dump) has no code-file content
+      # to match. scripts/hooks/check-secrets.sh (c8b1f02) added the same filename
+      # patterns to the local pre-commit hook, but that hook is opt-in and can be
+      # bypassed (--no-verify, not installed, pushed from an unhooked machine) —
+      # this step is the non-bypassable backstop. Keep these patterns in sync with
+      # FILENAME_PATTERNS in scripts/hooks/check-secrets.sh.
+      - name: Check for secret-shaped filenames
         run: |
           set -euo pipefail
+<<<<<<< HEAD
           # Raw key material only — avoids false positives on settings.ANTHROPIC_API_KEY, risk_*, etc.
           HITS=$(grep -rE "sk-ant-api[0-9]{2}-[A-Za-z0-9_-]{20,}|sk_live_[0-9a-zA-Z]{20,}|xox[baprs]-[0-9a-z-]{10,}|AKIA[0-9A-Z]{16}" \
             --include="*.py" --include="*.ts" --include="*.tsx" --include="*.js" \
@@ -491,6 +539,35 @@ jobs:
             echo "ERROR: Potential raw API keys detected in repository."
             exit 1
           fi
+=======
+          HITS=$(git ls-files | grep -E '[Ss]ecret.*\.csv$|[Cc]redential.*\.csv$|\.pem$|\.p12$|\.pfx$' || true)
+          if [[ -n "${HITS}" ]]; then
+            echo "${HITS}"
+            echo "ERROR: Secret-shaped filename(s) found in the repo tree. Even if the content"
+            echo "looks harmless, files named like a credential export should never be committed."
+            exit 1
+          fi
+          echo "No secret-shaped filenames found."
+
+      - name: Check for hardcoded secrets
+        run: |
+          set -euo pipefail
+          # Raw key material only — avoids false positives on settings.ANTHROPIC_API_KEY, risk_*, etc.
+          # File types include data/export formats (csv, json, yaml, md, txt) in addition to code —
+          # INC-15's leaked CSV had no code-file content to match, only *.py/*.ts/*.tsx/*.js were
+          # ever scanned here, so a credential value pasted into a non-code file was invisible to CI.
+          HITS=$(grep -rE "sk-ant-api[0-9]{2}-[A-Za-z0-9_-]{20,}|sk_live_[0-9a-zA-Z]{20,}|xox[baprs]-[0-9a-z-]{10,}|AKIA[0-9A-Z]{16}" \
+            --include="*.py" --include="*.ts" --include="*.tsx" --include="*.js" \
+            --include="*.csv" --include="*.json" --include="*.yaml" --include="*.yml" \
+            --include="*.md" --include="*.txt" \
+            --exclude-dir=node_modules --exclude-dir=.venv --exclude-dir=.next \
+            engine/ dashboard/ 2>/dev/null || true)
+          if [[ -n "${HITS}" ]]; then
+            echo "${HITS}"
+            echo "ERROR: Potential raw API keys detected in repository."
+            exit 1
+          fi
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
           echo "Security scan passed: no high-signal secret patterns matched."
 
   ci-summary:

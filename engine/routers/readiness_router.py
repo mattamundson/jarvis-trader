@@ -27,6 +27,200 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/readiness", tags=["readiness", "phase3"])
 
 
+<<<<<<< HEAD
+=======
+def _status_rank(status: str) -> int:
+    return {"pass": 0, "warn": 1, "fail": 2}.get(status, 2)
+
+
+def _overall_status(checks: list[dict]) -> str:
+    if any(check["required"] and check["status"] == "fail" for check in checks):
+        return "blocked"
+    if any(_status_rank(check["status"]) > 0 for check in checks):
+        return "degraded"
+    return "ready"
+
+
+def _check(name: str, passed: bool, detail: str, *, required: bool = True) -> dict:
+    return {
+        "name": name,
+        "status": "pass" if passed else "fail",
+        "detail": detail,
+        "required": required,
+    }
+
+
+def _warn(name: str, passed: bool, detail: str) -> dict:
+    return {
+        "name": name,
+        "status": "pass" if passed else "warn",
+        "detail": detail,
+        "required": False,
+    }
+
+
+def _paper_instrument_state() -> dict:
+    from backtest.paper_config import ACTIVE_INSTRUMENTS, PAPER_CONFIGS
+    from backtest.signals import DEFAULT_BRIEFING_SYMBOLS, DO_NOT_TRADE_SYMBOLS
+
+    active_symbols = sorted({str(sym).upper() for sym in ACTIVE_INSTRUMENTS})
+    halted_symbols = sorted({str(sym).upper() for sym in DO_NOT_TRADE_SYMBOLS})
+    enabled_config_symbols = sorted(
+        str(sym).upper() for sym, cfg in PAPER_CONFIGS.items() if cfg.get("enabled", False)
+    )
+    default_briefing_symbols = sorted({str(sym).upper() for sym in DEFAULT_BRIEFING_SYMBOLS})
+    return {
+        "active_symbols": active_symbols,
+        "halted_symbols": halted_symbols,
+        "enabled_config_symbols": enabled_config_symbols,
+        "default_briefing_symbols": default_briefing_symbols,
+    }
+
+
+def build_paper_pipeline_readiness(health: dict, instruments: dict | None = None) -> dict:
+    """Reduce live /health truth into paper-pipeline readiness.
+
+    This is a read-only contract: it reshapes existing probes and static paper
+    config; it never reconnects brokers, mutates safety settings, or probes the
+    live IB port.
+    """
+    instrument_state = instruments or _paper_instrument_state()
+    active_symbols = instrument_state["active_symbols"]
+    halted_symbols = instrument_state["halted_symbols"]
+    enabled_config_symbols = instrument_state["enabled_config_symbols"]
+    default_briefing_symbols = instrument_state["default_briefing_symbols"]
+    halted_active = sorted(set(active_symbols) & set(halted_symbols))
+    stale_symbols = sorted(health.get("market_data_stale_symbols") or [])
+    pending = health.get("pending_approvals") or {}
+
+    paper_mode = bool(health.get("paper_mode"))
+    live_trading = bool(health.get("live_trading"))
+    ib_data_connected = bool(health.get("ibkr_data_connected"))
+    tv_mcp_healthy = bool(health.get("tradingview_mcp_healthy"))
+    source_ready = ib_data_connected or tv_mcp_healthy
+    source_name = (
+        "ibkr"
+        if ib_data_connected
+        else "tradingview_mcp"
+        if tv_mcp_healthy
+        else "none"
+    )
+
+    checks = [
+        _check(
+            "paper_mode_only",
+            paper_mode and not live_trading,
+            f"paper_mode={paper_mode} live_trading={live_trading}",
+        ),
+        _check(
+            "kill_switch_inactive",
+            not bool(health.get("kill_switch_active", True)),
+            f"kill_switch_active={health.get('kill_switch_active')}",
+        ),
+        _check(
+            "database_connected",
+            health.get("database") == "connected",
+            f"database={health.get('database')}",
+        ),
+        _check(
+            "execution_path_verified",
+            bool(health.get("execution_connected_verified")),
+            (
+                f"execution_connected_verified={health.get('execution_connected_verified')} "
+                f"ibgateway_alive={health.get('ibgateway_alive')} "
+                f"ib_execution_stale={health.get('ib_execution_stale')}"
+            ),
+        ),
+        _check(
+            "broker_probe_ok",
+            bool(health.get("ibkr_broker_probe_ok", True)),
+            f"ibkr_broker_probe_ok={health.get('ibkr_broker_probe_ok')}",
+        ),
+        _check(
+            "market_data_source_available",
+            source_ready,
+            f"source={source_name} ibkr_data_connected={ib_data_connected} tv_mcp_healthy={tv_mcp_healthy}",
+        ),
+        _check(
+            "market_data_fresh",
+            bool(health.get("market_data_fresh", False)),
+            f"market_data_fresh={health.get('market_data_fresh')} stale_symbols={stale_symbols}",
+        ),
+        _check(
+            "llm_path_healthy",
+            bool(health.get("llm_path_healthy", False)),
+            f"llm_path_healthy={health.get('llm_path_healthy')}",
+        ),
+        _check(
+            "active_symbols_unhalted",
+            bool(active_symbols) and not halted_active,
+            f"active_symbols={active_symbols} halted_active={halted_active}",
+        ),
+        _check(
+            "paper_config_matches_active_symbols",
+            active_symbols == enabled_config_symbols,
+            f"active_symbols={active_symbols} enabled_config_symbols={enabled_config_symbols}",
+        ),
+        _warn(
+            "default_briefing_covers_active_symbols",
+            set(active_symbols).issubset(default_briefing_symbols),
+            f"default_briefing_symbols={default_briefing_symbols} active_symbols={active_symbols}",
+        ),
+        _warn(
+            "approval_queue_clear",
+            int(pending.get("count", 0) or 0) == 0,
+            f"pending_count={pending.get('count', 0)} oldest_age_min={pending.get('oldest_age_min')}",
+        ),
+    ]
+
+    status = _overall_status(checks)
+    failed_required = [check["name"] for check in checks if check["required"] and check["status"] == "fail"]
+    warnings = [check["name"] for check in checks if check["status"] == "warn"]
+    return {
+        "status": status,
+        "timestamp": health.get("timestamp"),
+        "summary": {
+            "ready": status == "ready",
+            "failed_required": failed_required,
+            "warnings": warnings,
+            "active_symbols": active_symbols,
+            "halted_symbols": halted_symbols,
+            "market_data_source": source_name,
+        },
+        "runtime": {
+            "paper_mode": paper_mode,
+            "live_trading": live_trading,
+            "kill_switch_active": bool(health.get("kill_switch_active", True)),
+            "pending_approvals": pending,
+        },
+        "broker": {
+            "ibgateway_alive": bool(health.get("ibgateway_alive")),
+            "ibgateway_port": health.get("ibgateway_port"),
+            "ibkr_execution_connected": health.get("ibkr_execution_connected"),
+            "execution_connected_verified": health.get("execution_connected_verified"),
+            "ib_execution_stale": health.get("ib_execution_stale"),
+            "ibkr_data_connected": health.get("ibkr_data_connected"),
+            "ibkr_broker_probe_ok": health.get("ibkr_broker_probe_ok"),
+            "ibkr_degraded_reason": health.get("ibkr_degraded_reason"),
+            "schwab_connected": bool(health.get("schwab_connected")),
+        },
+        "market_data": {
+            "source": source_name,
+            "market_data_fresh": health.get("market_data_fresh"),
+            "market_data_stale_symbols": stale_symbols,
+            "tradingview_mcp_healthy": health.get("tradingview_mcp_healthy"),
+            "tv_mcp_status": health.get("tv_mcp_status"),
+        },
+        "instruments": instrument_state,
+        "checks": checks,
+        "note": (
+            "Read-only paper-pipeline readiness. Uses /health runtime truth plus "
+            "static paper instrument eligibility; never mutates broker, safety, or env state."
+        ),
+    }
+
+
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 def _default_db_path() -> str:
     return os.environ.get(
         "DB_PATH",
@@ -106,6 +300,38 @@ async def get_phase3_readiness(
 
 
 @router.get(
+<<<<<<< HEAD
+=======
+    "/paper-pipeline",
+    summary="Paper-trading pipeline readiness — read-only runtime contract",
+    response_model=None,
+    response_description=(
+        "Structured ready/degraded/blocked report for the current paper pipeline. "
+        "Uses /health runtime truth and static paper instrument eligibility."
+    ),
+)
+async def get_paper_pipeline_readiness(_api_key: str = Depends(verify_api_key)):
+    """
+    Return paper-pipeline readiness without changing runtime state.
+
+    This is intentionally narrower than Phase 3 live readiness: it answers
+    whether the active paper pipeline can currently collect evidence with
+    honest market data, verified paper execution, and unhalted instruments.
+    """
+    from routers.health_router import _health_cached
+
+    try:
+        health = await _health_cached()
+        return build_paper_pipeline_readiness(health)
+    except Exception as exc:
+        logger.error("Paper pipeline readiness failed: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Paper pipeline readiness failed: {exc}"
+        ) from exc
+
+
+@router.get(
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     "/gate-v2-calibration",
     summary="Bayesian gate-v2 threshold calibration — recommended values only",
     response_model=None,

@@ -23,6 +23,45 @@ interface LadderRow {
   label: string;
   level: number;
   p_above: number | null;
+<<<<<<< HEAD
+=======
+  p_touch?: number | null;
+  p_fail?: number | null;
+}
+
+interface OpportunityCandidate {
+  structure: string;
+  thesis: string;
+  net_price: number;
+  max_loss: number;
+  max_gain: number;
+  breakeven: number;
+  pop: number | null;
+  ev: number | null;
+  ev_to_max_loss: number | null;
+  reward_to_risk: number;
+  liquidity_score: number;
+  score: number;
+  reject_reasons: string[];
+  journal_url?: string;
+  journal_note?: string;
+}
+
+interface OpportunityBoard {
+  symbol: string;
+  expiry: string;
+  spot: number;
+  status: "ok" | "degraded" | string;
+  source?: string;
+  source_confidence?: number;
+  source_notes?: string[];
+  candidate_count?: number;
+  rejected_count?: number;
+  candidates: OpportunityCandidate[];
+  rejected_candidates?: OpportunityCandidate[];
+  reject_summary: string[];
+  disclaimer: string;
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 }
 
 interface Horizon {
@@ -35,6 +74,10 @@ interface Horizon {
   expected_move_abs: number | null;
   expected_move_pct: number | null;
   prob_ladder: LadderRow[];
+<<<<<<< HEAD
+=======
+  opportunity_board?: OpportunityBoard;
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
   quality: "ok" | "degraded" | string;
   notes: string[];
 }
@@ -134,6 +177,101 @@ function LoadingCard() {
   );
 }
 
+<<<<<<< HEAD
+=======
+function structureLabel(value: string): string {
+  return value.replaceAll("_", " ");
+}
+
+function money(value: number | null | undefined, digits = 0): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return `$${value.toFixed(digits)}`;
+}
+
+function OpportunityBoardMini({ board }: { board?: OpportunityBoard }) {
+  if (!board) {
+    return (
+      <p className="font-mono text-[10px] text-muted-foreground italic">
+        Opportunity board unavailable — regenerate options snapshot.
+      </p>
+    );
+  }
+  const top = board.candidates.slice(0, 3);
+  return (
+    <div className="rounded-lg border border-border/80 p-3 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+          Defined-risk opportunity board · ANALYSIS_ONLY
+        </p>
+        <div className="flex items-center gap-2">
+          {board.source_confidence != null && (
+            <Badge variant={board.source_confidence >= 0.7 ? "info" : "static"} className="font-mono text-[9px]">
+              SRC {pct(board.source_confidence)}
+            </Badge>
+          )}
+          <Badge variant={board.status === "ok" ? "info" : "static"} className="font-mono text-[9px]">
+            {board.status.toUpperCase()}
+          </Badge>
+        </div>
+      </div>
+      {top.length === 0 ? (
+        <p className="font-mono text-[10px] text-muted-foreground italic">
+          No bounded-risk candidates passed this cycle. {board.reject_summary.join(" · ")}
+        </p>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="font-mono text-[10px]">STRUCTURE</TableHead>
+              <TableHead className="font-mono text-[10px]">POP</TableHead>
+              <TableHead className="font-mono text-[10px]">EV/MAX LOSS</TableHead>
+              <TableHead className="font-mono text-[10px]">MAX LOSS</TableHead>
+              <TableHead className="font-mono text-[10px]">BREAKEVEN</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {top.map((candidate) => (
+              <TableRow key={`${candidate.structure}-${candidate.breakeven}`}>
+                <TableCell className="font-mono text-[10px] uppercase">
+                  <div>{structureLabel(candidate.structure)}</div>
+                  {candidate.journal_url && (
+                    <a href={candidate.journal_url} title={candidate.journal_note ?? "Open journal"} className="text-[9px] text-accent hover:underline">
+                      journal handoff
+                    </a>
+                  )}
+                </TableCell>
+                <TableCell className="font-mono text-[10px] tabular-nums">
+                  {candidate.pop != null ? pct(candidate.pop) : "—"}
+                </TableCell>
+                <TableCell className="font-mono text-[10px] tabular-nums">
+                  {candidate.ev_to_max_loss != null ? pct(candidate.ev_to_max_loss, 1) : "—"}
+                </TableCell>
+                <TableCell className="font-mono text-[10px] tabular-nums">
+                  {money(candidate.max_loss)}
+                </TableCell>
+                <TableCell className="font-mono text-[10px] tabular-nums">
+                  {candidate.breakeven.toFixed(2)}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+      {board.source_notes && board.source_notes.length > 0 && (
+        <p className="font-mono text-[9px] text-muted-foreground/70">
+          Source: {board.source ?? "unknown"} · {board.source_notes.slice(0, 2).join(" · ")}
+        </p>
+      )}
+      {board.rejected_candidates && board.rejected_candidates.length > 0 && (
+        <p className="font-mono text-[9px] text-muted-foreground/70">
+          Rejected: {board.rejected_candidates.slice(0, 2).map((c) => `${structureLabel(c.structure)} (${c.reject_reasons.join(", ")})`).join(" · ")}
+        </p>
+      )}
+    </div>
+  );
+}
+
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 function HorizonCard({ horizon }: { horizon: Horizon }) {
   const em = horizon.expected_move_abs;
   return (
@@ -166,6 +304,11 @@ function HorizonCard({ horizon }: { horizon: Horizon }) {
               <TableHead className="font-mono text-[10px]">PRICE</TableHead>
               <TableHead className="font-mono text-[10px]">P(CLOSE ABOVE)</TableHead>
               <TableHead className="font-mono text-[10px]">P(CLOSE BELOW)</TableHead>
+<<<<<<< HEAD
+=======
+              <TableHead className="font-mono text-[10px]">P(TOUCH)</TableHead>
+              <TableHead className="font-mono text-[10px]">P(FAIL)</TableHead>
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -183,11 +326,31 @@ function HorizonCard({ horizon }: { horizon: Horizon }) {
                 <TableCell className="font-mono text-[11px] tabular-nums">
                   {row.p_above != null ? pct(1 - row.p_above) : "—"}
                 </TableCell>
+<<<<<<< HEAD
+=======
+                <TableCell className="font-mono text-[11px] tabular-nums">
+                  {row.p_touch != null ? pct(row.p_touch) : "—"}
+                </TableCell>
+                <TableCell className="font-mono text-[11px] tabular-nums">
+                  {row.p_fail != null ? pct(row.p_fail) : "—"}
+                </TableCell>
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
               </TableRow>
             ))}
           </TableBody>
         </Table>
       )}
+<<<<<<< HEAD
+=======
+      {horizon.prob_ladder.some((row) => row.p_touch != null) && (
+        <p className="font-mono text-[9px] text-muted-foreground/70">
+          P(TOUCH)/P(FAIL) are reflection-implied from the same delta surface
+          (≈2× OTM close-probability; zero-drift first-passage estimate, not
+          calibrated).
+        </p>
+      )}
+      <OpportunityBoardMini board={horizon.opportunity_board} />
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       {horizon.notes.length > 0 && (
         <p className="font-mono text-[9px] text-muted-foreground/70">{horizon.notes.join(" · ")}</p>
       )}
@@ -260,13 +423,24 @@ export function OptionsSignalsPanel() {
                 </Badge>
               )}
               <Badge variant={fresh ? "live" : "static"} className="font-mono text-[9px]">
+<<<<<<< HEAD
                 {fresh ? "LIVE" : "STALE"} · {fmtEpochSeconds(data.generated_at)}
+=======
+                {fresh ? "FRESH SNAPSHOT" : "STALE SNAPSHOT"} · {fmtEpochSeconds(data.generated_at)}
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
               </Badge>
             </span>
           )}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+<<<<<<< HEAD
+=======
+        <p className="font-mono text-[10px] text-muted-foreground">
+          Market-implied decision support only. Uses delayed option-chain / VIX inputs when
+          available; no edge, fillability, or executable quote is claimed.
+        </p>
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         {isLoading && (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <LoadingCard />

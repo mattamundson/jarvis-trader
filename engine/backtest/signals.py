@@ -124,7 +124,19 @@ TREND_INSTRUMENTS = {"MES", "MGC"}
 #   fallback), SOTA-hardened execution, 67 OOS trades, 19/19 windows, all 8
 #   grid combos PF>=1.36, survives catastrophic costs. See PR #597 verdict
 #   file engine/data/gate_v2_verdicts/MGC_trend_rank4.json.
+<<<<<<< HEAD
 DO_NOT_TRADE_SYMBOLS = frozenset({"MCL", "MNQ", "M2K"})
+=======
+#   2026-08-16: MGC RE-ADDED to blocklist. Fresh rank4 re-evaluation
+#   (created_at 2026-08-16T15:29Z, on the completeness-preferred cache
+#   MGC_2024-03-04_2026-07-24_1h.csv) FAILs gate v2: pf_ci_lower=1.0681 < 1.1,
+#   mc_95th_dd=4.4212% > 4.0 ALT ceiling, 94 OOS trades. The 08-04 PASS
+#   degraded on the refreshed window (67→94 OOS trades). The blocklist
+#   removal contract ("fresh PASS + explicit auth") is no longer satisfied;
+#   re-removal requires a fresh honest gate-v2 CORE PASS (see PR #598
+#   contract). Paper config MGC_PAPER_CONFIG.enabled=False synced same day.
+DO_NOT_TRADE_SYMBOLS = frozenset({"MGC", "MCL", "MNQ", "M2K"})
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 # Default symbol(s) for dashboard/Discord briefing widgets (T3-23, 2026-07-09;
 # reduced to MES-only 2026-08-01 after MGC joined DO_NOT_TRADE_SYMBOLS above,
@@ -209,7 +221,26 @@ def generate_instrument_signals(df, symbol: str, **kwargs):
                 **{
                     k: v
                     for k, v in kwargs.items()
+<<<<<<< HEAD
                     if k in ("fast", "slow", "atr_trail_mult", "min_rv_annualized")
+=======
+                    if k in (
+                        "fast",
+                        "slow",
+                        "atr_trail_mult",
+                        "min_rv_annualized",
+                        # VIX-adjustment kwargs (certified 2026-08-17 — MES VIX
+                        # percentile-tier gate v2 PASS-ALT, DSR 0.975, PF CI 2.26,
+                        # 82-window deep run). Passed through from paper_config
+                        # sma_params so the live paper path can suppress trend
+                        # entries during high-VIX regimes.
+                        "vix_df",
+                        "vix_min",
+                        "vix_max",
+                        "vix_regime_block",
+                        "vix_regime_lookback",
+                    )
+>>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                 },
             }
             result = generate_sma_trend_signals(df, **merged)
