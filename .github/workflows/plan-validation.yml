@@ -1,0 +1,40 @@
+name: JARVIS MIP Validation
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    paths:
+      - "docs/plans/JARVIS_MASTER_IMPLEMENTATION_PLAN_1.1.md"
+      - "docs/plans/jarvis-mip-1.1/**"
+      - "scripts/validate_jarvis_mip.py"
+      - "tests/plan/**"
+      - ".github/workflows/plan-validation.yml"
+  push:
+    branches: [main, master]
+    paths:
+      - "docs/plans/JARVIS_MASTER_IMPLEMENTATION_PLAN_1.1.md"
+      - "docs/plans/jarvis-mip-1.1/**"
+      - "scripts/validate_jarvis_mip.py"
+      - "tests/plan/**"
+      - ".github/workflows/plan-validation.yml"
+
+concurrency:
+  group: jarvis-mip-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate plan graph
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate adoption candidate
+        run: python scripts/validate_jarvis_mip.py --profile structural
+      - name: Run validator regression tests
+        run: python -m unittest discover -s tests/plan -p "test_*.py" -v

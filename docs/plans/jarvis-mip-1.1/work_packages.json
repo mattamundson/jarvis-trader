@@ -1,0 +1,3758 @@
+{
+  "schema_version": "1.1",
+  "plan_id": "JARVIS-MIP-1.1",
+  "plan_status": "ADOPTED",
+  "formal_implementation_status": "NOT_STARTED",
+  "planning_adoption_gate": "OPEN",
+  "implementation_start_gate": "CLOSED",
+  "generated": "2026-09-01",
+  "repository_baseline": "1d8f93992205d1dcacc05e0466d89247f2c789d1",
+  "programs": [
+    {
+      "id": "A",
+      "name": "Platform & Architecture"
+    },
+    {
+      "id": "B",
+      "name": "Data Engineering"
+    },
+    {
+      "id": "C",
+      "name": "Feature Engineering"
+    },
+    {
+      "id": "D",
+      "name": "Strategy Research"
+    },
+    {
+      "id": "E",
+      "name": "Judge & Statistical Validation"
+    },
+    {
+      "id": "F",
+      "name": "Portfolio Construction"
+    },
+    {
+      "id": "G",
+      "name": "Capital Path"
+    },
+    {
+      "id": "H",
+      "name": "Risk Management"
+    },
+    {
+      "id": "I",
+      "name": "Execution / OMS"
+    },
+    {
+      "id": "J",
+      "name": "Broker Integration"
+    },
+    {
+      "id": "K",
+      "name": "Command Center / UX"
+    },
+    {
+      "id": "L",
+      "name": "AI Intelligence & Agents"
+    },
+    {
+      "id": "M",
+      "name": "Observability & Operations"
+    },
+    {
+      "id": "N",
+      "name": "Security & Access"
+    },
+    {
+      "id": "O",
+      "name": "DevOps / CI-CD"
+    },
+    {
+      "id": "P",
+      "name": "Paper to Canary to Production"
+    }
+  ],
+  "epics": [
+    {
+      "id": "A-E1",
+      "program": "A",
+      "title": "Runtime canon and governance",
+      "work_packages": [
+        "A-01",
+        "A-02",
+        "A-06"
+      ]
+    },
+    {
+      "id": "A-E2",
+      "program": "A",
+      "title": "Core architecture and composition",
+      "work_packages": [
+        "A-03",
+        "A-04",
+        "A-05"
+      ]
+    },
+    {
+      "id": "B-E1",
+      "program": "B",
+      "title": "Instrument and live-data truth",
+      "work_packages": [
+        "B-01",
+        "B-02",
+        "B-05"
+      ]
+    },
+    {
+      "id": "B-E2",
+      "program": "B",
+      "title": "Reproducible research data and replay",
+      "work_packages": [
+        "B-03",
+        "B-04",
+        "B-06",
+        "B-07",
+        "B-08"
+      ]
+    },
+    {
+      "id": "C-E1",
+      "program": "C",
+      "title": "Feature governance, causal audit and parity",
+      "work_packages": [
+        "C-01",
+        "C-02",
+        "C-05",
+        "C-06"
+      ]
+    },
+    {
+      "id": "C-E2",
+      "program": "C",
+      "title": "PIT feature runtime and ablation",
+      "work_packages": [
+        "C-03",
+        "C-04",
+        "C-07"
+      ]
+    },
+    {
+      "id": "D-E1",
+      "program": "D",
+      "title": "Deterministic strategy protocol and families",
+      "work_packages": [
+        "D-01",
+        "D-02",
+        "D-03",
+        "D-04",
+        "D-05",
+        "D-08"
+      ]
+    },
+    {
+      "id": "D-E2",
+      "program": "D",
+      "title": "Meta-labeling and statistical ML",
+      "work_packages": [
+        "D-06",
+        "D-07"
+      ]
+    },
+    {
+      "id": "E-E1",
+      "program": "E",
+      "title": "Trial accounting and validation mechanics",
+      "work_packages": [
+        "E-01",
+        "E-02",
+        "E-03",
+        "E-04",
+        "E-05"
+      ]
+    },
+    {
+      "id": "E-E2",
+      "program": "E",
+      "title": "Falsification, holdout and forward Judge",
+      "work_packages": [
+        "E-06",
+        "E-07",
+        "E-08"
+      ]
+    },
+    {
+      "id": "F-E1",
+      "program": "F",
+      "title": "Portfolio truth and exposure",
+      "work_packages": [
+        "F-01",
+        "F-02"
+      ]
+    },
+    {
+      "id": "F-E2",
+      "program": "F",
+      "title": "Allocation and attribution",
+      "work_packages": [
+        "F-03",
+        "F-04"
+      ]
+    },
+    {
+      "id": "G-E1",
+      "program": "G",
+      "title": "Dynamic capital simulation",
+      "work_packages": [
+        "G-01",
+        "G-02",
+        "G-03"
+      ]
+    },
+    {
+      "id": "G-E2",
+      "program": "G",
+      "title": "Risk frontier and decision support",
+      "work_packages": [
+        "G-04",
+        "G-05"
+      ]
+    },
+    {
+      "id": "H-E1",
+      "program": "H",
+      "title": "Policy, sizing and trade gates",
+      "work_packages": [
+        "H-01",
+        "H-02",
+        "H-03"
+      ]
+    },
+    {
+      "id": "H-E2",
+      "program": "H",
+      "title": "Drawdown, halts and adversarial safety",
+      "work_packages": [
+        "H-04",
+        "H-05",
+        "H-06"
+      ]
+    },
+    {
+      "id": "I-E1",
+      "program": "I",
+      "title": "Intent and OMS lifecycle",
+      "work_packages": [
+        "I-01",
+        "I-02",
+        "I-03"
+      ]
+    },
+    {
+      "id": "I-E2",
+      "program": "I",
+      "title": "Protection, order management and recovery",
+      "work_packages": [
+        "I-04",
+        "I-05",
+        "I-06"
+      ]
+    },
+    {
+      "id": "J-E1",
+      "program": "J",
+      "title": "Broker contract and IB paper consolidation",
+      "work_packages": [
+        "J-01",
+        "J-02",
+        "J-03"
+      ]
+    },
+    {
+      "id": "J-E2",
+      "program": "J",
+      "title": "Execution evidence and live boundary",
+      "work_packages": [
+        "J-04",
+        "J-05"
+      ]
+    },
+    {
+      "id": "K-E1",
+      "program": "K",
+      "title": "Product IA and operator cockpit",
+      "work_packages": [
+        "K-01",
+        "K-02",
+        "K-03",
+        "K-06"
+      ]
+    },
+    {
+      "id": "K-E2",
+      "program": "K",
+      "title": "Trade and position control surfaces",
+      "work_packages": [
+        "K-04",
+        "K-05",
+        "K-11"
+      ]
+    },
+    {
+      "id": "K-E3",
+      "program": "K",
+      "title": "Research, capital and performance surfaces",
+      "work_packages": [
+        "K-07",
+        "K-08",
+        "K-09"
+      ]
+    },
+    {
+      "id": "K-E4",
+      "program": "K",
+      "title": "Health, admin and numeric trust",
+      "work_packages": [
+        "K-10",
+        "K-12"
+      ]
+    },
+    {
+      "id": "L-E1",
+      "program": "L",
+      "title": "AI authority and contextual intelligence",
+      "work_packages": [
+        "L-01",
+        "L-02",
+        "L-03"
+      ]
+    },
+    {
+      "id": "L-E2",
+      "program": "L",
+      "title": "Critic, post-trade learning and evaluation",
+      "work_packages": [
+        "L-04",
+        "L-05",
+        "L-06"
+      ]
+    },
+    {
+      "id": "M-E1",
+      "program": "M",
+      "title": "Audit, event, trace and health foundation",
+      "work_packages": [
+        "M-01",
+        "M-02",
+        "M-03"
+      ]
+    },
+    {
+      "id": "M-E2",
+      "program": "M",
+      "title": "Alerting and incident replay",
+      "work_packages": [
+        "M-04",
+        "M-05"
+      ]
+    },
+    {
+      "id": "N-E1",
+      "program": "N",
+      "title": "Secrets, environments and authorization",
+      "work_packages": [
+        "N-01",
+        "N-02"
+      ]
+    },
+    {
+      "id": "N-E2",
+      "program": "N",
+      "title": "Threat model and security automation",
+      "work_packages": [
+        "N-03",
+        "N-04"
+      ]
+    },
+    {
+      "id": "O-E1",
+      "program": "O",
+      "title": "CI, verification and reproducible builds",
+      "work_packages": [
+        "O-01",
+        "O-02",
+        "O-03"
+      ]
+    },
+    {
+      "id": "O-E2",
+      "program": "O",
+      "title": "Release evidence and agent/PR governance",
+      "work_packages": [
+        "O-04",
+        "O-05"
+      ]
+    },
+    {
+      "id": "P-E1",
+      "program": "P",
+      "title": "Integrated paper evidence and promotion",
+      "work_packages": [
+        "P-01",
+        "P-02",
+        "P-03"
+      ]
+    },
+    {
+      "id": "P-E2",
+      "program": "P",
+      "title": "Canary, scaling, degradation and retirement",
+      "work_packages": [
+        "P-04",
+        "P-05",
+        "P-06",
+        "P-07",
+        "P-08"
+      ]
+    }
+  ],
+  "phases": [
+    {
+      "id": 0,
+      "name": "Adoption and truth baseline",
+      "exit_gate": "ISG-0"
+    },
+    {
+      "id": 1,
+      "name": "Core platform, policy and observability",
+      "exit_gate": "M1"
+    },
+    {
+      "id": 2,
+      "name": "PIT data and feature foundation",
+      "exit_gate": "M2"
+    },
+    {
+      "id": 3,
+      "name": "Deterministic research and Judge V3",
+      "exit_gate": "M3"
+    },
+    {
+      "id": 4,
+      "name": "Risk, OMS and broker consolidation",
+      "exit_gate": "M4"
+    },
+    {
+      "id": 5,
+      "name": "Read-only operator product",
+      "exit_gate": "M5"
+    },
+    {
+      "id": 6,
+      "name": "Integrated paper control plane",
+      "exit_gate": "M6"
+    },
+    {
+      "id": 7,
+      "name": "Capital Path and robust risk optimization",
+      "exit_gate": "M7"
+    },
+    {
+      "id": 8,
+      "name": "AI contextual intelligence",
+      "exit_gate": "M8"
+    },
+    {
+      "id": 9,
+      "name": "Extended integrated paper validation",
+      "exit_gate": "M9"
+    },
+    {
+      "id": 10,
+      "name": "Canary readiness",
+      "exit_gate": "M10"
+    },
+    {
+      "id": 11,
+      "name": "Tiny live canary",
+      "exit_gate": "M11"
+    },
+    {
+      "id": 12,
+      "name": "Controlled production and continuous research",
+      "exit_gate": "M12"
+    }
+  ],
+  "gates": [
+    {
+      "id": "PAG-0",
+      "status": "OPEN",
+      "authority": "human_product_capital_owner",
+      "required_work_packages": [],
+      "evidence_manifest": "docs/plans/jarvis-mip-1.1/evidence/PAG-0-adoption.json"
+    },
+    {
+      "id": "ISG-0",
+      "status": "CLOSED",
+      "authority": "human_product_capital_owner",
+      "required_work_packages": [
+        "A-01",
+        "A-02",
+        "A-03",
+        "A-06",
+        "K-01",
+        "O-01",
+        "O-05"
+      ],
+      "evidence_manifest": null
+    },
+    {
+      "id": "M1",
+      "status": "CLOSED",
+      "authority": "plan_gate_owner",
+      "required_work_packages": [
+        "A-04",
+        "A-05",
+        "B-01",
+        "H-01",
+        "H-05",
+        "L-01",
+        "M-01",
+        "M-02",
+        "M-03",
+        "N-01",
+        "N-02",
+        "N-03",
+        "O-02",
+        "O-03"
+      ],
+      "evidence_manifest": null
+    },
+    {
+      "id": "M2",
+      "status": "CLOSED",
+      "authority": "plan_gate_owner",
+      "required_work_packages": [
+        "B-02",
+        "B-03",
+        "B-04",
+        "B-05",
+        "B-06",
+        "B-07",
+        "B-08",
+        "C-01",
+        "C-02",
+        "C-03",
+        "C-04",
+        "C-05",
+        "C-06",
+        "E-01"
+      ],
+      "evidence_manifest": null
+    },
+    {
+      "id": "M3",
+      "status": "CLOSED",
+      "authority": "plan_gate_owner",
+      "required_work_packages": [
+        "C-07",
+        "D-01",
+        "D-02",
+        "D-03",
+        "D-04",
+        "D-05",
+        "D-06",
+        "D-08",
+        "E-02",
+        "E-03",
+        "E-04",
+        "E-05",
+        "E-06",
+        "E-07",
+        "L-04"
+      ],
+      "evidence_manifest": null
+    },
+    {
+      "id": "M4",
+      "status": "CLOSED",
+      "authority": "plan_gate_owner",
+      "required_work_packages": [
+        "F-01",
+        "F-02",
+        "F-03",
+        "H-02",
+        "H-03",
+        "H-06",
+        "I-01",
+        "I-02",
+        "I-03",
+        "I-04",
+        "I-06",
+        "J-01",
+        "J-02",
+        "J-03"
+      ],
+      "evidence_manifest": null
+    },
+    {
+      "id": "M5",
+      "status": "CLOSED",
+      "authority": "plan_gate_owner",
+      "required_work_packages": [
+        "K-02",
+        "K-03",
+        "K-06",
+        "K-07",
+        "K-10",
+        "K-11",
+        "K-12"
+      ],
+      "evidence_manifest": null
+    },
+    {
+      "id": "M6",
+      "status": "CLOSED",
+      "authority": "plan_gate_owner",
+      "required_work_packages": [
+        "F-04",
+        "I-05",
+        "J-04",
+        "K-04",
+        "K-05",
+        "K-09",
+        "M-04",
+        "M-05",
+        "N-04",
+        "O-04"
+      ],
+      "evidence_manifest": null
+    },
+    {
+      "id": "M7",
+      "status": "CLOSED",
+      "authority": "plan_gate_owner",
+      "required_work_packages": [
+        "G-01",
+        "G-02",
+        "G-03",
+        "G-04",
+        "G-05",
+        "H-04",
+        "K-08"
+      ],
+      "evidence_manifest": null
+    },
+    {
+      "id": "M8",
+      "status": "CLOSED",
+      "authority": "plan_gate_owner",
+      "required_work_packages": [
+        "D-07",
+        "L-02",
+        "L-03",
+        "L-05",
+        "L-06"
+      ],
+      "evidence_manifest": null
+    },
+    {
+      "id": "M9",
+      "status": "CLOSED",
+      "authority": "human_product_capital_owner",
+      "required_work_packages": [
+        "E-08",
+        "P-01",
+        "P-02",
+        "P-03"
+      ],
+      "evidence_manifest": null
+    },
+    {
+      "id": "M10",
+      "status": "CLOSED",
+      "authority": "human_product_capital_owner",
+      "required_work_packages": [
+        "J-05",
+        "P-04"
+      ],
+      "evidence_manifest": null
+    },
+    {
+      "id": "M11",
+      "status": "CLOSED",
+      "authority": "human_product_capital_owner",
+      "required_work_packages": [
+        "P-05",
+        "P-07"
+      ],
+      "evidence_manifest": null
+    },
+    {
+      "id": "M12",
+      "status": "CLOSED",
+      "authority": "human_product_capital_owner",
+      "required_work_packages": [
+        "P-06",
+        "P-08"
+      ],
+      "evidence_manifest": null
+    }
+  ],
+  "work_packages": [
+    {
+      "id": "A-01",
+      "program": "A",
+      "phase": 0,
+      "milestone": "ISG-0",
+      "title": "Runtime truth baseline and contradiction register",
+      "status": "IN_PROGRESS",
+      "dependencies": [],
+      "safety_class": "S0",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "A-E1",
+      "objective": "Deliver Runtime truth baseline and contradiction register without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E0",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": false
+      },
+      "charter_path": "docs/plans/jarvis-mip-1.1/charters/A-01.md",
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "A-02",
+      "program": "A",
+      "phase": 0,
+      "milestone": "ISG-0",
+      "title": "Source-of-truth hierarchy and canon ADR",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "A-01"
+      ],
+      "safety_class": "S0",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "A-E1",
+      "objective": "Deliver Source-of-truth hierarchy and canon ADR without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E0",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": "docs/plans/jarvis-mip-1.1/charters/A-02.md"
+    },
+    {
+      "id": "A-03",
+      "program": "A",
+      "phase": 0,
+      "milestone": "ISG-0",
+      "title": "Target bounded-context architecture ADR",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "A-01",
+        "A-02"
+      ],
+      "safety_class": "S0",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "A-E2",
+      "objective": "Deliver Target bounded-context architecture ADR without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E0",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": "docs/plans/jarvis-mip-1.1/charters/A-03.md"
+    },
+    {
+      "id": "A-04",
+      "program": "A",
+      "phase": 1,
+      "milestone": "M1",
+      "title": "Core domain contracts",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "A-03",
+        "B-01"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "A-E2",
+      "objective": "Deliver Core domain contracts without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "A-05",
+      "program": "A",
+      "phase": 1,
+      "milestone": "M1",
+      "title": "Composition-root refactor plan",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "A-03"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "A-E2",
+      "objective": "Deliver Composition-root refactor plan without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "A-06",
+      "program": "A",
+      "phase": 0,
+      "milestone": "ISG-0",
+      "title": "Legacy deprecation registry",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "A-01",
+        "A-03"
+      ],
+      "safety_class": "S0",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "A-E1",
+      "objective": "Deliver Legacy deprecation registry without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E0",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": "docs/plans/jarvis-mip-1.1/charters/A-06.md"
+    },
+    {
+      "id": "B-01",
+      "program": "B",
+      "phase": 1,
+      "milestone": "M1",
+      "title": "Instrument Master",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "A-02",
+        "A-03"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "B-E1",
+      "objective": "Deliver Instrument Master without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": true
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "B-02",
+      "program": "B",
+      "phase": 2,
+      "milestone": "M2",
+      "title": "Market-data provider contracts and provenance",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "A-04",
+        "B-01"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "B-E1",
+      "objective": "Deliver Market-data provider contracts and provenance without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": true
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "B-03",
+      "program": "B",
+      "phase": 2,
+      "milestone": "M2",
+      "title": "Historical research data lake",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "B-01",
+        "B-02"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "B-E2",
+      "objective": "Deliver Historical research data lake without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": true
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "B-04",
+      "program": "B",
+      "phase": 2,
+      "milestone": "M2",
+      "title": "Point-in-time event model",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "A-04",
+        "B-02"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "B-E2",
+      "objective": "Deliver Point-in-time event model without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": true
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "B-05",
+      "program": "B",
+      "phase": 2,
+      "milestone": "M2",
+      "title": "Exchange calendar and session service",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "B-01",
+        "B-04"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "B-E1",
+      "objective": "Deliver Exchange calendar and session service without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": true
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "B-06",
+      "program": "B",
+      "phase": 2,
+      "milestone": "M2",
+      "title": "Data-quality gate and quarantine",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "B-02",
+        "B-03",
+        "B-05"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "B-E2",
+      "objective": "Deliver Data-quality gate and quarantine without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": true
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "B-07",
+      "program": "B",
+      "phase": 2,
+      "milestone": "M2",
+      "title": "Historical/live replay service",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "B-03",
+        "B-04",
+        "B-05",
+        "B-06"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "B-E2",
+      "objective": "Deliver Historical/live replay service without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": true
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "B-08",
+      "program": "B",
+      "phase": 2,
+      "milestone": "M2",
+      "title": "Data-vendor qualification",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "B-02",
+        "B-03"
+      ],
+      "safety_class": "S0",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "B-E2",
+      "objective": "Deliver Data-vendor qualification without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E0",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": true
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "C-01",
+      "program": "C",
+      "phase": 2,
+      "milestone": "M2",
+      "title": "Feature Registry V3",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "A-04",
+        "B-04"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "C-E1",
+      "objective": "Deliver Feature Registry V3 without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": true
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "C-02",
+      "program": "C",
+      "phase": 2,
+      "milestone": "M2",
+      "title": "Feature availability contract",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "B-04",
+        "C-01"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "C-E1",
+      "objective": "Deliver Feature availability contract without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": true
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "C-03",
+      "program": "C",
+      "phase": 2,
+      "milestone": "M2",
+      "title": "PIT Feature Store",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "B-03",
+        "B-04",
+        "C-01",
+        "C-02"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "C-E2",
+      "objective": "Deliver PIT Feature Store without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": true
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "C-04",
+      "program": "C",
+      "phase": 2,
+      "milestone": "M2",
+      "title": "Single feature compiler across modes",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "B-07",
+        "C-03"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "C-E2",
+      "objective": "Deliver Single feature compiler across modes without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": true
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "C-05",
+      "program": "C",
+      "phase": 2,
+      "milestone": "M2",
+      "title": "Legacy ThinkScript causal audit",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "C-01",
+        "C-02"
+      ],
+      "safety_class": "S0",
+      "codex_level": "A2",
+      "charter_required": true,
+      "epic": "C-E1",
+      "objective": "Deliver Legacy ThinkScript causal audit without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E0",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": true
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "C-06",
+      "program": "C",
+      "phase": 2,
+      "milestone": "M2",
+      "title": "Golden Vector parity framework",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "C-01",
+        "C-04",
+        "C-05"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "C-E1",
+      "objective": "Deliver Golden Vector parity framework without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": true
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "C-07",
+      "program": "C",
+      "phase": 3,
+      "milestone": "M3",
+      "title": "Feature-family taxonomy and ablation hooks",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "C-03",
+        "C-04"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "C-E2",
+      "objective": "Deliver Feature-family taxonomy and ablation hooks without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": true
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "D-01",
+      "program": "D",
+      "phase": 3,
+      "milestone": "M3",
+      "title": "Deterministic Strategy Protocol",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "A-04",
+        "C-04"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "D-E1",
+      "objective": "Deliver Deterministic Strategy Protocol without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": true
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "D-02",
+      "program": "D",
+      "phase": 3,
+      "milestone": "M3",
+      "title": "Outcome and R-label engine",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "B-07",
+        "D-01"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "D-E1",
+      "objective": "Deliver Outcome and R-label engine without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": true
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "D-03",
+      "program": "D",
+      "phase": 3,
+      "milestone": "M3",
+      "title": "Cost/slippage repricing engine",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "B-01",
+        "B-03",
+        "D-01"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "D-E1",
+      "objective": "Deliver Cost/slippage repricing engine without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": true
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "D-04",
+      "program": "D",
+      "phase": 3,
+      "milestone": "M3",
+      "title": "Relative-strength momentum baseline",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "C-04",
+        "D-01",
+        "D-02",
+        "D-03"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A2",
+      "charter_required": true,
+      "epic": "D-E1",
+      "objective": "Deliver Relative-strength momentum baseline without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": true
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "D-05",
+      "program": "D",
+      "phase": 3,
+      "milestone": "M3",
+      "title": "Strategy family library contracts",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "D-01",
+        "D-03"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "D-E1",
+      "objective": "Deliver Strategy family library contracts without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": true
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "D-06",
+      "program": "D",
+      "phase": 3,
+      "milestone": "M3",
+      "title": "Meta-label dataset builder",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "C-07",
+        "D-02",
+        "D-04",
+        "E-01"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A2",
+      "charter_required": true,
+      "epic": "D-E2",
+      "objective": "Deliver Meta-label dataset builder without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": true
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "D-07",
+      "program": "D",
+      "phase": 8,
+      "milestone": "M8",
+      "title": "Baseline statistical ML models",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "D-06",
+        "E-07"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A2",
+      "charter_required": true,
+      "epic": "D-E2",
+      "objective": "Deliver Baseline statistical ML models without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": true
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "D-08",
+      "program": "D",
+      "phase": 3,
+      "milestone": "M3",
+      "title": "Strategy lifecycle registry",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "D-01"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "D-E1",
+      "objective": "Deliver Strategy lifecycle registry without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": true
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "E-01",
+      "program": "E",
+      "phase": 2,
+      "milestone": "M2",
+      "title": "Immutable preregistered trial ledger",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "A-04",
+        "B-03"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "E-E1",
+      "objective": "Deliver Immutable preregistered trial ledger without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": true
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "E-02",
+      "program": "E",
+      "phase": 3,
+      "milestone": "M3",
+      "title": "Purged CV and CPCV engine",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "B-04",
+        "D-02",
+        "E-01"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "E-E1",
+      "objective": "Deliver Purged CV and CPCV engine without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": true
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "E-03",
+      "program": "E",
+      "phase": 3,
+      "milestone": "M3",
+      "title": "Judge V3 orchestrator",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "C-01",
+        "D-08",
+        "E-01",
+        "E-02"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "E-E1",
+      "objective": "Deliver Judge V3 orchestrator without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": true
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "E-04",
+      "program": "E",
+      "phase": 3,
+      "milestone": "M3",
+      "title": "Honest DSR/PBO and trial accounting",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "E-01",
+        "E-02",
+        "E-03"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "E-E1",
+      "objective": "Deliver Honest DSR/PBO and trial accounting without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": true
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "E-05",
+      "program": "E",
+      "phase": 3,
+      "milestone": "M3",
+      "title": "Parameter plateau and stability",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "E-02",
+        "E-03"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "E-E1",
+      "objective": "Deliver Parameter plateau and stability without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": true
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "E-06",
+      "program": "E",
+      "phase": 3,
+      "milestone": "M3",
+      "title": "Stress, ablation and falsification harness",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "C-07",
+        "D-03",
+        "E-03"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A2",
+      "charter_required": true,
+      "epic": "E-E2",
+      "objective": "Deliver Stress, ablation and falsification harness without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": true
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "E-07",
+      "program": "E",
+      "phase": 3,
+      "milestone": "M3",
+      "title": "Locked holdout and immutable evidence bundle",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "B-03",
+        "E-01",
+        "E-03",
+        "E-04",
+        "E-05",
+        "E-06"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A0",
+      "charter_required": true,
+      "epic": "E-E2",
+      "objective": "Deliver Locked holdout and immutable evidence bundle without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": true
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "E-08",
+      "program": "E",
+      "phase": 9,
+      "milestone": "M9",
+      "title": "Paper evidence Judge extension",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "E-03",
+        "P-01"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "E-E2",
+      "objective": "Deliver Paper evidence Judge extension without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": true
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "F-01",
+      "program": "F",
+      "phase": 4,
+      "milestone": "M4",
+      "title": "Authoritative portfolio state model",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "A-04",
+        "B-01"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "F-E1",
+      "objective": "Deliver Authoritative portfolio state model without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "F-02",
+      "program": "F",
+      "phase": 4,
+      "milestone": "M4",
+      "title": "Exposure/factor/correlation model",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "B-01",
+        "F-01"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "F-E1",
+      "objective": "Deliver Exposure/factor/correlation model without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "F-03",
+      "program": "F",
+      "phase": 4,
+      "milestone": "M4",
+      "title": "Portfolio allocator contract",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "D-08",
+        "F-02",
+        "H-01"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "F-E2",
+      "objective": "Deliver Portfolio allocator contract without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "F-04",
+      "program": "F",
+      "phase": 6,
+      "milestone": "M6",
+      "title": "Portfolio attribution",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "F-01",
+        "F-03",
+        "M-01"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "F-E2",
+      "objective": "Deliver Portfolio attribution without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "G-01",
+      "program": "G",
+      "phase": 7,
+      "milestone": "M7",
+      "title": "Capital Path core accounting",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "A-04",
+        "F-01",
+        "H-01"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "G-E1",
+      "objective": "Deliver Capital Path core accounting without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "G-02",
+      "program": "G",
+      "phase": 7,
+      "milestone": "M7",
+      "title": "Capital Path resampling ensemble",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "G-01",
+        "E-07"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "G-E1",
+      "objective": "Deliver Capital Path resampling ensemble without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "G-03",
+      "program": "G",
+      "phase": 7,
+      "milestone": "M7",
+      "title": "Parameter/edge uncertainty and stress",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "G-02",
+        "E-06"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "G-E1",
+      "objective": "Deliver Parameter/edge uncertainty and stress without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "G-04",
+      "program": "G",
+      "phase": 7,
+      "milestone": "M7",
+      "title": "Robust risk-policy frontier",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "G-03",
+        "H-04"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "G-E2",
+      "objective": "Deliver Robust risk-policy frontier without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "G-05",
+      "program": "G",
+      "phase": 7,
+      "milestone": "M7",
+      "title": "Milestone/forecast API and evidence",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "G-01",
+        "G-02",
+        "G-03",
+        "G-04"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "G-E2",
+      "objective": "Deliver Milestone/forecast API and evidence without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "H-01",
+      "program": "H",
+      "phase": 1,
+      "milestone": "M1",
+      "title": "Versioned Risk Policy artifact",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "A-02",
+        "A-04",
+        "B-01"
+      ],
+      "safety_class": "S3",
+      "codex_level": "A0",
+      "charter_required": true,
+      "epic": "H-E1",
+      "objective": "Deliver Versioned Risk Policy artifact without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [
+          "independent_review",
+          "human_safety_review"
+        ],
+        "required_observations": [],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "H-02",
+      "program": "H",
+      "phase": 4,
+      "milestone": "M4",
+      "title": "Zero-allowed position sizing",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "B-01",
+        "F-03",
+        "H-01"
+      ],
+      "safety_class": "S3",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "H-E1",
+      "objective": "Deliver Zero-allowed position sizing without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [
+          "independent_review",
+          "human_safety_review"
+        ],
+        "required_observations": [],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "H-03",
+      "program": "H",
+      "phase": 4,
+      "milestone": "M4",
+      "title": "Trade/portfolio risk gates",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "F-02",
+        "H-01",
+        "H-02"
+      ],
+      "safety_class": "S3",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "H-E1",
+      "objective": "Deliver Trade/portfolio risk gates without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [
+          "independent_review",
+          "human_safety_review"
+        ],
+        "required_observations": [],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "H-04",
+      "program": "H",
+      "phase": 7,
+      "milestone": "M7",
+      "title": "Drawdown governor and hysteresis",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "G-01",
+        "H-01",
+        "H-03"
+      ],
+      "safety_class": "S3",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "H-E2",
+      "objective": "Deliver Drawdown governor and hysteresis without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [
+          "independent_review",
+          "human_safety_review"
+        ],
+        "required_observations": [],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "H-05",
+      "program": "H",
+      "phase": 1,
+      "milestone": "M1",
+      "title": "Kill switch and halt state machine",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "A-04",
+        "H-01"
+      ],
+      "safety_class": "S3",
+      "codex_level": "A0",
+      "charter_required": true,
+      "epic": "H-E2",
+      "objective": "Deliver Kill switch and halt state machine without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [
+          "independent_review",
+          "human_safety_review"
+        ],
+        "required_observations": [],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "H-06",
+      "program": "H",
+      "phase": 4,
+      "milestone": "M4",
+      "title": "Risk adversarial verification suite",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "H-02",
+        "H-03",
+        "H-05"
+      ],
+      "safety_class": "S3",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "H-E2",
+      "objective": "Deliver Risk adversarial verification suite without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [
+          "independent_review",
+          "human_safety_review"
+        ],
+        "required_observations": [],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "I-01",
+      "program": "I",
+      "phase": 4,
+      "milestone": "M4",
+      "title": "Trade Intent contract",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "A-04",
+        "D-01",
+        "F-03",
+        "H-02"
+      ],
+      "safety_class": "S2",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "I-E1",
+      "objective": "Deliver Trade Intent contract without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [
+          "independent_review"
+        ],
+        "required_observations": [],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "I-02",
+      "program": "I",
+      "phase": 4,
+      "milestone": "M4",
+      "title": "Single OMS state machine",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "I-01",
+        "H-03"
+      ],
+      "safety_class": "S2",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "I-E1",
+      "objective": "Deliver Single OMS state machine without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [
+          "independent_review"
+        ],
+        "required_observations": [],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "I-03",
+      "program": "I",
+      "phase": 4,
+      "milestone": "M4",
+      "title": "Idempotency and duplicate prevention",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "I-01",
+        "I-02"
+      ],
+      "safety_class": "S2",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "I-E1",
+      "objective": "Deliver Idempotency and duplicate prevention without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [
+          "independent_review"
+        ],
+        "required_observations": [],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "I-04",
+      "program": "I",
+      "phase": 4,
+      "milestone": "M4",
+      "title": "Protective bracket semantics",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "I-02",
+        "J-01"
+      ],
+      "safety_class": "S2",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "I-E2",
+      "objective": "Deliver Protective bracket semantics without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [
+          "independent_review"
+        ],
+        "required_observations": [],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "I-05",
+      "program": "I",
+      "phase": 6,
+      "milestone": "M6",
+      "title": "Order-management intents",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "I-02",
+        "I-04"
+      ],
+      "safety_class": "S2",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "I-E2",
+      "objective": "Deliver Order-management intents without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [
+          "independent_review"
+        ],
+        "required_observations": [],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "I-06",
+      "program": "I",
+      "phase": 4,
+      "milestone": "M4",
+      "title": "Restart recovery and reconciliation",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "I-02",
+        "J-03",
+        "M-01"
+      ],
+      "safety_class": "S2",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "I-E2",
+      "objective": "Deliver Restart recovery and reconciliation without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [
+          "independent_review"
+        ],
+        "required_observations": [],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "J-01",
+      "program": "J",
+      "phase": 4,
+      "milestone": "M4",
+      "title": "Broker adapter interface",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "A-04",
+        "B-01",
+        "I-02"
+      ],
+      "safety_class": "S2",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "J-E1",
+      "objective": "Deliver Broker adapter interface without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [
+          "independent_review"
+        ],
+        "required_observations": [],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "J-02",
+      "program": "J",
+      "phase": 4,
+      "milestone": "M4",
+      "title": "IBKR paper adapter consolidation",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "J-01",
+        "A-06"
+      ],
+      "safety_class": "S2",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "J-E1",
+      "objective": "Deliver IBKR paper adapter consolidation without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E4",
+        "required_reviews": [
+          "independent_review"
+        ],
+        "required_observations": [
+          "ibkr_paper_round_trip_or_drill"
+        ],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "J-03",
+      "program": "J",
+      "phase": 4,
+      "milestone": "M4",
+      "title": "Broker-authoritative state and reconciliation",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "J-01",
+        "F-01"
+      ],
+      "safety_class": "S2",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "J-E1",
+      "objective": "Deliver Broker-authoritative state and reconciliation without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E4",
+        "required_reviews": [
+          "independent_review"
+        ],
+        "required_observations": [
+          "ibkr_paper_round_trip_or_drill"
+        ],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "J-04",
+      "program": "J",
+      "phase": 6,
+      "milestone": "M6",
+      "title": "Execution-quality capture",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "J-02",
+        "J-03",
+        "M-01"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "J-E2",
+      "objective": "Deliver Execution-quality capture without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E4",
+        "required_reviews": [],
+        "required_observations": [
+          "ibkr_paper_round_trip_or_drill"
+        ],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "J-05",
+      "program": "J",
+      "phase": 10,
+      "milestone": "M10",
+      "title": "Live-canary broker boundary",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "J-02",
+        "J-03",
+        "N-02"
+      ],
+      "safety_class": "S4",
+      "codex_level": "A0",
+      "charter_required": true,
+      "epic": "J-E2",
+      "objective": "Deliver Live-canary broker boundary without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [
+          "independent_review",
+          "human_safety_review",
+          "human_capital_owner"
+        ],
+        "required_observations": [],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "K-01",
+      "program": "K",
+      "phase": 0,
+      "milestone": "ISG-0",
+      "title": "Operator product IA and wireframe approval",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "A-03"
+      ],
+      "safety_class": "S0",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "K-E1",
+      "objective": "Deliver Operator product IA and wireframe approval without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E0",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": "docs/plans/jarvis-mip-1.1/charters/K-01.md"
+    },
+    {
+      "id": "K-02",
+      "program": "K",
+      "phase": 5,
+      "milestone": "M5",
+      "title": "Command Center read-only cockpit",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "K-01",
+        "F-01",
+        "H-01",
+        "J-03",
+        "M-03"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A2",
+      "charter_required": true,
+      "epic": "K-E1",
+      "objective": "Deliver Command Center read-only cockpit without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "K-03",
+      "program": "K",
+      "phase": 5,
+      "milestone": "M5",
+      "title": "Today / Market and Signal workspace",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "K-01",
+        "B-02",
+        "C-04",
+        "D-08"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A2",
+      "charter_required": true,
+      "epic": "K-E1",
+      "objective": "Deliver Today / Market and Signal workspace without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "K-04",
+      "program": "K",
+      "phase": 6,
+      "milestone": "M6",
+      "title": "Trade Workstation",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "K-02",
+        "I-01",
+        "I-02",
+        "H-03"
+      ],
+      "safety_class": "S2",
+      "codex_level": "A2",
+      "charter_required": true,
+      "epic": "K-E2",
+      "objective": "Deliver Trade Workstation without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [
+          "independent_review"
+        ],
+        "required_observations": [],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "K-05",
+      "program": "K",
+      "phase": 6,
+      "milestone": "M6",
+      "title": "Positions and Orders",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "K-02",
+        "I-05",
+        "J-03"
+      ],
+      "safety_class": "S2",
+      "codex_level": "A2",
+      "charter_required": true,
+      "epic": "K-E2",
+      "objective": "Deliver Positions and Orders without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [
+          "independent_review"
+        ],
+        "required_observations": [],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "K-06",
+      "program": "K",
+      "phase": 5,
+      "milestone": "M5",
+      "title": "Risk Center",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "K-01",
+        "H-01",
+        "H-03",
+        "H-05"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A2",
+      "charter_required": true,
+      "epic": "K-E1",
+      "objective": "Deliver Risk Center without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "K-07",
+      "program": "K",
+      "phase": 5,
+      "milestone": "M5",
+      "title": "Research / Backtest / Judge workspace",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "K-01",
+        "E-03",
+        "E-07"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A2",
+      "charter_required": true,
+      "epic": "K-E3",
+      "objective": "Deliver Research / Backtest / Judge workspace without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "K-08",
+      "program": "K",
+      "phase": 7,
+      "milestone": "M7",
+      "title": "Capital Path workspace",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "K-01",
+        "G-05"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A2",
+      "charter_required": true,
+      "epic": "K-E3",
+      "objective": "Deliver Capital Path workspace without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "K-09",
+      "program": "K",
+      "phase": 6,
+      "milestone": "M6",
+      "title": "Performance and Journal",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "K-01",
+        "F-04",
+        "J-04",
+        "M-01"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A2",
+      "charter_required": true,
+      "epic": "K-E3",
+      "objective": "Deliver Performance and Journal without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "K-10",
+      "program": "K",
+      "phase": 5,
+      "milestone": "M5",
+      "title": "System Health / Admin",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "K-01",
+        "M-03",
+        "N-02"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A2",
+      "charter_required": true,
+      "epic": "K-E4",
+      "objective": "Deliver System Health / Admin without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "K-11",
+      "program": "K",
+      "phase": 5,
+      "milestone": "M5",
+      "title": "Realtime observation transport",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "M-01",
+        "M-02",
+        "K-01"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "K-E2",
+      "objective": "Deliver Realtime observation transport without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "K-12",
+      "program": "K",
+      "phase": 5,
+      "milestone": "M5",
+      "title": "Numeric/provenance E2E verification",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "K-02",
+        "K-03",
+        "K-06",
+        "K-10",
+        "O-02"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "K-E4",
+      "objective": "Deliver Numeric/provenance E2E verification without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "L-01",
+      "program": "L",
+      "phase": 1,
+      "milestone": "M1",
+      "title": "AI authority boundary and capability policy",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "A-02",
+        "A-03",
+        "H-01"
+      ],
+      "safety_class": "S3",
+      "codex_level": "A0",
+      "charter_required": true,
+      "epic": "L-E1",
+      "objective": "Deliver AI authority boundary and capability policy without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [
+          "independent_review",
+          "human_safety_review"
+        ],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": true
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "L-02",
+      "program": "L",
+      "phase": 8,
+      "milestone": "M8",
+      "title": "Context intelligence service",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "B-02",
+        "L-01"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A2",
+      "charter_required": true,
+      "epic": "L-E1",
+      "objective": "Deliver Context intelligence service without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": true
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "L-03",
+      "program": "L",
+      "phase": 8,
+      "milestone": "M8",
+      "title": "Catalyst/event intelligence",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "L-02",
+        "C-03"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A2",
+      "charter_required": true,
+      "epic": "L-E1",
+      "objective": "Deliver Catalyst/event intelligence without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": true
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "L-04",
+      "program": "L",
+      "phase": 3,
+      "milestone": "M3",
+      "title": "Research critic agent",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "E-01",
+        "E-03",
+        "L-01"
+      ],
+      "safety_class": "S0",
+      "codex_level": "A2",
+      "charter_required": true,
+      "epic": "L-E2",
+      "objective": "Deliver Research critic agent without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E0",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": true
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "L-05",
+      "program": "L",
+      "phase": 8,
+      "milestone": "M8",
+      "title": "Post-trade learning and explanation",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "F-04",
+        "J-04",
+        "L-01"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A2",
+      "charter_required": true,
+      "epic": "L-E2",
+      "objective": "Deliver Post-trade learning and explanation without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": true
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "L-06",
+      "program": "L",
+      "phase": 8,
+      "milestone": "M8",
+      "title": "Agent evaluation and prompt-security harness",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "L-02",
+        "L-04",
+        "N-03"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "L-E2",
+      "objective": "Deliver Agent evaluation and prompt-security harness without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": true
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "M-01",
+      "program": "M",
+      "phase": 1,
+      "milestone": "M1",
+      "title": "Canonical event and audit schema",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "A-04"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "M-E1",
+      "objective": "Deliver Canonical event and audit schema without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "M-02",
+      "program": "M",
+      "phase": 1,
+      "milestone": "M1",
+      "title": "Structured logging and tracing",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "M-01"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "M-E1",
+      "objective": "Deliver Structured logging and tracing without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "M-03",
+      "program": "M",
+      "phase": 1,
+      "milestone": "M1",
+      "title": "Health model and SLOs",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "A-01",
+        "M-02"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "M-E1",
+      "objective": "Deliver Health model and SLOs without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "M-04",
+      "program": "M",
+      "phase": 6,
+      "milestone": "M6",
+      "title": "Alerting and escalation",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "M-03",
+        "H-05",
+        "J-03"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "M-E2",
+      "objective": "Deliver Alerting and escalation without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "M-05",
+      "program": "M",
+      "phase": 6,
+      "milestone": "M6",
+      "title": "Incident replay and forensic bundle",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "M-01",
+        "M-02",
+        "B-07"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "M-E2",
+      "objective": "Deliver Incident replay and forensic bundle without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "N-01",
+      "program": "N",
+      "phase": 1,
+      "milestone": "M1",
+      "title": "Secrets/authentication baseline",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "A-01"
+      ],
+      "safety_class": "S3",
+      "codex_level": "A0",
+      "charter_required": true,
+      "epic": "N-E1",
+      "objective": "Deliver Secrets/authentication baseline without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [
+          "independent_review",
+          "human_safety_review"
+        ],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "N-02",
+      "program": "N",
+      "phase": 1,
+      "milestone": "M1",
+      "title": "Environment and authorization matrix",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "A-02",
+        "N-01"
+      ],
+      "safety_class": "S4",
+      "codex_level": "A0",
+      "charter_required": true,
+      "epic": "N-E1",
+      "objective": "Deliver Environment and authorization matrix without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [
+          "independent_review",
+          "human_safety_review",
+          "human_capital_owner"
+        ],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "N-03",
+      "program": "N",
+      "phase": 1,
+      "milestone": "M1",
+      "title": "Threat model",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "A-03",
+        "N-02",
+        "L-01"
+      ],
+      "safety_class": "S3",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "N-E2",
+      "objective": "Deliver Threat model without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [
+          "independent_review",
+          "human_safety_review"
+        ],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "N-04",
+      "program": "N",
+      "phase": 6,
+      "milestone": "M6",
+      "title": "Security/dependency audit automation",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "N-01",
+        "N-03",
+        "O-01"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "N-E2",
+      "objective": "Deliver Security/dependency audit automation without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "O-01",
+      "program": "O",
+      "phase": 0,
+      "milestone": "ISG-0",
+      "title": "CI baseline and debt classification",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "A-01"
+      ],
+      "safety_class": "S0",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "O-E1",
+      "objective": "Deliver CI baseline and debt classification without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E0",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": "docs/plans/jarvis-mip-1.1/charters/O-01.md"
+    },
+    {
+      "id": "O-02",
+      "program": "O",
+      "phase": 1,
+      "milestone": "M1",
+      "title": "Testing tiers and verification ladder",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "O-01",
+        "A-04"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "O-E1",
+      "objective": "Deliver Testing tiers and verification ladder without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "O-03",
+      "program": "O",
+      "phase": 1,
+      "milestone": "M1",
+      "title": "Reproducible dev/build environment",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "O-01"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "O-E1",
+      "objective": "Deliver Reproducible dev/build environment without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "O-04",
+      "program": "O",
+      "phase": 6,
+      "milestone": "M6",
+      "title": "Release evidence manifest",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "O-02",
+        "M-01"
+      ],
+      "safety_class": "S1",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "O-E2",
+      "objective": "Deliver Release evidence manifest without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "O-05",
+      "program": "O",
+      "phase": 0,
+      "milestone": "ISG-0",
+      "title": "Branch/PR/Codex governance",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "A-02",
+        "O-01"
+      ],
+      "safety_class": "S3",
+      "codex_level": "A0",
+      "charter_required": true,
+      "epic": "O-E2",
+      "objective": "Deliver Branch/PR/Codex governance without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [
+          "independent_review",
+          "human_safety_review"
+        ],
+        "required_observations": [],
+        "numeric_cross_check": false,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": "docs/plans/jarvis-mip-1.1/charters/O-05.md"
+    },
+    {
+      "id": "P-01",
+      "program": "P",
+      "phase": 9,
+      "milestone": "M9",
+      "title": "Integrated paper campaign",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "D-08",
+        "E-07",
+        "F-01",
+        "H-06",
+        "I-06",
+        "J-04",
+        "K-05",
+        "M-04",
+        "O-04"
+      ],
+      "safety_class": "S2",
+      "codex_level": "A0",
+      "charter_required": true,
+      "epic": "P-E1",
+      "objective": "Deliver Integrated paper campaign without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E4",
+        "required_reviews": [
+          "independent_review"
+        ],
+        "required_observations": [
+          "ibkr_paper_round_trip_or_drill"
+        ],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "P-02",
+      "program": "P",
+      "phase": 9,
+      "milestone": "M9",
+      "title": "Execution-fidelity gate",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "P-01",
+        "J-04"
+      ],
+      "safety_class": "S2",
+      "codex_level": "A1",
+      "charter_required": true,
+      "epic": "P-E1",
+      "objective": "Deliver Execution-fidelity gate without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E4",
+        "required_reviews": [
+          "independent_review"
+        ],
+        "required_observations": [
+          "ibkr_paper_round_trip_or_drill"
+        ],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "P-03",
+      "program": "P",
+      "phase": 9,
+      "milestone": "M9",
+      "title": "Paper strategy promotion gate",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "P-01",
+        "P-02",
+        "E-08"
+      ],
+      "safety_class": "S3",
+      "codex_level": "A0",
+      "charter_required": true,
+      "epic": "P-E1",
+      "objective": "Deliver Paper strategy promotion gate without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E4",
+        "required_reviews": [
+          "independent_review",
+          "human_safety_review"
+        ],
+        "required_observations": [
+          "ibkr_paper_round_trip_or_drill"
+        ],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "P-04",
+      "program": "P",
+      "phase": 10,
+      "milestone": "M10",
+      "title": "Canary readiness review",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "P-03",
+        "G-04",
+        "H-06",
+        "I-06",
+        "J-05",
+        "N-02",
+        "O-04"
+      ],
+      "safety_class": "S4",
+      "codex_level": "A0",
+      "charter_required": true,
+      "epic": "P-E2",
+      "objective": "Deliver Canary readiness review without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E4",
+        "required_reviews": [
+          "independent_review",
+          "human_safety_review",
+          "human_capital_owner"
+        ],
+        "required_observations": [
+          "ibkr_paper_round_trip_or_drill"
+        ],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "P-05",
+      "program": "P",
+      "phase": 11,
+      "milestone": "M11",
+      "title": "Tiny live canary",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "P-04"
+      ],
+      "safety_class": "S4",
+      "codex_level": "A0",
+      "charter_required": true,
+      "epic": "P-E2",
+      "objective": "Deliver Tiny live canary without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E5",
+        "required_reviews": [
+          "independent_review",
+          "human_safety_review",
+          "human_capital_owner"
+        ],
+        "required_observations": [
+          "explicitly_authorized_live_canary_evidence"
+        ],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "P-06",
+      "program": "P",
+      "phase": 12,
+      "milestone": "M12",
+      "title": "Controlled scaling policy",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "P-05",
+        "G-04"
+      ],
+      "safety_class": "S4",
+      "codex_level": "A0",
+      "charter_required": true,
+      "epic": "P-E2",
+      "objective": "Deliver Controlled scaling policy without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E5",
+        "required_reviews": [
+          "independent_review",
+          "human_safety_review",
+          "human_capital_owner"
+        ],
+        "required_observations": [
+          "explicitly_authorized_live_canary_evidence"
+        ],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "P-07",
+      "program": "P",
+      "phase": 11,
+      "milestone": "M11",
+      "title": "Degradation, halt and rollback policy",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "P-04",
+        "H-05",
+        "M-04"
+      ],
+      "safety_class": "S4",
+      "codex_level": "A0",
+      "charter_required": true,
+      "epic": "P-E2",
+      "objective": "Deliver Degradation, halt and rollback policy without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E4",
+        "required_reviews": [
+          "independent_review",
+          "human_safety_review",
+          "human_capital_owner"
+        ],
+        "required_observations": [
+          "ibkr_paper_round_trip_or_drill"
+        ],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    },
+    {
+      "id": "P-08",
+      "program": "P",
+      "phase": 12,
+      "milestone": "M12",
+      "title": "Continuous research and retirement cycle",
+      "status": "NOT_STARTED",
+      "dependencies": [
+        "P-03",
+        "L-05",
+        "E-03"
+      ],
+      "safety_class": "S3",
+      "codex_level": "A0",
+      "charter_required": true,
+      "epic": "P-E2",
+      "objective": "Deliver Continuous research and retirement cycle without creating a competing authority or bypassing an upstream control boundary.",
+      "acceptance_summary": "PROVISIONAL \u2014 closure requires the approved WP charter criteria and an evidence manifest satisfying this profile.",
+      "evidence_requirements": {
+        "minimum_rung": "E2",
+        "required_reviews": [
+          "independent_review",
+          "human_safety_review"
+        ],
+        "required_observations": [],
+        "numeric_cross_check": true,
+        "pit_verification": false
+      },
+      "charter_path": null,
+      "evidence_manifest_path": null,
+      "draft_charter_path": null
+    }
+  ]
+}
