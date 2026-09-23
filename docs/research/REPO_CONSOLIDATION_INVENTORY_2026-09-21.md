@@ -4,7 +4,7 @@
 **Purpose:** one row per repo in the 2026-09-12 audit consolidation map, with verified disposition.
 **Companion docs:** `docs/research/strategy-registry-schema.md`, `docs/research/backtest-critique-checklist.md`,
 `docs/research/chart-review-runbook.md`, `docs/research/macro-regime-context-spec.md`,
-`docs/research/sentinel-observability-runbook.md` (PR #895, open).
+`docs/research/sentinel-observability-runbook.md` (PR #906, merged 2026-09-22).
 **Provenance:** `GITHUB_REPO_CONSOLIDATION_TRADING_AUDIT_2026-09-12.md` (2026-09-12 audit),
 `HANDOFF_2026-09-12_github-repo-consolidation-wave1.md` (Wave 1 handoff).
 
@@ -149,7 +149,7 @@
 
 ---
 
-## 3. Wave 2 distillation docs (PR #895 — open, CI green)
+### 6.2 Wave 2 distillation docs (PR #906 — merged 2026-09-22)
 
 | Doc | Source repos distilled | What it gives JARVIS |
 |---|---|---|
@@ -159,9 +159,9 @@
 | `docs/research/macro-regime-context-spec.md` | `fredapi` + `claude-trading-skills` macro-regime-detector | FRED/ALFRED as regime filter and context feature only — never a direct order trigger; data-contract fields; freshness/staleness rules |
 | `docs/research/sentinel-observability-runbook.md` | `jarvis-sentinel`, `jarvis-mission-control`, `home-scripts` hygiene tooling | One probe inventory (IB Gateway, engine, dashboard, PM2 dump secret hygiene, feed freshness, paper order drift, kill-switch state); evidence contract; ownership; no third always-on process rule |
 
-**PR:** https://github.com/mattamundson/jarvis-trader/pull/895  
-**CI:** `MIP metadata contract` pass, `Vercel Preview Comments` pass, `Vercel` pass  
-**Branch:** `fix/dce-nightly-runner-20260910` (peer-owned; PR body updated this run to satisfy MIP governance contract)  
+**PR:** https://github.com/mattamundson/jarvis-trader/pull/906  
+**Merged:** 2026-09-22T10:10:12Z  
+**Branch:** `docs/wave2-reference-distillates-20260922`  
 **No live-trading surfaces touched:** `.env`, `engine/config.py`, broker routing, API keys, PM2 state, scheduled trading tasks, risk limits, kill-switch code all unchanged.
 
 ---

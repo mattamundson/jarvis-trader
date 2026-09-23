@@ -73,6 +73,7 @@ This is the same discipline as the `claude-trading-skills` quant-strategy-framew
 
 - Link the chart artifact to the strategy record or journal entry.
 - Record the review question, the answer, and whether the chart supported or contradicted the thesis.
+- **Capture metadata:** every chart artifact must include the capture timestamp, venue/contract, session template, data source, indicator settings, and artifact path (or a link to `chart-review-dashboard-requirements.md` for the full structured evidence package). A screenshot alone is insufficient for a promotion decision or postmortem; the record must establish which bars and settings were reviewed.
 - If the chart contradicted the thesis, that is a valid outcome — record it and let the kill criterion do its job.
 
 ### Step 5 — Close the loop
@@ -99,7 +100,7 @@ This is the same discipline as the `claude-trading-skills` quant-strategy-framew
 ## 4. Safety and compliance notes
 
 - TradingView MCP interacts with your locally running TradingView Desktop app via CDP. It does not connect to TradingView servers. You are responsible for compliance with TradingView's Terms of Use, including any restrictions on automated data collection or non-display usage.
-- Do not use chart captures or Pine prototypes as live execution signals without a documented promotion gate. The review runbook ends at the decision record, not at the order.
+- **Chart review is non-authoritative for execution.** A chart capture or Pine prototype does not become a live execution signal by virtue of having a promotion gate. The established boundary requires `execution_authority = none` for all chart-review artifacts — any promoted strategy must be a separately implemented, deterministic engine signal, not the discretionary artifact itself. The runbook ends at the decision record, not at the order.
 - Do not embed live TradingView data into JARVIS without understanding the licensing terms of the underlying data. Use the JARVIS data layer's own provenance column to know what you are showing.
 - Pin tool versions (TradingView Desktop build, lightweight-charts version) when a review must be reproducible.
 

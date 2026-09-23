@@ -91,6 +91,10 @@ Minimum evidence for each probe run:
 - `probe_id` — stable identifier for the probe.
 - `timestamp` — when the probe ran.
 - `verdict` — healthy / degraded / unhealthy / skipped.
+- `authority_class` — advisory / paging / hard-gate (from `sentinel-health-probe-contract.md:24-34`).
+- `fail_closed` — whether the probe fails closed (e.g. stale feed → treat as no data, not as "ok").
+- `action_class` — what the probe is allowed to do (e.g. block readiness, page, log only).
+- `explicit_non_actions` — what the probe must NOT do (e.g. no order placement, no kill-switch reset, no strategy promotion).
 - `observed` — what was actually observed (concrete values, not narratives).
 - `expectation` — what healthy means for this probe.
 - `note` — optional human context.
@@ -102,7 +106,7 @@ Evidence lands where the relevant consumer can use it: engine logs, dashboard st
 
 ## 4. Ownership and silence
 
-- Every probe has exactly one owner for **interpretation and response**, even if multiple components contribute to the probe.
+- Every probe has exactly **one** owner for interpretation and response. When multiple components contribute to a probe (e.g. engine + ops, engine + dashboard, data + strategy researchers), designate one responding owner and list the other components separately as contributors. During an incident, both groups must not be able to assume the other owns the response.
 - A probe that has been healthy for a documented stretch may run less often, but it does not become "someone's memory."
 - A probe that cannot run (e.g. IAM/refreshed key missing, feed down) is itself an evidence event: skipped with a reason, not silently omitted.
 

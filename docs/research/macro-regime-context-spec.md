@@ -48,7 +48,7 @@ Key facts relevant to JARVIS:
 
 Every macro feature used by a JARVIS strategy must carry the following provenance in the strategy record or data-layer metadata:
 
-| Field | Meaning |
+|| Field | Meaning |
 |---|---|
 | `fred_series_id` | The FRED series ID (e.g. a Treasury yield, CPI, unemployment rate). |
 | `source` | `"fred"` or `"alfred"` depending on whether live or vintage data is used. |
@@ -56,6 +56,8 @@ Every macro feature used by a JARVIS strategy must carry the following provenanc
 | `observation_start` / `observation_end` | The exact range used in the backtest or live feature. |
 | `frequency` | The requested frequency after FRED aggregation, if any. |
 | `vintage_date` | For ALFRED point-in-time fetches, the vintage date used. |
+| `release_date` | The scheduled or known release date of the observation. For series such as CPI, the observation date precedes the publication date; a backtest must use only values whose release_date is before the simulated decision time. |
+| `effective_date` | When the observation became visible (may differ from observation_date for revised series). |
 | `revision_note` | Any known revision behavior for the series (e.g. CPI revisions, payroll revisions). |
 | `refresh cadence` | How often the feature is refreshed in live/paper (e.g. daily, on-release). |
 | `freshness gate` | The max age of the latest observation before the feature is considered stale for a decision. |
@@ -104,7 +106,7 @@ A macro-bearing strategy record includes:
 
 When a strategy uses macro features, the backtest critique checklist must verify:
 
-- No look-ahead on release dates or revisions.
+- No look-ahead on release dates or revisions. The critique must confirm that for each macro feature, the `release_date` (or `effective_date` for revised series) is before the simulated decision time at every point in the backtest window.
 - Point-in-time integrity if ALFRED vintages are used.
 - That the freshness gate used in the backtest matches the intended live behavior.
 - That the macro layer does not become the sole driver of the edge.
