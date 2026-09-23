@@ -1,0 +1,57 @@
+{
+  "schema_version": "1.0",
+  "strategy_id": "spy_overnight_hold_rank1",
+  "name": "SPY overnight hold (x-bookmark scan, rank 1)",
+  "source": {
+    "type": "x-bookmark-scan",
+    "repo_or_note": "x-bookmark edge scan 2026-07-02 (@QuantifiedStrat)",
+    "url": "https://x.com/QuantifiedStrat"
+  },
+  "hypothesis": "Holding SPY across the overnight gap (buy close, sell next open) captures the positive overnight drift of large-cap index equities better than intraday exposure.",
+  "asset_class": "equity-index",
+  "symbols": ["SPY"],
+  "timeframe": "per-night",
+  "data_sources": [
+    {
+      "feed": "yfinance",
+      "adjusted": true,
+      "range_start": "1993-01-29",
+      "range_end": "2026-06-24"
+    }
+  ],
+  "feature_set": ["close-to-open-return"],
+  "rules": {
+    "entry": "Buy at close of day T.",
+    "exit": "Sell at open of day T+1.",
+    "position_sizing": "All-in/out per night in the scan model.",
+    "risk_limits": "None in scan model; JARVIS gates apply.",
+    "fees_and_slippage_model": "Gross of commission/slippage in gate reasons — a real implementation pays the close/open spread + financing."
+  },
+  "windows": {
+    "train": { "start": "1993-01-29", "end": "2026-06-24" },
+    "test": null
+  },
+  "gate_verdict": {
+    "gate": "gate-v2",
+    "verdict": "FAIL",
+    "core_verdict": "FAIL",
+    "alt_verdict": "UNSCORED",
+    "reasons": [
+      "mbb_pf_ci_lower=1.1226 >= 1.1",
+      "p_positive_edge=1.0 >= 0.95",
+      "FAIL mc_95th_dd_pct=23.2117 > 6.0",
+      "dsr=0.999104 >= 0.1 (not selection-bias)"
+    ],
+    "evidence_path": "docs/research/SPY_overnighthold_rank1.gate_v2.json"
+  },
+  "promotion_state": "rejected",
+  "known_failure_modes": [
+    "23.2% Monte Carlo 95th drawdown exceeds the 6.0% floor",
+    "Gross PnL overstates an implementable version: close/open spread + financing not modeled"
+  ],
+  "evidence_paths": [
+    "docs/research/SPY_overnighthold_rank1.gate_v2.json"
+  ],
+  "owner": "amo",
+  "updated": "2026-09-12"
+}

@@ -436,6 +436,12 @@ def _compute_gate_v2(
     pf_ci_lower = trade_level_pf_ci_lower(oos_results)
     p_edge = trade_level_p_edge(oos_results)
 
+    # Honest p_edge decomposition (2026-09-18). Additive and report-only -- no threshold reads it.
+    # The gate permits 1-trade OOS windows (min_oos_trades=1 here), so p_edge can be carried by
+    # windows with no room to be wrong. This measures that rather than inferring it from PF shape.
+    from backtest._gate_v2_helpers import window_quality as _window_quality
+    window_quality_metrics = _window_quality(oos_results)
+
     # Trade-level risk metrics (correct). mc_95th_dd is a real permutation Monte
     # Carlo on the concatenated OOS trade list; dsr is the Deflated Sharpe from the
     # actual per-trade return series. The legacy window-level DD is retained under
@@ -443,6 +449,24 @@ def _compute_gate_v2(
     # for the gate decision. See _gate_v2_trade_metrics for the rationale.
     mc_95th_dd = trade_level_mc_95th_dd(oos_results, initial_capital=CAPITAL)
     dsr = trade_level_dsr(oos_results, n_grid_combos=n_grid_combos, initial_capital=CAPITAL)
+    # Honest deflation, reported BOTH ways (2026-09-18). The grid count keeps comparability with
+    # every earlier verdict; the campaign count is what the promotion question actually asks.
+    # Additive and report-only -- no threshold reads this.
+    from backtest._gate_v2_helpers import deflation_report
+    deflation = deflation_report(SYMBOL, n_grid_combos)
+    deflation["dsr_grid"] = round(float(dsr), 6)
+    try:
+        deflation["dsr_campaign"] = round(
+            float(trade_level_dsr(
+                oos_results,
+                n_grid_combos=max(1, deflation["n_trials_campaign"]),
+                initial_capital=CAPITAL,
+            )),
+            6,
+        )
+    except Exception as exc:  # report the failure rather than silently omitting the number
+        deflation["dsr_campaign"] = None
+        deflation["dsr_campaign_error"] = f"{type(exc).__name__}: {exc}"
     win_rate_ci_lower = trade_level_win_rate_ci_lower(oos_results)  # Init 2C (shadow; not gated)
     mc_95th_dd_window_legacy = float(np.percentile(oos_dds, 95.0)) if oos_dds else 1.0
 
@@ -549,10 +573,12 @@ def _compute_gate_v2(
         # Detailed metrics
         "pf_ci_lower": round(pf_ci_lower, 4),
         "p_edge": round(p_edge, 4),
+        "window_quality": window_quality_metrics,
         "mc_95th_dd": round(mc_95th_dd, 6),
         "mc_95th_dd_pct": round(mc_95th_dd * 100, 4),
         "mc_95th_dd_window_legacy": round(mc_95th_dd_window_legacy, 6),
         "dsr": round(dsr, 6),
+        "deflation": deflation,
         "wfo_consistency": wfo_consistency,
         "fixed_params_min_pf": fixed_params_min_pf,
         "fixed_params_mean_pf": fixed_params_metrics.get("fixed_params_mean_pf", 0.0),
@@ -829,6 +855,7 @@ def run_wfo(sota_hardening: bool = False) -> dict:
         "gate_v2_metrics": {
             "pf_ci_lower": gate["pf_ci_lower"],
             "p_edge": gate["p_edge"],
+            "window_quality": gate.get("window_quality"),
             "mc_95th_dd": gate["mc_95th_dd"],
             "mc_95th_dd_pct": gate["mc_95th_dd_pct"],
             "mc_95th_dd_window_legacy": gate["mc_95th_dd_window_legacy"],
@@ -890,6 +917,16 @@ def run_wfo(sota_hardening: bool = False) -> dict:
         },
     }
 
+    # Provenance: record which cache produced this verdict (2026-09-17 audit found 0/76
+    # artifacts recorded it). `data_file` is the cache this run loaded.
+    from backtest._gate_v2_helpers import inject_cache_provenance  # local, matches file style
+    verdict_doc = inject_cache_provenance(verdict_doc, data_file)
+
+    # Both deflation bases (2026-09-18). Additive, report-only -- no threshold reads this.
+    _defl = gate.get("deflation")
+    if _defl is not None:
+        verdict_doc.setdefault("gate_v2_metrics", {})["deflation"] = _defl
+        verdict_doc["deflation"] = _defl
     verdict_file.write_text(json.dumps(verdict_doc, indent=2, default=str))
     print(f"\n[MES-R11] Verdict written -> {verdict_file}")
 

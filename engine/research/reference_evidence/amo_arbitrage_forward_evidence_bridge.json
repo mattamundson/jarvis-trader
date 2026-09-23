@@ -1,0 +1,69 @@
+{
+  "schema_version": "reference-evidence.v1",
+  "reference_repo": "mattamundson/amo-arbitrage",
+  "reference_commit": "95da4cd",
+  "status": "separate_product_bridge_only_not_validated_jarvis_alpha",
+  "non_duplicative_value": [
+    "pre_registration_freeze_integrity",
+    "historical_screen_is_not_promotion",
+    "forward_evidence_required_out_of_sample",
+    "single_writer_feed_provenance",
+    "backfill_ledger_reconciliation",
+    "business_day_freshness_sla",
+    "zero_exposure_exploratory_streams"
+  ],
+  "source_files": [
+    "backend/preregistration/seasonal_family_2026-06-16.md",
+    "backend/pipelines/forward_test.py",
+    "backend/pipelines/feed_reconciliation.py",
+    "backend/pipelines/data_quality.py",
+    "backend/docs/RELIABILITY.md"
+  ],
+  "product_boundary": "separate_product_bridge_only",
+  "pre_registration": {
+    "freeze_hash_required": true,
+    "family_membership_immutable": true,
+    "post_hoc_family_edits_require_new_freeze": true
+  },
+  "historical_screen": {
+    "is_binding": false,
+    "promotion_requires_forward_evidence": true,
+    "multiple_testing_protocol_required": true
+  },
+  "forward_evidence": {
+    "out_of_sample_required": true,
+    "exploratory_streams_zero_exposure_required": true,
+    "distinct_labels_required": true
+  },
+  "feed_ownership": {
+    "single_writer_required": true,
+    "backfill_ledger_insert_only": true,
+    "reconciliation_required_after_authentic_feed_overwrite": true
+  },
+  "data_quality": {
+    "fail_closed_checks": [
+      "future_dated_rows",
+      "missing_existence_rows",
+      "stale_freshness",
+      "date_parse_errors"
+    ],
+    "business_day_sla_supported": true
+  },
+  "blocked_influence": [
+    "strategy_registry_promotion",
+    "live_or_paper_order_routing",
+    "risk_limit_changes",
+    "kill_switch_changes",
+    "env_or_secret_changes",
+    "pm2_or_scheduler_changes",
+    "broker_configuration"
+  ],
+  "safety_boundary": {
+    "live_order_routing_changed": false,
+    "paper_order_routing_changed": false,
+    "runtime_config_changed": false,
+    "risk_limit_or_kill_switch_changed": false,
+    "secret_or_env_changed": false,
+    "pm2_or_schedule_changed": false
+  }
+}

@@ -1,0 +1,137 @@
+name: PR Governance
+
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  metadata-contract:
+    name: MIP metadata contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Validate PR metadata and safety classification
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const body = pr.body || "";
+            const title = pr.title || "";
+            const lines = body.split(/\r?\n/);
+
+            const requiredSections = [
+              "Plan",
+              "Program",
+              "Work Package",
+              "Phase / Milestone",
+              "Safety Class",
+              "Objective",
+              "Dependencies",
+              "Acceptance Criteria",
+              "Required Verification Rung(s)",
+              "Evidence / Reports",
+              "Migration / Rollback",
+              "Production / Capital Impact",
+            ];
+
+            function sectionBody(name) {
+              const heading = `## ${name}`.toLowerCase();
+              const start = lines.findIndex((line) => line.trim().toLowerCase() === heading);
+              if (start < 0) return null;
+
+              const section = [];
+              for (let i = start + 1; i < lines.length; i += 1) {
+                if (/^##\s+/.test(lines[i].trim())) break;
+                section.push(lines[i]);
+              }
+              return section.join("\n").trim();
+            }
+
+            const errors = [];
+            for (const section of requiredSections) {
+              const value = sectionBody(section);
+              if (value === null) {
+                errors.push(`Missing required section: ## ${section}`);
+              } else {
+                const meaningful = value
+                  .replace(/<!--[\s\S]*?-->/g, "")
+                  .replace(/- \[ \][^\n]*/g, "")
+                  .trim();
+                if (!meaningful) {
+                  errors.push(`Required section is empty: ## ${section}`);
+                }
+              }
+            }
+
+            const safetyText = sectionBody("Safety Class") || "";
+            const safetyMatches = [...safetyText.matchAll(/\bS([0-4])\b/gi)];
+            const declaredSafetyClasses = [...new Set(safetyMatches.map((m) => m[1]))];
+            if (declaredSafetyClasses.length !== 1) {
+              errors.push("## Safety Class must declare exactly one class S0-S4.");
+            }
+            const safetyLevel = declaredSafetyClasses.length === 1
+              ? Number(declaredSafetyClasses[0])
+              : -1;
+
+            const { owner, repo } = context.repo;
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner,
+              repo,
+              pull_number: pr.number,
+              per_page: 100,
+            });
+            const paths = files.map((file) => file.filename);
+
+            const safetyCritical = paths.filter((path) =>
+              path.startsWith("engine/risk/") ||
+              path.startsWith("engine/execution/") ||
+              path.startsWith("engine/brokers/") ||
+              path === "engine/config.py" ||
+              path === "engine/routers/orders_router.py" ||
+              path === "engine/routers/approval_queue_router.py" ||
+              path === "engine/routers/safety_router.py"
+            );
+
+            const workflowChanges = paths.filter((path) =>
+              path.startsWith(".github/workflows/")
+            );
+
+            if (safetyCritical.length && safetyLevel < 3) {
+              errors.push(
+                `Safety-critical paths require S3 or S4. Found: ${safetyCritical.slice(0, 8).join(", ")}`,
+              );
+            }
+
+            if (workflowChanges.length && safetyLevel < 1) {
+              errors.push("GitHub workflow changes require at least S1 classification.");
+            }
+
+            if ((safetyLevel >= 3 || safetyCritical.length) && !title.includes("[safety-review]")) {
+              errors.push("S3/S4 or safety-critical changes require [safety-review] in the PR title.");
+            }
+
+            const verificationText = sectionBody("Required Verification Rung(s)") || "";
+            const rungMatches = [...verificationText.matchAll(/\bV([0-5])\b/gi)];
+            if (!rungMatches.length) {
+              errors.push("## Required Verification Rung(s) must name at least one rung V0-V5.");
+            } else if (safetyLevel >= 0) {
+              const highestRung = Math.max(...rungMatches.map((m) => Number(m[1])));
+              const minimumBySafety = [0, 1, 3, 4, 5][safetyLevel];
+              if (highestRung < minimumBySafety) {
+                errors.push(
+                  `Safety class S${safetyLevel} requires verification through at least V${minimumBySafety}; highest declared rung is V${highestRung}.`,
+                );
+              }
+            }
+
+            if (errors.length) {
+              core.setFailed(`PR governance contract failed:\n- ${errors.join("\n- ")}`);
+            } else {
+              core.info(`PR #${pr.number} satisfies MIP metadata contract.`);
+              core.info(`Changed files inspected via GitHub API: ${paths.length}`);
+              core.info("No PR code was checked out or executed by this governance job.");
+            }

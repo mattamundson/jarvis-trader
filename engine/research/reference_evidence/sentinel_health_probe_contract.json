@@ -1,0 +1,58 @@
+{
+  "contract_id": "sentinel_health_probe_contract_v1",
+  "source_repos": [
+    "jarvis-sentinel",
+    "home-scripts",
+    "jarvis-trader"
+  ],
+  "classification": "observability_contract",
+  "status": "covered",
+  "authority_boundary": {
+    "may_block_readiness": true,
+    "may_create_trade_permission": false,
+    "may_reset_kill_switch": false,
+    "may_route_orders": false,
+    "may_promote_strategy": false
+  },
+  "probe_classes": [
+    "engine",
+    "ib_gateway",
+    "hermes",
+    "ollama",
+    "gbrain",
+    "scheduled_task",
+    "delivery",
+    "system",
+    "guardian",
+    "deadman"
+  ],
+  "required_fields": [
+    "probe_id",
+    "authority_class",
+    "component",
+    "evidence_source",
+    "cadence",
+    "freshness_sla",
+    "fail_closed_behavior",
+    "action_class",
+    "explicit_non_actions"
+  ],
+  "minimum_bundle": [
+    "engine_health",
+    "ib_gateway_state",
+    "kill_switch_state",
+    "feed_freshness",
+    "pm2_dump_secret_posture",
+    "hermes_brain_health",
+    "delivery_path",
+    "deadman_heartbeat"
+  ],
+  "cadence_policy": {
+    "agentic_loop_minimum_hours": 6,
+    "deterministic_probe_exception": "Allowed only for cheap non-LLM local probes that cannot mutate trading state."
+  },
+  "evidence_docs": [
+    "docs/research/sentinel-health-probe-contract.md",
+    "docs/research/repo-strategy-candidate-inventory.md"
+  ]
+}

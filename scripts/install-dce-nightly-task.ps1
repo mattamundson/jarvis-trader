@@ -4,6 +4,11 @@
 # Runs the export before morning-brief (engine/ecosystem.config.js jarvis-morning-brief
 # fires at 06:30 CT) so agents always get fresh Corey data at brief time.
 #
+# Token safety: dce-nightly.ps1 passes Discord credentials only through the
+# DISCORD_TOKEN process environment, never DCE --token/-t command-line args.
+# If the task reports "Authentication token is invalid", rotate the token and
+# rerun; the expected blocker is credential freshness, not the ETL parser.
+#
 # Idempotent: deletes any prior registration with the same task name before
 # re-creating. Safe to re-run after changes to the script or schedule.
 #

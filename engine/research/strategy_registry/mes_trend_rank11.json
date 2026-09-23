@@ -1,0 +1,94 @@
+{
+  "strategy_id": "mes_trend_rank11",
+  "hypothesis": "MES SMA trend continuation no longer has enough recent out-of-sample edge to justify promotion without a fresh passing gate.",
+  "status": "rejected",
+  "owner": "Amo / JARVIS research loop",
+  "created_at": "2026-09-14T17:23:49-05:00",
+  "updated_at": "2026-09-14T17:23:49-05:00",
+  "instruments": [
+    "MES"
+  ],
+  "timeframes": [
+    "1h"
+  ],
+  "data_contract": {
+    "sources": [
+      "Databento historical bars",
+      "JARVIS gate-v2 verdict artifacts"
+    ],
+    "feature_families": [
+      "trend following",
+      "ATR risk",
+      "gate-v2 robustness"
+    ],
+    "freshness_sla": "Registry entry must point to the exact verdict artifact and be refreshed before any paper/live promotion decision.",
+    "leakage_controls": [
+      "no OOS parameter tuning",
+      "record OOS access through gate artifacts where available",
+      "fail closed on missing or stale verdict"
+    ]
+  },
+  "research_lineage": {
+    "source_repos": [
+      "mattamundson/jarvis-trader"
+    ],
+    "notebooks": [],
+    "docs": [
+      "docs/research/strategy-registry.md",
+      "docs/research/backtest-critique-checklist.md"
+    ],
+    "decision_links": [
+      "engine/data/gate_v2_verdicts/archive/MES_trend_rank11_deep-2026-08-17-refresh.json"
+    ]
+  },
+  "backtest": {
+    "runner": "engine/backtest/run_mes_trend_rank11.py",
+    "train_window": "documented in linked runner/verdict artifact",
+    "test_window": "documented in linked runner/verdict artifact",
+    "metrics": {
+      "profit_factor": 0.5248,
+      "max_drawdown_pct": 0.0,
+      "trade_count": 17,
+      "p_edge": 0.7263,
+      "dsr": 0.0
+    },
+    "artifact_paths": [
+      "engine/data/gate_v2_verdicts/archive/MES_trend_rank11_deep-2026-08-17-refresh.json"
+    ]
+  },
+  "robustness": {
+    "walk_forward": "WEAK",
+    "parameter_stability": "decayed through late 2025/early 2026; rank8-11 fail",
+    "regime_split": "zero trades fired Jun-Aug 2026; insufficient recent sample",
+    "monte_carlo": "blocked by insufficient edge/sample; no production promotion allowed"
+  },
+  "risk_envelope": {
+    "max_position_size": "0 live contracts until a fresh honest promotion gate passes and approval is recorded",
+    "daily_loss_limit_pct": 0.0,
+    "kill_switch_dependencies": [
+      "engine/risk/safety_layer.py",
+      "engine/backtest/paper_config.py",
+      "engine/approval/service.py"
+    ],
+    "paper_only_until": "fresh honest gate-v2 PASS plus explicit approval"
+  },
+  "promotion_gate": {
+    "current_verdict": "fail",
+    "required_evidence": [
+      "fresh honest gate-v2 PASS",
+      "walk-forward consistency",
+      "parameter stability",
+      "regime split",
+      "paper-shadow report",
+      "explicit approval before routing"
+    ],
+    "human_approval_required": true,
+    "blocking_conditions": [
+      "current verdict FAIL/INSUFFICIENT_SAMPLE",
+      "pf_ci_lower below 1.1 floor",
+      "p_edge below 0.95 floor",
+      "rolling WFO weak",
+      "only 17/30 minimum OOS trades"
+    ]
+  }
+}

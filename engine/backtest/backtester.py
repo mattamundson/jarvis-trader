@@ -283,8 +283,11 @@ class Backtester:
         Note: slippage is applied as adverse fill price in _apply_execution_costs(), not doubled here.
               Exit spread cost is applied separately via _exit_spread_cost().
         """
+        # Reading A (2026-09-18): COMMISSION_PER_CONTRACT is the ROUND TRIP, so a contract is
+        # charged it ONCE. Together with charging only at the closing exit, this yields exactly one
+        # round trip per contract (previously: 2x per leg, charged at entry AND every exit).
         return (
-            self._round_trip_cost(contracts, self.commission_per_contract)
+            contracts * self.commission_per_contract
             if self.commission_enabled
             else 0.0
         )
@@ -413,7 +416,9 @@ class Backtester:
             regime=pending_entry.get("regime", ""),
             bias=pending_entry["bias"],
         )
-        capital_used = self._transaction_cost(total_contracts, tick_size)
+        # Commission is charged at the closing exit (see _transaction_cost); charging it here
+        # as well double-charged every trade.
+        capital_used = 0.0
         return open_trade, t1_contracts, t2_contracts, t3_contracts, [], capital_used
 
     def _check_targets_exit(
@@ -1052,11 +1057,22 @@ class Backtester:
         # Compute total spread cost across all trades (entry half-spread + exit half-spread)
         if self.spread_enabled:
             spread_cost_total = sum(
-                t.contracts * self.spread_ticks * tick_size * multiplier * 2  # entry + exit
+                t.contracts * self.spread_ticks * tick_size * multiplier  # exit side only (entry cancels in the realised distance)
                 for t in completed_trades
             )
         else:
             spread_cost_total = 0.0
+
+        # Ledger reconciliation (2026-09-18): attribute the costs actually debited from capital
+        # onto the trades that incurred them, proportionally to contracts (costs are charged per
+        # contract), so sum(trade.pnl) == final_capital - initial_capital EXACTLY. Without this the
+        # trade ledger excludes all cost while the equity curve includes it, making PF/Sharpe
+        # optimistic and CAGR/drawdown pessimistic at the same time.
+        _ledger_gap = sum(t.pnl for t in completed_trades) - (capital - self.initial_capital)
+        _total_contracts_all = sum(t.contracts for t in completed_trades)
+        if completed_trades and _total_contracts_all and abs(_ledger_gap) > 1e-12:
+            for _t in completed_trades:
+                _t.pnl -= _ledger_gap * (_t.contracts / _total_contracts_all)
 
         result = BacktestResult(
             symbol=symbol,

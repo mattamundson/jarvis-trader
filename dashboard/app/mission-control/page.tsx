@@ -10,6 +10,8 @@ import { EnvironmentFleetPanel } from "./components/EnvironmentFleetPanel";
 import { RuntimeSnapshotPanel } from "./components/RuntimeSnapshotPanel";
 import { TradingStatusReconciliation } from "@/components/TradingStatusReconciliation";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
+import { SpxIntradayAnalysisCard } from "@/components/SpxIntradayAnalysisCard";
+import { MarketBriefCard } from "@/components/MarketBriefCard";
 
 /**
  * MISSION CONTROL — single command-center view fusing trading state
@@ -55,6 +57,18 @@ export default function MissionControlPage() {
             redacted artifact rather than live engine routes. */}
         <WidgetErrorBoundary name="Runtime Snapshot">
           <RuntimeSnapshotPanel />
+        </WidgetErrorBoundary>
+
+        {/* Panel 1d — Broad morning market machine score. Dashboard-only,
+            analysis-only; reads the generated brief artifact and never routes orders. */}
+        <WidgetErrorBoundary name="Market Brief Machine Score">
+          <MarketBriefCard />
+        </WidgetErrorBoundary>
+
+        {/* Panel 1e — SPX intraday decision intelligence. Dashboard-only,
+            analysis-only; it never routes orders or mutates risk state. */}
+        <WidgetErrorBoundary name="SPX Intraday Decision">
+          <SpxIntradayAnalysisCard />
         </WidgetErrorBoundary>
 
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">

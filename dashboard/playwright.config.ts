@@ -1,4 +1,31 @@
+import fs from "node:fs";
+import path from "node:path";
+
 import { defineConfig } from "@playwright/test";
+
+function loadDashboardBasicAuthEnv(): void {
+  const envPath = path.join(__dirname, ".env.local");
+  if (!fs.existsSync(envPath)) return;
+
+  for (const line of fs.readFileSync(envPath, "utf8").split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+
+    const eq = trimmed.indexOf("=");
+    if (eq <= 0) continue;
+
+    const key = trimmed.slice(0, eq).trim();
+    if (key !== "DASHBOARD_AUTH_USER" && key !== "DASHBOARD_AUTH_PASS") continue;
+
+    const rawValue = trimmed.slice(eq + 1).trim();
+    const value = rawValue.replace(/^['\"]|['\"]$/g, "");
+    if (!process.env[key]) {
+      process.env[key] = value;
+    }
+  }
+}
+
+loadDashboardBasicAuthEnv();
 
 // Golden-path e2e. Uses the pre-installed Chromium (no browser download).
 //
@@ -33,6 +60,23 @@ import { defineConfig } from "@playwright/test";
 // page loads against a mocked engine, so that should be safe -- if it turns out
 // not to be, the interference is a real finding about shared state, not a reason
 // to quietly go back to workers:1.
+// PORT -- read before changing.
+//   3010 is pm2's PRODUCTION dashboard on this machine. Two independent hazards
+//   follow from that, both of which previously produced misleading green runs:
+//
+//   1. Reuse. `reuseExistingServer: true` meant a local run silently tested
+//      whatever pm2 was already serving (a build that can predate the change under
+//      verification) instead of the build in the working tree. Stale-server reuse
+//      is now OPT-IN only, via PW_REUSE_SERVER=1, and never the default. When 3010
+//      is occupied and reuse is off, Playwright fails loudly ("port already used")
+//      -- that is the correct outcome, and the fix is to stop pm2 or set PW_PORT.
+//
+//   2. Port collision. Because pm2 owns 3010, a fresh-server local run cannot bind
+//      it. PW_PORT overrides the port (e.g. PW_PORT=3013) so a local run can build
+//      and serve its own instance without touching pm2. CI leaves it unset and keeps
+//      using 3010, where no server is running.
+const PORT = Number(process.env.PW_PORT ?? 3010);
+
 export default defineConfig({
   testDir: "./tests/e2e",
   timeout: 60_000,
@@ -54,16 +98,25 @@ export default defineConfig({
     },
   ],
   use: {
-    baseURL: "http://localhost:3010",
+    baseURL: `http://localhost:${PORT}`,
+    httpCredentials:
+      process.env.DASHBOARD_AUTH_USER && process.env.DASHBOARD_AUTH_PASS
+        ? {
+            username: process.env.DASHBOARD_AUTH_USER,
+            password: process.env.DASHBOARD_AUTH_PASS,
+          }
+        : undefined,
     launchOptions: {
       executablePath: process.env.PW_CHROME || undefined,
       args: ["--no-sandbox", "--disable-dev-shm-usage"],
     },
   },
   webServer: {
-    command: "pnpm exec next start -p 3010",
-    url: "http://localhost:3010",
+    command: `pnpm exec next start -p ${PORT}`,
+    url: `http://localhost:${PORT}`,
     timeout: 120_000,
-    reuseExistingServer: !process.env.CI,
+    // Opt-in only. Default false means every run exercises the build in the
+    // working tree; see the PORT note above for why that matters on this machine.
+    reuseExistingServer: process.env.PW_REUSE_SERVER === "1",
   },
 });

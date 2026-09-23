@@ -1,0 +1,103 @@
+{
+  "schema_version": "reference-evidence.v1",
+  "reference_repo": "mattamundson/claude-trading-skills",
+  "reference_commit": "9ef78d6",
+  "status": "research_control_not_validated_alpha",
+  "non_duplicative_value": [
+    "authority_classification_for_agentic_trading_skills",
+    "provider_dependency_fail_closed_requirement",
+    "advisory_output_cannot_override_strategy_registry",
+    "discipline_and_circuit_breaker_outputs_are_manual_until_safety_review"
+  ],
+  "source_files": [
+    "docs/en/skills/index.md",
+    "docs/en/skills/backtest-expert.md",
+    "docs/en/skills/pre-trade-discipline-gate.md",
+    "docs/en/skills/edge-strategy-reviewer.md",
+    "docs/en/skills/drawdown-circuit-breaker.md",
+    "CLAUDE.md"
+  ],
+  "candidate_skill_classes": [
+    {
+      "class": "research_context",
+      "allowed": [
+        "market_notes",
+        "dashboard_annotations",
+        "journal_context"
+      ],
+      "blocked": [
+        "strategy_promotion",
+        "orders"
+      ]
+    },
+    {
+      "class": "candidate_generator",
+      "allowed": [
+        "draft_hypotheses",
+        "research_tickets"
+      ],
+      "blocked": [
+        "registry_approval",
+        "routing"
+      ]
+    },
+    {
+      "class": "adversarial_reviewer",
+      "allowed": [
+        "fail_candidates",
+        "revise_candidates",
+        "flag_overfit"
+      ],
+      "blocked": [
+        "promote_failed_candidates"
+      ]
+    },
+    {
+      "class": "risk_advisory",
+      "allowed": [
+        "explain_exposure",
+        "drawdown_context",
+        "sizing_context"
+      ],
+      "blocked": [
+        "change_risk_limits",
+        "broker_controls"
+      ]
+    },
+    {
+      "class": "operator_checklist",
+      "allowed": [
+        "manual_pretrade_artifact"
+      ],
+      "blocked": [
+        "automated_order_approval"
+      ]
+    },
+    {
+      "class": "provider_dependent",
+      "allowed": [
+        "evidence_backed_context"
+      ],
+      "blocked": [
+        "silent_score_uplift_with_missing_data"
+      ]
+    }
+  ],
+  "safety_boundary": {
+    "live_order_routing_changed": false,
+    "paper_order_routing_changed": false,
+    "runtime_config_changed": false,
+    "risk_limit_or_kill_switch_changed": false,
+    "secret_or_env_changed": false,
+    "pm2_or_schedule_changed": false
+  },
+  "acceptance_gates": [
+    "source_repo_commit_recorded",
+    "authority_class_declared",
+    "provider_dependencies_declared",
+    "allowed_influence_declared",
+    "blocked_influence_declared",
+    "missing_or_stale_provider_data_fails_closed",
+    "advisory_output_cannot_override_failed_registry_verdict"
+  ]
+}
