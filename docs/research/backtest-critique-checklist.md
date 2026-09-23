@@ -14,7 +14,7 @@ Score each dimension independently, then sum. A strategy scoring below 60 total,
 | Dimension | Weight | What we measure | Top score | Zero score |
 |---|---|---|---|---|
 | **Sample size** | 20 | Trade count, trades/year density, number of independent market environments | ≥200 trades across ≥3 regimes | <30 trades or single-regime backtest |
-| **Expectancy** | 20 | Profit factor, win rate × avg win / loss rate × avg loss, R-multiple distribution | PF ≥1.5, positive expectancy after costs | PF ≤1.0 or negative after costs |
+|| **Expectancy** | 20 | Profit factor, win rate × avg win / loss rate × avg loss, R-multiple distribution, **uncertainty estimates (bootstrap CI on PF, DSR or equivalent)** | PF ≥1.5, positive expectancy after costs, **tight uncertainty bounds** | PF ≤1.0 or negative after costs, **or wide/overlapping confidence intervals** |
 | **Risk management** | 20 | Max drawdown severity, recovery time, ruin risk, position-sizing coherence | DD <15%, full recovery within 1× strategy cycle | DD >40% or no documented sizing rule |
 | **Robustness** | 20 | Parameter count, parameter stability, out-of-sample / walk-forward performance, regime split | ≤4 parameters, OOS within 10% of in-sample, stable across regimes | >7 tunable parameters, OOS degradation >30%, single-regime curve fit |
 | **Execution realism** | 20 | Slippage modeled, commission/fee modeling, realistic fill assumptions, latency considered | Slippage at 1.5–2× estimated, commissions modeled, fills realistic | No slippage, idealized fills, no latency model |
@@ -41,6 +41,7 @@ Any **critical** red flag fails the gate. **Warning** flags require a written mi
 - Test window shorter than 3 years with no regime diversity.
 - Look-ahead bias: any feature or signal that uses data not available at decision time.
 - Survivorship bias: universe construction that excludes delisted/inactive instruments without a documented adjustment.
+- **Uncertainty evidence absent:** no bootstrap CI on profit factor, no DSR or equivalent drawdown-survival estimate, or no multiple-testing control when the strategy was selected from many trials.
 
 ### Warning (require documented mitigation)
 
@@ -59,11 +60,15 @@ Any **critical** red flag fails the gate. **Warning** flags require a written mi
 
 These are in addition to the generic scorecard above. All must pass for a strategy to enter paper shadow in JARVIS.
 
-|- **[ ] Uncertainty quantified:** backtest report includes at least one uncertainty estimate — bootstrapped confidence interval on profit factor, deflated Sharpe ratio (DSR), or Monte Carlo path distribution — so the point estimate is not mistaken for a guarantee. Absence of any uncertainty estimate is a critical red flag.
-|- **[ ] Walk-forward / OOS performance reported:** out-of-sample or walk-forward results are in the record, and OOS performance is within a documented degradation band of in-sample (default: OOS profit factor ≥ 50% of in-sample). A strategy whose edge exists only in-sample fails the gate.
-|- **[ ] Regime split reported:** metrics are broken down by at least coarse regime segments (e.g. high-vol / low-vol, trend / range, risk-on / risk-off) so a single calm regime cannot hide a strategy that only works in one environment.
-|- **[ ] Paper-shadow duration gate placed correctly:** the paper shadow is a **post-walk-forward, pre-live** step, not a backdoor OOS substitute. Minimum 20 trading days or one full volatility regime cycle, whichever is longer, and the shadow duration is recorded in the strategy record.
-|- **[ ] Futures roll / session validation (futures strategies only):** for futures strategies, the backtest explicitly handles contract roll timing and session boundaries (e.g. rollover rules, gap behavior at session open/close). A backtest that ignores rolls or treats continuous data as if it were tradable is marked as having a critical data-handling defect.
+- **[ ] Data provenance recorded:** source (Databento / IBKR / YFinance / CSV), contract/venue, bar frequency, first/last date, any gap or adjustment notes.
+- **[ ] Point-in-time integrity:** no forward-filled values, no adjusted-price leakage, no future macro releases in the feature window.
+|- **[ ] Futures roll and session validation:** for futures strategies, continuous-contract construction, roll date/method, symbol mappings, timezone, and session calendar are documented and consistent with the backtest data. A stitched or back-adjusted series without explicit roll handling fails this gate.
+|- **[ ] Regime split reported:** backtest metrics are broken down by at least coarse regime segments (e.g. high-vol / low-vol, trend / range, risk-on / risk-off) so a single calm regime cannot hide a strategy that only works in one environment. A strategy with no regime diversity in its test window is a warning flag; a strategy whose edge exists only in one regime must say so in the record.
+- **[ ] Execution model matches JARVIS reality:** same broker/slippage assumptions used in backtest as will be used in paper/live; IB Gateway fill model documented if applicable.
+- **[ ] Circuit-breaker coherence:** strategy's max position, daily loss limit, and drawdown halt are compatible with JARVIS risk layer limits in `engine/risk/`.
+- **[ ] Kill-criterion written:** every strategy record carries an explicit "what makes this wrong" clause before paper entry (from `claude-trading-skills` quant-strategy-framework kill rule).
+- **[ ] Paper shadow duration met:** minimum 20 trading days or 1 full volatility regime cycle, whichever is longer, before live promotion consideration. (This gate applies at the backtest→paper transition; the paper→live gate separately requires the duration to have been completed.)
+- **[ ] No live config mutation:** backtest critique does not touch `engine/config.py`, `.env`, broker routing, API keys, or live order behavior. Those changes require a separate safety review.
 
 ---
 

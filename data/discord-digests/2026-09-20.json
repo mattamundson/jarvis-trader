@@ -173,11 +173,12 @@
         "active": true
       },
       "MGC": {
-        "age_days": 0.8,
-        "newest": "2026-09-20T17:56:24.838125+00:00",
-        "files": 1,
-        "latest_verdict": "PASS",
-        "active": true
+        "age_days": 35.8,
+        "newest": "2026-08-16T00:00:00+00:00",
+        "files": 0,
+        "latest_verdict": "HALTED",
+        "active": false,
+        "note": "MGC halted since 2026-08-16; paper_config.py enabled=False after gate-v2 failure. Not an active instrument."
       },
       "MNQ": {
         "age_days": 2.3,
