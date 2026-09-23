@@ -1,0 +1,281 @@
+{
+  "date": "2026-09-22",
+  "session_bias": {
+    "session_type": "uncertain",
+    "directional_bias": "bullish",
+    "conviction": 0.7,
+    "ib_bias": "not_mentioned",
+    "data_quality": "fresh",
+    "message_count": 4
+  },
+  "sentiment_score": 0.15317460317460319,
+  "sentiment_label": "neutral",
+  "top_signals": [
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7841.5,
+      "target2": 7868.5,
+      "stop1": 7796.5,
+      "win_rate": 82.31,
+      "rr": 0.57,
+      "timestamp": "2026-09-22T18:25:05.738-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7839.25,
+      "target2": 7866.25,
+      "stop1": 7794.25,
+      "win_rate": 82.25,
+      "rr": 0.57,
+      "timestamp": "2026-09-22T12:35:10.447-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7846.0,
+      "target2": 7873.0,
+      "stop1": 7801.0,
+      "win_rate": 82.18,
+      "rr": 0.56,
+      "timestamp": "2026-09-22T05:35:03.967-05:00"
+    },
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 93.86,
+      "target2": 94.94,
+      "stop1": 92.06,
+      "win_rate": 82.12,
+      "rr": 0.63,
+      "timestamp": "2026-09-22T00:40:08.59-05:00"
+    },
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 93.45,
+      "target2": 94.53,
+      "stop1": 91.65,
+      "win_rate": 82.0,
+      "rr": 0.62,
+      "timestamp": "2026-09-21T23:07:05.412-05:00"
+    }
+  ],
+  "corey_quote": "At all-time highs, the trend is not proven by new highs \u2014 it is proven by whether the first pullback is defended.",
+  "commentary_health": [
+    {
+      "date": "2026-09-22",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.7,
+      "message_count": 4
+    },
+    {
+      "date": "2026-09-21",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.7,
+      "message_count": 5
+    },
+    {
+      "date": "2026-09-20",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    },
+    {
+      "date": "2026-09-19",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    },
+    {
+      "date": "2026-09-18",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    },
+    {
+      "date": "2026-09-17",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    },
+    {
+      "date": "2026-09-16",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    },
+    {
+      "date": "2026-09-15",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    }
+  ],
+  "calibration_integrity": {
+    "total_outcomes": 0,
+    "rows_excluded_corrupt": 0,
+    "rows_excluded_duplicate": 0,
+    "alert": false,
+    "window_days": 30
+  },
+  "llm_provider_health": {
+    "engine_reachable": true,
+    "active_provider": "openai",
+    "primary_provider": "kimi",
+    "primary_healthy": false,
+    "providers_available": 5,
+    "google_fallback_count": 3,
+    "vertex_failover_count": 0,
+    "llm_path_healthy": true,
+    "alert": true
+  },
+  "task_health": {
+    "present": true,
+    "stale": false,
+    "age_hours": 0.5,
+    "scanned": 118,
+    "failing_enabled": 16,
+    "failing_disabled": 3,
+    "failing_tasks": [
+      {
+        "name": "Hermes-Default-Gateway-Keepalive",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Hermes-Production-Readiness",
+        "result": "0x1"
+      },
+      {
+        "name": "Hermes-PS-Estate-Watchdog",
+        "result": "0x1"
+      },
+      {
+        "name": "Hermes-Snapshot-Weekly",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-CoreySignalPropagation",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-DiskWatch",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-FinanceSync",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-LiveReadiness-Daily",
+        "result": "0x1"
+      },
+      {
+        "name": "jarvis-morning-brief",
+        "result": "0x3"
+      },
+      {
+        "name": "Jarvis-RepoRemoteCheck",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-ScanCredentials",
+        "result": "0x40010004"
+      },
+      {
+        "name": "Jarvis-ScanHistorySecrets",
+        "result": "0x40010004"
+      },
+      {
+        "name": "Jarvis-Sentinel",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-VaultBackup",
+        "result": "0x3"
+      },
+      {
+        "name": "Jarvis-VaultWeeklySynthesis",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-VerdictRefresh-Weekly",
+        "result": "0x1"
+      }
+    ],
+    "alert": true
+  },
+  "gate_verdict_freshness": {
+    "active_symbols": [
+      "MES",
+      "MGC"
+    ],
+    "max_age_days": 7.0,
+    "symbols": {
+      "MES": {
+        "age_days": 1.9,
+        "newest": "2026-09-21T15:46:28.972364+00:00",
+        "files": 4,
+        "latest_verdict": "FAIL",
+        "active": true
+      },
+      "MGC": {
+        "age_days": 0.9,
+        "newest": "2026-09-22T15:47:35.053032+00:00",
+        "files": 1,
+        "latest_verdict": "PASS",
+        "active": true
+      },
+      "MNQ": {
+        "age_days": 4.3,
+        "newest": "2026-09-19T06:00:03.352143+00:00",
+        "files": 1,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "NONE": {
+        "age_days": 11.3,
+        "newest": "2026-09-12T07:48:17+00:00",
+        "files": 4,
+        "latest_verdict": "60/200/2.0 remains top under +0/+1/+2 tick stress by total PnL/PF, but this does not change the PR #814 statistical-superiority failure or runtime-promotion block.",
+        "active": false
+      },
+      "QQQ": {
+        "age_days": 1.0,
+        "newest": "2026-09-22T13:38:31.060050+00:00",
+        "files": 1,
+        "latest_verdict": "PASS",
+        "active": false
+      },
+      "SPY": {
+        "age_days": 20.5,
+        "newest": "2026-09-03T01:19:37.088631+00:00",
+        "files": 1,
+        "latest_verdict": "FAIL",
+        "active": false
+      }
+    },
+    "stale_active": [],
+    "missing_active": [],
+    "alert": false
+  }
+}
