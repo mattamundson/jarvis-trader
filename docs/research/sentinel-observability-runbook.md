@@ -91,10 +91,15 @@ Minimum evidence for each probe run:
 - `probe_id` — stable identifier for the probe.
 - `timestamp` — when the probe ran.
 - `verdict` — healthy / degraded / unhealthy / skipped.
+- `authority_class` — the authority level of this probe: `advisory` (informational only), `gated` (blocks an action until healthy), or `safety` (fail-closed; an unhealthy verdict triggers a protective stop).
+- `fail_closed` — explicit boolean: when this probe cannot run or returns unhealthy, does the system fail closed (stop/defer) or fail open (continue with a warning)?
+- `action_class` — what the probe's verdict is allowed to do: `observe` (record only), `alert` (notify a human), `block` (prevent an action), or `actuate` (trigger an automated protective response).
+- `explicit_non_actions` — what this probe must NOT do, stated explicitly (e.g. "must not cancel live orders", "must not mutate risk limits"). This prevents scope creep as probes gain new capabilities.
 - `observed` — what was actually observed (concrete values, not narratives).
 - `expectation` — what healthy means for this probe.
 - `note` — optional human context.
 - `affected` — optional list of strategies, workflows, or components affected by a degraded/unhealthy verdict.
+- `owner` — single designated owner (person or role) responsible for interpreting this probe's verdict and responding. Contributors may be listed separately; the owner is one name.
 
 Evidence lands where the relevant consumer can use it: engine logs, dashboard state, the ops hygiene log, or the strategy record, depending on the probe. The point is that each probe's evidence is stored, not just printed.
 
@@ -102,7 +107,7 @@ Evidence lands where the relevant consumer can use it: engine logs, dashboard st
 
 ## 4. Ownership and silence
 
-- Every probe has exactly one owner for **interpretation and response**, even if multiple components contribute to the probe.
+- Every probe has exactly one **designated owner** (a person or a named role) for **interpretation and response**, even if multiple components contribute to the probe. The owner is the single decision-maker when the probe verdict is degraded or unhealthy; contributors supply data or implementation, but the owner owns the call. List contributors separately from the owner so responsibility is not diffuse.
 - A probe that has been healthy for a documented stretch may run less often, but it does not become "someone's memory."
 - A probe that cannot run (e.g. IAM/refreshed key missing, feed down) is itself an evidence event: skipped with a reason, not silently omitted.
 

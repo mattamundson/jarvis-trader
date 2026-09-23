@@ -71,6 +71,17 @@ This is the same discipline as the `claude-trading-skills` quant-strategy-framew
 
 ### Step 4 — Record
 
+Before closing the chart, capture the **mandatory capture metadata** so the review is reproducible and the artifact can serve as evidence:
+
+- **Timestamp** — when the review was performed (UTC or exchange time, stated explicitly).
+- **Venue / contract** — the symbol and contract or instrument as it appears on the chart (e.g. `MES 09-26`, `NQ 12-26`, `ES 09-26`), not just the root.
+- **Session template / timeframe** — the chart's timeframe and any session or template in use (e.g. `5 min`, `E-mini S&P 500 regular session`).
+- **Data source** — what data the chart is showing (JARVIS data layer, live TradingView feed, cached snapshot) so reviewers know what they are looking at.
+- **Indicator settings** — the full set of indicators visible on the chart with their parameters (lengths, sources, modes). If a custom Pine Script is on the chart, record its version or source.
+- **Artifact path** — where the capture lives (screenshot file path, embed reference, or Pine Script save path) so the review can be reopened.
+
+Then record the decision content:
+
 - Link the chart artifact to the strategy record or journal entry.
 - Record the review question, the answer, and whether the chart supported or contradicted the thesis.
 - If the chart contradicted the thesis, that is a valid outcome — record it and let the kill criterion do its job.

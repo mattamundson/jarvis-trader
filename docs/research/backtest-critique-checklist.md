@@ -59,13 +59,11 @@ Any **critical** red flag fails the gate. **Warning** flags require a written mi
 
 These are in addition to the generic scorecard above. All must pass for a strategy to enter paper shadow in JARVIS.
 
-- **[ ] Data provenance recorded:** source (Databento / IBKR / YFinance / CSV), contract/venue, bar frequency, first/last date, any gap or adjustment notes.
-- **[ ] Point-in-time integrity:** no forward-filled values, no adjusted-price leakage, no future macro releases in the feature window.
-- **[ ] Execution model matches JARVIS reality:** same broker/slippage assumptions used in backtest as will be used in paper/live; IB Gateway fill model documented if applicable.
-- **[ ] Circuit-breaker coherence:** strategy's max position, daily loss limit, and drawdown halt are compatible with JARVIS risk layer limits in `engine/risk/`.
-- **[ ] Kill-criterion written:** every strategy record carries an explicit "what makes this wrong" clause before paper entry (from `claude-trading-skills` quant-strategy-framework kill rule).
-- **[ ] Paper shadow duration met:** minimum 20 trading days or 1 full volatility regime cycle, whichever is longer, before live promotion consideration.
-- **[ ] No live config mutation:** backtest critique does not touch `engine/config.py`, `.env`, broker routing, API keys, or live order behavior. Those changes require a separate safety review.
+|- **[ ] Uncertainty quantified:** backtest report includes at least one uncertainty estimate — bootstrapped confidence interval on profit factor, deflated Sharpe ratio (DSR), or Monte Carlo path distribution — so the point estimate is not mistaken for a guarantee. Absence of any uncertainty estimate is a critical red flag.
+|- **[ ] Walk-forward / OOS performance reported:** out-of-sample or walk-forward results are in the record, and OOS performance is within a documented degradation band of in-sample (default: OOS profit factor ≥ 50% of in-sample). A strategy whose edge exists only in-sample fails the gate.
+|- **[ ] Regime split reported:** metrics are broken down by at least coarse regime segments (e.g. high-vol / low-vol, trend / range, risk-on / risk-off) so a single calm regime cannot hide a strategy that only works in one environment.
+|- **[ ] Paper-shadow duration gate placed correctly:** the paper shadow is a **post-walk-forward, pre-live** step, not a backdoor OOS substitute. Minimum 20 trading days or one full volatility regime cycle, whichever is longer, and the shadow duration is recorded in the strategy record.
+|- **[ ] Futures roll / session validation (futures strategies only):** for futures strategies, the backtest explicitly handles contract roll timing and session boundaries (e.g. rollover rules, gap behavior at session open/close). A backtest that ignores rolls or treats continuous data as if it were tradable is marked as having a critical data-handling defect.
 
 ---
 

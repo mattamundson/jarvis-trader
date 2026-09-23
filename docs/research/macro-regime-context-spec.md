@@ -56,6 +56,8 @@ Every macro feature used by a JARVIS strategy must carry the following provenanc
 | `observation_start` / `observation_end` | The exact range used in the backtest or live feature. |
 | `frequency` | The requested frequency after FRED aggregation, if any. |
 | `vintage_date` | For ALFRED point-in-time fetches, the vintage date used. |
+| `release_date` | The date the observation was first released by the source agency. Distinct from the observation date and the fetch date; this is the publication date of the data point. Required for any series where release timing affects the backtest or live decision. |
+| `effective_date` | The date the observation is considered effective (policy-effective date for rate decisions, reference period for economic aggregates). Required when the effective date differs from the observation date, e.g. a monthly CPI released in mid-month covers the prior month. |
 | `revision_note` | Any known revision behavior for the series (e.g. CPI revisions, payroll revisions). |
 | `refresh cadence` | How often the feature is refreshed in live/paper (e.g. daily, on-release). |
 | `freshness gate` | The max age of the latest observation before the feature is considered stale for a decision. |
@@ -104,10 +106,11 @@ A macro-bearing strategy record includes:
 
 When a strategy uses macro features, the backtest critique checklist must verify:
 
-- No look-ahead on release dates or revisions.
-- Point-in-time integrity if ALFRED vintages are used.
-- That the freshness gate used in the backtest matches the intended live behavior.
-- That the macro layer does not become the sole driver of the edge.
+- **No look-ahead on release dates or revisions.** The backtest must use each observation on or after its `release_date`, never before. A strategy that appears to use a macro value before it was publicly available fails the gate. This is the most common macro backtest defect and is checked explicitly.
+- **Point-in-time integrity if ALFRED vintages are used.** When a vintage is queried, the `vintage_date`, `release_date`, and `effective_date` must all be recorded, and the backtest must use the value as it was known on the decision date, not the revised value.
+- **That the freshness gate used in the backtest matches the intended live behavior.** If the live feature refreshes on release, the backtest must simulate that same release-schedule lag, not ingest the value on the observation date.
+- **That the macro layer does not become the sole driver of the edge.** If removing the macro feature collapses the strategy's expectancy, the edge is macro-only and must be treated as a single-point-of-failure regime bet, not a diversified strategy.
+- **That any series with known revisions is tested against both first-release and revised values** to confirm the edge is not an artifact of a specific vintage.
 
 ### 6.3 Agent workflows
 
