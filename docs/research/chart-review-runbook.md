@@ -73,7 +73,7 @@ This is the same discipline as the `claude-trading-skills` quant-strategy-framew
 
 - Link the chart artifact to the strategy record or journal entry.
 - Record the review question, the answer, and whether the chart supported or contradicted the thesis.
-- **Capture metadata:** every chart artifact must include the capture timestamp, venue/contract, session template, data source, indicator settings, and artifact path (or a link to `chart-review-dashboard-requirements.md` for the full structured evidence package). A screenshot alone is insufficient for a promotion decision or postmortem; the record must establish which bars and settings were reviewed.
+- **Capture metadata:** every chart artifact must include the capture timestamp (UTC or exchange time, stated explicitly), venue/contract, session template and timeframe/resolution, data source, indicator settings, and artifact path (or a link to `chart-review-dashboard-requirements.md` for the full structured evidence package). A screenshot alone is insufficient for a promotion decision or postmortem; the record must establish which bars and settings were reviewed.
 - If the chart contradicted the thesis, that is a valid outcome — record it and let the kill criterion do its job.
 
 ### Step 5 — Close the loop

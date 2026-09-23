@@ -149,7 +149,7 @@
 
 ---
 
-### 6.2 Wave 2 distillation docs (PR #906 — merged 2026-09-22)
+## 3. Wave 2 distillation docs (PR #906 — merged 2026-09-22)
 
 | Doc | Source repos distilled | What it gives JARVIS |
 |---|---|---|

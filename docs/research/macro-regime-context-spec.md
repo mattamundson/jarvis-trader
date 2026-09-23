@@ -48,7 +48,7 @@ Key facts relevant to JARVIS:
 
 Every macro feature used by a JARVIS strategy must carry the following provenance in the strategy record or data-layer metadata:
 
-|| Field | Meaning |
+| Field | Meaning |
 |---|---|
 | `fred_series_id` | The FRED series ID (e.g. a Treasury yield, CPI, unemployment rate). |
 | `source` | `"fred"` or `"alfred"` depending on whether live or vintage data is used. |
@@ -107,7 +107,7 @@ A macro-bearing strategy record includes:
 When a strategy uses macro features, the backtest critique checklist must verify:
 
 - No look-ahead on release dates or revisions. The critique must confirm that for each macro feature, the `release_date` (or `effective_date` for revised series) is before the simulated decision time at every point in the backtest window.
-- Point-in-time integrity if ALFRED vintages are used.
+- Point-in-time integrity if ALFRED vintages are used. For revised series, the critique must confirm each selected vintage's `realtime_start` (the first date the value was known) precedes the simulated decision time. Causal forward-fill of a previously published daily or monthly value onto later bars is permitted; backward fills, future values, and stale data are prohibited.
 - That the freshness gate used in the backtest matches the intended live behavior.
 - That the macro layer does not become the sole driver of the edge.
 
