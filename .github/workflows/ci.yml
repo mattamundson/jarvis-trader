@@ -526,6 +526,26 @@ jobs:
           fi
           echo "No secret-shaped filenames found."
 
+      - name: Check for unresolved merge conflict markers
+        run: |
+          set -euo pipefail
+          # PR #921: 275 files were committed with unresolved merge conflict markers
+          # (^<{7} branch-name style). Grep shells out of these across the tree so
+          # this can never recur. The bracket notation avoids parser ambiguity with
+          # literal <<<<<<< in the YAML string.
+          HITS=$(grep -rE '^[<]{7} ' --include='*.py' --include='*.ts' --include='*.tsx' \
+            --include='*.js' --include='*.json' --include='*.yaml' --include='*.yml' \
+            --include='*.md' --include='*.txt' --include='*.css' --include='*.html' \
+            --exclude-dir=node_modules --exclude-dir=.venv --exclude-dir=.next \
+            engine/ dashboard/ 2>/dev/null || true)
+          if [[ -n "${HITS}" ]]; then
+            echo "${HITS}"
+            echo "ERROR: Unresolved merge conflict markers found in the repo tree."
+            echo "Run 'grep -rnE \"^[<]{7} \" engine/ dashboard/' to locate them."
+            exit 1
+          fi
+          echo "No unresolved merge conflict markers found."
+
       - name: Check for hardcoded secrets
         run: |
           set -euo pipefail

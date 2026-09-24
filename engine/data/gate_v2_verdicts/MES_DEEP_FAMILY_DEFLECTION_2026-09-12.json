@@ -1,4 +1,6 @@
 {
+  "symbol": "MES",
+  "family": "trend",
   "created_at": "2026-09-12T05:38:26.576881+00:00",
   "scope": "research-only family-level deflation; no runtime/risk/kill-switch/paper_config changes",
   "cache": "MES_2019-05-05_2026-08-26_1h.csv",
