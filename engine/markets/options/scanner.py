@@ -100,7 +100,6 @@ class OptionsScanner:
         """Scan one symbol. Returns ScanResult if criteria met, else None."""
         try:
             from options.chain_fetcher import (
-                fetch_nearest_expiries,
                 fetch_nearest_expiries_async,
                 get_iv_rank_async,
             )
