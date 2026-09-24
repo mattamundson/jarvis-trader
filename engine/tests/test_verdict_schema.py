@@ -20,6 +20,19 @@ from backtest.verdict_schema import VerdictSchema, _sanitize_json, load_verdict_
 
 _VERDICTS_DIR = Path(__file__).parent.parent / "data" / "gate_v2_verdicts"
 
+# Research evidence/provenance artifacts deliberately live beside verdicts so
+# reviewers can audit a promotion decision without chasing side paths. They are
+# not themselves promotion verdicts and should not be parsed as VerdictSchema.
+# Keep this explicit so a future non-verdict JSON added to the directory fails
+# CI until it is either moved or deliberately classified here.
+_KNOWN_NON_VERDICT_ARTIFACTS = {
+    "MES_DEEP_ADJACENT_FAMILY_DM_2026-09-12.json",
+    "MES_DEEP_CACHE_PROVENANCE_2026-09-12.json",
+    "MES_DEEP_DATE_ALIGNED_DM_2026-09-12.json",
+    "MES_DEEP_FAMILY_DEFLECTION_2026-09-12.json",
+    "MES_DEEP_TOP3_COST_SENSITIVITY_2026-09-12.json",
+}
+
 
 # ---------------------------------------------------------------------------
 # Minimal valid dict helpers
@@ -206,13 +219,28 @@ def test_load_verdict_handles_bare_infinity_in_file(tmp_path: Path) -> None:
 )
 def test_real_verdict_files_validate() -> None:
     failures: list[str] = []
+    validated: list[str] = []
+    classified_non_verdicts: list[str] = []
     for path in sorted(_VERDICTS_DIR.glob("*.json")):
+        if path.name in _KNOWN_NON_VERDICT_ARTIFACTS:
+            raw = json.loads(_sanitize_json(path.read_text(encoding="utf-8")))
+            assert any(
+                key in raw for key in ("scope", "safety_boundary", "statistical_use_boundary")
+            ), f"{path.name}: classified non-verdict artifact lacks evidence/provenance marker"
+            classified_non_verdicts.append(path.name)
+            continue
+
         try:
             schema = load_verdict_validated(path)
             assert schema.symbol, f"{path.name}: empty symbol"
             assert schema.family, f"{path.name}: empty family"
+            validated.append(path.name)
         except Exception as exc:
             failures.append(f"{path.name}: {exc}")
+
+    if not validated:
+        pytest.skip("No verdict-shaped JSON files present; classified known evidence artifacts only")
+    assert classified_non_verdicts == sorted(classified_non_verdicts)
     assert not failures, "Some real verdict files failed validation:\n" + "\n".join(failures)
 
 
