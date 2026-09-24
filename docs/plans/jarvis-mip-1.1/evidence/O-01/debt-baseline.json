@@ -1,0 +1,9 @@
+{
+  "schema_version":"1.0",
+  "work_package":"O-01",
+  "status":"IN_PROGRESS",
+  "findings":[
+    {"id":"DEBT-PLAN-001","severity":"medium","finding":"No JSON Schema execution is wired into CI; semantic validator duplicates only part of the schema.","owner_wp":"O-01","disposition":"OPEN"},
+    {"id":"DEBT-PLAN-002","severity":"high","finding":"Phase 0 runtime and full CI evidence remain unobserved.","owner_wp":"A-01/O-01","disposition":"OPEN"}
+  ]
+}

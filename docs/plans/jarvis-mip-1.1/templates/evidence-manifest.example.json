@@ -1,0 +1,37 @@
+{
+  "schema_version": "1.0",
+  "plan_id": "JARVIS-MIP-1.1",
+  "work_package_id": "A-01",
+  "charter_version": "1.0",
+  "status": "DRAFT",
+  "commit": "0000000000000000000000000000000000000000",
+  "created_at": "2026-09-02T00:00:00Z",
+  "actor": {
+    "type": "human_or_agent",
+    "id": "replace-me"
+  },
+  "versions": {
+    "code": "replace-me",
+    "data": null,
+    "config": null,
+    "risk_policy": null
+  },
+  "checks": [
+    {
+      "command": "python scripts/validate_jarvis_mip.py --profile adoption-candidate",
+      "result": "PASS",
+      "evidence_rung": "E0",
+      "observed_at": "2026-09-02T00:00:00Z",
+      "artifact": null
+    }
+  ],
+  "numeric_cross_checks": [],
+  "pit_checks": [],
+  "reviews": [],
+  "runtime_observations": [],
+  "residual_risks": [],
+  "limitations": [
+    "Example only; this is not completion evidence."
+  ],
+  "approvals": []
+}
