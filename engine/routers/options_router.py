@@ -560,19 +560,19 @@ async def options_module_scan():
     """Latest options-scan opportunities in the dashboard's OptionsScanResponse
     shape. Degrades to an empty (not 404/500) payload when the scanner or its
     data dependencies are unavailable."""
-    import asyncio
-
     empty = {"scan_results": [], "vix_regime": "normal", "strategy_selected": "—"}
 
     # Headline VIX regime from the live VIX (independent of scan hits).
     vix_regime = "normal"
     try:
-        from data.market_data import MarketDataManager
         from options.strategy_executor import classify_vix_regime
 
-        vix_data = await MarketDataManager().get_vix()
-        vix = float(vix_data.get("value", 20.0) or 20.0)
-        vix_regime = _VIX_REGIME_DISPLAY.get(classify_vix_regime(vix).value, "normal")
+        if _data_manager is not None:
+            vix_data = await _data_manager.get_vix()
+            vix = float(vix_data.get("value", 20.0) or 20.0)
+            vix_regime = _VIX_REGIME_DISPLAY.get(
+                classify_vix_regime(vix).value, "normal"
+            )
     except Exception as exc:
         logger.debug("[options_router] module_scan vix lookup failed: %s", exc)
 
@@ -581,19 +581,9 @@ async def options_module_scan():
     except ImportError:
         return {**empty, "vix_regime": vix_regime}
 
-    def _run_scan():
-        # The scanner calls loop.run_until_complete internally, so it can't run
-        # on the request's already-running loop. Give this worker thread its own
-        # loop and run the (blocking) scan there.
-        loop = asyncio.new_event_loop()
-        try:
-            asyncio.set_event_loop(loop)
-            return OptionsScanner().scan()
-        finally:
-            loop.close()
-
     try:
-        results = await asyncio.get_running_loop().run_in_executor(None, _run_scan)
+        scanner = OptionsScanner(data_manager=_data_manager)
+        results = await scanner.scan_async()
     except Exception as exc:
         logger.debug("[options_router] module_scan scanner failed: %s", exc)
         return {**empty, "vix_regime": vix_regime}
