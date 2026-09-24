@@ -210,12 +210,26 @@ def test_options_scan_mapped_shape(options_client, monkeypatch):
     )
     scanner_mod = types.ModuleType("markets.options.scanner")
     scanner_inst = MagicMock()
-    scanner_inst.scan.return_value = [scan_row]
+    # The router awaits scanner.scan_async(). Mocking the sync scan() wrapper
+    # instead leaves scan_async a plain MagicMock, and awaiting it raises
+    # "object MagicMock can't be used in 'await' expression" — which the router
+    # catches and turns into its empty payload, so this test then asserts
+    # vix_regime "low" against the "normal" fallback. Mock the awaited method.
+    scanner_inst.scan_async = AsyncMock(return_value=[scan_row])
     scanner_mod.OptionsScanner = MagicMock(return_value=scanner_inst)
 
     monkeypatch.setitem(sys.modules, "data.market_data", md_mod)
     monkeypatch.setitem(sys.modules, "options.strategy_executor", se_mod)
     monkeypatch.setitem(sys.modules, "markets.options.scanner", scanner_mod)
+
+    # The router reads the injected singleton (`set_data_manager`, wired from
+    # main.py), NOT a self-constructed MarketDataManager. Without this the whole
+    # VIX branch is skipped and the endpoint degrades to vix_regime "normal".
+    # monkeypatch rather than set_data_manager() so the module global is restored
+    # afterwards and cannot leak into the other tests in this file.
+    from routers import options_router
+
+    monkeypatch.setattr(options_router, "_data_manager", md_mgr)
 
     body = options_client.get("/options/module/scan").json()
     assert body["vix_regime"] == "low"  # LOW → lowercase

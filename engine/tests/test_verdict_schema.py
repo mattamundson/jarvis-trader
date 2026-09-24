@@ -14,6 +14,8 @@ import json
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
+
 from backtest.verdict_schema import (
     NON_VERDICT_ARTIFACTS as _KNOWN_NON_VERDICT_ARTIFACTS,
 )
@@ -22,7 +24,6 @@ from backtest.verdict_schema import (
     _sanitize_json,
     load_verdict_validated,
 )
-from pydantic import ValidationError
 
 _VERDICTS_DIR = Path(__file__).parent.parent / "data" / "gate_v2_verdicts"
 

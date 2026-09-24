@@ -245,6 +245,7 @@ from backtest._gate_v2_helpers import (  # noqa: E402
     GATE_PF_CI_LOWER,
     MIN_OOS_TRADES_TOTAL,
     _find_latest_cache,
+    inject_cache_provenance,
     sample_adequacy_enforced,
 )
 from backtest._gate_v2_helpers import (  # noqa: E402
@@ -656,6 +657,12 @@ def run_wfo() -> dict:
         "champion_params": champion_params,
         "windows": window_records,
     }
+
+    # Record which cache produced this verdict (2026-09-17 provenance audit).
+    # Hashing data_path directly rather than df: _load_data does a plain
+    # read_csv and never sets df.attrs['cache_provenance'], so passing the frame
+    # would yield provenance_unavailable and record nothing useful.
+    inject_cache_provenance(verdict_doc, data_path=data_file)
 
     verdict_file.write_text(json.dumps(verdict_doc, indent=2, default=str))
     print(f"\n[SPY-STC-META-R1] Verdict written -> {verdict_file}")

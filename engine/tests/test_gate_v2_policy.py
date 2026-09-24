@@ -19,6 +19,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
+
 from backtest.gate_v2_policy import (
     MAX_VERDICT_AGE_DAYS,
     VerdictSnapshot,

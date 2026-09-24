@@ -294,7 +294,6 @@ def is_strategy_authorized(
     """
     # Lazy imports avoid circular dependencies at module load time.
     from agents.pipeline import VALIDATION_ONLY_INSTRUMENTS  # noqa: PLC0415
-
     from backtest.paper_config import PAPER_CONFIGS  # noqa: PLC0415
 
     sym_upper = symbol.upper()

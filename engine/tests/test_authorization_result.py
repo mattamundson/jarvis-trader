@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from approval.authorization import AuthorizationReason, kill_switch_active_from_status
 from approval.service import ApprovalFlowError, ensure_approval_allowed
 from routers import approval_queue_router
