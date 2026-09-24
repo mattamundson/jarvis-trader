@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0",
+  "plan_id": "JARVIS-MIP-1.1",
+  "gate_id": "PAG-0",
+  "decision": "OPEN",
+  "authorized_by": "repository_owner_via_user_instruction",
+  "authorized_at": "2026-09-12T06:54:00Z",
+  "reviewed_plan_commit": "b2455710bf0abd83db0c933e1b5e082d07bed4e0",
+  "authorization_source": "User instruction dated 2026-09-12: proceed",
+  "scope": [
+    "A-01",
+    "O-01",
+    "A-02",
+    "A-03",
+    "A-06",
+    "K-01",
+    "O-05"
+  ],
+  "explicit_exclusions": [
+    "runtime_business_logic",
+    "order_mutation",
+    "risk_limit_changes",
+    "strategy_promotion",
+    "canary_credentials",
+    "live_trading",
+    "ISG-0_opening"
+  ]
+}

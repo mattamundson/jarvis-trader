@@ -1,0 +1,122 @@
+{
+  "schema_version": "1.0",
+  "plan_id": "JARVIS-MIP-1.1",
+  "reviewed_plan_commit": "b2455710bf0abd83db0c933e1b5e082d07bed4e0",
+  "decision_state": "ACCEPTED",
+  "pag_0": "OPEN",
+  "isg_0": "CLOSED",
+  "decisions": [
+    {
+      "id": "AD-01",
+      "title": "Product mission and non-goals",
+      "disposition": "ACCEPT",
+      "accountable_human": "repository_owner_via_user_instruction",
+      "decided_at": "2026-09-12T06:54:00Z",
+      "rationale": "Accepted by the repository owner through the explicit 2026-09-12 instruction to proceed after receiving the required adoption authorization text."
+    },
+    {
+      "id": "AD-02",
+      "title": "Source-of-truth hierarchy",
+      "disposition": "ACCEPT",
+      "accountable_human": "repository_owner_via_user_instruction",
+      "decided_at": "2026-09-12T06:54:00Z",
+      "rationale": "Accepted by the repository owner through the explicit 2026-09-12 instruction to proceed after receiving the required adoption authorization text."
+    },
+    {
+      "id": "AD-03",
+      "title": "Modular-monolith target",
+      "disposition": "ACCEPT",
+      "accountable_human": "repository_owner_via_user_instruction",
+      "decided_at": "2026-09-12T06:54:00Z",
+      "rationale": "Accepted by the repository owner through the explicit 2026-09-12 instruction to proceed after receiving the required adoption authorization text."
+    },
+    {
+      "id": "AD-04",
+      "title": "SQLite through paper and Parquet/DuckDB research",
+      "disposition": "ACCEPT",
+      "accountable_human": "repository_owner_via_user_instruction",
+      "decided_at": "2026-09-12T06:54:00Z",
+      "rationale": "Accepted by the repository owner through the explicit 2026-09-12 instruction to proceed after receiving the required adoption authorization text."
+    },
+    {
+      "id": "AD-05",
+      "title": "Instrument Master and broker-contract identity",
+      "disposition": "ACCEPT",
+      "accountable_human": "repository_owner_via_user_instruction",
+      "decided_at": "2026-09-12T06:54:00Z",
+      "rationale": "Accepted by the repository owner through the explicit 2026-09-12 instruction to proceed after receiving the required adoption authorization text."
+    },
+    {
+      "id": "AD-06",
+      "title": "Judge V3 authority and lifecycle",
+      "disposition": "ACCEPT",
+      "accountable_human": "repository_owner_via_user_instruction",
+      "decided_at": "2026-09-12T06:54:00Z",
+      "rationale": "Accepted by the repository owner through the explicit 2026-09-12 instruction to proceed after receiving the required adoption authorization text."
+    },
+    {
+      "id": "AD-07",
+      "title": "Deterministic Risk and contextual AI boundary",
+      "disposition": "ACCEPT",
+      "accountable_human": "repository_owner_via_user_instruction",
+      "decided_at": "2026-09-12T06:54:00Z",
+      "rationale": "Accepted by the repository owner through the explicit 2026-09-12 instruction to proceed after receiving the required adoption authorization text."
+    },
+    {
+      "id": "AD-08",
+      "title": "Single OMS and broker-adapter consolidation",
+      "disposition": "ACCEPT",
+      "accountable_human": "repository_owner_via_user_instruction",
+      "decided_at": "2026-09-12T06:54:00Z",
+      "rationale": "Accepted by the repository owner through the explicit 2026-09-12 instruction to proceed after receiving the required adoption authorization text."
+    },
+    {
+      "id": "AD-09",
+      "title": "Fourteen operator capabilities and consolidated IA",
+      "disposition": "ACCEPT",
+      "accountable_human": "repository_owner_via_user_instruction",
+      "decided_at": "2026-09-12T06:54:00Z",
+      "rationale": "Accepted by the repository owner through the explicit 2026-09-12 instruction to proceed after receiving the required adoption authorization text."
+    },
+    {
+      "id": "AD-10",
+      "title": "Phase and milestone order",
+      "disposition": "ACCEPT",
+      "accountable_human": "repository_owner_via_user_instruction",
+      "decided_at": "2026-09-12T06:54:00Z",
+      "rationale": "Accepted by the repository owner through the explicit 2026-09-12 instruction to proceed after receiving the required adoption authorization text."
+    },
+    {
+      "id": "AD-11",
+      "title": "Safety, decision, Codex, and evidence classifications",
+      "disposition": "ACCEPT",
+      "accountable_human": "repository_owner_via_user_instruction",
+      "decided_at": "2026-09-12T06:54:00Z",
+      "rationale": "Accepted by the repository owner through the explicit 2026-09-12 instruction to proceed after receiving the required adoption authorization text."
+    },
+    {
+      "id": "AD-12",
+      "title": "Pre-plan spike treatment",
+      "disposition": "ACCEPT",
+      "accountable_human": "repository_owner_via_user_instruction",
+      "decided_at": "2026-09-12T06:54:00Z",
+      "rationale": "Accepted by the repository owner through the explicit 2026-09-12 instruction to proceed after receiving the required adoption authorization text."
+    },
+    {
+      "id": "AD-13",
+      "title": "Human-only canary/live authorization",
+      "disposition": "ACCEPT",
+      "accountable_human": "repository_owner_via_user_instruction",
+      "decided_at": "2026-09-12T06:54:00Z",
+      "rationale": "Accepted by the repository owner through the explicit 2026-09-12 instruction to proceed after receiving the required adoption authorization text."
+    },
+    {
+      "id": "AD-14",
+      "title": "MES through IBKR paper as first executable scope",
+      "disposition": "ACCEPT",
+      "accountable_human": "repository_owner_via_user_instruction",
+      "decided_at": "2026-09-12T06:54:00Z",
+      "rationale": "Accepted by the repository owner through the explicit 2026-09-12 instruction to proceed after receiving the required adoption authorization text."
+    }
+  ]
+}
