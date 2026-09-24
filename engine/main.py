@@ -111,6 +111,7 @@ from routers.instruments_router import router as instruments_router
 from routers.brokers_router import router as brokers_router
 from routers.brokers_router import inject_dependencies as inject_brokers_deps
 from routers.options_router import router as options_router
+from routers.options_router import set_data_manager as set_options_data_manager
 from routers.approval_router import router as approval_router
 from routers.approval_router import inject_dependencies as inject_approval_deps
 from routers.actionable_router import router as actionable_router
@@ -778,6 +779,7 @@ async def lifespan(app: FastAPI):
     # Market data connections — Instance creation (initialization moved to background)
     data_manager = MarketDataManager(settings)
     set_analytics_data_manager(data_manager)
+    set_options_data_manager(data_manager)
     # Wire the data manager into SafetyLayer so submit_paper_order() can run the
     # entry-price-sanity check on client-supplied limit prices (2026-08-03 incident —
     # see the price-sanity block in SafetyLayer.submit_paper_order()).

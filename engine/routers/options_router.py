@@ -17,6 +17,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Global references (injected from main.py)
+_data_manager = None
+
+
+def set_data_manager(dm) -> None:
+    """Wire in the app's MarketDataManager singleton (called from main.py)."""
+    global _data_manager
+    _data_manager = dm
 
 
 def inject_dependencies():
@@ -83,16 +90,20 @@ async def get_options_chain(symbol: str, expiry_index: int = 0):
     logger.info("[options_router] GET /options/chain/%s expiry_index=%d", symbol, expiry_index)
 
     try:
-        from options.chain_fetcher import fetch_chain  # noqa: F401
+        from options.chain_fetcher import fetch_chain_async  # noqa: F401
     except ImportError as exc:
         logger.error("[options_router] chain_fetcher import failed: %s", exc)
         raise HTTPException(status_code=503, detail="Options chain module unavailable.") from exc
 
     try:
-        # Resolve available expiries via data_manager
-        from data.market_data import MarketDataManager
+        # Resolve available expiries via the injected data_manager singleton.
+        if _data_manager is None:
+            raise HTTPException(
+                status_code=503,
+                detail="Options data manager not initialized.",
+            )
 
-        data_manager = MarketDataManager()
+        data_manager = _data_manager
         expirations = await data_manager.get_options_expirations(symbol.upper())
         if not expirations:
             raise HTTPException(
@@ -104,7 +115,9 @@ async def get_options_chain(symbol: str, expiry_index: int = 0):
             expiry_index = 0  # fall back to nearest
 
         expiry_dates = [expirations[expiry_index]]
-        chain = fetch_chain(symbol.upper(), expiry_dates=expiry_dates, data_manager=data_manager)
+        chain = await fetch_chain_async(
+            symbol.upper(), expiry_dates=expiry_dates, data_manager=data_manager
+        )
 
     except HTTPException:
         raise
@@ -119,13 +132,14 @@ async def get_options_chain(symbol: str, expiry_index: int = 0):
             "Symbol may not have options or market may be closed.",
         )
 
+    result = _serialize(chain)
     if not chain.calls and not chain.puts:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Empty options chain returned for '{symbol}'.",
+        result["_warning"] = (
+            "Chain metadata resolved (expiry, spot, IVR) but no option "
+            "contracts returned. OPRA quotes may not be live yet; retry "
+            "during market hours or verify IBKR market-data entitlements."
         )
-
-    return _serialize(chain)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -176,16 +190,20 @@ async def get_iv_rank(symbol: str):
     logger.info("[options_router] GET /options/iv-rank/%s", symbol)
 
     try:
-        from options.chain_fetcher import get_iv_rank as _get_iv_rank
+        from options.chain_fetcher import get_iv_rank_async as _get_iv_rank_async
     except ImportError as exc:
         logger.error("[options_router] chain_fetcher import failed: %s", exc)
         raise HTTPException(status_code=503, detail="Options chain module unavailable.") from exc
 
     try:
-        from data.market_data import MarketDataManager
-
-        data_manager = MarketDataManager()
-        iv_rank = _get_iv_rank(symbol.upper(), days=252, data_manager=data_manager)
+        if _data_manager is None:
+            raise HTTPException(
+                status_code=503,
+                detail="Options data manager not initialized.",
+            )
+        iv_rank = await _get_iv_rank_async(symbol.upper(), days=252, data_manager=_data_manager)
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.exception("[options_router] get_iv_rank error for %s: %s", symbol, exc)
         raise HTTPException(status_code=502, detail=f"Failed to compute IV rank: {exc}") from exc

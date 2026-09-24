@@ -1991,13 +1991,38 @@ class MarketDataManager:
             try:
                 from ib_async import Stock
 
+                ib = self.ibkr._ib
+                if ib is None:
+                    raise RuntimeError("IBKR connector has no live IB() session")
+
                 contract = Stock(symbol, "SMART", "USD")
-                chains = await self._ibkr_ib.reqSecDefOptParamsAsync(
-                    "", "", contract.secType, contract.conId
+                # reqSecDefOptParams needs a conId for tight matching; qualify first
+                # (a bare Stock() carries conId=0 and can return nothing). Fall back
+                # to symbol-only matching if qualification yields no contract.
+                try:
+                    qualified = await ib.qualifyContractsAsync(contract)
+                    if qualified:
+                        contract = qualified[0]
+                except Exception as qexc:  # noqa: BLE001 — non-fatal, symbol match still works
+                    logger.debug("qualifyContractsAsync failed for %s: %s", symbol, qexc)
+
+                chains = await ib.reqSecDefOptParamsAsync(
+                    contract.symbol, "", contract.secType, contract.conId
                 )
                 if chains:
-                    expirations = sorted(chains[0].expirations)
+                    # Prefer the SMART/USD chain when several exchanges return data.
+                    smart = [c for c in chains if getattr(c, "exchange", "") == "SMART"]
+                    chosen = smart[0] if smart else chains[0]
+                    expirations = sorted(chosen.expirations)
                     return list(expirations)
+                logger.warning(
+                    "IBKR sec-def returned no option chains for %s "
+                    "(conId=%s qualified=%s) — entitlement not yet active at the "
+                    "Gateway, or market closed for this underlying.",
+                    symbol,
+                    contract.conId,
+                    bool(contract.conId),
+                )
             except Exception as e:
                 logger.warning(f"IBKR get_options_expirations failed for {symbol}: {e}")
 
