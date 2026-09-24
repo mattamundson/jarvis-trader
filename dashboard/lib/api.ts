@@ -118,8 +118,6 @@ export async function fetchEngine<T = any>(path: string, options?: RequestInit):
   });
 }
 
-<<<<<<< HEAD
-=======
 /**
  * Liveness-probe variant: single attempt, no retry, no 2s backoff.
  *
@@ -135,7 +133,6 @@ export async function fetchEngineNoRetry<T = any>(path: string, options?: Reques
   });
 }
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 export async function postEngine<T = any>(path: string, body?: unknown): Promise<T> {
   return fetchWithRetry<T>(`${ENGINE}${path}`, {
     method: "POST",
@@ -498,8 +495,6 @@ export interface ActionableBoardResponse {
   count: number;
   available: boolean;
   note?: string;
-<<<<<<< HEAD
-=======
   // Diagnostics for the empty state: raw_count = rows fetched from the queue
   // before filters (buy/sell only, rejected/error dropped, deduped to newest
   // per symbol+side); shown = items actually displayed. raw_count > 0 with
@@ -507,7 +502,6 @@ export interface ActionableBoardResponse {
   // every recent one was rejected) — a different "why" than "no decisions".
   raw_count?: number;
   shown?: number;
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 }
 
 export async function fetchActionableBoard(): Promise<ActionableBoardResponse> {
@@ -1416,8 +1410,6 @@ export async function fetchResearchCandidates(): Promise<ResearchCandidatesRespo
   return fetchEngine<ResearchCandidatesResponse>("/strategy/research-candidates");
 }
 
-<<<<<<< HEAD
-=======
 // ── Equity SMA-trend certification + forward evidence (GET /strategy/equity-research) ────
 // Daily SMA-trend WFO certs (SPY/QQQ/AAPL/TSLA) and forward evidence from closed-trades ledger.
 // Non-authorizing: these never route capital.
@@ -1472,7 +1464,6 @@ export async function fetchEquityResearch(): Promise<EquityResearchResponse> {
   return fetchEngine<EquityResearchResponse>("/strategy/equity-research");
 }
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 // ── Macro trend regime (GET /macro/regime) — X-bookmark trend edges on SPX ────
 // Market-wide RISK_ON/RISK_OFF/NEUTRAL/UNKNOWN from weekly Supertrend + monthly
 // momentum. ADVISORY only — folded into the futures pipeline context solely when
@@ -3352,8 +3343,6 @@ export interface AuctionBiasResponse {
 export async function fetchAuctionBias(symbol: string): Promise<AuctionBiasResponse> {
   return fetchEngine<AuctionBiasResponse>(`/auction/bias/${symbol}`);
 }
-<<<<<<< HEAD
-=======
 
 // Pipeline Funnel Analytics
 export interface PipelineFunnelResponse {
@@ -3576,4 +3565,3 @@ export interface FeatureFlagInfo {
 export async function fetchFeatureFlags(): Promise<FeatureFlagInfo[]> {
   return fetchEngine<FeatureFlagInfo[]>("/flags/");
 }
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2

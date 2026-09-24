@@ -319,8 +319,6 @@ async def get_order_router_status():
             else ("market_data_connector" if data_ib else "order_router")
         ),
     }
-<<<<<<< HEAD
-=======
 
 
 # RT-2 Command Center subrouter. Imported only after this module's dependency
@@ -328,4 +326,3 @@ async def get_order_router_status():
 from routers.trade_intents_router import router as trade_intents_router  # noqa: E402
 
 router.include_router(trade_intents_router)
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2

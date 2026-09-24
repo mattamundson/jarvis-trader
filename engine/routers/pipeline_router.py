@@ -10,11 +10,8 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
-<<<<<<< HEAD
-=======
 from utils.data_provenance import build_data_provenance, stamp_signal_data
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 router = APIRouter(prefix="/pipeline", tags=["pipeline"])
 logger = logging.getLogger(__name__)
 
@@ -91,10 +88,7 @@ _scheduler = None
 _trading_pipeline = None
 _safety_layer = None
 _db_manager = None
-<<<<<<< HEAD
-=======
 _data_manager = None  # MarketDataManager, injected via inject_dependencies() — decision provenance
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 _paper_tracker = None
 _telegram_notifier = None
 _sdk_pipeline = None
@@ -189,27 +183,18 @@ def inject_dependencies(
     sdk_pipeline=None,
     decision_log=None,
     log_decision_fn=None,
-<<<<<<< HEAD
-):
-    """Inject global dependencies from main.py"""
-    global _scheduler, _trading_pipeline, _safety_layer, _db_manager, _paper_tracker, _sdk_pipeline, _decision_log_ref, _log_decision_fn
-=======
     data_manager=None,
 ):
     """Inject global dependencies from main.py"""
     global _scheduler, _trading_pipeline, _safety_layer, _db_manager, _paper_tracker, _sdk_pipeline, _decision_log_ref, _log_decision_fn, _data_manager
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     _scheduler = scheduler
     _trading_pipeline = trading_pipeline
     _safety_layer = safety_layer
     _db_manager = db_manager
     _paper_tracker = paper_tracker
     _sdk_pipeline = sdk_pipeline
-<<<<<<< HEAD
-=======
     if data_manager is not None:
         _data_manager = data_manager
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     if decision_log is not None:
         _decision_log_ref = decision_log
     if log_decision_fn is not None:
@@ -486,25 +471,18 @@ def _log_decision_to_db(
         logger.warning("[DECISION] db_manager not injected — decision for %s not persisted", symbol)
         return
     try:
-<<<<<<< HEAD
-=======
         # Data-truth: stamp *what data* this decision was based on (tier +
         # per-symbol serve-age), matching main.py's _log_decision (PR #286).
         # Additive only — never changes a trade decision, never raises.
         provenance = build_data_provenance(_data_manager, symbol)
         sig = signal_data or {"source": source, "summary": summary}
         sig = stamp_signal_data(sig, provenance)
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         _db_manager.insert_decision(
             symbol=symbol,
             action=action,
             confidence=confidence,
             regime=regime,
-<<<<<<< HEAD
-            signal_data=signal_data or {"source": source, "summary": summary},
-=======
             signal_data=sig,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             reasoning=reasoning or summary,
             full_pipeline_data=full_pipeline_data,
         )

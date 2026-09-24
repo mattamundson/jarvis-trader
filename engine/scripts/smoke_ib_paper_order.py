@@ -37,10 +37,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-<<<<<<< HEAD
-=======
 import os
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 import socket
 import sys
 import time
@@ -110,11 +107,7 @@ async def _run(symbol: str, quantity: int, dry_connect: bool) -> int:
         client_id=IB_CLIENT_ID,
         timeout=10.0,
         readonly=False,
-<<<<<<< HEAD
-        account="DUP662235",
-=======
         account=os.environ.get("IB_ACCOUNT_ID", ""),
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     )
     manager = IBGatewayManager(cfg)
 

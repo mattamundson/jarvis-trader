@@ -173,10 +173,7 @@ def _run_signals_and_backtest(
     atr_trail_mult: float,
     commission: float = COMMISSION,
     slippage_ticks: float = SLIPPAGE_TICKS,
-<<<<<<< HEAD
-=======
     sota_hardening: bool = False,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 ) -> object:
     from backtest.backtester import Backtester
     from backtest.trend_signals import generate_sma_trend_signals
@@ -198,8 +195,6 @@ def _run_signals_and_backtest(
         t2_exit_pct=0.30,
         commission_per_contract=commission,
         slippage_ticks=slippage_ticks,
-<<<<<<< HEAD
-=======
         # SOTA execution-realism hardening (PR #592). Opt-in: baseline runs leave
         # all flags at their defaults (False/None) so this runner's non-SOTA
         # invocation is byte-identical to pre-hardening behavior. When enabled,
@@ -220,7 +215,6 @@ def _run_signals_and_backtest(
             if sota_hardening
             else {}
         )
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     )
     return bt.run(df_sig, symbol=SYMBOL, multiplier=MULTIPLIER)
 
@@ -230,13 +224,9 @@ def _run_signals_and_backtest(
 # ---------------------------------------------------------------------------
 
 
-<<<<<<< HEAD
-def _best_is_params(df_train: pd.DataFrame, grid: list[tuple]) -> tuple[dict | None, object | None]:
-=======
 def _best_is_params(
     df_train: pd.DataFrame, grid: list[tuple], sota_hardening: bool = False
 ) -> tuple[dict | None, object | None]:
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     """Grid-search on IS data; return (best_params_dict, best_result)."""
     best_pf = -1.0
     best_params = None
@@ -244,13 +234,9 @@ def _best_is_params(
 
     for fast, slow, atr_trail_mult in grid:
         try:
-<<<<<<< HEAD
-            result = _run_signals_and_backtest(df_train, fast, slow, atr_trail_mult)
-=======
             result = _run_signals_and_backtest(
                 df_train, fast, slow, atr_trail_mult, sota_hardening=sota_hardening
             )
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         except Exception as exc:
             print(f"    [WARN] IS error ({fast},{slow},{atr_trail_mult}): {exc}")
             continue
@@ -298,13 +284,9 @@ from backtest._gate_v2_helpers import (  # noqa: E402
 # ---------------------------------------------------------------------------
 
 
-<<<<<<< HEAD
-def _run_fixed_params_sweep(df: pd.DataFrame, grid: list[tuple]) -> dict:
-=======
 def _run_fixed_params_sweep(
     df: pd.DataFrame, grid: list[tuple], sota_hardening: bool = False
 ) -> dict:
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     """
     Run all grid combos on the FULL dataset with fixed params (no IS/OOS split).
     Returns the minimum PF across all combos — this is fixed_params_min_pf for ALT gate.
@@ -317,13 +299,9 @@ def _run_fixed_params_sweep(
     combo_results = []
     for fast, slow, atr_trail_mult in grid:
         try:
-<<<<<<< HEAD
-            result = _run_signals_and_backtest(df, fast, slow, atr_trail_mult)
-=======
             result = _run_signals_and_backtest(
                 df, fast, slow, atr_trail_mult, sota_hardening=sota_hardening
             )
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             if result.total_trades >= MIN_OOS_TRADES_PER_WINDOW:
                 pfs.append(result.profit_factor)
                 combo_results.append(
@@ -371,11 +349,7 @@ def _run_fixed_params_sweep(
 # ---------------------------------------------------------------------------
 
 
-<<<<<<< HEAD
-def _run_cost_sweep(df: pd.DataFrame, champion_params: dict) -> dict:
-=======
 def _run_cost_sweep(df: pd.DataFrame, champion_params: dict, sota_hardening: bool = False) -> dict:
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     """
     Run champion params at each cost tier to find how far the strategy survives.
     The ALT gate requires cost_survives_through >= "realistic".
@@ -402,10 +376,7 @@ def _run_cost_sweep(df: pd.DataFrame, champion_params: dict, sota_hardening: boo
                 atr_trail_mult=champion_params["atr_trail_mult"],
                 commission=costs["commission"],
                 slippage_ticks=costs["slippage_ticks"],
-<<<<<<< HEAD
-=======
                 sota_hardening=sota_hardening,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             )
             pf = result.profit_factor
             passes = pf > 1.0 and result.total_trades >= MIN_OOS_TRADES_PER_WINDOW
@@ -465,15 +436,12 @@ def _compute_gate_v2(
     pf_ci_lower = trade_level_pf_ci_lower(oos_results)
     p_edge = trade_level_p_edge(oos_results)
 
-<<<<<<< HEAD
-=======
     # Honest p_edge decomposition (2026-09-18). Additive and report-only -- no threshold reads it.
     # The gate permits 1-trade OOS windows (min_oos_trades=1 here), so p_edge can be carried by
     # windows with no room to be wrong. This measures that rather than inferring it from PF shape.
     from backtest._gate_v2_helpers import window_quality as _window_quality
     window_quality_metrics = _window_quality(oos_results)
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     # Trade-level risk metrics (correct). mc_95th_dd is a real permutation Monte
     # Carlo on the concatenated OOS trade list; dsr is the Deflated Sharpe from the
     # actual per-trade return series. The legacy window-level DD is retained under
@@ -481,8 +449,6 @@ def _compute_gate_v2(
     # for the gate decision. See _gate_v2_trade_metrics for the rationale.
     mc_95th_dd = trade_level_mc_95th_dd(oos_results, initial_capital=CAPITAL)
     dsr = trade_level_dsr(oos_results, n_grid_combos=n_grid_combos, initial_capital=CAPITAL)
-<<<<<<< HEAD
-=======
     # Honest deflation, reported BOTH ways (2026-09-18). The grid count keeps comparability with
     # every earlier verdict; the campaign count is what the promotion question actually asks.
     # Additive and report-only -- no threshold reads this.
@@ -501,7 +467,6 @@ def _compute_gate_v2(
     except Exception as exc:  # report the failure rather than silently omitting the number
         deflation["dsr_campaign"] = None
         deflation["dsr_campaign_error"] = f"{type(exc).__name__}: {exc}"
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     win_rate_ci_lower = trade_level_win_rate_ci_lower(oos_results)  # Init 2C (shadow; not gated)
     mc_95th_dd_window_legacy = float(np.percentile(oos_dds, 95.0)) if oos_dds else 1.0
 
@@ -608,18 +573,12 @@ def _compute_gate_v2(
         # Detailed metrics
         "pf_ci_lower": round(pf_ci_lower, 4),
         "p_edge": round(p_edge, 4),
-<<<<<<< HEAD
-=======
         "window_quality": window_quality_metrics,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         "mc_95th_dd": round(mc_95th_dd, 6),
         "mc_95th_dd_pct": round(mc_95th_dd * 100, 4),
         "mc_95th_dd_window_legacy": round(mc_95th_dd_window_legacy, 6),
         "dsr": round(dsr, 6),
-<<<<<<< HEAD
-=======
         "deflation": deflation,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         "wfo_consistency": wfo_consistency,
         "fixed_params_min_pf": fixed_params_min_pf,
         "fixed_params_mean_pf": fixed_params_metrics.get("fixed_params_mean_pf", 0.0),
@@ -642,14 +601,10 @@ def _compute_gate_v2(
 # ---------------------------------------------------------------------------
 
 
-<<<<<<< HEAD
-def run_wfo() -> dict:
-=======
 def run_wfo(sota_hardening: bool = False) -> dict:
     if sota_hardening:
         print("[MES-R11] SOTA EXECUTION-REALISM HARDENING ENABLED (gap stops, pessimistic "
               "tie-break, vol-scaled slippage, POV impact, margin cap).")
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     # Pick the MES 1h cache covering the latest end-date so a refreshed
     # IBKR pull (named MES_<start>_<end>_1h.csv) always wins over older files.
     data_dir = engine_root / "backtest" / "cache"
@@ -709,11 +664,7 @@ def run_wfo(sota_hardening: bool = False) -> dict:
         df_train = df[(df.index >= ts) & (df.index < te)].copy()
         df_test = df[(df.index >= os_) & (df.index <= oe)].copy()
 
-<<<<<<< HEAD
-        best_params, is_result = _best_is_params(df_train, grid)
-=======
         best_params, is_result = _best_is_params(df_train, grid, sota_hardening=sota_hardening)
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
         if best_params is None:
             print(
@@ -733,10 +684,7 @@ def run_wfo(sota_hardening: bool = False) -> dict:
                 fast=best_params["fast"],
                 slow=best_params["slow"],
                 atr_trail_mult=best_params["atr_trail_mult"],
-<<<<<<< HEAD
-=======
                 sota_hardening=sota_hardening,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             )
         except Exception as exc:
             print(f"  [SKIP] OOS error: {exc}")
@@ -776,11 +724,7 @@ def run_wfo(sota_hardening: bool = False) -> dict:
     print(
         "  (slow=190 removed — rank10 had min_pf=1.1098 driven by (55,190) and (50,190) laggards)"
     )
-<<<<<<< HEAD
-    fixed_params_metrics = _run_fixed_params_sweep(df, grid)
-=======
     fixed_params_metrics = _run_fixed_params_sweep(df, grid, sota_hardening=sota_hardening)
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     print(
         f"  fixed_params_min_pf  = {fixed_params_metrics['fixed_params_min_pf']:.4f}  "
         f"(need >= {GATE_FIXED_PARAMS_MIN_PF}, rank10 was 1.1098 FAIL)"
@@ -809,11 +753,7 @@ def run_wfo(sota_hardening: bool = False) -> dict:
         f"slow={champion_params['slow']}, trail={champion_params['atr_trail_mult']})..."
     )
     print("  (rank10 survived through 'catastrophic' — baseline to match)")
-<<<<<<< HEAD
-    cost_sweep_metrics = _run_cost_sweep(df, champion_params)
-=======
     cost_sweep_metrics = _run_cost_sweep(df, champion_params, sota_hardening=sota_hardening)
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     print(
         f"  cost_survives_through = {cost_sweep_metrics['cost_survives_through']}  "
         f"(need >= 'realistic' for ALT gate)"
@@ -915,10 +855,7 @@ def run_wfo(sota_hardening: bool = False) -> dict:
         "gate_v2_metrics": {
             "pf_ci_lower": gate["pf_ci_lower"],
             "p_edge": gate["p_edge"],
-<<<<<<< HEAD
-=======
             "window_quality": gate.get("window_quality"),
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             "mc_95th_dd": gate["mc_95th_dd"],
             "mc_95th_dd_pct": gate["mc_95th_dd_pct"],
             "mc_95th_dd_window_legacy": gate["mc_95th_dd_window_legacy"],
@@ -980,8 +917,6 @@ def run_wfo(sota_hardening: bool = False) -> dict:
         },
     }
 
-<<<<<<< HEAD
-=======
     # Provenance: record which cache produced this verdict (2026-09-17 audit found 0/76
     # artifacts recorded it). `data_file` is the cache this run loaded.
     from backtest._gate_v2_helpers import inject_cache_provenance  # local, matches file style
@@ -992,7 +927,6 @@ def run_wfo(sota_hardening: bool = False) -> dict:
     if _defl is not None:
         verdict_doc.setdefault("gate_v2_metrics", {})["deflation"] = _defl
         verdict_doc["deflation"] = _defl
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     verdict_file.write_text(json.dumps(verdict_doc, indent=2, default=str))
     print(f"\n[MES-R11] Verdict written -> {verdict_file}")
 
@@ -1005,9 +939,6 @@ def run_wfo(sota_hardening: bool = False) -> dict:
 
 
 def main():
-<<<<<<< HEAD
-    verdict = run_wfo()
-=======
     import argparse
 
     parser = argparse.ArgumentParser(description="MES Trend Rank 11 gate-v2 validation")
@@ -1021,7 +952,6 @@ def main():
     args = parser.parse_args()
 
     verdict = run_wfo(sota_hardening=args.sota)
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
     if not verdict:
         print("[MES-R11] No verdict produced — check data/logs above.")

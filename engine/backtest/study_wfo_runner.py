@@ -97,14 +97,10 @@ COST_SWEEP_TIERS = {
 
 
 def _load_data(data_file: Path) -> pd.DataFrame:
-<<<<<<< HEAD
-    df = pd.read_csv(data_file)
-=======
     df = pd.read_csv(data_file)    # Cache provenance (2026-09-17 audit: 0/76 verdicts recorded which cache they ran on).
     from backtest._gate_v2_helpers import cache_provenance as _cp  # noqa: E402
     df.attrs["cache_provenance"] = _cp(data_file)
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     df.columns = [c.lower() for c in df.columns]
     ts_col = "timestamp" if "timestamp" in df.columns else "datetime"
     df[ts_col] = pd.to_datetime(df[ts_col], utc=True)
@@ -128,10 +124,7 @@ def _backtest(study, df, symbol, mode, params, *, commission, slippage_ticks):
         max_drawdown=0.05,
         commission_per_contract=commission,
         slippage_ticks=slippage_ticks,
-<<<<<<< HEAD
-=======
         spread_ticks=0.5,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         eod_close=True,
         fixed_contracts=1,
     )
@@ -615,12 +608,9 @@ def run_one(
                 "kill_switch": "Backtester max_drawdown=0.05 (-5%)",
             },
         }
-<<<<<<< HEAD
-=======
         # Record the provenance carried on the frame (see loader).
         from backtest._gate_v2_helpers import inject_cache_provenance as _ip  # noqa: E402
         doc = _ip(doc, df=df)
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         out.write_text(json.dumps(doc, indent=2, default=str))
         print(f"[{study_name.upper()}-{symbol}-{mode}] CPCV verdict -> {out.name}")
         return doc

@@ -10,14 +10,6 @@
 export const DEFAULT_BRIEFING_SYMBOLS = ["MES"] as const;
 
 /**
-<<<<<<< HEAD
- * Substrings matched against symbol + _filename when picking a dashboard
- * backtest baseline. Derived from DEFAULT_BRIEFING_SYMBOLS so the baseline
- * always tracks the ACTIVELY-TRADED pair. Was [MCL,MNQ] pre-fix — a stale
- * literal left over from an earlier migration.
- */
-export const PREFERRED_BASELINE_SYMBOL_SUBSTRINGS = DEFAULT_BRIEFING_SYMBOLS;
-=======
  * Substrings matched against `symbol` + `_filename` when picking a dashboard
  * backtest baseline. Derived from DEFAULT_BRIEFING_SYMBOLS (not a separate
  * literal) so it can't drift the way it did before -- this used to be its own
@@ -26,7 +18,6 @@ export const PREFERRED_BASELINE_SYMBOL_SUBSTRINGS = DEFAULT_BRIEFING_SYMBOLS;
  * prefer a halted instrument's backtest over the actually-approved pair's.
  */
 export const PREFERRED_BASELINE_SYMBOL_SUBSTRINGS: readonly string[] = DEFAULT_BRIEFING_SYMBOLS;
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 export function matchesPreferredBaseline(symbolAndFilename: string): boolean {
   const u = symbolAndFilename.toUpperCase();
@@ -41,13 +32,6 @@ export function matchesPreferredBaseline(symbolAndFilename: string): boolean {
  */
 export const PREFERRED_BASELINE_LABEL = DEFAULT_BRIEFING_SYMBOLS.join("/");
 
-<<<<<<< HEAD
-/** Mirrors engine/backtest/signals.py::DO_NOT_TRADE_SYMBOLS (TS/Python cannot share a literal) -- update both together. Locked to this exact value by tests/symbol-status-halt-parity.node.test.ts. */
-export const HALTED_SYMBOLS = ["MCL", "MNQ", "M2K", "MGC"] as const;
-
-export function symbolTradeStatus(sym: string): "APPROVED" | "HALTED" {
-  return (HALTED_SYMBOLS as readonly string[]).includes(sym.toUpperCase()) ? "HALTED" : "APPROVED";
-=======
 /**
  * Symbols currently blocked from trading, mirroring the engine's live
  * blocklist (engine/backtest/signals.py::DO_NOT_TRADE_SYMBOLS). TS/Python
@@ -60,7 +44,6 @@ export const HALTED_SYMBOLS = ["MCL", "MNQ", "M2K", "MGC"] as const;
 
 export function symbolTradeStatus(symbol: string): "APPROVED" | "HALTED" {
   return (HALTED_SYMBOLS as readonly string[]).includes(symbol) ? "HALTED" : "APPROVED";
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 }
 
 /**

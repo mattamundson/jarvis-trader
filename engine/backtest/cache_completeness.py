@@ -69,11 +69,7 @@ _DEFAULT_GAP_THRESHOLD_FACTOR = 1.5
 _INTERVAL_RE = re.compile(r"^(\d+)([mhd])$")
 _WEEKEND = (5, 6)  # Saturday, Sunday (datetime.weekday)
 
-<<<<<<< HEAD
-#: CME equity-index / NYSE full-closure dates 2024-2026 (the calendar the MES /
-=======
 #: CME equity-index / NYSE full-closure dates 2019-2026 (the calendar the MES /
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 #: ES / MNQ caches follow). Pass as `holiday_dates` so genuine data holes aren't
 #: drowned out by legitimate exchange closures. Includes the 2025-01-09 Carter
 #: National Day of Mourning. Early-close half-days are intentionally OMITTED --
@@ -87,11 +83,6 @@ _WEEKEND = (5, 6)  # Saturday, Sunday (datetime.weekday)
 #: "suspicious" (see cache_completeness.CACHE_README or the vwap-sharpe
 #: 2026-07-06 incident) purely because the corresponding 2024 date wasn't
 #: whitelisted yet -- not because the data was actually holed.
-<<<<<<< HEAD
-US_MARKET_HOLIDAYS = frozenset(
-    date(*ymd)
-    for ymd in [
-=======
 #:
 #: 2026-08-18 correction (E2): this list previously started at 2024-01-01,
 #: which meant the DEEP validation cache (MES_2015-01-01_2026-08-16_1h.csv,
@@ -195,7 +186,6 @@ US_MARKET_HOLIDAYS = frozenset(
         (2023, 9, 4),
         (2023, 11, 23),
         (2023, 12, 25),
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         (2024, 1, 1),
         (2024, 1, 15),
         (2024, 2, 19),
@@ -230,11 +220,7 @@ US_MARKET_HOLIDAYS = frozenset(
     ]
 )
 
-<<<<<<< HEAD
-#: CME reduced-hours ("early close") session dates 2024-2026: quarterly
-=======
 #: CME reduced-hours ("early close") session dates 2019-2026: quarterly
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 #: triple-witching Fridays (3rd Friday of Mar/Jun/Sep/Dec, when the equity-index
 #: futures pit closes early), the day before Independence Day, and Christmas
 #: Eve. These do NOT fully close the exchange, but empirically the plain (non-
@@ -244,11 +230,6 @@ US_MARKET_HOLIDAYS = frozenset(
 #: previously documented for early closes. Pass alongside `US_MARKET_HOLIDAYS`
 #: (e.g. `US_MARKET_HOLIDAYS | US_MARKET_EARLY_CLOSES`) wherever a caller wants
 #: both closure classes explained away. Extend as years roll.
-<<<<<<< HEAD
-US_MARKET_EARLY_CLOSES = frozenset(
-    date(*ymd)
-    for ymd in [
-=======
 #:
 #: 2026-08-18 correction (E2): extended back to 2019 so the DEEP validation
 #: cache (true span 2019-05-05 -> 2026-08-14) is not flagged on pre-2024 early
@@ -286,7 +267,6 @@ US_MARKET_EARLY_CLOSES = frozenset(
         (2023, 9, 15),
         (2023, 12, 15),
         (2023, 12, 22),
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         (2024, 3, 15),
         (2024, 6, 21),
         (2024, 7, 3),

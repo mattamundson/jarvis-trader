@@ -4,14 +4,9 @@ JARVIS TRADER — Main Server
 FastAPI backend for the trading engine.
 Runs on port 8010 (separate from GMS JARVIS on 8009).
 
-<<<<<<< HEAD
-Start with: .venv\\Scripts\\python -m uvicorn main:app --port 8010
-(No --reload — IB Gateway / duplicate client-id issues; use restart_engine.ps1 after code changes.)
-=======
 Start with: ~/scripts/restart-jarvis-engine.sh   (PYTHONPATH-guarded canonical restart)
 (No --reload — IB Gateway / duplicate client-id issues; use restart_engine.ps1 after code changes.
 Manual dev start: cd engine && PYTHONPATH= .venv\\Scripts\\python -m uvicorn main:app --port 8010)
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 """
 
 import asyncio
@@ -156,10 +151,7 @@ from routers.hidden_pivots_router import router as hidden_pivots_router
 from routers.hidden_pivots_router import inject_dependencies as inject_hp_deps
 from routers.decisions_router import router as decisions_router
 from routers.decisions_router import set_db_manager as set_decisions_db
-<<<<<<< HEAD
-=======
 from routers.decisions_router import set_data_manager as set_decisions_data_manager
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 from routers.admin_router import router as admin_router
 from routers.cache_router import router as cache_router
 from routers.readiness_router import router as readiness_router
@@ -790,10 +782,7 @@ async def lifespan(app: FastAPI):
     # entry-price-sanity check on client-supplied limit prices (2026-08-03 incident —
     # see the price-sanity block in SafetyLayer.submit_paper_order()).
     safety_layer.attach_data_manager(data_manager)
-<<<<<<< HEAD
-=======
     set_decisions_data_manager(data_manager)
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     # Wire the real-price source into the paper connector so simulated fills use
     # the live get_tick_price waterfall instead of static mock quotes. Without
     # this, unlisted symbols (e.g. MGC) filled at the 100.5 sentinel and poisoned
@@ -860,14 +849,10 @@ async def lifespan(app: FastAPI):
     if llm_enabled:
         from llm.memory_bridge import MemoryBridge
 
-<<<<<<< HEAD
-        llm_client = JarvisLLMClient(api_key=settings.ANTHROPIC_API_KEY or "ollama-local")
-=======
         llm_client = JarvisLLMClient(
             api_key=settings.ANTHROPIC_API_KEY or "ollama-local",
             db_manager=db_manager,
         )
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         memory_bridge = MemoryBridge(db_manager)
         direct_anthropic_key = settings.ANTHROPIC_API_KEY
         if getattr(llm_client, "provider", "").lower() == "ollama":
@@ -1821,15 +1806,11 @@ async def lifespan(app: FastAPI):
     # Default-OFF: only activated when ENABLE_AUTONOMOUS_PIPELINE=1 in .env.
     # The router is always registered (serves /approvals/* to review the queue).
     # The background loop is only started when the flag is explicitly set.
-<<<<<<< HEAD
-    inject_approval_queue_deps(safety_layer, db_path=str(db_manager._db_path))
-=======
     inject_approval_queue_deps(
         safety_layer,
         db_path=str(db_manager._db_path),
         paper_tracker=paper_tracker,
     )
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     logger.info("✅ Approval queue router wired (prefix=/approvals)")
     inject_openclaw_deps(db_manager, paper_tracker, safety_layer)
     logger.info("✅ OpenClaw webhook router wired (prefix=/openclaw)")
@@ -1882,9 +1863,6 @@ async def lifespan(app: FastAPI):
 
     inject_scheduler_router_scheduler(scheduler)
     inject_pipeline_deps(
-<<<<<<< HEAD
-        scheduler, trading_pipeline, safety_layer, db_manager, paper_tracker, sdk_pipeline
-=======
         scheduler,
         trading_pipeline,
         safety_layer,
@@ -1892,7 +1870,6 @@ async def lifespan(app: FastAPI):
         paper_tracker,
         sdk_pipeline,
         data_manager=data_manager,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     )
     inject_messaging_deps(db_manager, paper_tracker=paper_tracker, safety_layer=safety_layer)
     inject_session_brief_deps(db_manager)

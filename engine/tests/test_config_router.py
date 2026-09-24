@@ -352,10 +352,6 @@ def test_health_check_live_trading_false_by_default(client):
     ), "live_trading_enabled should default to False for safety"
 
 
-<<<<<<< HEAD
-def test_health_check_require_human_approval_true_by_default(client):
-    """require_human_approval must default to True (safety posture)."""
-=======
 def test_health_check_require_human_approval_true_by_default(client, monkeypatch):
     """require_human_approval must default to True (safety posture)."""
     import routers.config_router as config_router_module
@@ -369,7 +365,6 @@ def test_health_check_require_human_approval_true_by_default(client, monkeypatch
     monkeypatch.setattr(
         config_router_module, "settings", TradingConfig(REQUIRE_HUMAN_APPROVAL=True)
     )
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     data = client.get("/config/health-check").json()
     assert "require_human_approval" in data, "'require_human_approval' missing"
     assert (
@@ -472,8 +467,6 @@ def test_overview_uncategorized_secret_shaped_field_is_redacted(monkeypatch, cli
     assert str(item["value"]).startswith(
         "***"
     ), f"fixture key {fixture_key!r} leaked in plaintext: {item['value']!r}"
-<<<<<<< HEAD
-=======
 
 
 # ---------------------------------------------------------------------------
@@ -544,4 +537,3 @@ def test_overview_llm_provider_field_and_jarvis_llm_provider_can_disagree(monkey
         # test guards against is the two being silently conflated into one
         # value rather than shown as the two independent fields they are.
         assert "JARVIS_LLM_PROVIDER" in llm_items and "LLM_PROVIDER" in llm_items
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2

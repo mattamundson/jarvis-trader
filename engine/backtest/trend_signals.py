@@ -58,8 +58,6 @@ def _wilder_atr(high: pd.Series, low: pd.Series, close: pd.Series, period: int =
     return tr.ewm(alpha=1 / period, min_periods=period, adjust=False).mean()
 
 
-<<<<<<< HEAD
-=======
 def _daily_date_index(index) -> pd.DatetimeIndex:
     """Return a tz-naive, midnight-normalized ``DatetimeIndex``.
 
@@ -85,7 +83,6 @@ def _daily_date_index(index) -> pd.DatetimeIndex:
     return idx.normalize()
 
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 def generate_sma_trend_signals(
     df: pd.DataFrame,
     fast: int = 60,
@@ -142,15 +139,10 @@ def generate_sma_trend_signals(
     _vix_tier_series: pd.Series | None = None
     if vix_df is not None and not vix_df.empty:
         vix_daily = vix_df["close"].copy()
-<<<<<<< HEAD
-        vix_daily.index = pd.to_datetime(vix_daily.index).normalize()
-        bar_dates = df.index.normalize()
-=======
         # Align tz conventions before the ffill reindex (pandas >= 3.0 raises on
         # mixed-tz comparisons — see _daily_date_index).
         vix_daily.index = _daily_date_index(vix_daily.index)
         bar_dates = _daily_date_index(df.index)
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         _vix_series = vix_daily.reindex(bar_dates, method="ffill")
         _vix_series.index = df.index
 

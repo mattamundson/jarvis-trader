@@ -49,21 +49,6 @@ test("Final Multiple gets its own separate, correctly-labeled tile", () => {
   assert.notEqual(finalEquity!.value, finalMultiple!.value);
 });
 
-<<<<<<< HEAD
-test("Final Equity falls back to a Static dollar placeholder, not a multiple, when offline", () => {
-  const tiles = buildAdditionalMetricsTiles(undefined);
-
-  const finalEquity = tiles.find((t) => t.label === "Final Equity");
-  assert.ok(finalEquity);
-  assert.equal(finalEquity!.live, false);
-  assert.ok(finalEquity!.value.startsWith("$"));
-  assert.ok(!finalEquity!.value.includes("×"));
-
-  const finalMultiple = tiles.find((t) => t.label === "Final Multiple");
-  assert.ok(finalMultiple);
-  assert.equal(finalMultiple!.live, false);
-  assert.ok(finalMultiple!.value.includes("×"));
-=======
 test("missing metrics render as — (em dash), never a fabricated number, when offline", () => {
   // P6-3: a missing metric must render as visibly absent, not as a
   // plausible-looking invented figure (the old fallbacks were hardcoded
@@ -112,5 +97,4 @@ test("a partially-populated fullPeriod shows live values where present and — o
   assert.equal(byLabel["Final Equity"].value, "—");
   assert.equal(byLabel["Final Multiple"].live, true);
   assert.equal(byLabel["Final Multiple"].value, "4.12×");
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 });

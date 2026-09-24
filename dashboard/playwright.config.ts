@@ -1,7 +1,3 @@
-<<<<<<< HEAD
-import { defineConfig } from "@playwright/test";
-
-=======
 import fs from "node:fs";
 import path from "node:path";
 
@@ -31,7 +27,6 @@ function loadDashboardBasicAuthEnv(): void {
 
 loadDashboardBasicAuthEnv();
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 // Golden-path e2e. Uses the pre-installed Chromium (no browser download).
 //
 // SERVER REUSE -- read before changing.
@@ -49,8 +44,6 @@ loadDashboardBasicAuthEnv();
 //
 //       pnpm run test:e2e:fresh        (playwright.fresh.config.ts, port 3013)
 
-<<<<<<< HEAD
-=======
 // PROJECT SPLIT -- read before changing `workers`.
 //
 //   smoke       - the table-driven suite over every manifest route (91 cases at
@@ -84,19 +77,10 @@ loadDashboardBasicAuthEnv();
 //      using 3010, where no server is running.
 const PORT = Number(process.env.PW_PORT ?? 3010);
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 export default defineConfig({
   testDir: "./tests/e2e",
   timeout: 60_000,
   fullyParallel: false,
-<<<<<<< HEAD
-  workers: 1,
-  // Kept at 0 deliberately: a flaky test on a trading dashboard is real signal,
-  // not noise to be retried away.
-  retries: 0,
-  use: {
-    baseURL: "http://localhost:3010",
-=======
   workers: 4,
   // Kept at 0 deliberately: a flaky test on a trading dashboard is real signal,
   // not noise to be retried away.
@@ -122,25 +106,17 @@ export default defineConfig({
             password: process.env.DASHBOARD_AUTH_PASS,
           }
         : undefined,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     launchOptions: {
       executablePath: process.env.PW_CHROME || undefined,
       args: ["--no-sandbox", "--disable-dev-shm-usage"],
     },
   },
   webServer: {
-<<<<<<< HEAD
-    command: "pnpm exec next start -p 3010",
-    url: "http://localhost:3010",
-    timeout: 120_000,
-    reuseExistingServer: !process.env.CI,
-=======
     command: `pnpm exec next start -p ${PORT}`,
     url: `http://localhost:${PORT}`,
     timeout: 120_000,
     // Opt-in only. Default false means every run exercises the build in the
     // working tree; see the PORT note above for why that matters on this machine.
     reuseExistingServer: process.env.PW_REUSE_SERVER === "1",
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
   },
 });

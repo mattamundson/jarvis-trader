@@ -4,10 +4,7 @@ import useSWR from "swr";
 import { Radar, TrendingDown, TrendingUp, ShieldAlert, Clock } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
 import { OptionsSignalsPanel } from "@/components/OptionsSignalsPanel";
-<<<<<<< HEAD
-=======
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -176,13 +173,9 @@ export default function SignalsPage() {
       </header>
 
       <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-6 space-y-6">
-<<<<<<< HEAD
-        <OptionsSignalsPanel />
-=======
         <WidgetErrorBoundary name="Options Signals">
           <OptionsSignalsPanel />
         </WidgetErrorBoundary>
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         <Card>
           <CardHeader>
             <CardTitle className="font-mono text-sm flex items-center justify-between">

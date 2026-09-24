@@ -427,11 +427,6 @@ def _compute_sharpe_ratio(trades: list[dict], risk_free_rate: float = 0.04) -> f
     if std_dev == 0:
         return 0.0
 
-<<<<<<< HEAD
-    # Annualize (252 trading days per year)
-    annual_return = avg_return * 252
-    annual_std = std_dev * (252**0.5)
-=======
     # C3 metric-honesty pass (2026-08-18): annualize by the OBSERVED
     # trading-days-per-year (n days / elapsed calendar years of the trade
     # span), not a fixed 252 — a low-frequency account trading ~60 days/yr
@@ -446,7 +441,6 @@ def _compute_sharpe_ratio(trades: list[dict], risk_free_rate: float = 0.04) -> f
     # Annualize (observed trading days per year, 252 fallback)
     annual_return = avg_return * ann_tpy
     annual_std = std_dev * (ann_tpy**0.5)
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
     sharpe = (annual_return - risk_free_rate) / annual_std if annual_std > 0 else 0.0
     return round(max(0.0, sharpe), 2)

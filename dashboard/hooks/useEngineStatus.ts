@@ -2,11 +2,7 @@
 
 import { useState } from "react";
 import useSWR from "swr";
-<<<<<<< HEAD
-import { fetchEngine } from "@/lib/api";
-=======
 import { fetchEngineNoRetry } from "@/lib/api";
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 import { POLL_INTERVAL } from "@/lib/polling-config";
 
 export interface EngineStatus {
@@ -23,11 +19,7 @@ export interface EngineStatus {
 export function useEngineStatus(): EngineStatus {
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
 
-<<<<<<< HEAD
-  const { error } = useSWR("/health", () => fetchEngine("/health"), {
-=======
   const { error } = useSWR("/health", () => fetchEngineNoRetry("/health"), {
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     refreshInterval: POLL_INTERVAL.HEALTH,
     shouldRetryOnError: false,
     errorRetryCount: 0,

@@ -17,10 +17,7 @@ from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from execution.ib_gateway_connector import IBGatewayConnector
-<<<<<<< HEAD
-=======
     from execution.robinhood_connector import RobinhoodConnector
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     from execution.schwab_connector import SchwabConnector
     from markets.crypto.module import CryptoMarketModule
 
@@ -72,23 +69,17 @@ class OrderRouter:
         ibkr: Optional["IBGatewayConnector"] = None,
         schwab: Optional["SchwabConnector"] = None,
         crypto_module: Optional["CryptoMarketModule"] = None,
-<<<<<<< HEAD
-=======
         robinhood: Optional["RobinhoodConnector"] = None,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     ):
         self.ibkr = ibkr
         self.schwab = schwab
         self.crypto_module = crypto_module
-<<<<<<< HEAD
-=======
         # Scaffold only — RobinhoodConnector's network methods are not yet
         # implemented (see execution/robinhood_connector.py) and it is never
         # ready-gated on by default, so it is not wired into route_order()'s
         # equity dispatch. Attach it for status reporting / tests only until
         # that connector is actually implemented and reviewed.
         self.robinhood = robinhood
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
     def attach_ibkr(self, connector: "IBGatewayConnector") -> None:
         self.ibkr = connector
@@ -99,12 +90,9 @@ class OrderRouter:
     def attach_crypto(self, module: "CryptoMarketModule") -> None:
         self.crypto_module = module
 
-<<<<<<< HEAD
-=======
     def attach_robinhood(self, connector: "RobinhoodConnector") -> None:
         self.robinhood = connector
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     def is_futures(self, symbol: str) -> bool:
         return symbol.upper() in FUTURES_SYMBOLS
 
@@ -284,10 +272,7 @@ class OrderRouter:
         return {
             "ibkr_connected": bool(self.ibkr and self.ibkr.is_connected()),
             "schwab_connected": bool(self.schwab and self.schwab.is_connected),
-<<<<<<< HEAD
-=======
             "robinhood_connected": bool(self.robinhood and self.robinhood.is_connected),
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             "futures_broker": ("ibkr" if self.ibkr and self.ibkr.is_connected() else "unavailable"),
             "equity_broker": (
                 "schwab" if self.schwab and self.schwab.is_connected else "unavailable"

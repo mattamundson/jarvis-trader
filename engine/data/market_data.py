@@ -215,8 +215,6 @@ _CONNECT_FAIL_LOG_BACKOFF_BASE_S = 5.0
 _CONNECT_FAIL_LOG_BACKOFF_MAX_S = 300.0
 _connect_fail_state: dict[tuple[str, int], dict] = {}
 
-<<<<<<< HEAD
-=======
 # Ceiling on any single IB *data* request (2026-08-15 incident).
 #
 # ``is_connected`` is only a local ``ib_async.IB.isConnected()`` socket check —
@@ -235,7 +233,6 @@ _connect_fail_state: dict[tuple[str, int], dict] = {}
 # misreported as down, short enough that a wedge degrades instead of hangs.
 _IBKR_DATA_REQUEST_TIMEOUT_S = float(os.getenv("IBKR_DATA_REQUEST_TIMEOUT_SECONDS", "5.0"))
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 def _reset_connect_fail_throttle(host: str | None = None, port: int | None = None) -> None:
     """Test/ops hook: clear throttle state for one target (or every target)."""
@@ -323,8 +320,6 @@ class IBKRDataConnector:
         # client. No callers today (subscribe_real_time is unused) — kept so a
         # future streaming feed survives a watchdog reconnect.
         self._realtime_subs: list = []
-<<<<<<< HEAD
-=======
         # Same staleness-tracking fields/contract as IBGatewayManager
         # (engine/execution/ib_gateway.py) -- this data-leg connection is the
         # one GET /brokers/positions actually reads via _real_ibkr(), so it
@@ -332,7 +327,6 @@ class IBKRDataConnector:
         # the reqPositionsAsync()-both-empty desync signature.
         self._positions_stale: bool = False
         self._last_known_positions: dict = {}
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
     async def connect(self, retries: int = 2, retry_backoff: float = 2.0) -> bool:
         """Connect to IB Gateway, with a bounded retry on transient failures.
@@ -577,10 +571,6 @@ class IBKRDataConnector:
             # both cases (front-month for futures, qualifyContractsAsync for
             # everything else) — reuse it instead of duplicating the branch
             # with an unqualified fallback for non-futures symbols.
-<<<<<<< HEAD
-            contract = await self._qualified_contract(symbol, is_futures)
-            tickers = await self._ib.reqTickersAsync(contract)
-=======
             contract = await asyncio.wait_for(
                 self._qualified_contract(symbol, is_futures),
                 timeout=_IBKR_DATA_REQUEST_TIMEOUT_S,
@@ -589,7 +579,6 @@ class IBKRDataConnector:
                 self._ib.reqTickersAsync(contract),
                 timeout=_IBKR_DATA_REQUEST_TIMEOUT_S,
             )
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             if tickers:
                 t = tickers[0]
                 last = (
@@ -614,9 +603,6 @@ class IBKRDataConnector:
                         "source": "ibkr_delayed" if is_delayed else "ibkr",
                     }
         except Exception as e:
-<<<<<<< HEAD
-            logger.debug(
-=======
             # This was logged at debug level, but LOG_LEVEL=INFO in production means
             # the actual failure reason is silently discarded -- only the (equally
             # uninformative) "fetching last historical close" fallback line survives.
@@ -624,23 +610,17 @@ class IBKRDataConnector:
             # firing repeatedly for MES with zero visibility into why. Bump to warning
             # so the real exception is captured on the next occurrence.
             logger.warning(
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                 f"IBKR reqTickersAsync failed for {symbol} (will try historical fallback): {e}"
             )
 
         # Fallback: use last historical bar close (works even without L1 subscription)
         try:
             logger.info(f"IBKR snapshot fallback: fetching last historical close for {symbol}")
-<<<<<<< HEAD
-            bars_df = await self.get_historical_bars(
-                symbol, duration="1 D", bar_size="1 hour", is_futures=is_futures
-=======
             bars_df = await asyncio.wait_for(
                 self.get_historical_bars(
                     symbol, duration="1 D", bar_size="1 hour", is_futures=is_futures
                 ),
                 timeout=_IBKR_DATA_REQUEST_TIMEOUT_S,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             )
             if not bars_df.empty and "close" in bars_df.columns:
                 last_close = float(bars_df.iloc[-1]["close"])
@@ -765,11 +745,7 @@ class IBKRDataConnector:
             logger.warning("IBKRDataConnector.get_executions failed: %s", exc)
             return []
 
-<<<<<<< HEAD
-    async def get_positions(self) -> list[dict]:
-=======
     async def get_positions(self, _retrying: bool = False) -> list[dict]:
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         """
         Return current IB positions as a list of dicts. Same schema as
         IBGatewayManager.get_positions() (engine/execution/ib_gateway.py) so
@@ -780,12 +756,9 @@ class IBKRDataConnector:
         added 2026-08-11 (#608 follow-up) because this connector previously
         had no position-query method at all, silently masking that gap behind
         a broad try/except in the router.
-<<<<<<< HEAD
-=======
 
         Same staleness cross-check as IBGatewayManager.get_positions() --
         see ``classify_positions_staleness()`` in execution/ib_gateway.py.
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         """
         if not self._ib or not self._connected:
             return []
@@ -828,19 +801,10 @@ class IBKRDataConnector:
                         "account": pos.account,
                     }
                 )
-<<<<<<< HEAD
-            return result
-=======
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         except Exception as exc:
             logger.error("IBKRDataConnector.get_positions failed: %s", exc, exc_info=True)
             return []
 
-<<<<<<< HEAD
-    async def health_check(self) -> dict:
-        return {
-            "status": "connected" if self._connected else "disconnected",
-=======
         return await self._reconcile_positions_staleness(result, _retrying=_retrying)
 
     async def _reconcile_positions_staleness(
@@ -911,7 +875,6 @@ class IBKRDataConnector:
             "status": status,
             "connected": verified,
             "latency_ms": round(latency_ms, 2) if latency_ms is not None else None,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             "mode": "live" if self._port == 4001 else "paper",
             "port": self._port,
             "host": self._host,
@@ -1257,8 +1220,6 @@ class MarketDataManager:
                 continue
         return out
 
-<<<<<<< HEAD
-=======
     def _redis_fabric_freshness(
         self, r, symbol: str, stale_after_s: float
     ) -> tuple[bool, Optional[float], Optional[datetime]]:
@@ -1324,7 +1285,6 @@ class MarketDataManager:
                 out.setdefault(symbol.upper(), {"present": False, "age_s": None, "stale": False})
         return out
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     async def initialize(self):
         """Connect to all available data sources."""
         self.ibkr = IBKRDataConnector(
@@ -1802,46 +1762,6 @@ class MarketDataManager:
 
             import redis
 
-<<<<<<< HEAD
-            r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
-            # Try symbol as-is and uppercase
-            for sym_key in [symbol, symbol.upper()]:
-                val = r.get(f"market:latest:{sym_key}")
-                if val:
-                    last_update_raw = r.get(f"datasource:ticks:{sym_key}:last_update")
-                    if not last_update_raw:
-                        logger.debug(
-                            f"[get_tick_price] Redis fabric hit for {symbol} has no "
-                            f"freshness marker — treating as stale, skipping"
-                        )
-                        continue
-                    try:
-                        last_update = datetime.fromisoformat(last_update_raw)
-                        age_s = (
-                            datetime.now(last_update.tzinfo) - last_update
-                        ).total_seconds()
-                    except (ValueError, TypeError) as _ts_err:
-                        logger.debug(
-                            f"[get_tick_price] Redis fabric freshness marker for "
-                            f"{symbol} unparseable ({_ts_err}) — treating as stale"
-                        )
-                        continue
-                    if age_s > DEFAULT_STALE_AFTER_S or age_s < 0:
-                        logger.debug(
-                            f"[get_tick_price] Redis fabric entry for {symbol} is "
-                            f"{age_s:.0f}s old (> {DEFAULT_STALE_AFTER_S:.0f}s) — "
-                            f"stale, falling through to Tier 1"
-                        )
-                        continue
-                    data = json.loads(val)
-                    if data.get("close"):
-                        return {
-                            "last_price": float(data["close"]),
-                            "prev_close": float(data.get("open", 0.0)),
-                            "change_pct": None,
-                            "source": "redis_fabric",
-                        }
-=======
             r = redis.Redis(
                 host="localhost",
                 port=6379,
@@ -1876,7 +1796,6 @@ class MarketDataManager:
                         "source": "redis_fabric",
                         "as_of": last_update.timestamp() if last_update else None,
                     }
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         except Exception as _redis_err:
             logger.debug(f"[get_tick_price] Redis fetch failed for {symbol}: {_redis_err}")
 
@@ -1921,9 +1840,6 @@ class MarketDataManager:
         # Tier 4: Polygon REST (stocks/ETFs only — futures blocklisted)
         if self.polygon and symbol.upper() not in POLYGON_FUTURES_BLOCKLIST:
             polygon_symbol = POLYGON_FUTURES_MAP.get(symbol.upper(), symbol)
-<<<<<<< HEAD
-            result = self.polygon.get_last_price(polygon_symbol)
-=======
             # 2026-08-17: get_last_price is a SYNC blocking call (requests).
             # Running it inline inside this async method blocked the event
             # loop — a cold Polygon fallback (weekend, IB down) measured 7-14s
@@ -1934,7 +1850,6 @@ class MarketDataManager:
             result = await asyncio.to_thread(
                 self.polygon.get_last_price, polygon_symbol
             )
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             if result.get("last_price"):
                 return result
 
@@ -1980,35 +1895,6 @@ class MarketDataManager:
 
     async def get_vix(self) -> dict:
         """
-<<<<<<< HEAD
-        Get VIX index value. Returns {value, source}.
-        Waterfall: FRED → IBKR → Polygon.
-        """
-        # Tier 1: FRED (VIXCLS series — most reliable, free)
-        try:
-            from data.fred_data import FREDDataService
-
-            fred = FREDDataService(getattr(self._config, "FRED_API_KEY", None))
-            vix_val = await fred.get_latest_value("VIXCLS")
-            if vix_val is not None:
-                return {"value": float(vix_val), "source": "fred"}
-        except Exception:
-            pass
-
-        # Tier 2: IBKR Index("VIX")
-        if self.ibkr and self.ibkr.is_connected:
-            result = await self.ibkr.get_snapshot_price("VIX", is_futures=False)
-            if result.get("last_price"):
-                return {"value": result["last_price"], "source": "ibkr"}
-
-        # Tier 3: Polygon I:VIX
-        if self.polygon:
-            result = self.polygon.get_vix_value()
-            if result.get("value"):
-                return result
-
-        return {"value": None, "source": "unavailable"}
-=======
         Get VIX index value. Returns {value, source, ts}.
 
         Waterfall (freshest first): IBKR live → FRED EOD → Yahoo intraday → Polygon.
@@ -2083,7 +1969,6 @@ class MarketDataManager:
                 return result
 
         return {"value": None, "source": "unavailable", "ts": now}
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
     async def get_options_greeks(self, symbol: str) -> dict:
         """

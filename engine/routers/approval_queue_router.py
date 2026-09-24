@@ -47,15 +47,12 @@ router = APIRouter(prefix="/approvals", tags=["approvals", "autonomous-queue"])
 
 _safety_layer = None
 _db_path: Optional[str] = None
-<<<<<<< HEAD
-=======
 # PaperTradeTracker injected at startup so an approved candidate writes its
 # ledger row (paper_trades) alongside the broker submission. Without this the
 # queue-approve path routed orders to IB but the dashboard ledger never saw
 # them (386 approved queue rows with order_ids matched ZERO paper_trades rows,
 # 2026-08-16 audit). The scanner path already does this via add_paper_trade.
 _paper_tracker = None
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 # Shared cross-path submission dedup: this queue and the systematic bridge
 # consult the SAME ledger so the same (symbol, action, trading_date) is never
 # submitted twice when both paths are armed. Lazily created; overridable for tests.
@@ -73,25 +70,15 @@ def _get_dedup() -> SubmissionDedup:
 
 
 def inject_approval_queue_deps(
-<<<<<<< HEAD
-    safety_layer, db_path: str, dedup: Optional[SubmissionDedup] = None
-) -> None:
-    """Called from main.py during lifespan startup."""
-    global _safety_layer, _db_path, _dedup
-=======
     safety_layer, db_path: str, dedup: Optional[SubmissionDedup] = None, paper_tracker=None
 ) -> None:
     """Called from main.py during lifespan startup."""
     global _safety_layer, _db_path, _dedup, _paper_tracker
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     _safety_layer = safety_layer
     _db_path = db_path
     if dedup is not None:
         _dedup = dedup
-<<<<<<< HEAD
-=======
     _paper_tracker = paper_tracker
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     # Ensure the approval queue table exists when the router is first wired.
     _ensure_schema(db_path)
     logger.info("ApprovalQueueRouter: dependencies injected (db=%s)", db_path)
@@ -344,8 +331,6 @@ class ApproveBody(BaseModel):
         default=None,
         description="Override entry price (uses pipeline snapshot price if absent)",
     )
-<<<<<<< HEAD
-=======
     quantity: Optional[int] = Field(
         default=None,
         description="Override quantity (uses pipeline final_quantity if absent)",
@@ -358,7 +343,6 @@ class ApproveBody(BaseModel):
         default=None,
         description="Override profit target (uses pipeline trade_decision.target_1 if absent)",
     )
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 
 class RejectBody(BaseModel):
@@ -545,9 +529,6 @@ async def approve_candidate(
             ),
         )
 
-<<<<<<< HEAD
-    # Submit via the existing safety_layer.submit_paper_order path
-=======
     # Submit via the existing safety_layer.submit_paper_order path.
     # 2026-08-18 fix: the queue-approve path hardcoded quantity=1 and dropped
     # stop_price — the verdict's final_quantity (2) and stop (7715.44) never
@@ -575,24 +556,16 @@ async def approve_candidate(
         or body.take_profit
         or None
     )
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     try:
         result = await _safety_layer.submit_paper_order(
             symbol=symbol,
             action=action,
-<<<<<<< HEAD
-            quantity=1,
-            price=entry_price,
-            order_type="MKT",
-            limit_price=None,
-=======
             quantity=_final_qty,
             price=entry_price,
             order_type="MKT",
             limit_price=None,
             stop_price=float(_stop_price) if _stop_price is not None else None,
             take_profit=float(_take_profit) if _take_profit is not None else None,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         )
     except Exception as exc:
         _audit("approve_submit_error", candidate_id, {"error": str(exc)})
@@ -608,8 +581,6 @@ async def approve_candidate(
 
     order_id = str(result.get("order_id") or result.get("fill_id") or "")
     _update_status(db, candidate_id, "approved", order_id=order_id)
-<<<<<<< HEAD
-=======
 
     # ── Ledger write: the queue-approve path previously routed the order to IB
     # but never recorded the paper_trades row, so the dashboard/validation
@@ -652,7 +623,6 @@ async def approve_candidate(
                 _ledger_exc,
             )
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     # Claim the shared cross-path slot only on an APPROVED submit, so a rejected
     # order never blocks the other path. Idempotent (no-op if already recorded).
     dedup.record(

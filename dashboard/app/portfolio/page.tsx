@@ -4,12 +4,9 @@ import useSWR from "swr";
 import { Activity, TrendingUp, TrendingDown, Circle, AlertCircle } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
 import { useWebSocket, type WsEvent } from "@/hooks/useWebSocket";
-<<<<<<< HEAD
-=======
 import { ProvenanceBadge } from "@/components/DataValue";
 import { useProvenance } from "@/lib/useProvenance";
 import { type DataEnvelope } from "@/lib/provenance";
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 const REFRESH_MS = 5000;
 
@@ -41,12 +38,9 @@ interface PortfolioSummary {
   target_progress_pct: number;
   markets: Record<string, MarketSummary>;
   message?: string;
-<<<<<<< HEAD
-=======
   // Provenance envelope (Phase 1, P4-1/P4-2) — additive; absent on older
   // engine builds, so every consumer must tolerate undefined.
   total_daily_pnl_envelope?: DataEnvelope<number>;
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 }
 
 interface ModuleHealth {
@@ -104,12 +98,6 @@ function statusDot(status: string) {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-<<<<<<< HEAD
-function DailyTargetProgress({ total, target }: { total: number; target: number }) {
-  const pct = Math.min(100, Math.max(0, target > 0 ? (total / target) * 100 : 0));
-  const isPositive = total >= 0;
-  const barColor = pct >= 100 ? "#00ff88" : pct >= 50 ? "#ffcc00" : isPositive ? "#00d4ff" : "#ff4444";
-=======
 function DailyTargetProgress({
   total,
   target,
@@ -127,7 +115,6 @@ function DailyTargetProgress({
   // (additive field) -- useProvenance(undefined) safely renders "NO DATA"/static
   // rather than throwing, so this degrades gracefully during a rolling deploy.
   const provenance = useProvenance(envelope);
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
   return (
     <div className="rounded-xl border border-border bg-card p-4 space-y-3">
@@ -153,10 +140,7 @@ function DailyTargetProgress({
         >
           {pct.toFixed(1)}%
         </span>
-<<<<<<< HEAD
-=======
         {envelope && <ProvenanceBadge view={provenance} className="mb-1" />}
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       </div>
 
       <div className="h-3 w-full rounded-full bg-muted overflow-hidden">
@@ -310,11 +294,7 @@ export default function PortfolioPage() {
       <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-6 space-y-6">
 
         {/* Daily target progress */}
-<<<<<<< HEAD
-        <DailyTargetProgress total={total} target={target} />
-=======
         <DailyTargetProgress total={total} target={target} envelope={summary?.total_daily_pnl_envelope} />
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
         {/* Market health grid */}
         <div>
@@ -396,11 +376,7 @@ export default function PortfolioPage() {
                 {capital ? `$${capital.total_capital.toLocaleString()}` : "—"}
               </span>
               <span className="text-right tabular-nums">
-<<<<<<< HEAD
-                {health?.modules.reduce((s, m) => s + m.open_positions, 0) ?? 0}
-=======
                 {(health?.modules ?? []).reduce((s, m) => s + m.open_positions, 0)}
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
               </span>
             </div>
           </div>

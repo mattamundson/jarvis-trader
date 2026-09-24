@@ -889,8 +889,6 @@ def run_one_cycle(quiet: bool = False) -> Dict[str, Any]:
                 rv_kwargs = {}
                 if "min_rv_annualized" in sma_params:
                     rv_kwargs["min_rv_annualized"] = sma_params["min_rv_annualized"]
-<<<<<<< HEAD
-=======
                 # VIX-adjustment kwargs (certified 2026-08-17): paper_config
                 # sma_params may carry vix_regime_block / vix_min / vix_max to
                 # suppress trend entries during high-VIX regimes. Absent by
@@ -899,7 +897,6 @@ def run_one_cycle(quiet: bool = False) -> Dict[str, Any]:
                 for k in ("vix_min", "vix_max", "vix_regime_block", "vix_regime_lookback"):
                     if k in sma_params:
                         vix_kwargs[k] = sma_params[k]
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                 df_signals = generate_instrument_signals(
                     df,
                     symbol=symbol,
@@ -907,10 +904,7 @@ def run_one_cycle(quiet: bool = False) -> Dict[str, Any]:
                     slow=sma_params.get("slow", 200),
                     atr_trail_mult=sma_params.get("atr_trail_mult", 2.0),
                     **rv_kwargs,
-<<<<<<< HEAD
-=======
                     **vix_kwargs,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                 )
             else:
                 params = cfg["stc_params"]

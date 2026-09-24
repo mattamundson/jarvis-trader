@@ -310,8 +310,6 @@ def test_board_missing_as_of_or_source_counts_as_stale():
     board = derive_actionable_board([_row(entry=5000.0)], no_source, now=NOW, now_ts=NOW_TS)
     assert board["items"][0]["status"] == "unknown"
     assert board["items"][0]["price_stale"] is True
-<<<<<<< HEAD
-=======
 
 
 # ── empty-reason diagnostics (raw_count / shown) ─────────────────────────────
@@ -349,4 +347,3 @@ def test_board_dedup_counted_in_raw_not_shown():
     board = derive_actionable_board([newer, older], _prices(MES=5000.0), now=NOW, now_ts=NOW_TS)
     assert board["raw_count"] == 2
     assert board["shown"] == 1
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2

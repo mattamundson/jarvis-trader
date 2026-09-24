@@ -6,11 +6,8 @@ Verifies:
   2. Reconciler detects orphaned positions (no STP) and places emergency stop
   3. Reconciler logs clean bill of health when all positions are bracketed
   4. Emergency stop price calculation: 2% adverse, tick-rounded to 0.25
-<<<<<<< HEAD
-=======
   5. Both failure paths (sweep-level, per-position) alert (2026-08-11
      fail-open-safety-checks audit finding #5)
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 """
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -146,8 +143,6 @@ async def test_emergency_stop_tick_rounded(mock_ib):
     # Must be a multiple of 0.25
     price = call_kwargs["aux_price"]
     assert price % 0.25 == pytest.approx(0, abs=1e-9), f"{price} not tick-aligned"
-<<<<<<< HEAD
-=======
 
 
 # ── 7. Failure-path alerting (2026-08-11 audit finding #5) ────────────────
@@ -209,4 +204,3 @@ async def test_successful_orphan_attach_still_alerts(mock_ib):
     reconciler._alert.assert_awaited_once()
     (msg,), _ = reconciler._alert.call_args
     assert "ORPHANED POSITION ALERT" in msg
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2

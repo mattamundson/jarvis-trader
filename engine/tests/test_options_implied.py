@@ -17,10 +17,7 @@ from analysis.options_implied import (
     build_regime_block,
     build_snapshot,
     build_symbol_block,
-<<<<<<< HEAD
-=======
     build_yfinance_vix_raw,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     classify_term_structure,
     parse_chain,
     parse_occ,
@@ -86,8 +83,6 @@ def _chain_fixture(timestamp="2026-07-15 18:20:00"):
     }
 
 
-<<<<<<< HEAD
-=======
 def _vix_yfinance_raw_fixture(timestamp="2026-07-15 18:20:00"):
     calls_by_expiry = {
         "2026-07-16": [
@@ -170,7 +165,6 @@ def _vix_yfinance_raw_fixture(timestamp="2026-07-15 18:20:00"):
     )
 
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 # ---------------------------------------------------------------------------
 # parse_occ
 # ---------------------------------------------------------------------------
@@ -237,8 +231,6 @@ class TestParseChain:
         assert _parse_quote_ts("2026-07-16 18:55:31") == expected
 
 
-<<<<<<< HEAD
-=======
 class TestYfinanceVixAdapter:
     def test_build_yfinance_vix_raw_parses_as_vix_contracts(self):
         raw = _vix_yfinance_raw_fixture()
@@ -280,7 +272,6 @@ class TestYfinanceVixAdapter:
         assert any("vendor deltas unavailable" in note for note in block["horizons"][0]["notes"])
 
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 # ---------------------------------------------------------------------------
 # select_expiries
 # ---------------------------------------------------------------------------
@@ -429,8 +420,6 @@ class TestProbLadder:
         ladder = prob_ladder(contracts, self.near, 628.42, 3.00)
         assert all(r["p_above"] is None for r in ladder)
 
-<<<<<<< HEAD
-=======
     # -- touch / failure columns (reflection rule) --------------------------
 
     def test_touch_is_double_otm_close_prob_above_spot(self):
@@ -478,7 +467,6 @@ class TestProbLadder:
         # regression guard: touch columns must not resurrect the empty ladder
         assert prob_ladder(self.contracts, self.near, 628.42, None) == []
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 # ---------------------------------------------------------------------------
 # build_symbol_block

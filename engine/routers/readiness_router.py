@@ -27,8 +27,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/readiness", tags=["readiness", "phase3"])
 
 
-<<<<<<< HEAD
-=======
 def _status_rank(status: str) -> int:
     return {"pass": 0, "warn": 1, "fail": 2}.get(status, 2)
 
@@ -220,7 +218,6 @@ def build_paper_pipeline_readiness(health: dict, instruments: dict | None = None
     }
 
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 def _default_db_path() -> str:
     return os.environ.get(
         "DB_PATH",
@@ -300,8 +297,6 @@ async def get_phase3_readiness(
 
 
 @router.get(
-<<<<<<< HEAD
-=======
     "/paper-pipeline",
     summary="Paper-trading pipeline readiness — read-only runtime contract",
     response_model=None,
@@ -331,7 +326,6 @@ async def get_paper_pipeline_readiness(_api_key: str = Depends(verify_api_key)):
 
 
 @router.get(
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     "/gate-v2-calibration",
     summary="Bayesian gate-v2 threshold calibration — recommended values only",
     response_model=None,

@@ -260,18 +260,11 @@ module.exports = {
     },
 
     // ── Nightly Discord Export + Ingest ────────────────────────────────────────
-<<<<<<< HEAD
-    // Runs DiscordChatExporter on the two live Corey channels (general,
-    // market-updates), then chains into nightly_discord.py to ingest the fresh
-    // JSON into SQLite + run sentiment ETL. Closes T2.1 staleness (agents were
-    // reading discord_corey_commentary that was 15 days stale).
-=======
     // Runs scripts/dce-nightly.ps1, which delegates to scripts/dce_nightly_runner.py.
     // The runner exports the two live Corey channels (general, market-updates),
     // then chains into nightly_discord.py to ingest fresh JSON into SQLite + run
     // sentiment ETL. Tokens are passed to DiscordChatExporter via environment,
     // never argv.
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     //
     // Prereqs (user action): install DiscordChatExporter.Cli to
     // C:\Users\mattm\tools\DiscordChatExporter.Cli\ (or set DCE_CLI_PATH env).
@@ -280,15 +273,9 @@ module.exports = {
     // before morning-brief at 06:30. --after=7d keeps per-run payload <5 MB.
     {
       name: "jarvis-discord-export",
-<<<<<<< HEAD
-      script: PYTHON,
-      args: "-m scripts.nightly_discord_export",
-      cwd: ENGINE_DIR,
-=======
       script: POWERSHELL,
       args: `-NoProfile -ExecutionPolicy Bypass -File "${path.join(REPO_DIR, "scripts", "dce-nightly.ps1")}"`,
       cwd: REPO_DIR,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       interpreter: "none",
 
       cron_restart: "0 2 * * *",

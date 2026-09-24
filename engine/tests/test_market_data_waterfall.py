@@ -244,8 +244,6 @@ async def test_get_tick_price_redis_fabric_serves_fresh_data(monkeypatch) -> Non
 
     assert out["source"] == "redis_fabric"
     assert out["last_price"] == 325.89
-<<<<<<< HEAD
-=======
     # P3-1: as_of must carry the REAL observation time so a downstream
     # build_envelope() can honestly re-derive is_live, not trust this tier
     # forever just because it got past its own internal gate.
@@ -253,7 +251,6 @@ async def test_get_tick_price_redis_fabric_serves_fresh_data(monkeypatch) -> Non
     import time as _time
 
     assert abs(_time.time() - out["as_of"]) < 5.0
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 
 @pytest.mark.asyncio
@@ -328,8 +325,6 @@ async def test_get_tick_price_redis_fabric_falls_through_when_no_freshness_marke
 
     assert out["source"] == "ibkr"
     assert out["last_price"] == 325.89
-<<<<<<< HEAD
-=======
 
 
 # ── check_redis_fabric_freshness — P3-1 /health observability path ─────────
@@ -423,4 +418,3 @@ async def test_check_redis_fabric_freshness_uses_same_threshold_as_get_tick_pric
     mgr.polygon = MagicMock()
     tick = await mgr.get_tick_price("MES", is_futures=True)
     assert tick["source"] == "redis_fabric"  # still fresh under the 60s gate too
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2

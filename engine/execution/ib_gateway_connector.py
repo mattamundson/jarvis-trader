@@ -42,8 +42,6 @@ logger = logging.getLogger(__name__)
 __all__ = ["IBGatewayConnector", "ConnectionState"]
 
 
-<<<<<<< HEAD
-=======
 def _futures_multiplier(symbol: str) -> float:
     """Return the futures contract multiplier for ``symbol`` (1.0 for
     non-futures / unknown symbols), sourced from
@@ -69,7 +67,6 @@ def _futures_multiplier(symbol: str) -> float:
     return float(INSTRUMENT_MULTIPLIERS.get(symbol.upper(), 1.0))
 
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 class ConnectionState(Enum):
     """State transitions for IB Gateway connection."""
 
@@ -133,12 +130,6 @@ class IBGatewayConnector:
         self._ib_client = None  # Will hold ib_insync.IB() when live trading is implemented
         self._paper_trade_logger = None  # Lazy-loaded on first use
         self._market_data_manager = None  # Real-price source; attach_market_data()
-<<<<<<< HEAD
-        self._account_summary = {
-            "equity": 10000.0,
-            "cash": 10000.0,
-            "buying_power": 40000.0,
-=======
         # Starting paper balances derive from settings.INITIAL_CAPITAL -- the
         # same source PortfolioTracker._get_starting_balance() already uses --
         # rather than a standalone literal, so a configured capital change
@@ -150,7 +141,6 @@ class IBGatewayConnector:
             "equity": _initial_capital,
             "cash": _initial_capital,
             "buying_power": _initial_capital * 4,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         }
         self._positions = {}
         self._open_orders = {}
@@ -429,10 +419,6 @@ class IBGatewayConnector:
             self._positions[symbol] = 0
         self._positions[symbol] += qty
 
-<<<<<<< HEAD
-        # Update cash
-        self._account_summary["cash"] -= qty * price
-=======
         # Update cash -- apply the same futures contract multiplier
         # PortfolioTracker uses for realized P&L, so cash moves in step with
         # equity on every futures fill. Non-futures symbols fall back to 1.0
@@ -440,7 +426,6 @@ class IBGatewayConnector:
         # for why this is resolved lazily rather than imported at module level.
         multiplier = _futures_multiplier(symbol)
         self._account_summary["cash"] -= qty * price * multiplier
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
         logger.info("[SIM] Paper order %s FILLED @ %.2f (OCO-active)", order_id, price)
 
@@ -872,10 +857,7 @@ class IBGatewayConnector:
         limit_price: Optional[float] = None,
         aux_price: Optional[float] = None,
         parent_order_id: Optional[str] = None,
-<<<<<<< HEAD
-=======
         take_profit: Optional[float] = None,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     ) -> Optional[str]:
         """
         Record a paper fill after ``SafetyLayer`` has already validated the order.
@@ -943,11 +925,8 @@ class IBGatewayConnector:
             "order_type": internal_ot,
             "limit_price": limit_price,
             "is_futures": is_futures,
-<<<<<<< HEAD
-=======
             "stop_price": aux_price,
             "take_profit": take_profit,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         }
 
         res = await self._submit_paper_order(order, [])

@@ -15,10 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
-<<<<<<< HEAD
-=======
 import os
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -29,12 +26,8 @@ SIGNAL_FILE = HERE / "output" / "strategy_c_plus_live_signal.json"
 EXECUTION_LOG = HERE / "output" / "execution_log.json"
 
 # ── Safety constants (mirror ibkr_executor.py) ─────────────────────────────────
-<<<<<<< HEAD
-IBKR_ACCOUNT = "DUP662235"
-=======
 # Read live, not hardcoded -- see ibkr_executor.py's IBKR_ACCOUNT comment.
 IBKR_ACCOUNT = os.environ.get("IB_ACCOUNT_ID", "")
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 LIVE_TRADING_ENABLED = False
 REQUIRE_HUMAN_APPROVAL = True
 MAX_SINGLE_ORDER_VALUE_USD = 5000.0

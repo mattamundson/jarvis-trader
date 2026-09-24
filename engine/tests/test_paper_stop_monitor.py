@@ -24,10 +24,7 @@ from services.paper_stop_monitor import (  # noqa: E402
     PaperStopMonitor,
     compute_stop_pnl,
     is_stop_breached,
-<<<<<<< HEAD
-=======
     is_target_hit,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     multiplier_for,
     normalize_side,
 )
@@ -71,8 +68,6 @@ def test_is_stop_breached_missing_inputs():
     assert is_stop_breached("flat", 100.0, 50.0) is False  # unknown side
 
 
-<<<<<<< HEAD
-=======
 def test_is_target_hit_long():
     # Long hits target when price >= target.
     assert is_target_hit("long", 105.0, 105.01) is True
@@ -96,7 +91,6 @@ def test_is_target_hit_missing_inputs():
     assert is_target_hit("flat", 105.0, 110.0) is False  # unknown side
 
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 def test_live_price_sources_excludes_ibkr_delayed():
     """Regression guard: _LIVE_PRICE_SOURCES is an allowlist of exact strings,
     so a new IBKR delayed-tick tag (data/market_data.py get_snapshot_price,

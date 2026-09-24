@@ -1,10 +1,3 @@
-<<<<<<< HEAD
-"""Tests for the report-only trade-sign permutation diagnostic in forward_test.
-
-Verifies the diagnostic is computed and attached to the report, and crucially that it
-does NOT leak into the graduation decision (graduation must stay a function of
-forward_stats + family FDR only).
-=======
 """Tests for the trade-sign permutation and DSR diagnostics in forward_test.
 
 Verifies both diagnostics are computed and attached to the report. The DSR diagnostic
@@ -16,7 +9,6 @@ run_forward_test -- see test_forward_test_trade_shuffle_gate.py for that behavio
 The tests below use fixtures where the base graduation verdict is stubbed False, so
 they cannot distinguish "blocked by the stub" from "blocked by trade-shuffle"; that
 distinction is exactly what test_forward_test_trade_shuffle_gate.py isolates.
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 """
 
 from __future__ import annotations

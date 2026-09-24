@@ -383,11 +383,8 @@ async def approve_pending_trade(
             price=entry_price,
             notes=notes,
             rv_at_entry=_rv_at_entry,
-<<<<<<< HEAD
-=======
             stop_loss=stop_price,
             take_profit=target_price,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         )
     except Exception as exc:
         logger.exception("approve_pending_trade open_trade failed for %s", approval_id[:8])

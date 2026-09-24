@@ -51,14 +51,10 @@ ENGINE_API_KEY = os.environ.get("JARVIS_API_KEY") or os.environ.get("API_KEY", "
 ENGINE_BASE_URL = f"http://{ENGINE_HOST}:{ENGINE_PORT}"
 
 IBKR_PAPER_PORT = 4002
-<<<<<<< HEAD
-IBKR_ACCOUNT = "DUP662235"
-=======
 # Read live -- this account ID has already drifted once (DUP662235 -> DUR375089,
 # see engine/CLAUDE.md) and ib_gateway.py's own comments document observing a
 # third value live. Hardcoding any single value here just repeats the bug.
 IBKR_ACCOUNT = os.environ.get("IB_ACCOUNT_ID", "")
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 # Safety invariants (hardcoded — never allow LLM to override these)
 LIVE_TRADING_ENABLED = False     # Paper only until explicit human approval

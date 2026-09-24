@@ -142,8 +142,6 @@ async def test_beat_swallows_snapshot_error(monkeypatch):
 
 
 @pytest.mark.asyncio
-<<<<<<< HEAD
-=======
 async def test_repeated_probe_failure_is_audible_not_buried(monkeypatch, caplog):
     """2026-08-15 incident: this was the ONE component honestly detecting a
     wedged Gateway, and it logged the reason at DEBUG -- invisible at the
@@ -200,7 +198,6 @@ async def test_probe_failure_counter_resets_on_recovery(monkeypatch):
 
 
 @pytest.mark.asyncio
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 async def test_disabled_flag_suppresses_start(monkeypatch):
     monkeypatch.setenv("IBKR_HEARTBEAT_ENABLED", "0")
     dm, _ = _dm()

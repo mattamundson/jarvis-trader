@@ -22,10 +22,7 @@ import { SessionSummaryWidget } from "@/components/SessionSummaryWidget";
 import { TodaySummaryWidget } from "@/components/TodaySummaryWidget";
 import { PositionSizingWidget } from "@/components/PositionSizingWidget";
 import { SignalQueueWidget } from "@/components/SignalQueueWidget";
-<<<<<<< HEAD
-=======
 import { ActionableBoardWidget } from "@/components/ActionableBoardWidget";
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 import { PaperApprovedValidationWidget } from "@/components/PaperApprovedValidationWidget";
 import ValidationCheckpointWidget from "@/components/ValidationCheckpointWidget";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
@@ -161,8 +158,6 @@ export default function PaperTradingPage() {
           <OpenPositionsWidget />
         </WidgetErrorBoundary>
 
-<<<<<<< HEAD
-=======
         {/* Trade Recommendations — entry/stop/T1 cards from the pipeline
             actionable board (the amo-arbitrage style surface). Shows live
             candidates + recently-resolved rows with target/stops once the
@@ -171,7 +166,6 @@ export default function PaperTradingPage() {
           <ActionableBoardWidget />
         </WidgetErrorBoundary>
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         {/* MCL / MNQ validation gates vs project thresholds (SQLite closed trades) */}
         <WidgetErrorBoundary name="Paper Approved Validation">
           <PaperApprovedValidationWidget />
@@ -217,12 +211,6 @@ export default function PaperTradingPage() {
         {/* Top row: Signal + Performance */}
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12 lg:col-span-6">
-<<<<<<< HEAD
-            <LiveSignalPanel />
-          </div>
-          <div className="col-span-12 lg:col-span-6">
-            <PerformanceMetricsPanel />
-=======
             <WidgetErrorBoundary name="Live Signal">
               <LiveSignalPanel />
             </WidgetErrorBoundary>
@@ -231,20 +219,10 @@ export default function PaperTradingPage() {
             <WidgetErrorBoundary name="Performance Metrics">
               <PerformanceMetricsPanel />
             </WidgetErrorBoundary>
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
           </div>
         </div>
 
         {/* Kill Switch + Reset Controls */}
-<<<<<<< HEAD
-        <KillSwitchPanel />
-
-        {/* Middle: Pending Signals Queue with History Tab */}
-        <SignalQueuePanel />
-
-        {/* Bottom: Trade Logger */}
-        <TradeLoggerPanel />
-=======
         <WidgetErrorBoundary name="Kill Switch">
           <KillSwitchPanel />
         </WidgetErrorBoundary>
@@ -258,7 +236,6 @@ export default function PaperTradingPage() {
         <WidgetErrorBoundary name="Trade Logger">
           <TradeLoggerPanel />
         </WidgetErrorBoundary>
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
         {/* Recent AI Decisions */}
         <WidgetErrorBoundary name="Recent Decisions">

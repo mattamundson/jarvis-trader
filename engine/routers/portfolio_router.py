@@ -15,10 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-<<<<<<< HEAD
-=======
 import os
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 import sqlite3
 import time
 from datetime import date, datetime, timedelta, timezone
@@ -48,8 +45,6 @@ router = APIRouter(prefix="", tags=["portfolio", "multi-market"])
 
 TARGET_TRADING_DAYS = 30
 
-<<<<<<< HEAD
-=======
 # 2026-08-16: bounds each per-symbol price fetch inside the fan-outs below.
 # `return_exceptions=True` on asyncio.gather only catches exceptions -- it does
 # nothing for a coroutine that never returns (an IB Gateway wedge: socket
@@ -84,7 +79,6 @@ _POSITIONS_MARK_TIMEOUT_S = float(
     os.getenv("PORTFOLIO_POSITIONS_MARK_TIMEOUT_SECONDS", "2.0")
 )
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 # Global references (injected from main.py)
 paper_tracker = None
 db_manager = None
@@ -141,26 +135,6 @@ async def get_portfolio():
                 symbols = [str(p.get("symbol", "")) for p in open_positions]
                 if _data_manager is not None:
                     results = await asyncio.gather(
-<<<<<<< HEAD
-                        *[_data_manager.get_tick_price(sym) for sym in symbols],
-                        return_exceptions=True,
-                    )
-                    marks: list[tuple[float | None, str | None]] = [
-                        (
-                            (
-                                (r.get("last_price"), r.get("source"))
-                                if isinstance(r, dict)
-                                else (
-                                    (float(r), None)
-                                    if isinstance(r, (int, float))
-                                    else (None, None)
-                                )
-                            )
-                            if not isinstance(r, Exception) and r is not None
-                            else (None, None)
-                        )
-                        for r in results
-=======
                         *[
                             asyncio.wait_for(
                                 _data_manager.get_tick_price(sym), timeout=_PRICE_FANOUT_TIMEOUT_S
@@ -171,7 +145,6 @@ async def get_portfolio():
                     )
                     marks: list[tuple[float | None, str | None]] = [
                         _price_result_to_mark(r) for r in results
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                     ]
                 else:
                     marks = [(None, None)] * len(open_positions)
@@ -320,8 +293,6 @@ def _row_pnl(row: Any) -> float:
         return 0.0
 
 
-<<<<<<< HEAD
-=======
 def _price_result_to_mark(r: Any) -> tuple[float | None, str | None]:
     """Convert one asyncio.gather() price-fetch result into a (price, source) mark.
 
@@ -343,7 +314,6 @@ def _price_result_to_mark(r: Any) -> tuple[float | None, str | None]:
     return (None, None)
 
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 def _build_price_envelope(value: float, marks: list[tuple[bool, str, float | None]]) -> dict:
     """Aggregate per-position provenance (Phase 1) into a summary-level envelope.
 
@@ -410,39 +380,18 @@ async def portfolio_summary():
                     # once per open position and we care about tail latency,
                     # not necessarily the absolute freshest quote.
                     results = await asyncio.gather(
-<<<<<<< HEAD
-                        *[_data_manager.get_tick_price(sym) for sym in symbols],
-=======
                         *[
                             asyncio.wait_for(
                                 _data_manager.get_tick_price(sym), timeout=_PRICE_FANOUT_TIMEOUT_S
                             )
                             for sym in symbols
                         ],
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                         return_exceptions=True,
                     )
                     # Keep the (price, source) pair so a stale CSV-cache mark can
                     # be excluded from the headline rather than fabricating P&L.
                     marks: list[tuple[float | None, str | None]] = [
-<<<<<<< HEAD
-                        (
-                            (
-                                (r.get("last_price"), r.get("source"))
-                                if isinstance(r, dict)
-                                else (
-                                    (float(r), None)
-                                    if isinstance(r, (int, float))
-                                    else (None, None)
-                                )
-                            )
-                            if not isinstance(r, Exception) and r is not None
-                            else (None, None)
-                        )
-                        for r in results
-=======
                         _price_result_to_mark(r) for r in results
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                     ]
                 else:
                     marks = [(None, None)] * len(open_positions)
@@ -837,26 +786,6 @@ async def paper_positions():
     if positions and _data_manager is not None:
         try:
             symbols = [str(p.get("symbol", "")) for p in positions]
-<<<<<<< HEAD
-            results = await asyncio.gather(
-                *[_data_manager.get_tick_price(sym) for sym in symbols],
-                return_exceptions=True,
-            )
-            marks: list[tuple[float | None, str | None]] = [
-                (
-                    (
-                        (r.get("last_price"), r.get("source"))
-                        if isinstance(r, dict)
-                        else ((float(r), None) if isinstance(r, (int, float)) else (None, None))
-                    )
-                    if not isinstance(r, Exception) and r is not None
-                    else (None, None)
-                )
-                for r in results
-            ]
-            ibkr_connected = _ibkr_connected()
-            for pos, (current_price, mark_source) in zip(positions, marks, strict=True):
-=======
             # 2026-08-17: bound the fan-out so a cold Polygon fallback (weekend,
             # IB down) can't freeze the page. Measured: SPY 13.7s / AAPL 7.6s on
             # Sunday fallback — /portfolio/paper/positions was an 11s page load.
@@ -883,7 +812,6 @@ async def paper_positions():
                     entry_price = pos.get("entry_price")
                     current_price = float(entry_price) if entry_price is not None else None
                     mark_source = "entry_fallback" if current_price is not None else None
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                 computed = _compute_unrealized(
                     pos,
                     current_price,
@@ -1003,16 +931,6 @@ async def paper_performance():
         try:
             symbols = [str(p.get("symbol", "")) for p in open_positions]
             price_results = await asyncio.gather(
-<<<<<<< HEAD
-                *[_data_manager.get_current_price(sym) for sym in symbols],
-                return_exceptions=True,
-            )
-            for pos, price_result in zip(open_positions, price_results, strict=False):
-                current_price = (
-                    price_result.get("last_price") if isinstance(price_result, dict) else None
-                )
-                mark_source = price_result.get("source") if isinstance(price_result, dict) else None
-=======
                 *[
                     asyncio.wait_for(_data_manager.get_current_price(sym), timeout=_PRICE_FANOUT_TIMEOUT_S)
                     for sym in symbols
@@ -1021,7 +939,6 @@ async def paper_performance():
             )
             for pos, price_result in zip(open_positions, price_results, strict=False):
                 current_price, mark_source = _price_result_to_mark(price_result)
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                 computed = _compute_unrealized(
                     pos,
                     current_price,
@@ -2162,23 +2079,6 @@ async def get_unrealized_positions() -> list[UnrealizedPositionResponse]:
         symbols = [str(p.get("symbol", "")) for p in positions]
         if _data_manager is not None:
             results = await asyncio.gather(
-<<<<<<< HEAD
-                *[_data_manager.get_current_price(sym) for sym in symbols],
-                return_exceptions=True,
-            )
-            marks = [
-                (
-                    (
-                        (r.get("last_price"), r.get("source"))
-                        if isinstance(r, dict)
-                        else ((float(r), None) if isinstance(r, (int, float)) else (None, None))
-                    )
-                    if not isinstance(r, Exception) and r is not None
-                    else (None, None)
-                )
-                for r in results
-            ]
-=======
                 *[
                     asyncio.wait_for(_data_manager.get_current_price(sym), timeout=_PRICE_FANOUT_TIMEOUT_S)
                     for sym in symbols
@@ -2186,7 +2086,6 @@ async def get_unrealized_positions() -> list[UnrealizedPositionResponse]:
                 return_exceptions=True,
             )
             marks = [_price_result_to_mark(r) for r in results]
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         else:
             marks = [(None, None)] * len(positions)
 
@@ -2323,16 +2222,6 @@ async def get_paper_account_stats(
             if max_dd is None or dd < max_dd:
                 max_dd = dd
 
-<<<<<<< HEAD
-    # Sortino (downside deviation; annualised assuming daily returns)
-    mean_pnl = sum(pnls) / n_trades
-    neg_sq = [(p - mean_pnl) ** 2 for p in pnls if p < mean_pnl]
-    downside_dev = math.sqrt(sum(neg_sq) / len(neg_sq)) if neg_sq else None
-    sortino: float | None = (mean_pnl / downside_dev * math.sqrt(252)) if downside_dev else None
-
-    # Sharpe (std dev of all returns) — canonical module (near-zero std-dev guard -> None)
-    sharpe: float | None = metrics.sharpe(pnls)
-=======
     # C3 metric-honesty pass (2026-08-18): annualize by the OBSERVED
     # trades-per-year over the window's actual span (n_trades / elapsed
     # years), not a fixed 252 — a low-frequency account was previously
@@ -2351,7 +2240,6 @@ async def get_paper_account_stats(
     # Sharpe (std dev of all returns) — canonical module (near-zero std-dev guard -> None),
     # annualized by the observed trades-per-year, not the 252 default.
     sharpe: float | None = metrics.sharpe(pnls, periods_per_year=int(round(ann_tpy)))
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
     # Calmar (annualised return / abs max drawdown). abs(max_dd) is floored at
     # CALMAR_MIN_DD_FLOOR (0.5%) before dividing -- an account that's mostly
@@ -2366,11 +2254,7 @@ async def get_paper_account_stats(
     CALMAR_MIN_DD_FLOOR = 0.005
     calmar: float | None = None
     if max_dd is not None and max_dd < 0 and abs(max_dd) >= CALMAR_MIN_DD_FLOOR:
-<<<<<<< HEAD
-        ann_return = mean_pnl * 252
-=======
         ann_return = mean_pnl * ann_tpy
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         calmar = ann_return / abs(max_dd)
 
     return AccountStatsResponse(

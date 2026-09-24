@@ -47,11 +47,8 @@ import { DecisionLogWidget } from "@/components/DecisionLogWidget";
 import ApprovalPanel from "@/components/ApprovalPanel";
 import { PortfolioCorrelationWidget } from "@/components/PortfolioCorrelationWidget";
 import { SessionBriefPanel } from "@/components/SessionBriefPanel";
-<<<<<<< HEAD
-=======
 import { ActionableBoardWidget } from "@/components/ActionableBoardWidget";
 import { PipelineFunnel } from "@/components/pipeline-funnel";
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { useToast } from "@/lib/toast-context";
 import { useWebSocket, type WsEvent } from "@/hooks/useWebSocket";
@@ -704,13 +701,9 @@ export default function CommandCenterPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-3">
-<<<<<<< HEAD
-            <ApprovalPanel />
-=======
             <WidgetErrorBoundary name="Trade Approvals">
               <ApprovalPanel />
             </WidgetErrorBoundary>
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
           </CardContent>
         </Card>
       </div>
@@ -747,8 +740,6 @@ export default function CommandCenterPage() {
       </div>
 
       {/* ═══════════════════════════════════════════════════════
-<<<<<<< HEAD
-=======
           TRADE RECOMMENDATIONS — actionable board with entry/stop/T1
           (amo-arbitrage style). Live candidates + recently-resolved rows
           once the autonomous pipeline is armed. Mounted on the flagship HUD
@@ -761,7 +752,6 @@ export default function CommandCenterPage() {
       </div>
 
       {/* ═══════════════════════════════════════════════════════
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
           ROW 1 — STATUS OVERVIEW (5 columns)
       ═══════════════════════════════════════════════════════ */}
       <div className="grid grid-cols-5 gap-3 mb-4">
@@ -998,13 +988,9 @@ export default function CommandCenterPage() {
       ═══════════════════════════════════════════════════════ */}
       <div className="grid grid-cols-3 gap-3 mb-4">
         {liveInstruments.map((inst) => (
-<<<<<<< HEAD
-          <SignalCard key={inst.symbol} inst={inst} />
-=======
           <WidgetErrorBoundary key={inst.symbol} name={`Signal Card: ${inst.symbol}`}>
             <SignalCard inst={inst} />
           </WidgetErrorBoundary>
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         ))}
       </div>
 
@@ -1570,11 +1556,7 @@ export default function CommandCenterPage() {
                     <div>
                       {/* EV / Trade — migrated to honest deduped source (net / trade count) */}
                       <div className="text-xs text-slate-500 mb-0.5">EV / Trade</div>
-<<<<<<< HEAD
-                      {honestSet && honestSet.trades.length > 0 ? (
-=======
                       {honestSet && Array.isArray(honestSet.trades) && honestSet.trades.length > 0 ? (
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                         <div
                           className={`font-mono text-sm font-bold ${
                             honestSet.net / honestSet.trades.length >= 0
@@ -1601,19 +1583,11 @@ export default function CommandCenterPage() {
                             : "bg-red-950 text-red-400 border-red-800"
                         }`}
                       >
-<<<<<<< HEAD
-                        {journalStats.diagnosis.replace("_", " ").toUpperCase()}
-                      </Badge>
-                    </div>
-                  </div>
-                  {honestSet && (
-=======
                         {(journalStats.diagnosis ?? "unknown").replace("_", " ").toUpperCase()}
                       </Badge>
                     </div>
                   </div>
                   {honestSet && Array.isArray(honestSet.trades) && (
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                     <p className="mt-2 text-[10px] text-slate-600 font-mono">
                       {dedupCaveat(honestSet)} · win rate + EV sourced from deduped record
                     </p>

@@ -29,11 +29,8 @@ import time as _time_module
 from datetime import datetime, time, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-<<<<<<< HEAD
-=======
 from utils.data_provenance import build_data_provenance, stamp_signal_data
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 logger = logging.getLogger("jarvis_trader.scanner")
 
 
@@ -496,24 +493,17 @@ class SignalScanner:
                 _regime = (result.get("analyst_reports") or {}).get("technical", {}).get(
                     "regime"
                 ) or None
-<<<<<<< HEAD
-=======
                 # Data-truth: stamp *what data* this decision was based on (tier +
                 # per-symbol serve-age), matching main.py's _log_decision (PR #286).
                 # Additive only — never changes a trade decision, never raises.
                 _provenance = build_data_provenance(self._data_manager, symbol)
                 _sig = stamp_signal_data({"source": "scanner", "summary": _summary}, _provenance)
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                 self.db_manager.insert_decision(
                     symbol=symbol,
                     action=final_action,
                     confidence=_conf,
                     regime=_regime,
-<<<<<<< HEAD
-                    signal_data={"source": "scanner", "summary": _summary},
-=======
                     signal_data=_sig,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                     reasoning=_reasoning or _summary,
                     full_pipeline_data=result,
                 )
@@ -656,19 +646,6 @@ class SignalScanner:
                             trade_dec,
                         )
                     elif _open_for_symbol:
-<<<<<<< HEAD
-                        logger.info(
-                            "[EXECUTION] symbol=%s action=%s confidence=%.2f threshold=%.2f "
-                            "executed=False reason=paper_position_already_open "
-                            "open_trade_id=%s approval_id=%s",
-                            symbol,
-                            final_action,
-                            _confidence,
-                            0.0,
-                            str(_open_for_symbol[0].get("trade_id") or "")[:8],
-                            approval_id[:8],
-                        )
-=======
                         # 2026-08-18 fix: an OPPOSITE-direction signal against an
                         # open position is an EXIT, not a duplicate entry. The old
                         # guard skipped it entirely, so positions could never close
@@ -718,7 +695,6 @@ class SignalScanner:
                                 str(_open_pos.get("trade_id") or "")[:8],
                                 approval_id[:8],
                             )
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                     elif self._kill_switch_active():
                         # Autonomy hardening: the live opener now honors the kill
                         # switch. Previously only the APScheduler jobs gated on it;
@@ -760,10 +736,6 @@ class SignalScanner:
                             approval_id[:8],
                         )
                     else:
-<<<<<<< HEAD
-                        target_price = (
-                            trade_dec.get("target_price") or trade_dec.get("take_profit") or None
-=======
                         # 2026-08-17: target extraction was reading
                         # `target_price`/`take_profit`, but the LLM's
                         # trade_decision emits `target_1`/`target_2` — so
@@ -776,7 +748,6 @@ class SignalScanner:
                             or trade_dec.get("take_profit")
                             or trade_dec.get("target_2")
                             or None
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                         )
                         conviction = fund_decision.get("final_conviction", 0.0) or trade_dec.get(
                             "confidence", 0.0

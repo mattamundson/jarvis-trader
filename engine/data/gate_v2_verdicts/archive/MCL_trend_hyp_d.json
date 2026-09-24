@@ -6,15 +6,6 @@
   "passed_via": null,
   "core_verdict": "FAIL",
   "alt_verdict": "FAIL",
-<<<<<<< HEAD
-  "n_core_passed": 3,
-  "n_alt_passed": 3,
-  "created_at": "2026-05-06T09:10:28.240278+00:00",
-  "aux_freshness": {
-    "rolling_wfo": "2026-05-06T09:10:28.240278+00:00",
-    "fixed_params": "2026-05-06T09:10:28.240278+00:00",
-    "cost_sweep": "2026-05-06T09:10:28.240278+00:00"
-=======
   "n_core_passed": 1,
   "n_alt_passed": 3,
   "created_at": "2026-07-27T03:26:02.152250+00:00",
@@ -22,48 +13,17 @@
     "rolling_wfo": "2026-07-27T03:26:02.152250+00:00",
     "fixed_params": "2026-07-27T03:26:02.152250+00:00",
     "cost_sweep": "2026-07-27T03:26:02.152250+00:00"
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
   },
   "gate_v2": {
     "verdict": "FAIL",
     "passed_via": null,
     "core_verdict": "FAIL",
     "alt_verdict": "FAIL",
-<<<<<<< HEAD
-    "n_core_passed": 3,
-=======
     "n_core_passed": 1,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     "n_core_criteria": 4,
     "n_alt_passed": 3,
     "n_alt_criteria": 5,
     "core_reasons": [
-<<<<<<< HEAD
-      "pf_ci_lower=7.1432 >= 1.1",
-      "FAIL p_edge=0.7500 >= 0.95",
-      "mc_95th_dd_pct=0.2310 <= 5.0",
-      "dsr=0.2863 >= 0.1"
-    ],
-    "alt_reasons": [
-      "FAIL dsr_alt=0.2863 >= 0.3",
-      "wfo_consistency=STRONG",
-      "FAIL fixed_params_min_pf=0.0000 >= 1.2",
-      "cost_survives_through=catastrophic >= realistic",
-      "mc_95th_dd_pct_alt=0.2310 <= 7.000000000000001"
-    ],
-    "reasons": [
-      "pf_ci_lower=7.1432 >= 1.1",
-      "FAIL p_edge=0.7500 >= 0.95",
-      "mc_95th_dd_pct=0.2310 <= 5.0",
-      "dsr=0.2863 >= 0.1",
-      "FAIL dsr_alt=0.2863 >= 0.3",
-      "wfo_consistency=STRONG",
-      "FAIL fixed_params_min_pf=0.0000 >= 1.2",
-      "cost_survives_through=catastrophic >= realistic",
-      "mc_95th_dd_pct_alt=0.2310 <= 7.000000000000001"
-    ],
-    "n_passed": 3,
-=======
       "FAIL pf_ci_lower=1.0379 >= 1.1",
       "FAIL p_edge=0.7143 >= 0.95",
       "mc_95th_dd_pct=0.7269 <= 5.0",
@@ -88,24 +48,16 @@
       "mc_95th_dd_pct_alt=0.7269 <= 4.0"
     ],
     "n_passed": 1,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     "n_criteria": 4
   },
   "wfo_config": {
     "train_months": 6,
     "test_months": 1,
     "step_months": 1,
-<<<<<<< HEAD
-    "n_windows": 18,
-    "n_oos_windows": 18,
-    "n_oos_windows_with_trades": 4,
-    "total_oos_trades": 5,
-=======
     "n_windows": 24,
     "n_oos_windows": 24,
     "n_oos_windows_with_trades": 7,
     "total_oos_trades": 10,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     "grid_combos": 54,
     "grid_fast_period": [
       40,
@@ -128,17 +80,6 @@
     ]
   },
   "gate_v2_metrics": {
-<<<<<<< HEAD
-    "pf_ci_lower": 7.1432,
-    "p_edge": 0.75,
-    "mc_95th_dd": 0.00231,
-    "mc_95th_dd_pct": 0.231,
-    "dsr": 0.286298,
-    "wfo_consistency": "STRONG",
-    "fixed_params_min_pf": 0.0,
-    "fixed_params_mean_pf": 0.7648,
-    "fixed_params_max_pf": 2.5231,
-=======
     "pf_ci_lower": 1.0379,
     "p_edge": 0.7143,
     "mc_95th_dd": 0.007269,
@@ -148,7 +89,6 @@
     "fixed_params_min_pf": 0.0,
     "fixed_params_mean_pf": 0.9734,
     "fixed_params_max_pf": 2.8011,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     "n_combos_with_trades": 54,
     "combo_results": [
       {
@@ -156,242 +96,19 @@
         "slow": 150,
         "atr_trail_mult": 1.5,
         "min_rv_annualized": 0.0,
-<<<<<<< HEAD
-        "pf": 0.4871,
-        "trades": 28
-=======
         "pf": 0.8673,
         "trades": 31
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       },
       {
         "fast": 40,
         "slow": 150,
         "atr_trail_mult": 1.5,
         "min_rv_annualized": 20.0,
-<<<<<<< HEAD
-        "pf": 0.6219,
-        "trades": 33
-      },
-      {
-        "fast": 40,
-        "slow": 150,
-        "atr_trail_mult": 2.0,
-        "min_rv_annualized": 0.0,
-        "pf": 0.504,
-        "trades": 30
-      },
-      {
-        "fast": 40,
-        "slow": 150,
-        "atr_trail_mult": 2.0,
-        "min_rv_annualized": 20.0,
-        "pf": 0.552,
-        "trades": 30
-      },
-      {
-        "fast": 40,
-        "slow": 150,
-        "atr_trail_mult": 2.5,
-        "min_rv_annualized": 0.0,
-        "pf": 0.2771,
-        "trades": 15
-      },
-      {
-        "fast": 40,
-        "slow": 150,
-        "atr_trail_mult": 2.5,
-        "min_rv_annualized": 20.0,
-        "pf": 0.0778,
-        "trades": 11
-      },
-      {
-        "fast": 40,
-        "slow": 200,
-        "atr_trail_mult": 1.5,
-        "min_rv_annualized": 0.0,
-        "pf": 0.6242,
-        "trades": 36
-      },
-      {
-        "fast": 40,
-        "slow": 200,
-        "atr_trail_mult": 1.5,
-        "min_rv_annualized": 20.0,
-        "pf": 0.6381,
-        "trades": 28
-      },
-      {
-        "fast": 40,
-        "slow": 200,
-        "atr_trail_mult": 2.0,
-        "min_rv_annualized": 0.0,
-        "pf": 0.6751,
-        "trades": 40
-      },
-      {
-        "fast": 40,
-        "slow": 200,
-        "atr_trail_mult": 2.0,
-        "min_rv_annualized": 20.0,
-        "pf": 0.7764,
-        "trades": 28
-      },
-      {
-        "fast": 40,
-        "slow": 200,
-        "atr_trail_mult": 2.5,
-        "min_rv_annualized": 0.0,
-        "pf": 1.59,
-        "trades": 29
-      },
-      {
-        "fast": 40,
-        "slow": 200,
-        "atr_trail_mult": 2.5,
-        "min_rv_annualized": 20.0,
-        "pf": 1.7245,
-        "trades": 18
-      },
-      {
-        "fast": 40,
-        "slow": 250,
-        "atr_trail_mult": 1.5,
-        "min_rv_annualized": 0.0,
-        "pf": 0.0114,
-        "trades": 11
-      },
-      {
-        "fast": 40,
-        "slow": 250,
-        "atr_trail_mult": 1.5,
-        "min_rv_annualized": 20.0,
-        "pf": 0.0197,
-        "trades": 12
-      },
-      {
-        "fast": 40,
-        "slow": 250,
-        "atr_trail_mult": 2.0,
-        "min_rv_annualized": 0.0,
-        "pf": 0.4818,
-        "trades": 29
-      },
-      {
-        "fast": 40,
-        "slow": 250,
-        "atr_trail_mult": 2.0,
-        "min_rv_annualized": 20.0,
-        "pf": 0.39,
-        "trades": 21
-      },
-      {
-        "fast": 40,
-        "slow": 250,
-        "atr_trail_mult": 2.5,
-        "min_rv_annualized": 0.0,
-        "pf": 0.8008,
-=======
         "pf": 0.5181,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         "trades": 20
       },
       {
         "fast": 40,
-<<<<<<< HEAD
-        "slow": 250,
-        "atr_trail_mult": 2.5,
-        "min_rv_annualized": 20.0,
-        "pf": 0.7333,
-        "trades": 14
-      },
-      {
-        "fast": 50,
-        "slow": 150,
-        "atr_trail_mult": 1.5,
-        "min_rv_annualized": 0.0,
-        "pf": 0.4396,
-        "trades": 25
-      },
-      {
-        "fast": 50,
-        "slow": 150,
-        "atr_trail_mult": 1.5,
-        "min_rv_annualized": 20.0,
-        "pf": 0.4792,
-        "trades": 26
-      },
-      {
-        "fast": 50,
-        "slow": 150,
-        "atr_trail_mult": 2.0,
-        "min_rv_annualized": 0.0,
-        "pf": 0.414,
-        "trades": 25
-      },
-      {
-        "fast": 50,
-        "slow": 150,
-        "atr_trail_mult": 2.0,
-        "min_rv_annualized": 20.0,
-        "pf": 0.3836,
-        "trades": 24
-      },
-      {
-        "fast": 50,
-        "slow": 150,
-        "atr_trail_mult": 2.5,
-        "min_rv_annualized": 0.0,
-        "pf": 1.0767,
-        "trades": 19
-      },
-      {
-        "fast": 50,
-        "slow": 150,
-        "atr_trail_mult": 2.5,
-        "min_rv_annualized": 20.0,
-        "pf": 1.624,
-        "trades": 10
-      },
-      {
-        "fast": 50,
-        "slow": 200,
-        "atr_trail_mult": 1.5,
-        "min_rv_annualized": 0.0,
-        "pf": 0.3128,
-        "trades": 19
-      },
-      {
-        "fast": 50,
-        "slow": 200,
-        "atr_trail_mult": 1.5,
-        "min_rv_annualized": 20.0,
-        "pf": 0.3338,
-        "trades": 22
-      },
-      {
-        "fast": 50,
-        "slow": 200,
-        "atr_trail_mult": 2.0,
-        "min_rv_annualized": 0.0,
-        "pf": 0.758,
-        "trades": 39
-      },
-      {
-        "fast": 50,
-        "slow": 200,
-        "atr_trail_mult": 2.0,
-        "min_rv_annualized": 20.0,
-        "pf": 0.7851,
-        "trades": 26
-      },
-      {
-        "fast": 50,
-        "slow": 200,
-        "atr_trail_mult": 2.5,
-        "min_rv_annualized": 0.0,
-        "pf": 0.5825,
-=======
         "slow": 150,
         "atr_trail_mult": 2.0,
         "min_rv_annualized": 0.0,
@@ -516,18 +233,10 @@
         "atr_trail_mult": 2.5,
         "min_rv_annualized": 20.0,
         "pf": 0.6898,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         "trades": 11
       },
       {
         "fast": 50,
-<<<<<<< HEAD
-        "slow": 200,
-        "atr_trail_mult": 2.5,
-        "min_rv_annualized": 20.0,
-        "pf": 0.4919,
-        "trades": 6
-=======
         "slow": 150,
         "atr_trail_mult": 1.5,
         "min_rv_annualized": 0.0,
@@ -621,31 +330,21 @@
         "min_rv_annualized": 20.0,
         "pf": 2.5547,
         "trades": 13
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       },
       {
         "fast": 50,
         "slow": 250,
         "atr_trail_mult": 1.5,
         "min_rv_annualized": 0.0,
-<<<<<<< HEAD
-        "pf": 0.2641,
-        "trades": 17
-=======
         "pf": 0.7928,
         "trades": 33
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       },
       {
         "fast": 50,
         "slow": 250,
         "atr_trail_mult": 1.5,
         "min_rv_annualized": 20.0,
-<<<<<<< HEAD
-        "pf": 0.5329,
-=======
         "pf": 0.7137,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         "trades": 24
       },
       {
@@ -653,11 +352,7 @@
         "slow": 250,
         "atr_trail_mult": 2.0,
         "min_rv_annualized": 0.0,
-<<<<<<< HEAD
-        "pf": 0.5734,
-=======
         "pf": 0.8614,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         "trades": 33
       },
       {
@@ -665,11 +360,7 @@
         "slow": 250,
         "atr_trail_mult": 2.0,
         "min_rv_annualized": 20.0,
-<<<<<<< HEAD
-        "pf": 1.141,
-=======
         "pf": 0.8372,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         "trades": 22
       },
       {
@@ -677,61 +368,38 @@
         "slow": 250,
         "atr_trail_mult": 2.5,
         "min_rv_annualized": 0.0,
-<<<<<<< HEAD
-        "pf": 0.7637,
-        "trades": 18
-=======
         "pf": 0.4728,
         "trades": 15
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       },
       {
         "fast": 50,
         "slow": 250,
         "atr_trail_mult": 2.5,
         "min_rv_annualized": 20.0,
-<<<<<<< HEAD
-        "pf": 1.4892,
-        "trades": 11
-=======
         "pf": 0.0,
         "trades": 7
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       },
       {
         "fast": 60,
         "slow": 150,
         "atr_trail_mult": 1.5,
         "min_rv_annualized": 0.0,
-<<<<<<< HEAD
-        "pf": 0.0,
-        "trades": 9
-=======
         "pf": 1.0779,
         "trades": 21
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       },
       {
         "fast": 60,
         "slow": 150,
         "atr_trail_mult": 1.5,
         "min_rv_annualized": 20.0,
-<<<<<<< HEAD
-        "pf": 0.0479,
-        "trades": 11
-=======
         "pf": 0.74,
         "trades": 21
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       },
       {
         "fast": 60,
         "slow": 150,
         "atr_trail_mult": 2.0,
         "min_rv_annualized": 0.0,
-<<<<<<< HEAD
-        "pf": 0.0488,
-=======
         "pf": 0.8828,
         "trades": 27
       },
@@ -757,150 +425,78 @@
         "atr_trail_mult": 2.5,
         "min_rv_annualized": 20.0,
         "pf": 1.0581,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         "trades": 12
       },
       {
         "fast": 60,
-<<<<<<< HEAD
-        "slow": 150,
-        "atr_trail_mult": 2.0,
-        "min_rv_annualized": 20.0,
-        "pf": 0.0464,
-        "trades": 11
-      },
-      {
-        "fast": 60,
-        "slow": 150,
-        "atr_trail_mult": 2.5,
-        "min_rv_annualized": 0.0,
-        "pf": 1.0978,
-        "trades": 24
-      },
-      {
-        "fast": 60,
-        "slow": 150,
-        "atr_trail_mult": 2.5,
-        "min_rv_annualized": 20.0,
-        "pf": 1.5548,
-        "trades": 13
-      },
-      {
-        "fast": 60,
-        "slow": 200,
-        "atr_trail_mult": 1.5,
-        "min_rv_annualized": 0.0,
-        "pf": 1.4301,
-        "trades": 37
-=======
         "slow": 200,
         "atr_trail_mult": 1.5,
         "min_rv_annualized": 0.0,
         "pf": 1.3245,
         "trades": 43
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       },
       {
         "fast": 60,
         "slow": 200,
         "atr_trail_mult": 1.5,
         "min_rv_annualized": 20.0,
-<<<<<<< HEAD
-        "pf": 1.9673,
-        "trades": 26
-=======
         "pf": 1.4456,
         "trades": 27
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       },
       {
         "fast": 60,
         "slow": 200,
         "atr_trail_mult": 2.0,
         "min_rv_annualized": 0.0,
-<<<<<<< HEAD
-        "pf": 1.3152,
-        "trades": 37
-=======
         "pf": 1.3602,
         "trades": 43
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       },
       {
         "fast": 60,
         "slow": 200,
         "atr_trail_mult": 2.0,
         "min_rv_annualized": 20.0,
-<<<<<<< HEAD
-        "pf": 2.0896,
-        "trades": 26
-=======
         "pf": 1.7126,
         "trades": 27
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       },
       {
         "fast": 60,
         "slow": 200,
         "atr_trail_mult": 2.5,
         "min_rv_annualized": 0.0,
-<<<<<<< HEAD
-        "pf": 2.2283,
-        "trades": 19
-=======
         "pf": 2.8011,
         "trades": 21
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       },
       {
         "fast": 60,
         "slow": 200,
         "atr_trail_mult": 2.5,
         "min_rv_annualized": 20.0,
-<<<<<<< HEAD
-        "pf": 2.5231,
-        "trades": 13
-=======
         "pf": 1.9958,
         "trades": 12
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       },
       {
         "fast": 60,
         "slow": 250,
         "atr_trail_mult": 1.5,
         "min_rv_annualized": 0.0,
-<<<<<<< HEAD
-        "pf": 0.2595,
-        "trades": 14
-=======
         "pf": 1.1917,
         "trades": 34
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       },
       {
         "fast": 60,
         "slow": 250,
         "atr_trail_mult": 1.5,
         "min_rv_annualized": 20.0,
-<<<<<<< HEAD
-        "pf": 0.5098,
-        "trades": 24
-=======
         "pf": 1.3957,
         "trades": 20
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       },
       {
         "fast": 60,
         "slow": 250,
         "atr_trail_mult": 2.0,
         "min_rv_annualized": 0.0,
-<<<<<<< HEAD
-        "pf": 0.7664,
-=======
         "pf": 1.1706,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         "trades": 34
       },
       {
@@ -908,30 +504,13 @@
         "slow": 250,
         "atr_trail_mult": 2.0,
         "min_rv_annualized": 20.0,
-<<<<<<< HEAD
-        "pf": 0.568,
-        "trades": 22
-      },
-      {
-        "fast": 60,
-        "slow": 250,
-        "atr_trail_mult": 2.5,
-        "min_rv_annualized": 0.0,
-        "pf": 0.7266,
-=======
         "pf": 1.6919,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         "trades": 20
       },
       {
         "fast": 60,
         "slow": 250,
         "atr_trail_mult": 2.5,
-<<<<<<< HEAD
-        "min_rv_annualized": 20.0,
-        "pf": 0.6865,
-        "trades": 12
-=======
         "min_rv_annualized": 0.0,
         "pf": 1.4674,
         "trades": 14
@@ -943,30 +522,11 @@
         "min_rv_annualized": 20.0,
         "pf": 2.0802,
         "trades": 8
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       }
     ],
     "cost_survives_through": "catastrophic",
     "cost_tier_results": {
       "optimistic": {
-<<<<<<< HEAD
-        "pf": 1.781,
-        "trades": 18,
-        "passes": true
-      },
-      "realistic": {
-        "pf": 1.7245,
-        "trades": 18,
-        "passes": true
-      },
-      "pessimistic": {
-        "pf": 1.6169,
-        "trades": 18,
-        "passes": true
-      },
-      "catastrophic": {
-        "pf": 1.517,
-=======
         "pf": 2.1067,
         "trades": 20,
         "passes": true
@@ -983,7 +543,6 @@
       },
       "catastrophic": {
         "pf": 1.915,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         "trades": 18,
         "passes": true
       }
@@ -993,11 +552,7 @@
     "pf_ci_lower": 1.1,
     "p_edge": 0.95,
     "mc_95th_dd_core": 0.05,
-<<<<<<< HEAD
-    "mc_95th_dd_alt": 0.07,
-=======
     "mc_95th_dd_alt": 0.04,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     "dsr_core": 0.1,
     "dsr_alt": 0.3,
     "fixed_params_min_pf_alt": 1.2,
@@ -1008,43 +563,24 @@
     "cost_survives_through_min": "realistic"
   },
   "champion_params": {
-<<<<<<< HEAD
-    "fast": 40,
-    "slow": 200,
-    "atr_trail_mult": 2.5,
-    "min_rv_annualized": 20.0
-=======
     "fast": 50,
     "slow": 200,
     "atr_trail_mult": 2.5,
     "min_rv_annualized": 0.0
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
   },
   "windows": [
     {
       "window": 1,
-<<<<<<< HEAD
-      "is_period": "2024-04 -> 2024-10",
-      "oos_period": "2024-10 -> 2024-11",
-      "best_params": {
-        "fast": 40,
-        "slow": 250,
-=======
       "is_period": "2024-01 -> 2024-07",
       "oos_period": "2024-07 -> 2024-08",
       "best_params": {
         "fast": 50,
         "slow": 200,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         "atr_trail_mult": 2.5,
         "min_rv_annualized": 20.0
       },
       "is_pf": Infinity,
-<<<<<<< HEAD
-      "is_trades": 2,
-=======
       "is_trades": 3,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       "oos_pf": 0.0,
       "oos_dd": 0.0,
       "oos_sharpe": 0.0,
@@ -1052,38 +588,16 @@
     },
     {
       "window": 2,
-<<<<<<< HEAD
-      "is_period": "2024-05 -> 2024-11",
-      "oos_period": "2024-11 -> 2024-12",
-      "best_params": {
-        "fast": 50,
-        "slow": 150,
-=======
       "is_period": "2024-02 -> 2024-08",
       "oos_period": "2024-08 -> 2024-09",
       "best_params": {
         "fast": 50,
         "slow": 200,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         "atr_trail_mult": 2.5,
         "min_rv_annualized": 20.0
       },
       "is_pf": Infinity,
       "is_trades": 2,
-<<<<<<< HEAD
-      "oos_pf": 0.0,
-      "oos_dd": 0.0,
-      "oos_sharpe": 0.0,
-      "oos_trades": 0
-    },
-    {
-      "window": 3,
-      "is_period": "2024-06 -> 2024-12",
-      "oos_period": "2024-12 -> 2025-01",
-      "best_params": {
-        "fast": 50,
-        "slow": 150,
-=======
       "oos_pf": Infinity,
       "oos_dd": 0.0001,
       "oos_sharpe": 0.0,
@@ -1096,7 +610,6 @@
       "best_params": {
         "fast": 50,
         "slow": 200,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         "atr_trail_mult": 2.5,
         "min_rv_annualized": 20.0
       },
@@ -1109,25 +622,15 @@
     },
     {
       "window": 4,
-<<<<<<< HEAD
-      "is_period": "2024-07 -> 2025-01",
-      "oos_period": "2025-01 -> 2025-02",
-      "best_params": {
-        "fast": 50,
-        "slow": 150,
-=======
       "is_period": "2024-04 -> 2024-10",
       "oos_period": "2024-10 -> 2024-11",
       "best_params": {
         "fast": 50,
         "slow": 200,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         "atr_trail_mult": 2.5,
         "min_rv_annualized": 20.0
       },
       "is_pf": Infinity,
-<<<<<<< HEAD
-=======
       "is_trades": 3,
       "oos_pf": 0.0,
       "oos_dd": 0.0005,
@@ -1162,7 +665,6 @@
         "min_rv_annualized": 0.0
       },
       "is_pf": 2.845,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       "is_trades": 2,
       "oos_pf": 0.0,
       "oos_dd": 0.0,
@@ -1170,9 +672,6 @@
       "oos_trades": 0
     },
     {
-<<<<<<< HEAD
-      "window": 5,
-=======
       "window": 7,
       "is_period": "2024-07 -> 2025-01",
       "oos_period": "2025-01 -> 2025-02",
@@ -1191,7 +690,6 @@
     },
     {
       "window": 8,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       "is_period": "2024-08 -> 2025-02",
       "oos_period": "2025-02 -> 2025-03",
       "best_params": {
@@ -1202,60 +700,6 @@
       },
       "is_pf": Infinity,
       "is_trades": 1,
-<<<<<<< HEAD
-      "oos_pf": Infinity,
-      "oos_dd": 0.0001,
-      "oos_sharpe": 0.0,
-      "oos_trades": 1
-    },
-    {
-      "window": 6,
-      "is_period": "2024-09 -> 2025-03",
-      "oos_period": "2025-03 -> 2025-04",
-      "best_params": {
-        "fast": 50,
-        "slow": 250,
-        "atr_trail_mult": 2.5,
-        "min_rv_annualized": 20.0
-      },
-      "is_pf": Infinity,
-      "is_trades": 2,
-      "oos_pf": 0.0,
-      "oos_dd": 0.0,
-      "oos_sharpe": 0.0,
-      "oos_trades": 0
-    },
-    {
-      "window": 7,
-      "is_period": "2024-10 -> 2025-04",
-      "oos_period": "2025-04 -> 2025-05",
-      "best_params": {
-        "fast": 50,
-        "slow": 250,
-        "atr_trail_mult": 2.5,
-        "min_rv_annualized": 20.0
-      },
-      "is_pf": Infinity,
-      "is_trades": 2,
-      "oos_pf": 0.0,
-      "oos_dd": 0.0,
-      "oos_sharpe": 0.0,
-      "oos_trades": 0
-    },
-    {
-      "window": 8,
-      "is_period": "2024-11 -> 2025-05",
-      "oos_period": "2025-05 -> 2025-06",
-      "best_params": {
-        "fast": 60,
-        "slow": 200,
-        "atr_trail_mult": 2.5,
-        "min_rv_annualized": 0.0
-      },
-      "is_pf": Infinity,
-      "is_trades": 4,
-=======
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       "oos_pf": 0.0,
       "oos_dd": 0.0,
       "oos_sharpe": 0.0,
@@ -1263,13 +707,6 @@
     },
     {
       "window": 9,
-<<<<<<< HEAD
-      "is_period": "2024-12 -> 2025-06",
-      "oos_period": "2025-06 -> 2025-07",
-      "best_params": {
-        "fast": 60,
-        "slow": 200,
-=======
       "is_period": "2024-09 -> 2025-03",
       "oos_period": "2025-03 -> 2025-04",
       "best_params": {
@@ -1326,7 +763,6 @@
       "best_params": {
         "fast": 50,
         "slow": 150,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         "atr_trail_mult": 2.5,
         "min_rv_annualized": 0.0
       },
@@ -1338,11 +774,7 @@
       "oos_trades": 0
     },
     {
-<<<<<<< HEAD
-      "window": 10,
-=======
       "window": 13,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       "is_period": "2025-01 -> 2025-07",
       "oos_period": "2025-07 -> 2025-08",
       "best_params": {
@@ -1359,78 +791,16 @@
       "oos_trades": 0
     },
     {
-<<<<<<< HEAD
-      "window": 11,
-      "is_period": "2025-02 -> 2025-08",
-      "oos_period": "2025-08 -> 2025-09",
-      "best_params": {
-        "fast": 50,
-        "slow": 200,
-        "atr_trail_mult": 2.5,
-        "min_rv_annualized": 0.0
-      },
-      "is_pf": Infinity,
-      "is_trades": 1,
-      "oos_pf": 7.143,
-      "oos_dd": 0.0011,
-      "oos_sharpe": 8.468,
-      "oos_trades": 2
-    },
-    {
-      "window": 12,
-      "is_period": "2025-03 -> 2025-09",
-      "oos_period": "2025-09 -> 2025-10",
-      "best_params": {
-        "fast": 50,
-        "slow": 250,
-        "atr_trail_mult": 2.5,
-        "min_rv_annualized": 0.0
-      },
-      "is_pf": 19.836,
-      "is_trades": 3,
-      "oos_pf": 0.0,
-      "oos_dd": 0.0,
-      "oos_sharpe": 0.0,
-      "oos_trades": 0
-    },
-    {
-      "window": 13,
-      "is_period": "2025-04 -> 2025-10",
-      "oos_period": "2025-10 -> 2025-11",
-      "best_params": {
-        "fast": 50,
-=======
       "window": 14,
       "is_period": "2025-02 -> 2025-08",
       "oos_period": "2025-08 -> 2025-09",
       "best_params": {
         "fast": 60,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         "slow": 200,
         "atr_trail_mult": 2.5,
         "min_rv_annualized": 20.0
       },
       "is_pf": Infinity,
-<<<<<<< HEAD
-      "is_trades": 1,
-      "oos_pf": Infinity,
-      "oos_dd": 0.0001,
-      "oos_sharpe": 0.0,
-      "oos_trades": 1
-    },
-    {
-      "window": 14,
-      "is_period": "2025-05 -> 2025-11",
-      "oos_period": "2025-11 -> 2025-12",
-      "best_params": {
-        "fast": 50,
-        "slow": 250,
-        "atr_trail_mult": 2.5,
-        "min_rv_annualized": 20.0
-      },
-      "is_pf": 66.115,
-=======
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       "is_trades": 2,
       "oos_pf": 0.0,
       "oos_dd": 0.0,
@@ -1439,20 +809,6 @@
     },
     {
       "window": 15,
-<<<<<<< HEAD
-      "is_period": "2025-06 -> 2025-12",
-      "oos_period": "2025-12 -> 2026-01",
-      "best_params": {
-        "fast": 40,
-        "slow": 200,
-        "atr_trail_mult": 2.5,
-        "min_rv_annualized": 20.0
-      },
-      "is_pf": 1.554,
-      "is_trades": 7,
-      "oos_pf": 0.0,
-      "oos_dd": 0.0094,
-=======
       "is_period": "2025-03 -> 2025-09",
       "oos_period": "2025-09 -> 2025-10",
       "best_params": {
@@ -1465,41 +821,11 @@
       "is_trades": 3,
       "oos_pf": 0.0,
       "oos_dd": 0.0085,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       "oos_sharpe": 0.0,
       "oos_trades": 1
     },
     {
       "window": 16,
-<<<<<<< HEAD
-      "is_period": "2025-07 -> 2026-01",
-      "oos_period": "2026-01 -> 2026-02",
-      "best_params": {
-        "fast": 40,
-        "slow": 200,
-        "atr_trail_mult": 2.5,
-        "min_rv_annualized": 20.0
-      },
-      "is_pf": 1.728,
-      "is_trades": 5,
-      "oos_pf": 0.0,
-      "oos_dd": 0.0,
-      "oos_sharpe": 0.0,
-      "oos_trades": 0
-    },
-    {
-      "window": 17,
-      "is_period": "2025-08 -> 2026-02",
-      "oos_period": "2026-02 -> 2026-03",
-      "best_params": {
-        "fast": 40,
-        "slow": 200,
-        "atr_trail_mult": 2.5,
-        "min_rv_annualized": 20.0
-      },
-      "is_pf": 2.721,
-      "is_trades": 6,
-=======
       "is_period": "2025-04 -> 2025-10",
       "oos_period": "2025-10 -> 2025-11",
       "best_params": {
@@ -1527,7 +853,6 @@
       },
       "is_pf": Infinity,
       "is_trades": 4,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       "oos_pf": 0.0,
       "oos_dd": 0.0,
       "oos_sharpe": 0.0,
@@ -1535,18 +860,6 @@
     },
     {
       "window": 18,
-<<<<<<< HEAD
-      "is_period": "2025-09 -> 2026-03",
-      "oos_period": "2026-03 -> 2026-03",
-      "best_params": {
-        "fast": 40,
-        "slow": 200,
-        "atr_trail_mult": 2.5,
-        "min_rv_annualized": 20.0
-      },
-      "is_pf": 2.551,
-      "is_trades": 5,
-=======
       "is_period": "2025-06 -> 2025-12",
       "oos_period": "2025-12 -> 2026-01",
       "best_params": {
@@ -1659,7 +972,6 @@
       },
       "is_pf": Infinity,
       "is_trades": 1,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       "oos_pf": 0.0,
       "oos_dd": 0.0,
       "oos_sharpe": 0.0,

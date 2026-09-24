@@ -3801,8 +3801,6 @@ class TestSubmitPaperBracketOrder:
         assert result["approved"] is True
         assert result["routed_to_ib"] is False
         assert "broker placement failed" in result["reason"].lower()
-<<<<<<< HEAD
-=======
 
 
 class TestContractLimitAggregation:
@@ -3920,4 +3918,3 @@ class TestContractLimitAggregation:
         assert result.approved is True  # 0 existing + 2 new == cap of 2
 
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2

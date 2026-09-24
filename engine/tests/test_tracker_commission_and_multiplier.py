@@ -94,8 +94,6 @@ def test_listed_symbol_unaffected(tracker: PortfolioTracker) -> None:
     trade = tracker.close_trade(tid, exit_price=4090.0)
     # MGC mult = 10; (4090-4080)*1*10 = 100 gross; -1.50 = 98.50
     assert trade.pnl == pytest.approx(98.50)
-<<<<<<< HEAD
-=======
 
 
 class TestMultiplierTablesAgree:
@@ -163,4 +161,3 @@ class TestMultiplierTablesAgree:
         monkeypatch.setenv("ALLOW_DEFAULT_MULTIPLIER", "1")
         assert ps.get_contract_multiplier("NOT_A_REAL_SYMBOL") == 1.0
         assert tr._resolve_multiplier("NOT_A_REAL_SYMBOL") == 1.0
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2

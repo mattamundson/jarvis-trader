@@ -103,14 +103,10 @@ def _find_mes_data() -> Path | None:
 
 
 def _load_data(path: Path) -> pd.DataFrame:
-<<<<<<< HEAD
-    df = pd.read_csv(path)
-=======
     df = pd.read_csv(path)    # Cache provenance (2026-09-17 audit: 0/76 verdicts recorded which cache they ran on).
     from backtest._gate_v2_helpers import cache_provenance as _cp  # noqa: E402
     df.attrs["cache_provenance"] = _cp(path)
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     df.columns = [c.lower() for c in df.columns]
     ts_col = "timestamp" if "timestamp" in df.columns else "datetime"
     df[ts_col] = pd.to_datetime(df[ts_col])
@@ -516,12 +512,9 @@ def run_strategy(
     verdicts_dir = engine_root / "data" / "gate_v2_verdicts"
     verdicts_dir.mkdir(parents=True, exist_ok=True)
     verdict_file = verdicts_dir / f"{name}.json"
-<<<<<<< HEAD
-=======
     # Record the provenance carried on the frame (see loader).
     from backtest._gate_v2_helpers import inject_cache_provenance as _ip  # noqa: E402
     verdict_doc = _ip(verdict_doc, df=df)
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     verdict_file.write_text(json.dumps(verdict_doc, indent=2, default=str))
     print(f"[{name}] Verdict written -> {verdict_file}")
     return verdict_doc

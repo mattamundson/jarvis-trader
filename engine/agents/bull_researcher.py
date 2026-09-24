@@ -98,22 +98,14 @@ class BullResearcherAgent:
         "ATR expansion, VIX=17.2 confirming low-vol regime\")"
     )
 
-<<<<<<< HEAD
-    MODEL = "claude-sonnet-4-6"
-=======
     MODEL = "claude-sonnet-4-6"  # fallback; live model resolved via resolve_agent_model (T1)
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     MAX_TOKENS = 1200
 
     def __init__(self, api_key: Optional[str] = None, memory_bridge=None):
         self._api_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
         self._memory = memory_bridge
         # Phase 3.4: Optional reasoning chains
-<<<<<<< HEAD
-        from llm.client import JarvisLLMClient
-=======
         from llm.client import JarvisLLMClient, resolve_agent_model
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         from llm.reasoning_client import ReasoningChainClient
 
         # Single shared client (Vertex integration 2026-06-02). The debate
@@ -123,10 +115,7 @@ class BullResearcherAgent:
         # tracking like every other agent. NOTE: they now honor
         # JARVIS_LLM_PROVIDER (previously they were hard-wired to Anthropic).
         self._llm_client = JarvisLLMClient(api_key=self._api_key)
-<<<<<<< HEAD
-=======
         self._resolve_agent_model = resolve_agent_model
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         self._reasoning_client = ReasoningChainClient(llm_client=self._llm_client)
         self._reasoning_enabled = os.getenv("REASONING_CHAINS_ENABLED", "False").lower() == "true"
 
@@ -174,11 +163,7 @@ class BullResearcherAgent:
                 response_text = result["decision"]
             else:
                 result_obj = await self._llm_client.call(
-<<<<<<< HEAD
-                    model=self.MODEL,
-=======
                     model=self._resolve_agent_model(self._llm_client, self.MODEL),
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                     system=self.SYSTEM_PROMPT,
                     messages=[{"role": "user", "content": prompt}],
                     max_tokens=self.MAX_TOKENS,
@@ -265,17 +250,10 @@ class BullResearcherAgent:
         Falls back to raw text when no ASSESSMENT block is present.
         """
         result_obj = await self._llm_client.call(
-<<<<<<< HEAD
-            model=self.MODEL,
-            system="",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=256,
-=======
             model=self._resolve_agent_model(self._llm_client, self.MODEL),
             system="",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=800,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             agent_name="bull_researcher",
         )
         raw_text = (result_obj.content or "").strip() if result_obj.success else ""
@@ -386,11 +364,7 @@ Respond with valid JSON in exactly this format (no text outside the JSON):
         """Generic LLM call used by DebateOrchestrator for adversarial scoring/rebuttals."""
         try:
             result_obj = await self._llm_client.call(
-<<<<<<< HEAD
-                model=self.MODEL,
-=======
                 model=self._resolve_agent_model(self._llm_client, self.MODEL),
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                 system="",
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=512,

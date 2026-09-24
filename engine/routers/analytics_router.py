@@ -8,10 +8,7 @@ Endpoints:
 
 import logging
 import os
-<<<<<<< HEAD
-=======
 import time
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
@@ -103,14 +100,11 @@ class PerformanceMetricsResponse(BaseModel):
     expectancy: float
     timestamp: str
     days: Optional[int] = None  # rolling window length when applicable
-<<<<<<< HEAD
-=======
     # C3 metric-honesty pass (2026-08-18): annualization transparency. The
     # sharpe_ratio above is annualized by this observed factor (252 fallback),
     # and cagr is the honest CAGR over the actual window.
     annualization_trades_per_year: Optional[float] = None
     cagr: Optional[float] = None
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 
 class TradeAnalyticsResponse(BaseModel):
@@ -129,12 +123,9 @@ class TradeAnalyticsResponse(BaseModel):
     avg_loss: float
     best_trade: float
     worst_trade: float
-<<<<<<< HEAD
-=======
     # C3 metric-honesty pass (2026-08-18): annualization transparency.
     annualization_trades_per_year: Optional[float] = None
     cagr: Optional[float] = None
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 
 class SignalMetricsResponse(BaseModel):
@@ -286,11 +277,8 @@ async def get_trade_analytics(request: Request) -> TradeAnalyticsResponse:
             avg_loss=analytics.avg_loss,
             best_trade=analytics.best_trade,
             worst_trade=analytics.worst_trade,
-<<<<<<< HEAD
-=======
             annualization_trades_per_year=analytics.annualization_trades_per_year,
             cagr=analytics.cagr,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         )
     except Exception as exc:
         logger.error(f"Trade analytics error: {exc}")
@@ -543,8 +531,6 @@ async def get_performance_compare(request: Request) -> dict:
         raise HTTPException(500, f"Analytics error: {exc}") from exc
 
 
-<<<<<<< HEAD
-=======
 # ---------------------------------------------------------------------------
 # Pipeline funnel — runs → signals → approved → executed → filled
 # ---------------------------------------------------------------------------
@@ -727,7 +713,6 @@ async def get_pipeline_funnel(
         raise HTTPException(500, f"Analytics error: {exc}") from exc
 
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 @router.get(
     "/forward-test",
     response_model=None,

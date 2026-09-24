@@ -24,10 +24,7 @@ except ImportError:
     ta = None
     PANDAS_TA_AVAILABLE = False
 
-<<<<<<< HEAD
-=======
 from llm.client import resolve_agent_model
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 from utils.llm_json import parse_llm_json
 
 logger = logging.getLogger(__name__)
@@ -896,13 +893,6 @@ Respond with JSON in exactly this format:
         try:
             # Use JarvisLLMClient.call() so every LLM call is tracked in the
             # cost database (token counts, latency, USD cost per call).
-<<<<<<< HEAD
-            llm_result = await self._llm.call(
-                model="claude-sonnet-4-6",
-                system=self.SYSTEM_PROMPT,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=1024,
-=======
             # max_tokens=1600: the 14-field JSON (incl. multi-sentence summary/
             # reasoning/mtf_alignment strings) truncates at 1024 on slower local
             # models, yielding unparseable half-JSON that degrades health.
@@ -912,7 +902,6 @@ Respond with JSON in exactly this format:
                 system=self.SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=1600,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                 agent_name="technical_analyst",
             )
             if not llm_result.success:

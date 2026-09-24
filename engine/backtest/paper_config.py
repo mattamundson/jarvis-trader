@@ -95,15 +95,6 @@ MNQ_PAPER_CONFIG = {
 
 MGC_PAPER_CONFIG = {
     #  Instrument — SMA(50,120) trend-following, 1h bars
-<<<<<<< HEAD
-    #  ENABLED 2026-08-04: fresh rank4 verdict PASSes gate v2 (CORE) honestly —
-    #  empirical DSR 0.9952 (not the degenerate-variance fallback), SOTA-hardened
-    #  execution (gap stops, pessimistic tie-break, vol-scaled slippage, POV,
-    #  margin cap), 67 OOS trades (>=30), 19/19 windows profitable, all 8 grid
-    #  combos PF>=1.36, survives catastrophic costs (PF 3.17). MGC removed from
-    #  DO_NOT_TRADE_SYMBOLS in signals.py same day. Prior disable reason
-    #  (2026-06-26 rank4 re-run FAIL) superseded by this fresh honest PASS.
-=======
     #  DISABLED 2026-08-16: fresh rank4 gate-v2 re-evaluation (created_at
     #  2026-08-16T15:29Z, on the completeness-preferred cache
     #  MGC_2024-03-04_2026-07-24_1h.csv — clean, 14,130 bars) FAILs gate v2:
@@ -115,17 +106,12 @@ MGC_PAPER_CONFIG = {
     #  paper orders are refused at runtime regardless of this flag — the
     #  flag is synced to the honest verdict state. Re-enable only on a fresh
     #  honest gate-v2 CORE PASS (see signals.py DO_NOT_TRADE contract).
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     #  Verdict file: engine/data/gate_v2_verdicts/MGC_trend_rank4.json
     #  WFO champion params: SMA(fast=50, slow=120, atr_trail_mult=2.0)
     "symbol": "MGC",
     "interval": "1h",
     "strategy": "sma_trend",  # Routes to generate_instrument_signals() → trend_signals path
-<<<<<<< HEAD
-    "enabled": True,  # 2026-08-04: fresh honest gate-v2 CORE PASS (PR #597)
-=======
     "enabled": False,  # 2026-08-16: fresh honest gate-v2 FAIL (see comment above)
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     #  Capital & Sizing
     "initial_capital": 50_000.0,  # ALT routing requires $50K+ account for DD ceiling compliance
     "risk_per_trade": 0.0025,  # 0.25% risk per trade
@@ -334,8 +320,6 @@ PAPER_CONFIGS = {
     "MES": MES_TREND_PAPER_CONFIG,
 }
 
-<<<<<<< HEAD
-=======
 #  Pseudo-symbol -> real underlying instrument, for risk-aggregation purposes
 #  only (contract-limit and correlation checks). PAPER_CONFIGS is keyed one
 #  entry per symbol; when a second strategy is later registered on an
@@ -356,7 +340,6 @@ def resolve_underlying(symbol: str) -> str:
     return UNDERLYING_INSTRUMENT.get(symbol.upper(), symbol.upper())
 
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 #  15-minute configs (intraday scanner)
 FIFTEEN_MIN_CONFIGS = {
     "MCL": MCL_15M_CONFIG,

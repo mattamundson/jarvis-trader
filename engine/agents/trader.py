@@ -15,10 +15,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
-<<<<<<< HEAD
-=======
 from llm.client import resolve_agent_model
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 from utils.llm_json import parse_llm_json
 from utils.position_sizing import (
     INSTRUMENT_MULTIPLIERS,
@@ -208,11 +205,7 @@ class TraderAgent:
     without consulting the LLM — no reasoning needed when trading is halted.
     """
 
-<<<<<<< HEAD
-    MODEL = "claude-sonnet-4-6"
-=======
     MODEL = "claude-sonnet-4-6"  # fallback; live model resolved via resolve_agent_model (T1)
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     MAX_TOKENS = 1200
 
     SYSTEM_PROMPT_LIVE = (
@@ -765,11 +758,7 @@ class TraderAgent:
             # failed 400 while Anthropic credits were exhausted, even though
             # client-routed analysts were falling back fine (2026-06-10).
             result = await self._llm.call(
-<<<<<<< HEAD
-                model=self.MODEL,
-=======
                 model=resolve_agent_model(self._llm, self.MODEL),
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                 system=system_prompt,
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=self.MAX_TOKENS,

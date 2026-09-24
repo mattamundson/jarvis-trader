@@ -24,16 +24,10 @@ subset used here:
   DISPATCH (op=0) → handle MESSAGE_REACTION_ADD events
   RESUME (op=6)   → reconnect with last session_id + seq after disconnect
 
-<<<<<<< HEAD
-Intents bitmask (decimal 33281):
-  GUILDS (1) | GUILD_MESSAGES (512) | GUILD_MESSAGE_REACTIONS (8192) |
-  MESSAGE_CONTENT (32768) = 33281
-=======
 Intents bitmask (decimal 1537):
   GUILDS (1) | GUILD_MESSAGES (512) | GUILD_MESSAGE_REACTIONS (1024) = 1537
 
   (No MESSAGE_CONTENT -- not needed and not requested; see GATEWAY_INTENTS.)
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 Security: only reactions from DISCORD_PERSONAL_USER_ID are acted upon. All
 others are silently ignored and logged at DEBUG. The bot also verifies the
@@ -83,10 +77,6 @@ OP_RESUME = 6
 OP_HELLO = 10
 OP_HEARTBEAT_ACK = 11
 
-<<<<<<< HEAD
-# Gateway intents: GUILDS | GUILD_MESSAGES | GUILD_MESSAGE_REACTIONS | MESSAGE_CONTENT
-GATEWAY_INTENTS = 1 | 512 | 8192 | 32768  # 33281
-=======
 # Gateway intents: GUILDS | GUILD_MESSAGES | GUILD_MESSAGE_REACTIONS
 #
 # 2026-08-16: two corrections found while root-causing a persistent IDENTIFY
@@ -110,7 +100,6 @@ GATEWAY_INTENTS = 1 | 512 | 8192 | 32768  # 33281
 # MESSAGE_REACTION_ADD events for this guild channel even on a healthy
 # connection.
 GATEWAY_INTENTS = 1 | 512 | 1024  # 1537
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 # Personal channel (same constant as personal_mcp_server.py)
 PERSONAL_CHANNEL_ID = "1490851279180660819"
@@ -608,8 +597,6 @@ async def _gateway_session(
             should_resume = True
             break
 
-<<<<<<< HEAD
-=======
     else:
         # 2026-08-15 incident: the async-for ended by exhausting the iterator
         # (connection dropped with no CLOSE/CLOSING/ERROR frame at all) --
@@ -623,7 +610,6 @@ async def _gateway_session(
             session_id, session_id is not None,
         )
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     if heartbeat_task is not None and not heartbeat_task.done():
         heartbeat_task.cancel()
         try:
@@ -675,16 +661,10 @@ async def watch_approval_reactions() -> None:
                     timeout=30,
                     compress=0,
                 ) as ws:
-<<<<<<< HEAD
-                    backoff = _INITIAL_BACKOFF_SECONDS  # reset on successful connect
-=======
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                     logger.info("reaction_watcher: WebSocket connected")
                     resume_session_id, resume_seq, should_resume = await _gateway_session(
                         ws, http_session, resume_session_id, resume_seq
                     )
-<<<<<<< HEAD
-=======
                     if resume_session_id is not None:
                         # Only reset backoff once the gateway actually authenticated
                         # (READY/RESUMED set session_id). A raw TCP/TLS connect that
@@ -692,7 +672,6 @@ async def watch_approval_reactions() -> None:
                         # backoff, or a bad token/intents config spins the reconnect
                         # loop at the 2s floor forever instead of backing off.
                         backoff = _INITIAL_BACKOFF_SECONDS
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                     if not should_resume:
                         # Non-resumable close code — clear resume state and re-identify
                         resume_session_id = None

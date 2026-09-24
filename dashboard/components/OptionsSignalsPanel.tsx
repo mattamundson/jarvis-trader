@@ -23,8 +23,6 @@ interface LadderRow {
   label: string;
   level: number;
   p_above: number | null;
-<<<<<<< HEAD
-=======
   p_touch?: number | null;
   p_fail?: number | null;
 }
@@ -61,7 +59,6 @@ interface OpportunityBoard {
   rejected_candidates?: OpportunityCandidate[];
   reject_summary: string[];
   disclaimer: string;
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 }
 
 interface Horizon {
@@ -74,10 +71,7 @@ interface Horizon {
   expected_move_abs: number | null;
   expected_move_pct: number | null;
   prob_ladder: LadderRow[];
-<<<<<<< HEAD
-=======
   opportunity_board?: OpportunityBoard;
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
   quality: "ok" | "degraded" | string;
   notes: string[];
 }
@@ -177,8 +171,6 @@ function LoadingCard() {
   );
 }
 
-<<<<<<< HEAD
-=======
 function structureLabel(value: string): string {
   return value.replaceAll("_", " ");
 }
@@ -271,7 +263,6 @@ function OpportunityBoardMini({ board }: { board?: OpportunityBoard }) {
   );
 }
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 function HorizonCard({ horizon }: { horizon: Horizon }) {
   const em = horizon.expected_move_abs;
   return (
@@ -304,11 +295,8 @@ function HorizonCard({ horizon }: { horizon: Horizon }) {
               <TableHead className="font-mono text-[10px]">PRICE</TableHead>
               <TableHead className="font-mono text-[10px]">P(CLOSE ABOVE)</TableHead>
               <TableHead className="font-mono text-[10px]">P(CLOSE BELOW)</TableHead>
-<<<<<<< HEAD
-=======
               <TableHead className="font-mono text-[10px]">P(TOUCH)</TableHead>
               <TableHead className="font-mono text-[10px]">P(FAIL)</TableHead>
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -326,22 +314,17 @@ function HorizonCard({ horizon }: { horizon: Horizon }) {
                 <TableCell className="font-mono text-[11px] tabular-nums">
                   {row.p_above != null ? pct(1 - row.p_above) : "—"}
                 </TableCell>
-<<<<<<< HEAD
-=======
                 <TableCell className="font-mono text-[11px] tabular-nums">
                   {row.p_touch != null ? pct(row.p_touch) : "—"}
                 </TableCell>
                 <TableCell className="font-mono text-[11px] tabular-nums">
                   {row.p_fail != null ? pct(row.p_fail) : "—"}
                 </TableCell>
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
               </TableRow>
             ))}
           </TableBody>
         </Table>
       )}
-<<<<<<< HEAD
-=======
       {horizon.prob_ladder.some((row) => row.p_touch != null) && (
         <p className="font-mono text-[9px] text-muted-foreground/70">
           P(TOUCH)/P(FAIL) are reflection-implied from the same delta surface
@@ -350,7 +333,6 @@ function HorizonCard({ horizon }: { horizon: Horizon }) {
         </p>
       )}
       <OpportunityBoardMini board={horizon.opportunity_board} />
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       {horizon.notes.length > 0 && (
         <p className="font-mono text-[9px] text-muted-foreground/70">{horizon.notes.join(" · ")}</p>
       )}
@@ -423,24 +405,17 @@ export function OptionsSignalsPanel() {
                 </Badge>
               )}
               <Badge variant={fresh ? "live" : "static"} className="font-mono text-[9px]">
-<<<<<<< HEAD
-                {fresh ? "LIVE" : "STALE"} · {fmtEpochSeconds(data.generated_at)}
-=======
                 {fresh ? "FRESH SNAPSHOT" : "STALE SNAPSHOT"} · {fmtEpochSeconds(data.generated_at)}
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
               </Badge>
             </span>
           )}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-<<<<<<< HEAD
-=======
         <p className="font-mono text-[10px] text-muted-foreground">
           Market-implied decision support only. Uses delayed option-chain / VIX inputs when
           available; no edge, fillability, or executable quote is claimed.
         </p>
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         {isLoading && (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <LoadingCard />

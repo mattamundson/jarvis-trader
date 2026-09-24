@@ -4,10 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-<<<<<<< HEAD
-=======
 from datetime import datetime, timezone
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 from typing import Annotated, Any, Optional
 
 from fastapi import APIRouter, Body, HTTPException, Query
@@ -156,8 +153,6 @@ async def get_safety_status(request: Request) -> dict[str, Any]:
     equity = current_balance if current_balance > 0 else max(starting_balance, 1.0)
     daily_pnl_pct = (daily_pnl / equity) if equity else 0.0
 
-<<<<<<< HEAD
-=======
     # A9: surface the last kill-switch activation so a consumer can tell a
     # just-recovered-from-halt system from one running clean for hours.
     last_ks_ts = base.get("last_kill_switch_ts")
@@ -171,7 +166,6 @@ async def get_safety_status(request: Request) -> dict[str, Any]:
         except (ValueError, TypeError):
             time_since_ks = None
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     status = {
         "kill_switch_active": bool(base.get("is_killed")),
         "kill_switch_reason": base.get("kill_switch_reason"),
@@ -192,12 +186,9 @@ async def get_safety_status(request: Request) -> dict[str, Any]:
         "equity_peak": float(base.get("equity_peak") or 0.0),
         "daily_realized_pnl": float(base.get("daily_realized_pnl") or 0.0),
         "orders_per_minute_limit": cb.get("orders_per_minute_limit"),
-<<<<<<< HEAD
-=======
         "last_kill_switch_ts": last_ks_ts,
         "last_kill_switch_reason_value": base.get("last_kill_switch_reason_value"),
         "time_since_kill_switch_sec": time_since_ks,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     }
     # Feed the Prometheus safety gauges off this read-path (P1.0b). Tolerant and
     # non-raising — observability must never break the safety endpoint.

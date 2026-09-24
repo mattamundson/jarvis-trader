@@ -1845,8 +1845,6 @@ def migration_041(conn: sqlite3.Connection) -> None:
     )
 
 
-<<<<<<< HEAD
-=======
 def migration_042(conn: sqlite3.Connection) -> None:
     """
     042 — strategy_id on paper_trades for per-strategy forward evidence.
@@ -1916,7 +1914,6 @@ def _backfill_strategy_id(params_json: Any) -> Optional[str]:
 
 
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 # ── Migration registry ─────────────────────────────────────────────────────────
 # Add new migrations here in order.  The list index + 1 = migration version.
 
@@ -1962,10 +1959,7 @@ MIGRATIONS: List[Callable[[sqlite3.Connection], None]] = [
     migration_039,  # version 39
     migration_040,  # version 40
     migration_041,  # version 41
-<<<<<<< HEAD
-=======
     migration_042,  # version 42
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 ]
 
 MIGRATION_DESCRIPTIONS: List[str] = [
@@ -2010,10 +2004,7 @@ MIGRATION_DESCRIPTIONS: List[str] = [
     "Bar quality observability: bar_quality_rejections table recording bars rejected by the write-time bar-quality gate (symbol, ts_utc, reason) for the Trust Pane observability surface.",
     "MAE/MFE excursion: mae_pct, mfe_pct, mae_usd, mfe_usd columns on paper_trades for post-trade excursion analytics.",
     "Decision-log audit chain: prev_hash, audit_hash columns on pending_trade_approvals for tamper-evident SHA-256 chaining of pipeline decision snapshots.",
-<<<<<<< HEAD
-=======
     "Strategy attribution: strategy_id column on paper_trades for per-strategy forward-evidence accounting; backfilled from strategy_params decision identity / signal.",
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 ]
 
 

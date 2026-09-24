@@ -27,17 +27,11 @@ No LLM, no DB, no broker, no execution wiring. Pure stdlib + httpx.
 
 from __future__ import annotations
 
-<<<<<<< HEAD
-import csv
-import io
-import logging
-=======
 import asyncio
 import csv
 import io
 import logging
 import math
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 import re
 from bisect import bisect_left
 from dataclasses import dataclass
@@ -63,16 +57,12 @@ OCC_RE = re.compile(r"^([A-Z]+?)(\d{6})([CP])(\d{8})$")
 # Verbatim from Archive/2026/options-vrp/options_vrp/vrp_signal.py.
 FLAT_BAND = 0.005
 
-<<<<<<< HEAD
-DEFAULT_SYMBOLS = ("SPY", "QQQ")
-=======
 # Keep the scheduled default to the existing CBOE-underlying pair. VIX support is
 # opt-in via --symbols VIX until the downstream dashboard/opportunity-board path
 # is explicitly certified with the yfinance fallback.
 DEFAULT_SYMBOLS = ("SPY", "QQQ")
 YFINANCE_VIX_TICKER = "^VIX"
 YFINANCE_VIX_MAX_EXPIRIES = 12
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 LADDER_MULTIPLES = (1.0, 0.5, 0.0, -0.5, -1.0)
 
 DATA_DELAYED_MINUTES = 15
@@ -93,10 +83,7 @@ _CT = ZoneInfo("America/Chicago")
 
 FetchJson = Callable[[str], Awaitable[dict]]
 FetchText = Callable[[str], Awaitable[str]]
-<<<<<<< HEAD
-=======
 FetchVixChain = Callable[[], Awaitable[dict]]
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 
 class OptionsImpliedError(Exception):
@@ -208,8 +195,6 @@ def parse_chain(raw: dict, symbol: str) -> tuple[float, Optional[int], list[Cont
     return float(spot), quote_ts, contracts
 
 
-<<<<<<< HEAD
-=======
 def build_yfinance_vix_raw(
     *,
     spot: float,
@@ -288,7 +273,6 @@ def build_yfinance_vix_raw(
     }
 
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 # ---------------------------------------------------------------------------
 # Expiry / ATM selection
 # ---------------------------------------------------------------------------
@@ -399,19 +383,13 @@ def straddle_expected_move(contracts: list[Contract], expiry: date, spot: float)
 def prob_ladder(
     contracts: list[Contract], expiry: date, spot: float, em_abs: Optional[float]
 ) -> list[dict]:
-<<<<<<< HEAD
-    """Delta-implied P(close above level) at spot ± {0, 0.5, 1.0} × expected move.
-=======
     """Delta-implied P(close above level) at spot ± {0, ±0.5, ±1.0} × expected move.
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
     Uses vendor CALL deltas only (put deltas are negative — never mix signs),
     linearly interpolated on strike between the bracketing listed strikes. A
     level exactly on a listed strike uses that strike's delta unchanged; a
     level outside the listed range gets p_above None (rendered "—"; we never
     extrapolate). Empty when the expected move itself is unavailable.
-<<<<<<< HEAD
-=======
 
     Touch/failure columns (2026-09-04, Amo's spec): each row also carries
     ``p_touch`` and ``p_fail``. Per the reflection approximation (barrier
@@ -422,7 +400,6 @@ def prob_ladder(
     delta/N(d1) convention, not calibrated first-passage probabilities — the
     constant 2.0 ignores the (typically negative) risk-neutral drift and the
     vol smile. They are labeled "reflection-implied" everywhere they render.
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     """
     if em_abs is None:
         return []
@@ -437,20 +414,6 @@ def prob_ladder(
     strikes = [c.strike for c in calls]
     deltas = [c.delta for c in calls]
 
-<<<<<<< HEAD
-    ladder: list[dict] = []
-    for mult in LADDER_MULTIPLES:
-        level = spot + mult * em_abs
-        p_above: Optional[float] = None
-        if len(strikes) >= 2 and strikes[0] <= level <= strikes[-1]:
-            i = bisect_left(strikes, level)
-            if i < len(strikes) and strikes[i] == level:
-                p_above = deltas[i]
-            else:
-                k_lo, k_hi = strikes[i - 1], strikes[i]
-                d_lo, d_hi = deltas[i - 1], deltas[i]
-                p_above = d_lo + (d_hi - d_lo) * (level - k_lo) / (k_hi - k_lo)
-=======
     def _interp(level: float) -> Optional[float]:
         """Linearly interpolated CALL delta at ``level``; None outside the range."""
         if len(strikes) >= 2 and strikes[0] <= level <= strikes[-1]:
@@ -477,7 +440,6 @@ def prob_ladder(
             p_close_beyond = p_above if level >= spot else (1.0 - p_above)
             p_touch = min(1.0, 2.0 * p_close_beyond)
         p_fail = (1.0 - p_touch) if p_touch is not None else None
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         label = "spot" if mult == 0.0 else f"{mult:+.1f} EM"
         ladder.append(
             {
@@ -485,11 +447,8 @@ def prob_ladder(
                 "label": label,
                 "level": round(level, 2),
                 "p_above": round(p_above, 4) if p_above is not None else None,
-<<<<<<< HEAD
-=======
                 "p_touch": round(p_touch, 4) if p_touch is not None else None,
                 "p_fail": round(p_fail, 4) if p_fail is not None else None,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             }
         )
     return ladder
@@ -501,18 +460,13 @@ def build_horizon(
     spot: float,
     label: str,
     today_ct: date,
-<<<<<<< HEAD
-=======
     symbol: str,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 ) -> dict:
     em = straddle_expected_move(contracts, expiry, spot)
     dte = (expiry - today_ct).days
     notes = list(em["notes"])
     if dte == 0:
         notes.append("0DTE — expires at today's close; deltas saturate late in the session")
-<<<<<<< HEAD
-=======
 
     opportunity_board: dict
     try:
@@ -531,7 +485,6 @@ def build_horizon(
             "disclaimer": "Analysis-only defined-risk board from delayed options quotes; not a trade signal.",
         }
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     return {
         "label": label,
         "expiry": expiry.isoformat(),
@@ -546,10 +499,7 @@ def build_horizon(
         if em["expected_move_pct"] is not None
         else None,
         "prob_ladder": prob_ladder(contracts, expiry, spot, em["expected_move_abs"]),
-<<<<<<< HEAD
-=======
         "opportunity_board": opportunity_board,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         "quality": em["quality"],
         "notes": notes,
     }
@@ -561,15 +511,9 @@ def build_symbol_block(symbol: str, raw: dict, now_ct: datetime) -> dict:
     today_ct = now_ct.date()
     nearest, eow = select_expiries({c.expiry for c in contracts}, today_ct)
 
-<<<<<<< HEAD
-    horizons = [build_horizon(contracts, nearest, spot, "nearest", today_ct)]
-    if eow is not None:
-        horizons.append(build_horizon(contracts, eow, spot, "end_of_week", today_ct))
-=======
     horizons = [build_horizon(contracts, nearest, spot, "nearest", today_ct, symbol)]
     if eow is not None:
         horizons.append(build_horizon(contracts, eow, spot, "end_of_week", today_ct, symbol))
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
     # Holiday guard without a holiday calendar: inside RTH a fresh fetch should
     # never be an hour old — CBOE serving the prior session's snapshot means a
@@ -684,8 +628,6 @@ async def _default_fetch_text(url: str) -> str:
         return resp.text
 
 
-<<<<<<< HEAD
-=======
 async def _default_fetch_yfinance_vix_chain() -> dict:
     """Fetch ``^VIX`` options via yfinance and normalize to CBOE-like JSON.
 
@@ -738,7 +680,6 @@ async def _default_fetch_yfinance_vix_chain() -> dict:
     return await asyncio.to_thread(_sync_fetch)
 
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 async def fetch_regime_block(fetch_text: Optional[FetchText] = None) -> dict:
     """Fetch both CBOE daily CSVs and build the regime block."""
     fetch = fetch_text or _default_fetch_text
@@ -751,10 +692,7 @@ async def build_snapshot(
     symbols: tuple[str, ...] = DEFAULT_SYMBOLS,
     *,
     fetch_json: Optional[FetchJson] = None,
-<<<<<<< HEAD
-=======
     fetch_yfinance_vix: Optional[FetchVixChain] = None,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     regime: Optional[dict] = None,
     regime_error: Optional[str] = None,
     now_ct: Optional[datetime] = None,
@@ -768,20 +706,12 @@ async def build_snapshot(
     Returns (snapshot, exit_code) with exit_code 0 (all ok) or 2 (partial).
     """
     fetch = fetch_json or _default_fetch_json
-<<<<<<< HEAD
-=======
     fetch_vix = fetch_yfinance_vix or _default_fetch_yfinance_vix_chain
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     now = now_ct or datetime.now(_CT)
 
     blocks: dict[str, Optional[dict]] = {}
     errors: list[str] = []
     for symbol in symbols:
-<<<<<<< HEAD
-        try:
-            raw = await fetch(CBOE_CHAIN_URL.format(symbol=symbol))
-            blocks[symbol] = build_symbol_block(symbol, raw, now)
-=======
         symbol = symbol.upper()
         try:
             if symbol == "VIX":
@@ -798,7 +728,6 @@ async def build_snapshot(
                 block = build_symbol_block(symbol, raw, now)
                 block["source"] = "CBOE delayed options chain"
                 blocks[symbol] = block
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         except Exception as exc:  # noqa: BLE001 — degrade per-symbol, never sink the run
             logger.warning("%s chain failed: %s", symbol, exc)
             blocks[symbol] = None
