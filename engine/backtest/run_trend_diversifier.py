@@ -633,6 +633,9 @@ def run_wfo(cfg: RunConfig) -> dict:
     verdicts_dir = engine_root / "data" / "gate_v2_verdicts"
     verdicts_dir.mkdir(parents=True, exist_ok=True)
     verdict_file = verdicts_dir / f"{cfg.symbol}_trend_diversifier.json"
+    # Provenance (2026-09-17 audit): record which cache produced this verdict.
+    from backtest._gate_v2_helpers import inject_cache_provenance as _inject_prov  # noqa: E402
+    verdict_doc = _inject_prov(verdict_doc, data_file)
     verdict_file.write_text(json.dumps(verdict_doc, indent=2, default=str))
     print(f"[{cfg.symbol}] Verdict written -> {verdict_file}")
     return verdict_doc

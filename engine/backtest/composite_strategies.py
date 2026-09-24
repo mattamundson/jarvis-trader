@@ -62,8 +62,13 @@ def _vix_series_and_tiers(
     if vix_df is None or vix_df.empty:
         return None, None
     vix_daily = vix_df["close"].copy()
-    vix_daily.index = pd.to_datetime(vix_daily.index).normalize()
-    bar_dates = df.index.normalize()
+    # Normalize both sides to a tz-naive midnight index before the ffill reindex:
+    # pandas >= 3.0 raises on a mixed-tz comparison (tz-aware deep cache vs naive
+    # yfinance VIX index). See trend_signals._daily_date_index.
+    from backtest.trend_signals import _daily_date_index
+
+    vix_daily.index = _daily_date_index(vix_daily.index)
+    bar_dates = _daily_date_index(df.index)
     vix_series = vix_daily.reindex(bar_dates, method="ffill")
     vix_series.index = df.index
     tier_series = None
@@ -154,7 +159,6 @@ def generate_trend_pullback_signals(
 
     in_trade = False
     direction = None
-    entry_bar_close = np.nan
     current_trail = np.nan
     extreme = np.nan  # highest close (long) / lowest close (short) since entry
 
@@ -184,7 +188,6 @@ def generate_trend_pullback_signals(
                 target_3[i] = price + 8.0 * atr_i
                 in_trade = True
                 direction = "long"
-                entry_bar_close = price
                 current_trail = stop_level[i]
                 extreme = price
             # --- Short setup (mirror)
@@ -204,7 +207,6 @@ def generate_trend_pullback_signals(
                 target_3[i] = price - 8.0 * atr_i
                 in_trade = True
                 direction = "short"
-                entry_bar_close = price
                 current_trail = stop_level[i]
                 extreme = price
         else:
@@ -312,7 +314,6 @@ def generate_guarded_meanrev_signals(
     regime_arr = np.full(n, "RANGE_BOUND", dtype=object)
 
     in_trade = False
-    direction = None
     entry_bar = -999
 
     for i in range(n):
@@ -353,7 +354,6 @@ def generate_guarded_meanrev_signals(
             target_2[i] = price + 1.5 * atr_i
             target_3[i] = price + 2.0 * atr_i
             in_trade = True
-            direction = "long"
             entry_bar = i
         # Short fade (mirror)
         elif (
@@ -370,7 +370,6 @@ def generate_guarded_meanrev_signals(
             target_2[i] = price - 1.5 * atr_i
             target_3[i] = price - 2.0 * atr_i
             in_trade = True
-            direction = "short"
             entry_bar = i
 
     df["entry_signal"] = entry_signal
@@ -432,11 +431,16 @@ def overnight_drift_returns(
     vix_pctile = None
     vix_level_s = None
     if vix_df is not None and not vix_df.empty:
+        from backtest.trend_signals import _daily_date_index
+
         vix_daily = vix_df["close"].copy()
-        vix_daily.index = pd.to_datetime(vix_daily.index).normalize()
-        vix_level_s = vix_daily.reindex(daily.index, method="ffill")
+        vix_daily.index = _daily_date_index(vix_daily.index)
+        daily_dates = _daily_date_index(daily.index)
+        vix_level_s = vix_daily.reindex(daily_dates, method="ffill")
+        vix_level_s.index = daily.index
         pct = vix_daily.rolling(vix_regime_lookback).rank(pct=True) * 100.0
-        vix_pctile = pct.reindex(daily.index, method="ffill")
+        vix_pctile = pct.reindex(daily_dates, method="ffill")
+        vix_pctile.index = daily.index
 
     long_ok = (daily["mom"] == 1) & (daily["close"] > daily["ema200"])
     short_ok = (daily["mom"] == -1) & (daily["close"] < daily["ema200"])

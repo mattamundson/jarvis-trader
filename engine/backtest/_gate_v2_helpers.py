@@ -20,6 +20,8 @@ files need to change.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 from pathlib import Path
 
@@ -48,6 +50,33 @@ GATE_DSR: float = 0.10
 
 #: Deflated Sharpe ratio floor — ALT path (trend strategies on daily bars).
 GATE_DSR_ALT: float = 0.30
+
+#: Fraction of OOS windows with PF > 1.0 required on the ALT path.
+#:
+#: NOT YET ENFORCED BY ANY RUNNER — this constant exists so the ALT path can be
+#: aligned with the criterion that is already documented as the *promotion*
+#: requirement, `engine/CLAUDE.md` "Flip-to-active criteria" item 1:
+#:
+#:     p_positive_edge >= 0.6 on a fresh rolling walk-forward run (ALT path)
+#:
+#: The ALT conjunction currently inlined across the runners is
+#: `dsr >= GATE_DSR_ALT and wfo in {MODERATE,STRONG} and
+#:  fixed_params_min_pf >= 1.20 and cost_passes and mc_95th_dd <= GATE_MC_DD_ALT`
+#: — it does NOT reference `p_edge`, so a verdict can print "PASS via alt" with a
+#: p_edge below the documented 0.6 activation bar. Observed 2026-09-17:
+#: `MES_trend_vix_pctile_rank1` reported PASS via alt at p_edge = 0.5926, while 47 of its
+#: 54 traded windows held exactly one trade, the median window held one trade, and ZERO
+#: windows reached the gate-standard 5-trade floor (sample adequacy FALSE) — i.e. the
+#: p_edge numerator was a fraction of windows that cannot support an edge claim.
+#: (An earlier note here said "29 of 32 profitable windows were single-trade / 0.12
+#: excluding them"; that was inferred from PF=inf and is WRONG — inf only means no losing
+#: trades. Corrected to direct per-window trade counts. See PR #866.)
+#:
+#: Wiring this into the ~65 inline ALT conjunctions is a repo-wide behavioural
+#: change to every future verdict; it is deliberately left unwired pending review.
+#: See `docs/research/alt-p-edge-gate-proposal-2026-09-17.md` for the impact
+#: analysis: of 9 recorded ALT-path PASS verdicts, exactly 1 would flip.
+GATE_P_EDGE_ALT: float = 0.60
 
 #: Bootstrap win-rate CI lower-bound floor (Init 2C). Complements DSR — which a
 #: few large outlier wins can carry — by binding on win RELIABILITY. SHADOW /
@@ -417,6 +446,183 @@ def _find_latest_cache(
     return latest
 
 
+def cache_provenance(path) -> dict:
+    """Content-addressed provenance for a cache file, for recording inside a verdict.
+
+    Why this exists (2026-09-17 audit, `docs/research/verdict-artifact-audit-2026-09-17.md`):
+    **zero of 76** verdict artifacts recorded which cache they ran on. Provenance existed only as
+    a filename convention, and that convention is demonstrably unreliable — 8 duplicate-content
+    groups (19 files) file the same bytes under `-deep-`, `-pre-deep-`, and
+    `-shallow-contaminated-` labels. So no "validated on deep data" claim could be independently
+    verified from its artifact.
+
+    Recording this dict in the verdict makes provenance checkable with one line instead of a
+    re-run. Filename is recorded too, but the hash is what makes it tamper-evident.
+
+    Deliberately dependency-light (no pandas): it must work on the raw file even if a loader
+    later changes, and it must be cheap to test.
+    """
+    p = Path(path)
+    if not p.exists():
+        return {"error": "cache_not_found", "cache_file": p.name}
+
+    raw = p.read_bytes()
+    # Timestamps: first and last data row's first CSV field (no pandas needed).
+    lines = raw.decode("utf-8", errors="replace").splitlines()
+    data = [ln for ln in lines[1:] if ln.strip()] if lines else []
+    first_ts = data[0].split(",")[0].strip() if data else ""
+    last_ts = data[-1].split(",")[0].strip() if data else ""
+
+    prov = {
+        "cache_file": p.name,
+        "cache_rows": len(data),
+        "cache_span_first": first_ts,
+        "cache_span_last": last_ts,
+        "cache_bytes": len(raw),
+        "cache_sha256": hashlib.sha256(raw).hexdigest(),
+    }
+    # Flag non-deep provenance on a MEASURABLE basis, not a filename token: the repo names its
+    # deep caches by span (e.g. MES_2019-05-05_2026-08-26_1h.csv), so a `-deep-` token check
+    # misfires on exactly the cache that matters. The standing rule is that a shallow cache
+    # (~2.3y) does NOT certify edge, so span is the thing worth recording.
+    try:
+        from datetime import datetime
+
+        first = datetime.fromisoformat(first_ts)
+        last = datetime.fromisoformat(last_ts)
+        span_years = (last - first).days / 365.25
+        prov["cache_span_years"] = round(span_years, 3)
+        if span_years < 5.0:
+            prov["provenance_note"] = (
+                f"span {span_years:.2f}y < 5.0y: does not meet the deep-data standard"
+            )
+    except (TypeError, ValueError):
+        prov["provenance_note"] = "span unparseable from cache timestamps"
+    return prov
+
+
+def inject_cache_provenance(verdict_doc: dict, data_path=None, df=None) -> dict:
+    """Attach cache provenance to a verdict doc. Adoption is one line per runner.
+
+    The 2026-09-17 audit found 74 modules write verdict files inline, each with its own loader,
+    so there is no single hook. This is the shared step every runner can call instead of
+    reinventing the shape:
+
+        from backtest._gate_v2_helpers import inject_cache_provenance
+        ...
+        verdict_doc = inject_cache_provenance(verdict_doc, data_file)   # or df=df
+
+    Prefers `df.attrs['cache_provenance']` when a frame is supplied (set by loaders that already
+    adopt it), else hashes `data_path` directly. Returns the same dict for chaining. Never raises:
+    a verdict must still be written if provenance cannot be computed — the failure is *recorded*,
+    not swallowed.
+    """
+    try:
+        if df is not None:
+            prov = dict(getattr(df, "attrs", {}).get("cache_provenance") or {})
+        elif data_path is not None:
+            prov = cache_provenance(data_path)
+        else:
+            prov = {}
+        if not prov:
+            prov = {"error": "provenance_unavailable", "note": "neither df.attrs nor data_path provided"}
+        verdict_doc["cache_provenance"] = prov
+        print(f"[PROV] cache={prov.get('cache_file')} rows={prov.get('cache_rows')} "
+              f"span_years={prov.get('cache_span_years')} sha256={str(prov.get('cache_sha256'))[:12]}")
+    except Exception as exc:  # pragma: no cover - never block a verdict write
+        verdict_doc["cache_provenance"] = {"error": "provenance_failed", "detail": str(exc)[:200]}
+    return verdict_doc
+
+
+def campaign_trial_count(symbol: str, verdict_root=None) -> dict:
+    """LOWER BOUND on the true campaign trial count, from DISTINCT recorded verdict artifacts.
+
+    Why (2026-09-17 audit): runners pass their own grid size as `n_trials`, so recorded DSR is
+    deflated against 1-64 trials while the real MES campaign count is in the hundreds. DSR is a
+    cliff, and the ALT floor is 0.30: measured on the current candidate, 0.977 at 4 trials →
+    0.2885 at 200 → 0.0505 at 500. So every recorded DSR understates the deflation.
+
+    Derived from the artifact store rather than picked, and **deduped by content hash** because the
+    audit found the same artifact filed under up to four names (8 duplicate-content groups) — a
+    naive sum of recorded grid sizes double-counts and would overstate the campaign.
+
+    Two honest caveats, both reported in the result rather than buried:
+      * this is a LOWER bound — experiments never written to a verdict file cannot be counted, and
+        hidden trials can only make deflation STRICTER, never looser;
+      * a grid combo count is not the same thing as an independent hypothesis count. It is the
+        best-measurable proxy from the record, not a claim of exactness.
+
+    Use it to REPORT DSR at the campaign count alongside the runner's own grid count. Do not
+    silently replace the grid-count DSR: comparability with historical verdicts depends on both
+    being visible.
+    """
+    import hashlib as _hashlib
+
+    root = Path(verdict_root) if verdict_root is not None else (
+        Path(__file__).resolve().parent.parent / "data" / "gate_v2_verdicts"
+    )
+    sym = (symbol or "").upper()
+    seen: dict[str, int] = {}
+    files_scanned = 0
+    files_matching = 0
+
+    if root.exists():
+        for f in sorted(root.rglob("*.json")):
+            try:
+                raw = f.read_bytes()
+                d = json.loads(raw.decode("utf-8", errors="replace"))
+            except (OSError, ValueError):
+                continue
+            if not isinstance(d, dict):
+                continue
+            files_scanned += 1
+            if str(d.get("symbol", "")).upper() != sym:
+                continue
+            files_matching += 1
+            wc = d.get("wfo_config")
+            wc = wc if isinstance(wc, dict) else {}
+            tc = wc.get("n_combos") or wc.get("grid_combos") or wc.get("n_trials")
+            if not tc:
+                continue
+            digest = _hashlib.sha256(raw).hexdigest()
+            # Same bytes = same run filed under another name -> count the grid once.
+            seen.setdefault(digest, int(tc))
+
+    return {
+        "symbol": sym,
+        "n_trials_lower_bound": sum(seen.values()),
+        "n_distinct_artifacts_counted": len(seen),
+        "n_files_matching_symbol": files_matching,
+        "n_files_scanned": files_scanned,
+        "basis": "sum of wfo_config grid-combo counts over DISTINCT (content-hashed) verdict artifacts",
+        "caveat": "lower bound: unlogged experiments are uncountable and can only increase deflation",
+        "verdict_root": str(root),
+    }
+
+
+def deflation_report(symbol: str, n_grid_combos: int, verdict_root=None) -> dict:
+    """Both deflation bases for a verdict, so the honest one is visible next to the historical one.
+
+    The runner's own `n_grid_combos` is what historical verdicts deflated against, so it is kept for
+    comparability. `n_trials_campaign` is the lower bound derived from the artifact store. Reporting
+    both is deliberate: replacing the grid count outright would silently make new verdicts
+    incomparable with old ones, and not reporting the campaign count is what let a `p_edge`-based
+    PASS survive on 4-trial deflation.
+
+    **Report-only.** No threshold reads these keys; the pass/fail decision is computed elsewhere and
+    unchanged.
+    """
+    c = campaign_trial_count(symbol, verdict_root=verdict_root)
+    return {
+        "n_trials_grid": int(n_grid_combos),
+        "n_trials_campaign": int(c["n_trials_lower_bound"]),
+        "campaign_basis": c["basis"],
+        "campaign_caveat": c["caveat"],
+        "n_distinct_artifacts_counted": c["n_distinct_artifacts_counted"],
+        "enforcement": "report-only: does not alter the pass/fail decision",
+    }
+
+
 def bootstrap_pf_ci_lower(oos_pfs: list[float], n: int = 5000) -> float:
     """Bootstrap 5th-percentile of mean PF distribution; inf-cap baked in."""
     # Cap inf/-inf before bootstrapping — np.percentile returns NaN via inf-inf interpolation
@@ -446,3 +652,62 @@ def classify_wfo_consistency(oos_pfs: list[float]) -> str:
     if pct >= 0.55:
         return "MODERATE"
     return "WEAK"
+
+
+def window_quality(oos_results, gate_min_trades: int = MIN_OOS_TRADES_PER_WINDOW) -> dict:
+    """Honest window-quality decomposition of an OOS window set.
+
+    **ADDITIVE — this function changes no pass/fail decision.**
+
+    Why it exists (2026-09-17): 37 runners override the gate-standard
+    ``MIN_OOS_TRADES_PER_WINDOW`` (5) down to 1, deliberately and with comments —
+    trend strategies generate only 1-3 trades per 2-month OOS window, so a 5-trade
+    floor yields ``INSUFFICIENT_SAMPLE`` everywhere. The consequence is that the
+    reported ``p_edge`` is computed over windows that cannot distinguish edge from a
+    coin flip: for ``MES_sma_trend_vix_pctile_blockCrisis_v1`` the verdict reported
+    ``p_edge = 0.5926`` while 47 of its 54 traded windows held exactly one trade.
+
+    Rather than raise the floor (which would silently fail every trend strategy), this
+    reports the elevation in the open. For the candidate above on the deep cache the
+    measured structure was: 82 windows, 54 with trades, of which **47 held exactly one
+    trade**, median 1.0 trades/window, and **zero windows reached the 5-trade gate floor** —
+    so ``p_edge_at_gate_floor`` is 0.0 and the sample-adequacy check is ``False``. The
+    reported ``p_edge`` of 0.5926 is therefore a fraction of windows that cannot support an
+    edge claim in either direction.
+
+    - ``p_edge`` — the runner's existing definition (unchanged, for comparability)
+    - ``p_edge_excl_single_trade`` — over windows with >= 2 trades
+    - ``p_edge_at_gate_floor`` — over windows meeting the gate-standard floor
+    - ``median_trades_per_window`` / ``sample_adequate_at_gate_floor`` — the same
+      adequacy question the gate already asks via ``MIN_OOS_TRADES_PER_WINDOW``
+    - ``n_windows_single_trade`` — the count of degenerate "profitable" windows
+
+    A verdict whose ``p_edge`` sits near a threshold while
+    ``p_edge_excl_single_trade`` collapses toward 0 is carried by degenerate windows,
+    not by edge.
+    """
+
+    def _p_edge_of(rows, min_trades: int = 1) -> float:
+        pfs = [r.profit_factor for r in rows if getattr(r, "total_trades", 0) >= min_trades]
+        if not pfs:
+            return 0.0
+        return sum(1 for pf in pfs if pf > 1.0) / len(pfs)
+
+    windows = list(oos_results or [])
+    with_trades = [r for r in windows if getattr(r, "total_trades", 0) >= 1]
+    single = [r for r in with_trades if r.total_trades == 1]
+    trades = [int(r.total_trades) for r in with_trades]
+    median_tpw = float(np.median(trades)) if trades else 0.0
+
+    return {
+        "n_windows": len(windows),
+        "n_windows_with_trades": len(with_trades),
+        "n_windows_single_trade": len(single),
+        "gate_min_trades": int(gate_min_trades),
+        "n_windows_at_gate_floor": sum(1 for r in with_trades if r.total_trades >= gate_min_trades),
+        "median_trades_per_window": round(median_tpw, 3),
+        "sample_adequate_at_gate_floor": bool(median_tpw >= gate_min_trades),
+        "p_edge": round(_p_edge_of(windows), 4),
+        "p_edge_excl_single_trade": round(_p_edge_of(windows, 2), 4),
+        "p_edge_at_gate_floor": round(_p_edge_of(windows, gate_min_trades), 4),
+    }

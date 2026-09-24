@@ -1,6 +1,7 @@
 "use client";
 
 import useSWR from "swr";
+import { useEffect, useState } from "react";
 import { Wifi, WifiOff, Activity, Clock } from "lucide-react";
 import { useEngineStatus } from "@/hooks/useEngineStatus";
 import { useEngineWebSocketContext } from "@/lib/engine-websocket-context";
@@ -38,6 +39,14 @@ export function SystemFreshnessStrip() {
   const { isConnected, lastEvent } = useEngineWebSocketContext();
   const lastEventTime = fmtEventTime(eventTimestamp(lastEvent));
 
+  // Hydration-safe rendering: SSR paints the neutral "checking" state, and the
+  // real online/offline state only renders after mount. Without this, a fast
+  // failing /health probe flips the client text (offline) while the server
+  // HTML still says "online", producing a React hydration mismatch (#418).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const engineLabel = !mounted ? "checking…" : isOnline ? "online" : "offline";
+
   // Master-API reachability (Phase 10.1). Shares the "master-status" SWR key
   // with app/master/page.tsx so both consumers dedupe onto one poll.
   // aggregationBannerState() (lib/masterApi.ts) already distinguishes
@@ -71,7 +80,7 @@ export function SystemFreshnessStrip() {
             isOnline ? "bg-bull animate-pulse" : "bg-bear animate-pulse",
           )}
         />
-        Engine {isOnline ? "online" : "offline"}
+        Engine {engineLabel}
       </span>
 
       <span className="flex items-center gap-1.5">

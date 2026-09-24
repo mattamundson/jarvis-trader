@@ -1,0 +1,100 @@
+{
+  "symbol": "MES",
+  "family": "trend",
+  "created_at": "2026-09-12T05:37:15.960251+00:00",
+  "scope": "research-only exact-date/daily-aggregate DM; no runtime config changes",
+  "method": "aggregate trade pnl by exit_date calendar day, inner join dates, DM power=1 on daily pnl score; negative DM_HLN favors A, positive favors B",
+  "warning": "raw dm_edge_screen --trade-align exit_date can distort when duplicate exit timestamps exist because duplicate keys collapse; this report uses daily aggregation instead",
+  "results": [
+    {
+      "n": 94,
+      "dbar": -34.06776595744678,
+      "dm": -0.8535975344261577,
+      "dm_hln": -0.8490449817820511,
+      "p_two_sided": 0.39803650901282306,
+      "a_file": "mes_deep_f60_s200_a2p0_trades_20260912.json",
+      "b_file": "mes_deep_f60_s200_a1p8_trades_20260912.json",
+      "a_params": "60/200/2.0",
+      "b_params": "60/200/1.8",
+      "a_stats": {
+        "trades": 122,
+        "unique_exit_ts": 101,
+        "dup_exit_ts_keys": 1,
+        "max_same_exit_ts": 22
+      },
+      "b_stats": {
+        "trades": 122,
+        "unique_exit_ts": 94,
+        "dup_exit_ts_keys": 1,
+        "max_same_exit_ts": 29
+      },
+      "daily_a_days": 101,
+      "daily_b_days": 94,
+      "inner_join_days": 94,
+      "sum_a_on_join": 13995.64,
+      "sum_b_on_join": 10793.27,
+      "mean_a_join": 148.8898,
+      "mean_b_join": 114.822
+    },
+    {
+      "n": 70,
+      "dbar": 8.78300000000007,
+      "dm": 0.16912634678856425,
+      "dm_hln": 0.16791395591131758,
+      "p_two_sided": 0.8671421654248817,
+      "a_file": "mes_deep_f60_s200_a2p0_trades_20260912.json",
+      "b_file": "mes_deep_f55_s190_a2p0_trades_20260912.json",
+      "a_params": "60/200/2.0",
+      "b_params": "55/190/2.0",
+      "a_stats": {
+        "trades": 122,
+        "unique_exit_ts": 101,
+        "dup_exit_ts_keys": 1,
+        "max_same_exit_ts": 22
+      },
+      "b_stats": {
+        "trades": 127,
+        "unique_exit_ts": 100,
+        "dup_exit_ts_keys": 1,
+        "max_same_exit_ts": 28
+      },
+      "daily_a_days": 101,
+      "daily_b_days": 99,
+      "inner_join_days": 70,
+      "sum_a_on_join": 7625.19,
+      "sum_b_on_join": 8240.0,
+      "mean_a_join": 108.9313,
+      "mean_b_join": 117.7143
+    },
+    {
+      "n": 67,
+      "dbar": 21.862238805970165,
+      "dm": 0.6467340191751442,
+      "dm_hln": 0.6418895013808348,
+      "p_two_sided": 0.5231681575993339,
+      "a_file": "mes_deep_f60_s200_a1p8_trades_20260912.json",
+      "b_file": "mes_deep_f55_s190_a2p0_trades_20260912.json",
+      "a_params": "60/200/1.8",
+      "b_params": "55/190/2.0",
+      "a_stats": {
+        "trades": 122,
+        "unique_exit_ts": 94,
+        "dup_exit_ts_keys": 1,
+        "max_same_exit_ts": 29
+      },
+      "b_stats": {
+        "trades": 127,
+        "unique_exit_ts": 100,
+        "dup_exit_ts_keys": 1,
+        "max_same_exit_ts": 28
+      },
+      "daily_a_days": 94,
+      "daily_b_days": 99,
+      "inner_join_days": 67,
+      "sum_a_on_join": 6731.49,
+      "sum_b_on_join": 8196.26,
+      "mean_a_join": 100.47,
+      "mean_b_join": 122.3322
+    }
+  ]
+}

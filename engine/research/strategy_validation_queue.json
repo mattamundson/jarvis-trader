@@ -1,0 +1,219 @@
+{
+  "schema_version": 1,
+  "queue_id": "jarvis_strategy_validation_queue_wave33",
+  "created_from": [
+    "docs/research/repo-strategy-candidate-inventory.md",
+    "engine/backtest/candidate_registry.json",
+    "engine/research/strategy_registry/*.json"
+  ],
+  "purpose": "Turn mined repository evidence into a bounded validation queue without creating trade permission.",
+  "global_rules": {
+    "no_live_or_paper_routing_change": true,
+    "agentic_loop_minimum_hours": 6,
+    "promotion_requires_human_approval": true,
+    "reference_repos_are_not_alpha": true,
+    "observability_may_only_veto_readiness": true
+  },
+  "promotion_required_gates": [
+    "hypothesis",
+    "data_contract",
+    "backtest",
+    "fees_slippage",
+    "walk_forward",
+    "parameter_stability",
+    "regime_split",
+    "monte_carlo_path_risk",
+    "paper_shadow",
+    "human_approval"
+  ],
+  "states": [
+    "blocked",
+    "needs_data_contract",
+    "ready_to_backtest",
+    "backtest_running",
+    "walk_forward",
+    "paper_shadow",
+    "rejected",
+    "halted",
+    "promotion_candidate"
+  ],
+  "items": [
+    {
+      "id": "MGC_trend_rv_filter_rank1",
+      "symbol": "MGC",
+      "source": "engine/backtest/candidate_registry.json",
+      "priority": 1,
+      "state": "blocked",
+      "next_step": "blocked after data-contract scaffold; collect zero-exposure candidate-tagged forward evidence only after a fresh scoped backlog/runner exists",
+      "blockers": [
+        "MGC currently halted in active-instrument table",
+        "data-contract scaffold exists but no fresh non-archived gate-v2 artifact is linked",
+        "no candidate_id-tagged zero-exposure forward ledger exists"
+      ],
+      "promotion_gates": {
+        "hypothesis": true,
+        "data_contract": true,
+        "backtest": true,
+        "fees_slippage": true,
+        "walk_forward": false,
+        "parameter_stability": false,
+        "regime_split": false,
+        "monte_carlo_path_risk": false,
+        "paper_shadow": false,
+        "human_approval": false
+      },
+      "may_route_orders": false,
+      "evidence_contract": "engine/research/reference_evidence/mgc_trend_rv_filter_rank1_forward_contract.json"
+    },
+    {
+      "id": "MGC_trend_rank4",
+      "symbol": "MGC",
+      "source": "engine/backtest/candidate_registry.json + strategy registry seeded failure",
+      "priority": 2,
+      "state": "halted",
+      "next_step": "keep halted until a fresh honest CORE PASS supersedes 2026-08-16 failure",
+      "blockers": [
+        "fresh 2026-08-16 reevaluation failed gate-v2",
+        "halted instrument"
+      ],
+      "promotion_gates": {
+        "hypothesis": true,
+        "data_contract": true,
+        "backtest": false,
+        "fees_slippage": true,
+        "walk_forward": false,
+        "parameter_stability": false,
+        "regime_split": false,
+        "monte_carlo_path_risk": false,
+        "paper_shadow": false,
+        "human_approval": false
+      },
+      "may_route_orders": false
+    },
+    {
+      "id": "MES_trend_rank11",
+      "symbol": "MES",
+      "source": "engine/backtest/candidate_registry.json + strategy registry seeded failure",
+      "priority": 3,
+      "state": "rejected",
+      "next_step": "do not route; only revisit through a fresh honest gate-v2 PASS after sample adequacy clears",
+      "blockers": [
+        "latest registry evidence is rejected/insufficient-sample",
+        "zero trades fired Jun-Aug 2026 in cited refresh"
+      ],
+      "promotion_gates": {
+        "hypothesis": true,
+        "data_contract": true,
+        "backtest": false,
+        "fees_slippage": true,
+        "walk_forward": false,
+        "parameter_stability": false,
+        "regime_split": false,
+        "monte_carlo_path_risk": false,
+        "paper_shadow": false,
+        "human_approval": false
+      },
+      "may_route_orders": false
+    },
+    {
+      "id": "MES_sma_trend_vix_pctile_blockCrisis_v1",
+      "symbol": "MES",
+      "source": "engine/backtest/candidate_registry.json",
+      "priority": 4,
+      "state": "rejected",
+      "next_step": "do not route and do not mutate the frozen params; reopen only under a NEW candidate id with a fresh honest gate-v2 PASS",
+      "blockers": [
+        "preregistered Crisis-tier block falsified on the deep cache: blocking nothing won the 4-combo grid (PF 1.6478 vs 1.4936 for ['Crisis'])",
+        "nominal ALT PASS applies to the no-block champion, not to the preregistered variant",
+        "campaign-deflated DSR 0.1937 (210 trials, 24 distinct artifacts) is below the 0.30 ALT floor",
+        "sample inadequate at the gate floor: 47 of 82 OOS windows fired exactly one trade; sample_adequate_at_gate_floor=false"
+      ],
+      "promotion_gates": {
+        "hypothesis": true,
+        "data_contract": true,
+        "backtest": true,
+        "fees_slippage": true,
+        "walk_forward": false,
+        "parameter_stability": false,
+        "regime_split": false,
+        "monte_carlo_path_risk": false,
+        "paper_shadow": false,
+        "human_approval": false
+      },
+      "resolution": {
+        "resolved_at": "2026-09-18",
+        "outcome": "rejected",
+        "verdict_artifact": "engine/data/gate_v2_verdicts/MES_trend_vix_pctile_rank1.json",
+        "verdict_snapshot": "docs/research/mes-vix-pctile-rank1-verdict-snapshot-2026-09-18.json",
+        "verdict_snapshot_sha256": "a27ffe8390e02b6cf08037286db0c653e3ba96450aeb54d493ac41fa9b8bccea",
+        "verdict_snapshot_sha256_note": "sha256 of the LF-normalized bytes (git stores this file eol=lf; the Windows working tree is CRLF under core.autocrlf=true)",
+        "verdict_doc": "docs/research/mes-vix-pctile-blockcrisis-verdict-2026-09-18.md",
+        "runner": "engine/backtest/run_mes_trend_vix_pctile_rank1.py",
+        "cache_sha256": "e26631c012b128284e61526dad78e7d39a3c180634dad7398a7dd8cc225f83fe",
+        "cache_span_years": 7.307,
+        "champion_blocked_tiers": [],
+        "preregistered_blocked_tiers": ["Crisis"],
+        "measured": {
+          "pf_no_block": 1.6478,
+          "pf_preregistered_crisis": 1.4936,
+          "pf_ci_lower": 2.2532,
+          "p_edge": 0.5926,
+          "dsr_grid": 0.9688,
+          "dsr_campaign": 0.1937,
+          "n_trials_campaign": 210
+        },
+        "note": "Runner verdict is PASS via alt for the no-block champion only; deflation is report-only in the runner, so the artifact does not encode this rejection. Frozen params were NOT mutated (activation protocol requires a new id when the champion tier set differs)."
+      },
+      "may_route_orders": false
+    },
+    {
+      "id": "SPY_stc_trend_meta_rank1",
+      "symbol": "SPY",
+      "source": "engine/research/strategy_registry/spy_stc_trend_meta_rank1.json",
+      "priority": 5,
+      "state": "rejected",
+      "next_step": "use as scanner-validation warning; do not promote without entirely new validated evidence",
+      "blockers": [
+        "seeded strategy registry evidence is validated-fail",
+        "paper routing gap explicitly accepted separately by Amo"
+      ],
+      "promotion_gates": {
+        "hypothesis": true,
+        "data_contract": true,
+        "backtest": false,
+        "fees_slippage": true,
+        "walk_forward": false,
+        "parameter_stability": false,
+        "regime_split": false,
+        "monte_carlo_path_risk": false,
+        "paper_shadow": false,
+        "human_approval": false
+      },
+      "may_route_orders": false
+    },
+    {
+      "id": "repo_reference_patterns",
+      "symbol": "N/A",
+      "source": "repo-strategy-candidate-inventory.md",
+      "priority": 99,
+      "state": "blocked",
+      "next_step": "convert a reference pattern into a candidate only after it names instrument, data source, runner, artifact path, and blocking conditions",
+      "blockers": [
+        "reference-only/research-scaffolded rows are not concrete strategies"
+      ],
+      "promotion_gates": {
+        "hypothesis": false,
+        "data_contract": false,
+        "backtest": false,
+        "fees_slippage": false,
+        "walk_forward": false,
+        "parameter_stability": false,
+        "regime_split": false,
+        "monte_carlo_path_risk": false,
+        "paper_shadow": false,
+        "human_approval": false
+      },
+      "may_route_orders": false
+    }
+  ]
+}

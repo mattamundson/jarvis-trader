@@ -221,7 +221,7 @@ export function SignalFeedWidget() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
   const isConnected = !error && !isLoading;
-  const decisions = data?.slice(0, 10) ?? [];
+  const decisions = Array.isArray(data) ? data.slice(0, 10) : [];
 
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden">

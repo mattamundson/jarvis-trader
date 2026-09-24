@@ -223,10 +223,6 @@ def test_journal_cache_respects_limit_key() -> None:
     row = (1, "t1", "MES", "buy", 1.0, 5000.0, None, "2026-07-01T15:00:00+00:00",
            None, None, "open", None, None, "trend", None, None, None,
            None, None, None, None, None, None, None, None, "1h")
-            "composite_score", "stc_contrib", "orb_contrib", "vwap_contrib")
-    row = (1, "t1", "MES", "buy", 1.0, 5000.0, None, "2026-07-01T15:00:00+00:00",
-           None, None, "open", None, None, "trend", None, None, None,
-           None, None, None)
     fake = _FakeDb([row])
     T._journal_cache.clear()
 

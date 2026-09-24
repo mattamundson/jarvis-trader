@@ -6,6 +6,9 @@
 # ---------------------------------------------------------------------------
 # 1. Load DISCORD_TOKEN from engine/.env
 # ---------------------------------------------------------------------------
+# Token safety: never pass Discord credentials via DCE --token/-t command-line
+# args. DCE reads DISCORD_TOKEN from this process environment. If DCE reports
+# "Authentication token is invalid", rotate the token before rerunning.
 $envFile = Join-Path $PSScriptRoot "..\engine\.env"
 if (Test-Path $envFile) {
     Get-Content $envFile | ForEach-Object {
@@ -22,6 +25,7 @@ if (-not $token) {
     Write-Error "DISCORD_TOKEN not set in engine/.env. See docs: https://github.com/Tyrrrz/DiscordChatExporter/wiki/Obtaining-Token"
     exit 1
 }
+$env:DISCORD_TOKEN = $token
 
 # ---------------------------------------------------------------------------
 # 2. Paths
@@ -99,7 +103,6 @@ function Export-Channel {
     for ($attempt = 1; $attempt -le $MaxRetries; $attempt++) {
         & $dceExe export `
             --channel $ChannelId `
-            --token $token `
             --format Json `
             --output $exportDir `
             --after $afterDate | ForEach-Object { Write-Host $_ }

@@ -7,8 +7,12 @@ import { SignalsPipelinePanel } from "./components/SignalsPipelinePanel";
 import { ValidationGatesPanel } from "./components/ValidationGatesPanel";
 import { EngineDataPanel } from "./components/EngineDataPanel";
 import { EnvironmentFleetPanel } from "./components/EnvironmentFleetPanel";
+import { RuntimeSnapshotPanel } from "./components/RuntimeSnapshotPanel";
 import { TradingStatusReconciliation } from "@/components/TradingStatusReconciliation";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
+import { SpxIntradayAnalysisCard } from "@/components/SpxIntradayAnalysisCard";
+import { MarketBriefCard } from "@/components/MarketBriefCard";
+import { PaperTradeAuditCard } from "@/components/PaperTradeAuditCard";
 
 /**
  * MISSION CONTROL — single command-center view fusing trading state
@@ -47,6 +51,31 @@ export default function MissionControlPage() {
             a symbol trades when it shouldn't, or fails to when it should). */}
         <WidgetErrorBoundary name="Trading Status Reconciliation">
           <TradingStatusReconciliation />
+        </WidgetErrorBoundary>
+
+        {/* Panel 1c — Read-only operator runtime snapshot. This remains useful
+            when the engine is fully down because it reads a machine-local,
+            redacted artifact rather than live engine routes. */}
+        <WidgetErrorBoundary name="Runtime Snapshot">
+          <RuntimeSnapshotPanel />
+        </WidgetErrorBoundary>
+
+        {/* Panel 1d — Broad morning market machine score. Dashboard-only,
+            analysis-only; reads the generated brief artifact and never routes orders. */}
+        <WidgetErrorBoundary name="Market Brief Machine Score">
+          <MarketBriefCard />
+        </WidgetErrorBoundary>
+
+        {/* Panel 1e — SPX intraday decision intelligence. Dashboard-only,
+            analysis-only; it never routes orders or mutates risk state. */}
+        <WidgetErrorBoundary name="SPX Intraday Decision">
+          <SpxIntradayAnalysisCard />
+        </WidgetErrorBoundary>
+
+        {/* Panel 1f — Paper trade audit. Read-only summary of paper trading
+            activity: P&L, trade count, MES status. Refreshes every 30s. */}
+        <WidgetErrorBoundary name="Paper Trade Audit">
+          <PaperTradeAuditCard />
         </WidgetErrorBoundary>
 
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">

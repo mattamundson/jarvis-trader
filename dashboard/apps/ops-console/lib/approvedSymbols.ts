@@ -1,12 +1,12 @@
 /**
  * Default symbols for dashboard/Discord briefing widgets (T3-23, 2026-07-09).
- * Canonical active paper-trading pair per the 2026-05-24 instrument switch —
- * see jarvis-trader/CLAUDE.md "Active Instruments". Mirrors
+ * MES-only since 2026-08-01 — MGC joined DO_NOT_TRADE_SYMBOLS (engine halt
+ * list, PR #552), so the briefing/baseline pair is MES alone. Mirrors
  * `engine/backtest/signals.py::DEFAULT_BRIEFING_SYMBOLS` (TS/Python can't
  * share a literal source, so this is the dashboard-side twin) — update both
  * together if the active pair ever changes again.
  */
-export const DEFAULT_BRIEFING_SYMBOLS = ["MES", "MGC"] as const;
+export const DEFAULT_BRIEFING_SYMBOLS = ["MES"] as const;
 
 /**
  * Symbols currently blocked from trading, mirroring the engine's live

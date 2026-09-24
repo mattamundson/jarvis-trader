@@ -173,7 +173,10 @@ def load_deep_cache(symbol: str) -> pd.DataFrame:
             f"({rep['n_suspicious_gaps']} suspicious gaps). Not certifying on "
             f"holed data."
         )
-    df = pd.read_csv(cand)
+    df = pd.read_csv(cand)    # Cache provenance (2026-09-17 audit: 0/76 verdicts recorded which cache they ran on).
+    from backtest._gate_v2_helpers import cache_provenance as _cp  # noqa: E402
+    df.attrs["cache_provenance"] = _cp(cand)
+
     df.columns = [c.lower() for c in df.columns]
     ts_col = "timestamp" if "timestamp" in df.columns else "datetime"
     ts = pd.to_datetime(df[ts_col])
@@ -285,9 +288,13 @@ def replay_trades(
     closes_by_date = closes.groupby(closes.index.normalize()).last()
     vix_series = None
     if not vix.empty:
+        from backtest.trend_signals import _daily_date_index
+
         vix_daily = vix.copy()
-        vix_daily.index = pd.to_datetime(vix_daily.index).normalize()
-        vix_series = vix_daily.reindex(sig.index.normalize(), method="ffill")
+        # Align tz conventions before the ffill reindex (pandas >= 3.0 raises on a
+        # mixed-tz comparison: tz-aware bar index vs naive daily VIX index).
+        vix_daily.index = _daily_date_index(vix_daily.index)
+        vix_series = vix_daily.reindex(_daily_date_index(sig.index), method="ffill")
         vix_series.index = sig.index
 
     trades: list[OptTrade] = []
@@ -594,6 +601,9 @@ def main() -> int:
 
     VERDICTS_DIR.mkdir(parents=True, exist_ok=True)
     out_file = VERDICTS_DIR / f"{SYMBOL}_options_vertical_sma_{FAST}_{SLOW}_{ATR_TRAIL_MULT}.json"
+    # Record the provenance carried on the frame (see loader).
+    from backtest._gate_v2_helpers import inject_cache_provenance as _ip  # noqa: E402
+    out = _ip(out, df=df)
     out_file.write_text(json.dumps(out, indent=2, allow_nan=False))
     append_journal(VERDICTS_DIR, out, source_file=out_file.name)
 

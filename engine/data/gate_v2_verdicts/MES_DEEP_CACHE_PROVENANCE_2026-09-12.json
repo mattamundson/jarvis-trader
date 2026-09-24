@@ -1,0 +1,399 @@
+{
+  "symbol": "MES",
+  "family": "trend",
+  "active_cache": {
+    "blank_field_count": 1720,
+    "byte_size": 3859723,
+    "duplicate_timestamps": 0,
+    "exists": true,
+    "filename": "MES_2019-05-05_2026-08-26_1h.csv",
+    "first_row": {
+      "close": "2908.5",
+      "high": "2926.75",
+      "instrument_id": "7849.0",
+      "low": "2894.75",
+      "open": "2925.75",
+      "publisher_id": "1.0",
+      "rtype": "34.0",
+      "symbol": "MES.c.0",
+      "timestamp": "2019-05-05 22:00:00+00:00",
+      "volume": "202.0"
+    },
+    "first_timestamp": "2019-05-05 22:00:00+00:00",
+    "header": [
+      "timestamp",
+      "rtype",
+      "publisher_id",
+      "instrument_id",
+      "open",
+      "high",
+      "low",
+      "close",
+      "volume",
+      "symbol"
+    ],
+    "interval_seconds": {
+      "max": 277200.0,
+      "min": 3600.0,
+      "mode_top10": [
+        [
+          "3600",
+          41120
+        ],
+        [
+          "7200",
+          1449
+        ],
+        [
+          "180000",
+          314
+        ],
+        [
+          "21600",
+          45
+        ],
+        [
+          "205200",
+          31
+        ],
+        [
+          "266400",
+          10
+        ],
+        [
+          "176400",
+          7
+        ],
+        [
+          "183600",
+          7
+        ],
+        [
+          "190800",
+          7
+        ],
+        [
+          "18000",
+          4
+        ]
+      ]
+    },
+    "invalid_numeric_count": 0,
+    "invalid_numeric_examples": [],
+    "last_row": {
+      "close": "7710.0",
+      "high": "7710.75",
+      "instrument_id": "",
+      "low": "7690.25",
+      "open": "7692.25",
+      "publisher_id": "",
+      "rtype": "",
+      "symbol": "",
+      "timestamp": "2026-08-26 20:00:00+00:00",
+      "volume": "39868.0"
+    },
+    "last_timestamp": "2026-08-26 20:00:00+00:00",
+    "nan_token_count": 0,
+    "negative_volume_count": 0,
+    "numeric_ranges": {
+      "close": {
+        "max": 7830.25,
+        "min": 2174.0
+      },
+      "high": {
+        "max": 7838.5,
+        "min": 2197.5
+      },
+      "low": {
+        "max": 7826.25,
+        "min": 2174.0
+      },
+      "open": {
+        "max": 7830.25,
+        "min": 2174.0
+      },
+      "volume": {
+        "max": 693465.0,
+        "min": 1.0
+      }
+    },
+    "ohlc_violation_count": 0,
+    "ohlc_violation_examples": [],
+    "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-dm-edge-screen-20260911\\engine\\backtest\\cache\\MES_2019-05-05_2026-08-26_1h.csv",
+    "real_span_years": 7.309984,
+    "row_count": 43010,
+    "sha256": "e26631c012b128284e61526dad78e7d39a3c180634dad7398a7dd8cc225f83fe",
+    "timestamp_monotonic_violations": 0,
+    "timestamp_parse_bad_count": 0,
+    "timestamp_parse_bad_examples": []
+  },
+  "archive_cross_checks": [
+    {
+      "blank_field_count": 1448,
+      "byte_size": 3855052,
+      "duplicate_timestamps": 0,
+      "exists": true,
+      "filename": "MES_2019-05-05_2026-08-23_1h.csv",
+      "first_row": {
+        "close": "2908.5",
+        "high": "2926.75",
+        "instrument_id": "7849.0",
+        "low": "2894.75",
+        "open": "2925.75",
+        "publisher_id": "1.0",
+        "rtype": "34.0",
+        "symbol": "MES.c.0",
+        "timestamp": "2019-05-05 22:00:00+00:00",
+        "volume": "202.0"
+      },
+      "first_timestamp": "2019-05-05 22:00:00+00:00",
+      "header": [
+        "timestamp",
+        "rtype",
+        "publisher_id",
+        "instrument_id",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "symbol"
+      ],
+      "interval_seconds": {
+        "max": 277200.0,
+        "min": 3600.0,
+        "mode_top10": [
+          [
+            "3600",
+            41054
+          ],
+          [
+            "7200",
+            1447
+          ],
+          [
+            "180000",
+            314
+          ],
+          [
+            "21600",
+            45
+          ],
+          [
+            "205200",
+            31
+          ],
+          [
+            "266400",
+            10
+          ],
+          [
+            "176400",
+            7
+          ],
+          [
+            "183600",
+            7
+          ],
+          [
+            "190800",
+            7
+          ],
+          [
+            "18000",
+            4
+          ]
+        ]
+      },
+      "invalid_numeric_count": 0,
+      "invalid_numeric_examples": [],
+      "last_row": {
+        "close": "7683.75",
+        "high": "7694.75",
+        "instrument_id": "",
+        "low": "7681.5",
+        "open": "7693.75",
+        "publisher_id": "",
+        "rtype": "",
+        "symbol": "",
+        "timestamp": "2026-08-23 22:00:00+00:00",
+        "volume": "5444.0"
+      },
+      "last_timestamp": "2026-08-23 22:00:00+00:00",
+      "nan_token_count": 0,
+      "negative_volume_count": 0,
+      "numeric_ranges": {
+        "close": {
+          "max": 7830.25,
+          "min": 2174.0
+        },
+        "high": {
+          "max": 7838.5,
+          "min": 2197.5
+        },
+        "low": {
+          "max": 7826.25,
+          "min": 2174.0
+        },
+        "open": {
+          "max": 7830.25,
+          "min": 2174.0
+        },
+        "volume": {
+          "max": 693465.0,
+          "min": 1.0
+        }
+      },
+      "ohlc_violation_count": 0,
+      "ohlc_violation_examples": [],
+      "path": "C:\\Users\\mattm\\Archive\\2026\\ci-cache-cleanup\\MES_2019-05-05_2026-08-23_1h.csv",
+      "real_span_years": 7.301998,
+      "row_count": 42942,
+      "sha256": "327c595e527865ba90958cf1beae996e647e5f2c33809dcd5c9425cd34161721",
+      "timestamp_monotonic_violations": 0,
+      "timestamp_parse_bad_count": 0,
+      "timestamp_parse_bad_examples": []
+    },
+    {
+      "blank_field_count": 0,
+      "byte_size": 2683035,
+      "duplicate_timestamps": 0,
+      "exists": true,
+      "filename": "MES_2015-01-01_2026-08-16_1h.csv",
+      "first_row": {
+        "close": "2908.5",
+        "high": "2926.75",
+        "low": "2894.75",
+        "open": "2925.75",
+        "timestamp": "2019-05-05 22:00:00+00:00",
+        "volume": "202"
+      },
+      "first_timestamp": "2019-05-05 22:00:00+00:00",
+      "header": [
+        "timestamp",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "interval_seconds": {
+        "max": 277200.0,
+        "min": 3600.0,
+        "mode_top10": [
+          [
+            "3600",
+            40944
+          ],
+          [
+            "7200",
+            1443
+          ],
+          [
+            "180000",
+            312
+          ],
+          [
+            "21600",
+            45
+          ],
+          [
+            "205200",
+            31
+          ],
+          [
+            "266400",
+            10
+          ],
+          [
+            "176400",
+            7
+          ],
+          [
+            "183600",
+            7
+          ],
+          [
+            "190800",
+            7
+          ],
+          [
+            "18000",
+            4
+          ]
+        ]
+      },
+      "invalid_numeric_count": 0,
+      "invalid_numeric_examples": [],
+      "last_row": {
+        "close": "7802.0",
+        "high": "7806.0",
+        "low": "7800.0",
+        "open": "7805.25",
+        "timestamp": "2026-08-14 20:00:00+00:00",
+        "volume": "18662"
+      },
+      "last_timestamp": "2026-08-14 20:00:00+00:00",
+      "nan_token_count": 0,
+      "negative_volume_count": 0,
+      "numeric_ranges": {
+        "close": {
+          "max": 7830.25,
+          "min": 2174.0
+        },
+        "high": {
+          "max": 7838.5,
+          "min": 2197.5
+        },
+        "low": {
+          "max": 7826.25,
+          "min": 2174.0
+        },
+        "open": {
+          "max": 7830.25,
+          "min": 2174.0
+        },
+        "volume": {
+          "max": 693465.0,
+          "min": 1.0
+        }
+      },
+      "ohlc_violation_count": 0,
+      "ohlc_violation_examples": [],
+      "path": "C:\\Users\\mattm\\Archive\\2026\\ci-cache-cleanup\\MES_2015-01-01_2026-08-16_1h.csv",
+      "real_span_years": 7.277129,
+      "row_count": 42826,
+      "sha256": "f3156a3c5befe274c8fd0f99eb8fc90449745f65895c7d91bb8b16c7cfa46762",
+      "timestamp_monotonic_violations": 0,
+      "timestamp_parse_bad_count": 0,
+      "timestamp_parse_bad_examples": []
+    }
+  ],
+  "bar_interval": "1h",
+  "created_at": "2026-09-12T07:38:04+00:00",
+  "lineage": {
+    "active_source": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-dm-edge-screen-20260911\\engine\\backtest\\cache\\MES_2019-05-05_2026-08-26_1h.csv",
+    "related_evidence_artifacts": [
+      "engine/data/gate_v2_verdicts/MES_DEEP_ADJACENT_FAMILY_DM_2026-09-12.md",
+      "engine/data/gate_v2_verdicts/MES_DEEP_DATE_ALIGNED_DM_2026-09-12.md",
+      "engine/data/gate_v2_verdicts/MES_DEEP_FAMILY_DEFLECTION_2026-09-12.md",
+      "C:/Users/mattm/master-jarvis/second-brain/reports/MES_DEEP_ADJACENT_FAMILY_IMPLEMENTATION_SUMMARY_2026-09-12T05-42-45Z.md"
+    ],
+    "selected_reason": "Latest verified local MES 1h cache by endpoint and row count; archived named 2015 cache begins at 2019-05-05 and is not true 2015 coverage."
+  },
+  "safety_boundary": {
+    "broker_execution_changed": false,
+    "env_changed": false,
+    "kill_switch_changed": false,
+    "live_trading_changed": false,
+    "paper_config_changed": false,
+    "risk_config_changed": false,
+    "symbol_gate_changed": false
+  },
+  "scope": "research-only MES 1h deep-cache provenance; no runtime/risk/kill-switch/broker/.env/paper_config/symbol-gate changes",
+  "statistical_use_boundary": {
+    "best_point_estimate": "60/200/2.0",
+    "reason": "Cache provenance supports reproducibility only; PR #814 DM/DSR/PBO evidence did not statistically certify superiority.",
+    "runtime_promotion_eligible": false
+  }
+}

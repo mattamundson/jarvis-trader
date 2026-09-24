@@ -1,0 +1,36 @@
+{
+  "schema_version": "reference-evidence.v1",
+  "reference_repo": "mattamundson/polybot",
+  "reference_commit": "f298140",
+  "status": "research_only_not_validated_alpha",
+  "non_duplicative_value": [
+    "decision_time_book_freshness",
+    "paired_leg_inventory",
+    "order_lifecycle_visibility",
+    "settlement_aware_replay",
+    "venue_specific_payload_separation"
+  ],
+  "source_files": [
+    "docs/STRATEGY_RESEARCH_GUIDE.md",
+    "docs/EXAMPLE_STRATEGY_SPEC.md",
+    "analytics-service/clickhouse/init/0095_strategy_validation.sql",
+    "analytics-service/clickhouse/init/0098_order_lifecycle_metrics.sql",
+    "executor-service/src/main/java/com/polybot/hft/executor/web/LiveTradingGuardFilter.java",
+    "executor-service/src/main/java/com/polybot/hft/executor/sim/PaperExchangeSimulator.java"
+  ],
+  "safety_boundary": {
+    "live_order_routing_changed": false,
+    "paper_order_routing_changed": false,
+    "runtime_config_changed": false,
+    "secret_or_env_changed": false,
+    "pm2_or_schedule_changed": false
+  },
+  "required_gates": [
+    "utc_timestamp_normalization",
+    "probability_bounds",
+    "bid_ask_sanity",
+    "venue_payload_isolation",
+    "explicit_resolution_status",
+    "deterministic_replay_hash"
+  ]
+}

@@ -48,7 +48,6 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 engine_root = Path(__file__).parent.parent
@@ -120,6 +119,7 @@ CHAMPION_BT_ARGS = {
 }
 COMMISSION = 0.62  # realistic tier (engine default)
 SLIPPAGE_TICKS = 2.0
+SPREAD_TICKS = 0.5  # config default; explicit so offline research runs do not load .env
 VIX_TIERS = ("Crisis", "HighVol", "MidVol", "LowVol")
 
 
@@ -136,7 +136,10 @@ def load_deep_cache(symbol: str, smoke: bool = False, cache_override: str | None
             f"Deep cache not found: {path}. Fetch deep data first "
             f"(see jarvis-deep-validation skill)."
         )
-    df = pd.read_csv(path)
+    df = pd.read_csv(path)    # Cache provenance (2026-09-17 audit: 0/76 verdicts recorded which cache they ran on).
+    from backtest._gate_v2_helpers import cache_provenance as _cp  # noqa: E402
+    df.attrs["cache_provenance"] = _cp(path)
+
     df.columns = [c.lower() for c in df.columns]
     ts_col = "timestamp" if "timestamp" in df.columns else "datetime"
     ts = pd.to_datetime(df[ts_col])
@@ -194,7 +197,7 @@ def load_vix(csv_path: str | None) -> pd.DataFrame | None:
         raise SystemExit(
             "[VIX] no --vix-csv given, no VIX_*.csv cache found, and yfinance not installed. "
             "Provide --vix-csv or install yfinance."
-        )
+        ) from None
     print("[VIX] Downloading ^VIX daily via yfinance ...")
     vix = yf.download("^VIX", start="2015-01-01", progress=False, auto_adjust=True)
     if vix.empty:
@@ -299,6 +302,7 @@ def run_combo(
     bt = Backtester(
         commission_per_contract=COMMISSION,
         slippage_ticks=SLIPPAGE_TICKS,
+        spread_ticks=SPREAD_TICKS,
         **bt_args,
     )
     res = bt.run(df_sig, symbol=symbol, multiplier=SYMBOL_MULTIPLIER[symbol])
@@ -337,6 +341,7 @@ def run_combo_with_pnls(
     mc_seed: int,
     strategy: str = "trend",
     extra: dict | None = None,
+    include_trades: bool = False,
 ) -> dict:
     """run_combo + MC bootstrap in one call; returns a full row dict.
 
@@ -380,6 +385,7 @@ def run_combo_with_pnls(
     bt = Backtester(
         commission_per_contract=COMMISSION,
         slippage_ticks=SLIPPAGE_TICKS,
+        spread_ticks=SPREAD_TICKS,
         **bt_args,
     )
     res = bt.run(df_sig, symbol=symbol, multiplier=SYMBOL_MULTIPLIER[symbol])
@@ -427,7 +433,41 @@ def run_combo_with_pnls(
         row["mc_median_pf"] = None
         row["mc_pf_ci_95_low"] = None
         row["mc_p_positive_edge"] = None
+    if include_trades:
+        row["_trades"] = [_serialize_trade_for_iterate(t, row) for t in res.trades]
     return row
+
+
+def _serialize_trade_for_iterate(trade, row: dict) -> dict:
+    """Serialize one backtest trade with enough context for trade-level DM tests.
+
+    Private `_trades` payloads are split to `--trades-out` so the historical
+    aggregate `--out` schema remains unchanged unless explicitly requested.
+    """
+    base = trade.to_dict() if hasattr(trade, "to_dict") else dict(trade)
+    return {
+        "symbol": row["symbol"],
+        "strategy": row["strategy"],
+        "fast": row["fast"],
+        "slow": row["slow"],
+        "atr_trail_mult": row["atr_trail_mult"],
+        "vix_min": row["vix_min"],
+        "vix_max": row["vix_max"],
+        "vix_regime_block": row["vix_regime_block"],
+        "fixed_contracts": row["fixed_contracts"],
+        "entry_date": base.get("entry_date"),
+        "exit_date": base.get("exit_date"),
+        "direction": base.get("direction"),
+        "entry_price": base.get("entry_price"),
+        "exit_price": base.get("exit_price"),
+        "contracts": base.get("contracts"),
+        "pnl": base.get("pnl"),
+        "pnl_pct": base.get("pnl_pct"),
+        "exit_reason": base.get("exit_reason"),
+        "holding_bars": base.get("holding_bars"),
+        "regime": base.get("regime"),
+        "bias": base.get("bias"),
+    }
 
 
 def main() -> int:
@@ -452,6 +492,12 @@ def main() -> int:
     ap.add_argument("--mc-resamples", type=int, default=2_000)
     ap.add_argument("--mc-seed", type=int, default=42)
     ap.add_argument("--out", type=str, default=None, help="results JSON path")
+    ap.add_argument(
+        "--trades-out",
+        type=str,
+        default=None,
+        help="optional sidecar JSON path with per-trade OOS/backtest records for DM tests",
+    )
     args = ap.parse_args()
 
     df = load_deep_cache(args.symbol, smoke=args.smoke, cache_override=args.cache)
@@ -485,15 +531,20 @@ def main() -> int:
         print("[SMOKE] single combo, tail window — wiring proof only")
 
     rows: list[dict] = []
+    trade_rows: list[dict] = []
     extra = {"bb_std": args.mrb_bb_std, "max_hold_bars": args.mrb_max_hold}
     for fast, slow, atr_trail_mult in combos:
         for regime_block in vix_regime_sets:
-            rows.append(run_combo_with_pnls(
+            row = run_combo_with_pnls(
                 df, args.symbol, fast, slow, atr_trail_mult,
                 vix_df, args.vix_min, args.vix_max, regime_block,
                 args.fixed_contracts, args.mc_resamples, args.mc_seed,
                 strategy=args.strategy, extra=extra,
-            ))
+                include_trades=bool(args.trades_out),
+            )
+            if args.trades_out:
+                trade_rows.extend(row.pop("_trades", []))
+            rows.append(row)
             print(f"  [{len(rows)}/{len(combos)*len(vix_regime_sets)}] fast={fast} slow={slow} "
                   f"atr={atr_trail_mult} vix_block={regime_block} "
                   f"trades={rows[-1]['total_trades']} pf={rows[-1]['profit_factor']}")
@@ -521,10 +572,29 @@ def main() -> int:
     if args.out:
         out_path = Path(args.out)
         out_path.parent.mkdir(parents=True, exist_ok=True)
+        # Record the provenance carried on the frame (see loader).
+        from backtest._gate_v2_helpers import inject_cache_provenance as _ip  # noqa: E402
+        doc = _ip(doc, df=df)
         out_path.write_text(json.dumps(doc, indent=2, default=str))
         print(f"\nWrote {len(rows)} rows -> {out_path}")
     else:
         print(json.dumps(doc, indent=2, default=str))
+
+    if args.trades_out:
+        trades_doc = {
+            "generated_at": doc["generated_at"],
+            "symbol": args.symbol,
+            "strategy": args.strategy,
+            "cache": doc["cache"],
+            "cache_is_override": doc["cache_is_override"],
+            "n_rows": len(rows),
+            "n_trade_rows": len(trade_rows),
+            "trades": trade_rows,
+        }
+        trades_path = Path(args.trades_out)
+        trades_path.parent.mkdir(parents=True, exist_ok=True)
+        trades_path.write_text(json.dumps(trades_doc, indent=2, default=str))
+        print(f"Wrote {len(trade_rows)} trade rows -> {trades_path}")
 
     # Screening quick-read (best by mc_p_positive_edge, min trades)
     qualified = [r for r in rows if r["total_trades"] >= 10 and (r.get("mc_p_positive_edge") or 0) >= 0.6]

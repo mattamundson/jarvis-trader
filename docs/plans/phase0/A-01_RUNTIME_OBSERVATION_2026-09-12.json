@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "work_package": "A-01",
+  "captured_at": "2026-09-12T02:23:29-0500",
+  "capture_mode": "read_only_loopback_gets_and_os_port_listing",
+  "capital_authority": "paper_only",
+  "live_authority_granted": false,
+  "runtime_endpoints_observed": {
+    "engine_health": "http://127.0.0.1:8010/health",
+    "engine_openapi": "http://127.0.0.1:8010/openapi.json",
+    "dashboard_root": "http://127.0.0.1:3010/"
+  },
+  "ports_observed": {
+    "dashboard_3010": "LISTENING pid 43660",
+    "engine_8010": "LISTENING pid 47136",
+    "ib_gateway_4002": "not observed as local LISTENING in netstat excerpt"
+  },
+  "engine_health_redacted": {
+    "status": "ok",
+    "version": "1.1.0",
+    "live_trading": false,
+    "kill_switch_active": true,
+    "paper_mode": true,
+    "database": "connected",
+    "ibkr_connected": true,
+    "ibkr_execution_connected": true,
+    "execution_connected_verified": false,
+    "ib_execution_stale": true,
+    "ibkr_data_connected": false,
+    "ibgateway_alive": false,
+    "ibgateway_port": 4002,
+    "ibkr_broker_probe_ok": true,
+    "schwab_connected": false,
+    "paper_trading": null,
+    "market_data_fresh": true,
+    "market_data_stale_symbols": []
+  },
+  "dashboard_observation": {
+    "root_status": "401 Unauthorized",
+    "auth": "Basic realm present; no credentials used"
+  },
+  "openapi_observation": {
+    "title": "JARVIS TRADER",
+    "version": "0.1.0",
+    "paths": 409
+  },
+  "claim_boundary": "E2 runtime-read observation only for listed fields; broker account identity, loaded risk policy hash, and credential facts remain unobserved/redacted. No broker mutation was performed.",
+  "blockers_remaining": [
+    "Redacted loaded risk policy values not captured as a signed artifact.",
+    "Broker account identity intentionally not captured here; requires signed redacted operator receipt.",
+    "execution_connected_verified is false and ib_execution_stale is true in /health.",
+    "ibgateway_alive is false while ibkr_broker_probe_ok is true; requires broker-spine disposition before ISG-0 closure."
+  ]
+}

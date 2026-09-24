@@ -124,7 +124,10 @@ def _params_from_combo(mode: str, combo: tuple) -> dict:
 
 
 def _load_data(data_file: Path) -> pd.DataFrame:
-    df = pd.read_csv(data_file)
+    df = pd.read_csv(data_file)    # Cache provenance (2026-09-17 audit: 0/76 verdicts recorded which cache they ran on).
+    from backtest._gate_v2_helpers import cache_provenance as _cp  # noqa: E402
+    df.attrs["cache_provenance"] = _cp(data_file)
+
     df.columns = [c.lower() for c in df.columns]
     ts_col = "timestamp" if "timestamp" in df.columns else "datetime"
     df[ts_col] = pd.to_datetime(df[ts_col], utc=True)
@@ -410,6 +413,9 @@ def run_one(symbol: str, mode: str) -> dict:
             "motivation": "Saty primitives existed only as analyst indicators; never gate-tested as a mechanical strategy until now (prompted by the 2026-06-12 TOS_Levels live snapshot).",
         },
     }
+    # Record the provenance carried on the frame (see loader).
+    from backtest._gate_v2_helpers import inject_cache_provenance as _ip  # noqa: E402
+    doc = _ip(doc, df=df)
     out.write_text(json.dumps(doc, indent=2, default=str))
     print(f"[SATY-{symbol}-{mode}] verdict -> {out.name}")
     return doc

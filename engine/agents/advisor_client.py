@@ -23,15 +23,14 @@ JARVIS integration points
 3. Pipeline — when 2+ Stage 1 agents returned errors, consult Opus for a
    degraded-mode best-available decision.
 
-The client is optional — pipelines gracefully no-op when JarvisLLMClient or
-ANTHROPIC_API_KEY is unavailable. It never raises on failure; the original
-decision is returned unchanged so the pipeline stays deterministic.
+The client is optional — pipelines gracefully no-op when JarvisLLMClient is
+unavailable. It never raises on failure; the original decision is returned
+unchanged so the pipeline stays deterministic.
 """
 
 from __future__ import annotations
 
 import logging
-import os
 import re
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
@@ -101,7 +100,7 @@ class AdvisorClient:
     TIEBREAK_TOLERANCE = 0.05
     # Escalate when trader confidence is below this value.
     LOW_CONFIDENCE_THRESHOLD = 0.5
-    # Advisor always uses the most capable model.
+    # Default premium fallback when no real provider-aware client is available.
     ADVISOR_MODEL = "claude-opus-4-7"
     # Cap advisor response to contain cost; verdicts/refinements are short.
     ADVISOR_MAX_TOKENS = 600
@@ -114,8 +113,8 @@ class AdvisorClient:
 
         Args:
             llm_client: Optional JarvisLLMClient instance. If None, the client
-                tries to lazy-load one using ANTHROPIC_API_KEY from the env.
-                If no client can be constructed, the advisor no-ops gracefully.
+                tries to lazy-load one from the active provider config. If no
+                client can be constructed, the advisor no-ops gracefully.
         """
         self.llm = llm_client
         if self.llm is None:
@@ -123,7 +122,7 @@ class AdvisorClient:
 
     @staticmethod
     def _try_lazy_load_llm() -> Optional[Any]:
-        """Attempt to construct a JarvisLLMClient. Never raises."""
+        """Attempt to construct a JarvisLLMClient from the active provider config. Never raises."""
         try:
             # Import shape matches engine/llm/client.py
             from llm.client import JarvisLLMClient  # type: ignore
@@ -138,15 +137,8 @@ class AdvisorClient:
                 )
                 return None
 
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
-        if not api_key:
-            logger.info(
-                "AdvisorClient: ANTHROPIC_API_KEY not set; advisor will no-op."
-            )
-            return None
-
         try:
-            return JarvisLLMClient(api_key=api_key)
+            return JarvisLLMClient()
         except Exception as e:
             logger.warning(
                 "AdvisorClient: failed to construct JarvisLLMClient (%s); "
@@ -187,6 +179,18 @@ class AdvisorClient:
     def is_available(self) -> bool:
         """Whether the advisor can actually make LLM calls right now."""
         return self.llm is not None
+
+    @staticmethod
+    def _resolve_model(llm_client: Any) -> str:
+        """Prefer the active client's provider-aware default model when available."""
+        try:
+            from llm.client import resolve_agent_model  # type: ignore
+        except Exception:
+            try:
+                from engine.llm.client import resolve_agent_model  # type: ignore
+            except Exception:
+                return AdvisorClient.ADVISOR_MODEL
+        return resolve_agent_model(llm_client, AdvisorClient.ADVISOR_MODEL)
 
     # ------------------------------------------------------------------
     # Consultations — async, graceful fallback on any error
@@ -235,7 +239,7 @@ class AdvisorClient:
 
         try:
             result = await self.llm.call(
-                model=self.ADVISOR_MODEL,
+                model=self._resolve_model(self.llm),
                 system=system,
                 messages=[{"role": "user", "content": user_prompt}],
                 max_tokens=self.ADVISOR_MAX_TOKENS,
@@ -313,7 +317,7 @@ class AdvisorClient:
 
         try:
             result = await self.llm.call(
-                model=self.ADVISOR_MODEL,
+                model=self._resolve_model(self.llm),
                 system=system,
                 messages=[{"role": "user", "content": user_prompt}],
                 max_tokens=self.ADVISOR_MAX_TOKENS,

@@ -1,0 +1,193 @@
+{
+  "date": "2026-09-08",
+  "session_bias": {
+    "session_type": "uncertain",
+    "directional_bias": "neutral",
+    "conviction": 0.5,
+    "ib_bias": "not_mentioned",
+    "data_quality": "stale",
+    "message_count": 1
+  },
+  "sentiment_score": null,
+  "sentiment_label": null,
+  "top_signals": [],
+  "corey_quote": "When those levels hit, the prices bounced dramatically. That tells us there are buyers there.",
+  "commentary_health": [
+    {
+      "date": "2026-09-09",
+      "data_quality": "stale",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 1
+    },
+    {
+      "date": "2026-09-08",
+      "data_quality": "stale",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 1
+    },
+    {
+      "date": "2026-09-07",
+      "data_quality": "stale",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 1
+    },
+    {
+      "date": "2026-09-04",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.5,
+      "message_count": 1
+    },
+    {
+      "date": "2026-09-03",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 1
+    },
+    {
+      "date": "2026-09-01",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.7,
+      "message_count": 13
+    }
+  ],
+  "calibration_integrity": {
+    "total_outcomes": 4,
+    "rows_excluded_corrupt": 0,
+    "rows_excluded_duplicate": 0,
+    "alert": false,
+    "window_days": 30
+  },
+  "llm_provider_health": {
+    "engine_reachable": true,
+    "active_provider": "openai",
+    "primary_provider": "anthropic",
+    "primary_healthy": false,
+    "providers_available": 4,
+    "google_fallback_count": 6,
+    "vertex_failover_count": 0,
+    "llm_path_healthy": true,
+    "alert": true
+  },
+  "task_health": {
+    "present": true,
+    "stale": false,
+    "age_hours": 0.5,
+    "scanned": 109,
+    "failing_enabled": 18,
+    "failing_disabled": 1,
+    "failing_tasks": [
+      {
+        "name": "Hermes-Nightly-Sync",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-DiskWatch",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Jarvis-FinanceSync",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-LifeOS-Dashboard",
+        "result": "0x80070002"
+      },
+      {
+        "name": "jarvis-morning-brief",
+        "result": "0x3"
+      },
+      {
+        "name": "Jarvis-PM2-AtLogon",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-PM2RestartWatch-15min",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-ScanCredentials",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-ScanUncommitted",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-Sentinel",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Jarvis-StrategyC-Weekly",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Jarvis-VaultGbrainSync",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-VaultIngest-All",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-VaultIngest-Files",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Jarvis-VaultIngest-Files-Guarded",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-VaultIngest-OneNote",
+        "result": "0x8007010B"
+      },
+      {
+        "name": "Jarvis-VaultMOCRegen",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-VerdictRefresh-Weekly",
+        "result": "0x1"
+      }
+    ],
+    "alert": true
+  },
+  "gate_verdict_freshness": {
+    "active_symbols": [
+      "MES",
+      "MGC"
+    ],
+    "max_age_days": 7.0,
+    "symbols": {
+      "MES": {
+        "age_days": 1.0,
+        "newest": "2026-09-08T13:56:16.621147+00:00",
+        "files": 2,
+        "latest_verdict": "FAIL",
+        "active": true
+      },
+      "MGC": {
+        "age_days": 0.9,
+        "newest": "2026-09-08T15:31:45.532684+00:00",
+        "files": 1,
+        "latest_verdict": "PASS",
+        "active": true
+      },
+      "SPY": {
+        "age_days": 6.5,
+        "newest": "2026-09-03T01:19:37.088631+00:00",
+        "files": 1,
+        "latest_verdict": "FAIL",
+        "active": false
+      }
+    },
+    "stale_active": [],
+    "missing_active": [],
+    "alert": false
+  }
+}

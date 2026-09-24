@@ -1,0 +1,93 @@
+{
+  "strategy_id": "spy_stc_trend_meta_rank1",
+  "hypothesis": "SPY STC momentum with SMA trend agreement fails decisively and should be evidence for separating options scanner routing from validated strategy promotion.",
+  "status": "rejected",
+  "owner": "Amo / JARVIS research loop",
+  "created_at": "2026-09-14T17:23:49-05:00",
+  "updated_at": "2026-09-14T17:23:49-05:00",
+  "instruments": [
+    "SPY"
+  ],
+  "timeframes": [
+    "1h"
+  ],
+  "data_contract": {
+    "sources": [
+      "Databento historical bars",
+      "JARVIS gate-v2 verdict artifacts"
+    ],
+    "feature_families": [
+      "trend following",
+      "ATR risk",
+      "gate-v2 robustness"
+    ],
+    "freshness_sla": "Registry entry must point to the exact verdict artifact and be refreshed before any paper/live promotion decision.",
+    "leakage_controls": [
+      "no OOS parameter tuning",
+      "record OOS access through gate artifacts where available",
+      "fail closed on missing or stale verdict"
+    ]
+  },
+  "research_lineage": {
+    "source_repos": [
+      "mattamundson/jarvis-trader"
+    ],
+    "notebooks": [],
+    "docs": [
+      "docs/research/strategy-registry.md",
+      "docs/research/backtest-critique-checklist.md"
+    ],
+    "decision_links": [
+      "engine/data/gate_v2_verdicts/SPY_stc_trend_meta_rank1.json"
+    ]
+  },
+  "backtest": {
+    "runner": "engine/backtest/run_spy_stc_trend_meta_rank1.py",
+    "train_window": "documented in linked runner/verdict artifact",
+    "test_window": "documented in linked runner/verdict artifact",
+    "metrics": {
+      "profit_factor": 0.1634,
+      "max_drawdown_pct": 0.0,
+      "trade_count": 33,
+      "p_edge": 0.0876,
+      "dsr": 0.0009
+    },
+    "artifact_paths": [
+      "engine/data/gate_v2_verdicts/SPY_stc_trend_meta_rank1.json"
+    ]
+  },
+  "robustness": {
+    "walk_forward": "WEAK",
+    "parameter_stability": "failed review; only 6/16 OOS windows fired trades",
+    "regime_split": "poor participation across windows",
+    "monte_carlo": "blocked by low edge and weak OOS distribution"
+  },
+  "risk_envelope": {
+    "max_position_size": "0 live contracts until a fresh honest promotion gate passes and approval is recorded",
+    "daily_loss_limit_pct": 0.0,
+    "kill_switch_dependencies": [
+      "engine/risk/safety_layer.py",
+      "engine/backtest/paper_config.py",
+      "engine/approval/service.py"
+    ],
+    "paper_only_until": "fresh honest gate-v2 PASS plus explicit approval"
+  },
+  "promotion_gate": {
+    "current_verdict": "fail",
+    "required_evidence": [
+      "fresh honest gate-v2 PASS",
+      "walk-forward consistency",
+      "parameter stability",
+      "regime split",
+      "paper-shadow report",
+      "explicit approval before routing"
+    ],
+    "human_approval_required": true,
+    "blocking_conditions": [
+      "current verdict FAIL",
+      "pf_ci_lower 0.1634",
+      "p_edge 0.0876",
+      "weak OOS window participation"
+    ]
+  }
+}

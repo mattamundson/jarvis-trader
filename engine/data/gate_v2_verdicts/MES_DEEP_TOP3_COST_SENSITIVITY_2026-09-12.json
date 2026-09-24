@@ -1,0 +1,223 @@
+{
+  "symbol": "MES",
+  "family": "trend",
+  "cache": "MES_2019-05-05_2026-08-26_1h.csv",
+  "cache_sha256": "e26631c012b128284e61526dad78e7d39a3c180634dad7398a7dd8cc225f83fe",
+  "combos": [
+    {
+      "baseline_reported": {
+        "cagr_pct": 2.9385,
+        "mc_p_positive_edge": 0.99,
+        "mc_pf_ci_95_low": 1.1135,
+        "profit_factor": 1.6952,
+        "sharpe_ratio": 0.874,
+        "total_pnl": 11789.49,
+        "total_trades": 122
+      },
+      "key": "60/200/2.0",
+      "sensitivity": [
+        {
+          "annualization_trades_per_year": 16.7,
+          "cagr_pct": 2.9385,
+          "extra_cost_usd_total": 0.0,
+          "extra_round_trip_ticks_per_contract": 0,
+          "mc_p_positive_edge": 0.9935,
+          "mc_pf_ci_95_low": 1.1109,
+          "profit_factor": 1.6952,
+          "sharpe_ratio": 0.8777,
+          "tick_value_usd_per_contract": 1.25,
+          "total_pnl": 11789.36,
+          "trades": 122,
+          "win_rate": 0.5246
+        },
+        {
+          "annualization_trades_per_year": 16.7,
+          "cagr_pct": 2.7773,
+          "extra_cost_usd_total": 703.75,
+          "extra_round_trip_ticks_per_contract": 1,
+          "mc_p_positive_edge": 0.991,
+          "mc_pf_ci_95_low": 1.0763,
+          "profit_factor": 1.6401,
+          "sharpe_ratio": 0.8248,
+          "tick_value_usd_per_contract": 1.25,
+          "total_pnl": 11085.61,
+          "trades": 122,
+          "win_rate": 0.5246
+        },
+        {
+          "annualization_trades_per_year": 16.7,
+          "cagr_pct": 2.6145,
+          "extra_cost_usd_total": 1407.5,
+          "extra_round_trip_ticks_per_contract": 2,
+          "mc_p_positive_edge": 0.9765,
+          "mc_pf_ci_95_low": 1.0098,
+          "profit_factor": 1.5871,
+          "sharpe_ratio": 0.772,
+          "tick_value_usd_per_contract": 1.25,
+          "total_pnl": 10381.86,
+          "trades": 122,
+          "win_rate": 0.5164
+        }
+      ],
+      "trade_file": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-dm-edge-screen-20260911\\engine\\backtest\\results\\mes_deep_f60_s200_a2p0_trades_20260912.json"
+    },
+    {
+      "baseline_reported": {
+        "cagr_pct": 2.7099,
+        "mc_p_positive_edge": 0.9825,
+        "mc_pf_ci_95_low": 1.0396,
+        "profit_factor": 1.5778,
+        "sharpe_ratio": 0.7681,
+        "total_pnl": 10793.34,
+        "total_trades": 122
+      },
+      "key": "60/200/1.8",
+      "sensitivity": [
+        {
+          "annualization_trades_per_year": 16.7,
+          "cagr_pct": 2.7099,
+          "extra_cost_usd_total": 0.0,
+          "extra_round_trip_ticks_per_contract": 0,
+          "mc_p_positive_edge": 0.9735,
+          "mc_pf_ci_95_low": 0.994,
+          "profit_factor": 1.5778,
+          "sharpe_ratio": 0.7714,
+          "tick_value_usd_per_contract": 1.25,
+          "total_pnl": 10793.27,
+          "trades": 122,
+          "win_rate": 0.5246
+        },
+        {
+          "annualization_trades_per_year": 16.7,
+          "cagr_pct": 2.5262,
+          "extra_cost_usd_total": 790.0,
+          "extra_round_trip_ticks_per_contract": 1,
+          "mc_p_positive_edge": 0.973,
+          "mc_pf_ci_95_low": 0.9913,
+          "profit_factor": 1.5245,
+          "sharpe_ratio": 0.7146,
+          "tick_value_usd_per_contract": 1.25,
+          "total_pnl": 10003.27,
+          "trades": 122,
+          "win_rate": 0.5246
+        },
+        {
+          "annualization_trades_per_year": 16.7,
+          "cagr_pct": 2.3405,
+          "extra_cost_usd_total": 1580.0,
+          "extra_round_trip_ticks_per_contract": 2,
+          "mc_p_positive_edge": 0.967,
+          "mc_pf_ci_95_low": 0.9758,
+          "profit_factor": 1.4732,
+          "sharpe_ratio": 0.6578,
+          "tick_value_usd_per_contract": 1.25,
+          "total_pnl": 9213.27,
+          "trades": 122,
+          "win_rate": 0.5164
+        }
+      ],
+      "trade_file": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-dm-edge-screen-20260911\\engine\\backtest\\results\\mes_deep_f60_s200_a1p8_trades_20260912.json"
+    },
+    {
+      "baseline_reported": {
+        "cagr_pct": 2.2859,
+        "mc_p_positive_edge": 0.9625,
+        "mc_pf_ci_95_low": 0.9687,
+        "profit_factor": 1.5033,
+        "sharpe_ratio": 0.6606,
+        "total_pnl": 8982.74,
+        "total_trades": 127
+      },
+      "key": "55/190/2.0",
+      "sensitivity": [
+        {
+          "annualization_trades_per_year": 17.38,
+          "cagr_pct": 2.2859,
+          "extra_cost_usd_total": 0.0,
+          "extra_round_trip_ticks_per_contract": 0,
+          "mc_p_positive_edge": 0.9615,
+          "mc_pf_ci_95_low": 0.9462,
+          "profit_factor": 1.5033,
+          "sharpe_ratio": 0.6633,
+          "tick_value_usd_per_contract": 1.25,
+          "total_pnl": 8982.76,
+          "trades": 127,
+          "win_rate": 0.5118
+        },
+        {
+          "annualization_trades_per_year": 17.38,
+          "cagr_pct": 2.1175,
+          "extra_cost_usd_total": 706.25,
+          "extra_round_trip_ticks_per_contract": 1,
+          "mc_p_positive_edge": 0.9495,
+          "mc_pf_ci_95_low": 0.9346,
+          "profit_factor": 1.4542,
+          "sharpe_ratio": 0.6111,
+          "tick_value_usd_per_contract": 1.25,
+          "total_pnl": 8276.51,
+          "trades": 127,
+          "win_rate": 0.4803
+        },
+        {
+          "annualization_trades_per_year": 17.38,
+          "cagr_pct": 1.9473,
+          "extra_cost_usd_total": 1412.5,
+          "extra_round_trip_ticks_per_contract": 2,
+          "mc_p_positive_edge": 0.9405,
+          "mc_pf_ci_95_low": 0.9013,
+          "profit_factor": 1.4067,
+          "sharpe_ratio": 0.5588,
+          "tick_value_usd_per_contract": 1.25,
+          "total_pnl": 7570.26,
+          "trades": 127,
+          "win_rate": 0.4646
+        }
+      ],
+      "trade_file": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-dm-edge-screen-20260911\\engine\\backtest\\results\\mes_deep_f55_s190_a2p0_trades_20260912.json"
+    }
+  ],
+  "cost_model": "subtract extra_round_trip_ticks_per_contract * $1.25 MES tick value * contracts from each trade pnl; baseline uses trade-file pnl as generated by iterate.py",
+  "created_at": "2026-09-12T07:48:17+00:00",
+  "inferred_initial_capital": 50020.88,
+  "rank_plus2_ticks": [
+    {
+      "key": "60/200/2.0",
+      "mc_p_positive_edge": 0.9765,
+      "mc_pf_ci_95_low": 1.0098,
+      "profit_factor": 1.5871,
+      "rank": 1,
+      "sharpe_ratio": 0.772,
+      "total_pnl": 10381.86
+    },
+    {
+      "key": "60/200/1.8",
+      "mc_p_positive_edge": 0.967,
+      "mc_pf_ci_95_low": 0.9758,
+      "profit_factor": 1.4732,
+      "rank": 2,
+      "sharpe_ratio": 0.6578,
+      "total_pnl": 9213.27
+    },
+    {
+      "key": "55/190/2.0",
+      "mc_p_positive_edge": 0.9405,
+      "mc_pf_ci_95_low": 0.9013,
+      "profit_factor": 1.4067,
+      "rank": 3,
+      "sharpe_ratio": 0.5588,
+      "total_pnl": 7570.26
+    }
+  ],
+  "safety_boundary": {
+    "broker_execution_changed": false,
+    "env_changed": false,
+    "kill_switch_changed": false,
+    "live_trading_changed": false,
+    "paper_config_changed": false,
+    "risk_config_changed": false,
+    "symbol_gate_changed": false
+  },
+  "scope": "research-only MES top-3 family cost sensitivity; no runtime/risk/kill-switch/broker/.env/paper_config/symbol-gate changes",
+  "span_years": 7.3073,
+  "verdict": "60/200/2.0 remains top under +0/+1/+2 tick stress by total PnL/PF, but this does not change the PR #814 statistical-superiority failure or runtime-promotion block."
+}

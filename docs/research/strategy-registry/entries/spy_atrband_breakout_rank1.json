@@ -1,0 +1,64 @@
+{
+  "schema_version": "1.0",
+  "strategy_id": "spy_atrband_breakout_rank1",
+  "name": "SPY ATR band mean-reversion (x-bookmark scan, rank 1)",
+  "source": {
+    "type": "x-bookmark-scan",
+    "repo_or_note": "x-bookmark edge scan 2026-07-02 (@QuantifiedStrat)",
+    "url": "https://x.com/QuantifiedStrat"
+  },
+  "hypothesis": "SPY mean-reverts after an ATR-band range extension: buying when price pulls back inside the ATR band after a breakout, long/short, beats holding over multi-decade monthly bars.",
+  "asset_class": "equity-index",
+  "symbols": ["SPY"],
+  "timeframe": "monthly",
+  "data_sources": [
+    {
+      "feed": "yfinance",
+      "adjusted": true,
+      "range_start": "1993-01-29",
+      "range_end": "2026-06-24"
+    }
+  ],
+  "feature_set": ["sma(20)", "atr(14)", "atr_band_k2.5"],
+  "rules": {
+    "entry": "Mean-reversion polarity (best of 4 configs: ma20/k2.5/atr14); enter when price crosses back inside the ATR band after an extension.",
+    "exit": "Opposite band cross or mean-reversion target as defined in the scan config.",
+    "position_sizing": "All-in/out per bar in the scan model; sizing model not yet pinned for JARVIS.",
+    "risk_limits": "None in scan model; JARVIS gates apply (mc_95th_dd floor, DSR).",
+    "fees_and_slippage_model": "Gross of commission/slippage in gate reasons (per card note)."
+  },
+  "windows": {
+    "train": { "start": "1993-01-29", "end": "2026-06-24" },
+    "test": null
+  },
+  "metrics": {
+    "cagr": 0.0447,
+    "sharpe": 0.53,
+    "max_drawdown": -0.2922,
+    "fees_slippage_assumption": "gross (card reports in-market PnL before close/open spread + financing)"
+  },
+  "gate_verdict": {
+    "gate": "gate-v2",
+    "verdict": "FAIL",
+    "core_verdict": "FAIL",
+    "alt_verdict": "UNSCORED",
+    "reasons": [
+      "mbb_pf_ci_lower=1.1324 >= 1.1",
+      "p_positive_edge=0.9989 >= 0.95",
+      "FAIL mc_95th_dd_pct=27.4111 > 6.0",
+      "FAIL dsr=0.0 < 0.1 (selection bias)"
+    ],
+    "evidence_path": "docs/research/SPY_atrband_rank1.gate_v2.json"
+  },
+  "promotion_state": "rejected",
+  "known_failure_modes": [
+    "Monte Carlo 95th drawdown 27.4% far above 6.0% floor",
+    "DSR 0.0 at selection trial count — edge is a multiple-testing artifact"
+  ],
+  "evidence_paths": [
+    "docs/research/SPY_atrband_rank1.gate_v2.json",
+    "docs/research/backtest-critique-checklist.md"
+  ],
+  "owner": "amo",
+  "updated": "2026-09-12"
+}
