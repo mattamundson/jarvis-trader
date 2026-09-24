@@ -76,6 +76,7 @@ export const ROUTES: RouteSpec[] = [
   { path: "/regime", name: "market regime", kind: "page", criticality: "standard", landmark: /Intraday Market Regime/i },
   { path: "/data-integrity", name: "data integrity", kind: "page", criticality: "standard", landmark: /Data Integrity/i },
   { path: "/framing-brief", name: "framing brief", kind: "page", criticality: "standard", landmark: /Morning Framing Brief/i },
+  { path: "/market-brief-public", name: "public market brief", kind: "page", criticality: "standard", landmark: /JARVIS Market Brief/i },
   { path: "/jarvis", name: "ask jarvis", kind: "page", criticality: "standard", landmark: /JARVIS COMMAND CENTER/i },
   { path: "/master", name: "master jarvis", kind: "page", criticality: "standard", landmark: /Master Jarvis/i },
   { path: "/master/finances", name: "master finances", kind: "page", criticality: "standard", landmark: /Finances/i },
