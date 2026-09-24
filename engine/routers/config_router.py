@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-<<<<<<< HEAD
-=======
 import os
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 from fastapi import APIRouter
 
 from config import settings
@@ -201,8 +198,6 @@ async def config_overview():
                 seen_keys.add(key)
         categorized[category] = items
 
-<<<<<<< HEAD
-=======
     # The "llm" category's LLM_PROVIDER field is loaded from TradingConfig but
     # not wired to any routing decision -- every real provider selection reads
     # os.getenv("JARVIS_LLM_PROVIDER", "ollama") directly (llm/client.py,
@@ -222,7 +217,6 @@ async def config_overview():
     )
     seen_keys.add("JARVIS_LLM_PROVIDER")
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     # GT-14: don't let the "feature_flags" category silently miss a flag that
     # was added to FLAG_DEFINITIONS but never back-filled into the static
     # CATEGORIES list above (e.g. ENABLE_MACRO_TREND_BIAS). The registry

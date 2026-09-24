@@ -2,11 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { fetchEngine } from "@/lib/api";
-<<<<<<< HEAD
-=======
 import { FeatureFlagsReadOnlyPanel } from "@/components/FeatureFlagsReadOnlyPanel";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 import {
   Activity,
   AlertTriangle,
@@ -166,16 +163,10 @@ function CategoryCard({
 // ── API Key Status Card ───────────────────────────────────────────────────
 
 function ApiKeyStatusCard({ health }: { health: HealthData }) {
-<<<<<<< HEAD
-  const allConfigured = Object.values(health.configured).every(Boolean);
-  const configuredCount = Object.values(health.configured).filter(Boolean).length;
-  const totalCount = Object.values(health.configured).length;
-=======
   const configured = health.configured ?? {};
   const allConfigured = Object.values(configured).every(Boolean);
   const configuredCount = Object.values(configured).filter(Boolean).length;
   const totalCount = Object.values(configured).length;
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
   return (
     <div
@@ -204,11 +195,7 @@ function ApiKeyStatusCard({ health }: { health: HealthData }) {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-<<<<<<< HEAD
-        {Object.entries(health.configured).map(([key, ok]) => (
-=======
         {Object.entries(configured).map(([key, ok]) => (
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
           <div key={key} className="flex items-center gap-2">
             <span
               className={`w-2 h-2 rounded-full shrink-0 ${
@@ -397,14 +384,11 @@ export default function ConfigPage() {
         {/* API Key Status */}
         {health && <ApiKeyStatusCard health={health} />}
 
-<<<<<<< HEAD
-=======
         {/* Feature flags registry -- read-only (Plan Phase 8 row 6, D9: no toggle) */}
         <WidgetErrorBoundary name="Feature Flags Registry">
           <FeatureFlagsReadOnlyPanel />
         </WidgetErrorBoundary>
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         {/* Category cards */}
         {data && (
           <div className="space-y-3">

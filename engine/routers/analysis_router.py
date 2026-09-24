@@ -198,19 +198,13 @@ async def get_llm_stats(days_back: int = 0):
         per_agent: Dict[agent_name] -> {calls, cost_usd}
         per_provider: Dict[provider] -> {calls, input_tokens, output_tokens, cost_usd}
             where provider is direct|vertex|google|vertex-gemini|ollama|external
-<<<<<<< HEAD
-=======
         all_time_usd: Historical all-time spend (T4 persistence)
         all_time_calls: Historical all-time call count (T4 persistence)
         alerts: recent fired threshold alerts + threshold config (T4)
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     """
     if not cost_tracker:
         raise HTTPException(500, "Cost tracker not initialized")
     try:
-<<<<<<< HEAD
-        return await cost_tracker.get_daily_summary(days_back=days_back)
-=======
         summary = await cost_tracker.get_daily_summary(days_back=days_back)
         # T4: attach historical totals + alert state so /llm/stats reflects the
         # persistent ledger, not just the single requested day.
@@ -228,14 +222,11 @@ async def get_llm_stats(days_back: int = 0):
             logger.warning("[LLM-STATS] alert state failed (non-fatal): %s", _al_err)
             summary["alerts"] = {"daily_alert_usd": 0.0, "monthly_alert_usd": 0.0, "recent_fired": []}
         return summary
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     except Exception as e:
         logger.error(f"[LLM-STATS] Daily summary failed: {e}")
         raise HTTPException(500, f"Failed to get LLM stats: {e}") from e
 
 
-<<<<<<< HEAD
-=======
 @router.get("/llm/stats/rollup")
 async def get_llm_stats_rollup(days: int = 30, months: int = 12):
     """
@@ -269,7 +260,6 @@ async def get_llm_stats_rollup(days: int = 30, months: int = 12):
         raise HTTPException(500, f"Failed to get LLM stats rollup: {e}") from e
 
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 @router.get("/sentiment/reddit", response_model=RedditSentimentResponse)
 async def get_reddit_sentiment(filter: str = "all-stocks"):
     """Get trending tickers from Reddit"""

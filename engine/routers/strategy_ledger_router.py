@@ -436,8 +436,6 @@ def get_research_candidates() -> ResearchCandidatesResponse:
         total=len(rows),
         generated_at=datetime.now(timezone.utc).isoformat(),
     )
-<<<<<<< HEAD
-=======
 
 
 # ── Equity SMA-trend certification + forward evidence (non-authorizing) ──────
@@ -633,4 +631,3 @@ def get_equity_research() -> EquityResearchResponse:
         total=len(certs) + len(fwd),
         generated_at=datetime.now(timezone.utc).isoformat(),
     )
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2

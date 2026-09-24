@@ -4,10 +4,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-<<<<<<< HEAD
-=======
 from datetime import datetime, timezone
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 
 @dataclass
@@ -25,8 +22,6 @@ class TradeAnalytics:
     avg_loss: float
     best_trade: float
     worst_trade: float
-<<<<<<< HEAD
-=======
     # C3 metric-honesty pass (2026-08-18): annualization transparency. The
     # Sharpe above is annualized by the strategy's OBSERVED trade frequency
     # (not a fixed 252) whenever the trade timestamps support it; these fields
@@ -81,7 +76,6 @@ def _observed_annualization_trades_per_year(trades: list[dict]) -> float:
     if tpy <= 0:
         return DEFAULT_ANNUALIZATION_TRADES_PER_YEAR
     return float(min(tpy, MAX_ANNUALIZATION_TRADES_PER_YEAR))
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 
 def calculate_analytics(trades: list[dict]) -> TradeAnalytics:
@@ -119,10 +113,6 @@ def calculate_analytics(trades: list[dict]) -> TradeAnalytics:
     win_rate = (len(wins) / total_trades * 100) if total_trades > 0 else 0.0
     expectancy = (total_pnl / total_trades) if total_trades > 0 else 0.0
 
-<<<<<<< HEAD
-    daily_returns = _calculate_daily_returns(trades)
-    sharpe = calculate_sharpe_ratio(daily_returns)
-=======
     # C3 metric-honesty pass: annualize by the OBSERVED trade frequency, not a
     # fixed 252. A strategy that closes trades on ~60 days a year was
     # previously overstated by sqrt(252/60) ≈ 2.05x.
@@ -139,7 +129,6 @@ def calculate_analytics(trades: list[dict]) -> TradeAnalytics:
     # Compounding uses (1 + total_return)^(1/years) - 1 with years derived from
     # the first/last trade timestamps, not 252 fixed periods per year.
     cagr = _calculate_cagr(trades, ann_tpy)
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
     equity_curve = _build_equity_curve(trades)
     drawdown = calculate_max_drawdown(equity_curve)
@@ -158,14 +147,6 @@ def calculate_analytics(trades: list[dict]) -> TradeAnalytics:
         avg_loss=avg_loss,
         best_trade=best_trade,
         worst_trade=worst_trade,
-<<<<<<< HEAD
-    )
-
-
-def calculate_sharpe_ratio(daily_returns: list[float], risk_free_rate: float = 0.0) -> float:
-    """
-    Annualized Sharpe ratio from daily returns.
-=======
         annualization_trades_per_year=round(ann_tpy, 4),
         cagr=round(cagr, 6),
     )
@@ -208,35 +189,25 @@ def calculate_sharpe_ratio(
     a fixed 252 — annualizing a low-frequency series by 252 overstated Sharpe
     by sqrt(252 / actual) (C3 metric-honesty pass, 2026-08-18; mirrors
     engine/backtest/metrics.py `compute_sharpe_sortino`).
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     Returns 0.0 if insufficient data or zero std dev.
     """
     if not daily_returns or len(daily_returns) < 2:
         return 0.0
 
     mean_return = sum(daily_returns) / len(daily_returns)
-<<<<<<< HEAD
-    variance = sum((r - mean_return) ** 2 for r in daily_returns) / len(daily_returns)
-=======
     # Sample variance (ddof=1) — matches backtest/metrics.py (`std(ddof=1)`)
     # and dashboard/lib/honestAnnualized.ts, so engine and display agree on
     # the same trade series (C3 metric-honesty pass).
     variance = sum((r - mean_return) ** 2 for r in daily_returns) / (len(daily_returns) - 1)
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     std_dev = math.sqrt(variance)
 
     if std_dev == 0.0:
         # float("inf") is not JSON-serializable via FastAPI's JSONResponse; use sentinel 9999.0
         return 9999.0 if mean_return > 0 else 0.0
 
-<<<<<<< HEAD
-    daily_sharpe = (mean_return - risk_free_rate) / std_dev
-    annualized_sharpe = daily_sharpe * math.sqrt(252)
-=======
     periods = annualization_trades_per_year if annualization_trades_per_year > 0 else DEFAULT_ANNUALIZATION_TRADES_PER_YEAR
     per_period_sharpe = (mean_return - risk_free_rate) / std_dev
     annualized_sharpe = per_period_sharpe * math.sqrt(periods)
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     return annualized_sharpe
 
 

@@ -67,10 +67,6 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-<<<<<<< HEAD
-
-=======
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 def _schedule_background_coro(factory: Callable[[], Coroutine[Any, Any, Any]]) -> None:
     """
     Schedule *factory()* on the running loop, or no-op in sync contexts (tests, scripts).
@@ -241,14 +237,11 @@ class SafetyLayer:
         self._kill_switch_active = False
         self._kill_switch_reason: KillSwitchReason | None = None
         self._emergency_flatten_activated: bool = False
-<<<<<<< HEAD
-=======
         # A9: observability — when the kill switch last fired and why. Survives a
         # deactivate (so a post-mortem sees a recent trip) and a restart (hydrated
         # from system_state). NOT a safety-decision input — read-only reporting.
         self._last_kill_switch_ts: Optional[str] = None
         self._last_kill_switch_reason_value: Optional[str] = None
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
         # Daily tracking (reset at market open)
         self._daily_realized_pnl: float = 0.0
@@ -267,8 +260,6 @@ class SafetyLayer:
 
         # Alert manager (optional â€” injected after construction via inject_alert_manager())
         self._alert_manager: Optional[object] = None  # AlertManager | None
-<<<<<<< HEAD
-=======
         # A4: alert-channel observability. A kill-switch can fire with no
         # notification if the manager was never wired or its send fails; track
         # that state so a dark channel is queryable. Not a safety-decision input.
@@ -278,7 +269,6 @@ class SafetyLayer:
             "last_send_ts": None,
             "last_error": None,
         }
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
         # Re-entry lockouts: symbol -> lockout_until datetime
         self._reentry_lockouts: dict[str, datetime] = {}
@@ -320,10 +310,7 @@ class SafetyLayer:
         SafetyLayer are initialised.  Passing None is a no-op (disables alerts).
         """
         self._alert_manager = manager
-<<<<<<< HEAD
-=======
         self._alert_health["manager_wired"] = manager is not None
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         logger.info("SafetyLayer: AlertManager injected â€” P&L push alerts active")
 
     # â”€â”€ Kill Switch DB Persistence â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -502,8 +489,6 @@ class SafetyLayer:
                         )
                 else:
                     logger.debug("SafetyLayer: kill switch not active in DB - starting clean")
-<<<<<<< HEAD
-=======
                 # A9: hydrate the last-activation stamp regardless of current
                 # active state, so a recent trip remains observable after a
                 # deactivate + restart.
@@ -517,7 +502,6 @@ class SafetyLayer:
                 ).fetchone()
                 if rsn_row and rsn_row["value"]:
                     self._last_kill_switch_reason_value = rsn_row["value"]
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             finally:
                 conn.close()
         except Exception as exc:
@@ -554,8 +538,6 @@ class SafetyLayer:
                     "INSERT OR REPLACE INTO system_state (key, value, updated_at) VALUES (?, ?, ?)",
                     ("emergency_flatten_activated", flatten_str, now),
                 )
-<<<<<<< HEAD
-=======
                 # A9: persist the activation stamp on a trip only (active=True), so
                 # a later deactivate does NOT erase the history of the last trip.
                 if active and self._last_kill_switch_ts:
@@ -571,7 +553,6 @@ class SafetyLayer:
                             now,
                         ),
                     )
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                 conn.commit()
                 logger.debug(
                     "SafetyLayer: kill switch state persisted to DB (active=%s reason=%s)",
@@ -618,8 +599,6 @@ class SafetyLayer:
             )
             return
 
-<<<<<<< HEAD
-=======
         # A9: stamp the activation for observability (set before persist so the
         # DB write below captures it). All activation routes flow through here.
         # Runs only on a genuine new activation / reason change — a same-reason
@@ -629,7 +608,6 @@ class SafetyLayer:
         self._last_kill_switch_reason_value = (
             reason.value if hasattr(reason, "value") else str(reason)
         )
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         logger.critical(f"KILL SWITCH ACTIVATED: {reason.value}. {message}")
         # Persist state to SQLite (non-fatal if DB unavailable)
         self._persist_kill_switch_state(True, reason)
@@ -1038,11 +1016,8 @@ class SafetyLayer:
             "equity_peak": self._equity_peak,
             "current_equity": self._current_equity,
             "recent_order_count": len(self._recent_order_timestamps),
-<<<<<<< HEAD
-=======
             "last_kill_switch_ts": self._last_kill_switch_ts,
             "last_kill_switch_reason_value": self._last_kill_switch_reason_value,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         }
 
     # â”€â”€ Pre-Trade Checks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1396,15 +1371,6 @@ class SafetyLayer:
             )
         return RiskCheckResult(approved=True), now
 
-<<<<<<< HEAD
-    def _check_contract_limits(self, order: OrderRequest) -> RiskCheckResult:
-        """Check futures contract limits, including overnight cap after 15:00 CT."""
-        if order.is_futures and abs(order.quantity) > self._config.MAX_CONTRACTS_PER_INSTRUMENT:
-            return RiskCheckResult(
-                approved=False,
-                rejection_reason=f"Requested {abs(order.quantity)} contracts exceeds max {self._config.MAX_CONTRACTS_PER_INSTRUMENT}",
-            )
-=======
     def _aggregated_underlying_qty(self, symbol: str) -> int:
         """Sum open paper-position quantity across every symbol sharing
         *symbol*'s real underlying instrument (see resolve_underlying() in
@@ -1482,7 +1448,6 @@ class SafetyLayer:
                         f"{self._config.MAX_CONTRACTS_PER_INSTRUMENT}{detail}"
                     ),
                 )
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         sym = order.symbol.upper()
 
         # CUMULATIVE_POSITION_CAP (2026-08-03 incident): the check above only
@@ -1697,10 +1662,7 @@ class SafetyLayer:
         order_type: str = "MKT",
         limit_price: float | None = None,
         stop_price: float | None = None,
-<<<<<<< HEAD
-=======
         take_profit: float | None = None,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     ) -> dict:
         """
         Run all safety checks then, if they pass, route the order to IB
@@ -1920,11 +1882,8 @@ class SafetyLayer:
                 quantity=final_quantity,
                 order_type=order_type.upper(),
                 limit_price=limit_price,
-<<<<<<< HEAD
-=======
                 aux_price=stop_price,
                 take_profit=take_profit,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             )
 
             # HB-1: Broker-side Stop Orders atomically linked
@@ -2419,9 +2378,6 @@ class SafetyLayer:
                     consecutive_losses=consecutive_losses,
                     portfolio_equity=equity,
                 )
-<<<<<<< HEAD
-            except Exception as _alert_exc:
-=======
                 self._alert_health["last_send_ok"] = True
                 self._alert_health["last_send_ts"] = datetime.now(timezone.utc).isoformat()
                 self._alert_health["last_error"] = None
@@ -2429,7 +2385,6 @@ class SafetyLayer:
                 self._alert_health["last_send_ok"] = False
                 self._alert_health["last_send_ts"] = datetime.now(timezone.utc).isoformat()
                 self._alert_health["last_error"] = str(_alert_exc)
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                 logger.warning("SafetyLayer: AlertManager.check_and_alert failed: %s", _alert_exc)
 
     def check_circuit_breakers(self) -> dict:

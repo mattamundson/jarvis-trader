@@ -23,14 +23,6 @@ Exit codes:
          Windows loopback (refuse; sleeps WSL_SQUAT_BACKOFF s first so PM2 stops
          hammering restarts while the WSL bind persists)
     2  — kill attempted but port still bound after grace period
-<<<<<<< HEAD
-    3  — port held by a HEALTHY uvicorn we can't kill (likely elevated). Exits
-         non-zero so PM2 marks the start as failed (correct: we did NOT start
-         a managed engine), but sleeps before exiting so PM2's restart_delay +
-         min_uptime back off the restart loop instead of hammering taskkill.
-         Human must kill the elevated PID via Task Manager (admin) and then
-         `pm2 start jarvis-engine` to take over management.
-=======
     3  — port held by a HEALTHY uvicorn: either we can't kill it (likely elevated),
          or (2026-07-30) we deliberately refuse to try because /health answers 200
          — a name match alone ("python"/"uvicorn") can't distinguish a genuine
@@ -45,7 +37,6 @@ Exit codes:
          If it's the healthy-skip case, no action is needed — PM2 will keep the
          existing healthy instance as the de facto server until something actually
          stops it.
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     4  — wrong Python (Store Python instead of the project venv); exits before
          touching the port to avoid double-binding.
     5  — readiness gate fired: uvicorn was launched but never served /health within
@@ -56,10 +47,7 @@ Exit codes:
 
 from __future__ import annotations
 
-<<<<<<< HEAD
-=======
 import http.client
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 import json
 import os
 import socket
@@ -337,8 +325,6 @@ def _process_name(
     return None
 
 
-<<<<<<< HEAD
-=======
 def _process_command_line(
     pid: int,
     attempts: int = 2,
@@ -376,7 +362,6 @@ def _is_managed_guardian(command_line: str | None) -> bool:
     return "scripts/port_guardian.py" in normalized
 
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 def _looks_like_orphan_uvicorn(name: str | None) -> bool:
     """
     Conservative check: only kill processes that look like uvicorn/python.
@@ -468,12 +453,6 @@ def _is_healthy(port: int) -> bool:
             f"http://127.0.0.1:{port}/health", timeout=READINESS_PROBE_TIMEOUT
         ) as r:
             return r.status == 200
-<<<<<<< HEAD
-    except (urllib.error.URLError, TimeoutError, ConnectionResetError):
-        return False
-
-
-=======
     except (
         urllib.error.URLError,
         http.client.HTTPException,
@@ -498,7 +477,6 @@ def _is_healthy_with_retries(
     return False
 
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 def _check_venv_python() -> None:
     """Exit immediately if running under Store Python instead of the project venv.
 
@@ -569,8 +547,6 @@ def main() -> int:
     if not holders:
         print(f"[port_guardian] port {PORT} is free", flush=True)
     else:
-<<<<<<< HEAD
-=======
         # A global /health response cannot be bound to one PID when Windows reports
         # multiple holders. Inspect every holder for diagnostics, then fail closed
         # rather than killing or preserving the wrong process.
@@ -598,7 +574,6 @@ def main() -> int:
             time.sleep(HEALTHY_ORPHAN_BACKOFF)
             return 1
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         for pid in holders:
             resolved_name = _process_name(pid)
             name = resolved_name or "unknown"
@@ -637,8 +612,6 @@ def main() -> int:
                 # own prior instance landed here repeatedly.
                 time.sleep(UNIDENTIFIED_HOLDER_BACKOFF)
                 return 1
-<<<<<<< HEAD
-=======
             command_line = _process_command_line(pid)
             if _is_managed_guardian(command_line) and _is_healthy_with_retries(PORT):
                 # Health establishes liveness; the command line establishes ownership.
@@ -687,7 +660,6 @@ def main() -> int:
                     flush=True,
                 )
                 return 1
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             print(f"[port_guardian] killing orphan PID {pid}", flush=True)
             killed = _kill_pid(pid)
             if killed:
@@ -738,8 +710,6 @@ def main() -> int:
     # sees one long-lived PID; shutdown signals propagate normally.
     print("[port_guardian] launching uvicorn in-process", flush=True)
     os.chdir(ENGINE_DIR)
-<<<<<<< HEAD
-=======
 
     # PYTHONPATH poisoning guard (2026-08-16): Hermes desktop shells can leak
     # their own agent venv into PYTHONPATH; then this in-process uvicorn import
@@ -750,7 +720,6 @@ def main() -> int:
         p for p in sys.path
         if "hermes-agent" not in p.lower()
     ]
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     for path in (str(PROJECT_ROOT), str(ENGINE_DIR)):
         if path not in sys.path:
             sys.path.insert(0, path)

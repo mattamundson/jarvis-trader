@@ -292,14 +292,10 @@ function BacktestMatrix() {
       >
         <span style={{ fontWeight: 700 }}>Historical backtest</span>
         <span style={{ color: "#9a8030" }}>
-<<<<<<< HEAD
-          frozen in-sample research benchmark as of 2026-03-30 — not live trading results
-=======
           frozen in-sample research benchmark as of 2026-03-30 — not live trading results.
           Sharpe values are annualized at the as-run 252 convention of this snapshot; the live
           dashboard annualizes by observed trade frequency, so these are not directly comparable
           to live annualized Sharpe.
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         </span>
       </div>
       <div className="overflow-x-auto">
@@ -839,13 +835,9 @@ export default function PerformancePage() {
         </div>
 
         {/* Live per-symbol price chart — our own real-time futures bars */}
-<<<<<<< HEAD
-        <LivePriceSection />
-=======
         <WidgetErrorBoundary name="Live Price">
           <LivePriceSection />
         </WidgetErrorBoundary>
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
         {/* Hold time analytics */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

@@ -322,8 +322,6 @@ class AgentFeedbackTracker:
             data = json.load(f)
 
         return {k: v for k, v in data.items() if k in AGENT_NAMES}
-<<<<<<< HEAD
-=======
 
     def get_recent_trades_for_eval(self, limit: int = 100) -> list[dict]:
         """
@@ -373,4 +371,3 @@ class AgentFeedbackTracker:
                 "pnl_usd": pnl_usd,
             })
         return trades
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2

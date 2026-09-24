@@ -662,8 +662,6 @@ class TradingPipeline:
             "errors": errors,
         }
 
-<<<<<<< HEAD
-=======
         # T4: bind this run's identity so every LLM call made by the agents
         # below persists into pipeline_llm_costs (run_id, symbol). Task-local
         # contextvar — dies with this task, so no explicit clear needed.
@@ -674,7 +672,6 @@ class TradingPipeline:
         except Exception as _ctx_err:  # pragma: no cover - defensive
             logger.debug("[Pipeline] llm run context set failed: %s", _ctx_err)
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         # Decision-identity fingerprint (P1): stamp WHICH decision configuration
         # produced this result, on every return path. Best-effort and fail-open --
         # a fingerprint failure must never affect the decision itself.

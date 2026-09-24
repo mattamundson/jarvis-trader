@@ -65,8 +65,6 @@ def analyze_signal_quality(trades: list[dict], signals: list[dict] = None) -> Si
         )
         return SignalQualityReport(overall=empty_metrics)
 
-<<<<<<< HEAD
-=======
     # 2026-08-17: normalize types up front. sqlite3 returns price columns as
     # TEXT when the column affinity is numeric-but-empty in mixed rows, so
     # `exit_price - entry_price` threw "unsupported operand type(s) for -:
@@ -129,7 +127,6 @@ def analyze_signal_quality(trades: list[dict], signals: list[dict] = None) -> Si
             )
         )
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     # Overall metrics
     total_signals = len(trades)
     profitable_trades = [t for t in trades if t.get("exit_price", 0) > t.get("entry_price", 0)]

@@ -86,8 +86,6 @@ def test_covariance_get_strategy_malformed_logs(caplog):
         alloc._adjust_for_covariance(raw, trades)
 
     assert any("Malformed strategy_params" in r.getMessage() for r in caplog.records)
-<<<<<<< HEAD
-=======
 
 
 def test_covariance_constant_pnl_column_yields_no_nan_allocation():
@@ -121,4 +119,3 @@ def test_covariance_constant_pnl_column_yields_no_nan_allocation():
     assert all(math.isfinite(v) for v in adjusted.values())
     # The degenerate (NaN-correlation) cell falls back to scaling 1.0.
     assert adjusted[("trend", "MGC")] == 0.5
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2

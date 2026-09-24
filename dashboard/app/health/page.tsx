@@ -31,10 +31,7 @@ import { DatabaseStatsCard } from "@/components/DatabaseStatsCard";
 import { EngineUptimeCard } from "@/components/EngineUptimeCard";
 import { IbGatewayDetailCard } from "@/components/IbGatewayDetailCard";
 import { SystemLivenessCard } from "@/components/SystemLivenessCard";
-<<<<<<< HEAD
-=======
 import { CacheStatsCard } from "@/components/CacheStatsCard";
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 import { useWebSocket } from "@/hooks/useWebSocket";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -652,18 +649,6 @@ export default function HealthPage() {
       {/* Page content */}
       <main className="mx-auto max-w-[1600px] 2xl:max-w-[2000px] px-6 py-6 space-y-6">
         {/* Both-systems liveness (C5) — engine + data + watchdog + LLM at a glance */}
-<<<<<<< HEAD
-        <SystemLivenessCard />
-
-        {/* Connection health — most critical info at the top */}
-        <ConnectionHealthCard />
-
-        {/* Engine uptime + /health summary */}
-        <EngineUptimeCard />
-
-        {/* IB Gateway detail — connection status, account, mode, latency */}
-        <IbGatewayDetailCard />
-=======
         <WidgetErrorBoundary name="System Liveness">
           <SystemLivenessCard />
         </WidgetErrorBoundary>
@@ -682,7 +667,6 @@ export default function HealthPage() {
         <WidgetErrorBoundary name="IB Gateway Detail">
           <IbGatewayDetailCard />
         </WidgetErrorBoundary>
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
         {/* Page title + overall status */}
         <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -785,13 +769,9 @@ export default function HealthPage() {
         {data && <ProcessSupervisionCard data={subsystems.process_supervision} />}
 
         {/* System Metrics Panel — DB record counts + engine meta */}
-<<<<<<< HEAD
-        <SystemMetricsPanel />
-=======
         <WidgetErrorBoundary name="System Metrics">
           <SystemMetricsPanel />
         </WidgetErrorBoundary>
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
         {/* Alert Summary Widget — recent alert log + stats */}
         <WidgetErrorBoundary name="Alert Summary">
@@ -799,9 +779,6 @@ export default function HealthPage() {
         </WidgetErrorBoundary>
 
         {/* Database Statistics — record counts across trades, decisions, alerts */}
-<<<<<<< HEAD
-        <DatabaseStatsCard />
-=======
         <WidgetErrorBoundary name="Database Stats">
           <DatabaseStatsCard />
         </WidgetErrorBoundary>
@@ -810,7 +787,6 @@ export default function HealthPage() {
         <WidgetErrorBoundary name="Cache Stats">
           <CacheStatsCard />
         </WidgetErrorBoundary>
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
         {/* Auto-refresh notice */}
         <p className="text-xs text-muted-foreground text-center pb-2">

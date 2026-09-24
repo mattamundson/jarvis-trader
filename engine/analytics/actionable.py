@@ -283,9 +283,6 @@ def derive_actionable_board(
          "invalidated", "expired", "unknown")
     )}
     items.sort(key=lambda it: (order.get(it["status"], 99), -(it.get("confidence") or 0.0)))
-<<<<<<< HEAD
-    return {"items": items, "count": len(items), "available": True}
-=======
     return {
         "items": items,
         "count": len(items),
@@ -298,4 +295,3 @@ def derive_actionable_board(
         "raw_count": len(rows),
         "shown": len(items),
     }
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2

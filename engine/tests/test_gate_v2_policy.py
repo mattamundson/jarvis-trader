@@ -459,8 +459,6 @@ def test_is_strategy_authorized_stale_verdict_not_authorized(tmp_verdicts_dir):
 
 
 # ---------------------------------------------------------- #
-<<<<<<< HEAD
-=======
 # is_strategy_authorized — strategy-family scoping           #
 #                                                              #
 # A paper config that routes through generate_sma_trend_signals #
@@ -564,7 +562,6 @@ def test_strategy_authorized_no_strategy_field_falls_back_to_all_families(tmp_ve
 
 
 # ---------------------------------------------------------- #
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 # is_strategy_authorized — MES carve-out (PR #564)            #
 #                                                              #
 # Amo's standing directive (2026-06-26, emphatic): MES must   #

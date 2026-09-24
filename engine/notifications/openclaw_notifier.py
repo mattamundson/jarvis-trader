@@ -22,10 +22,7 @@ import logging
 import os
 import subprocess
 from datetime import datetime
-<<<<<<< HEAD
-=======
 from typing import Any, Awaitable
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 from zoneinfo import ZoneInfo
 
 from notifications import discord_notifier as _discord
@@ -138,8 +135,6 @@ async def send_raw(message: str, phone: str = _PHONE_TO) -> bool:
     return await _send(message, phone)
 
 
-<<<<<<< HEAD
-=======
 def _record_alert_failure(
     *,
     alert_type: str,
@@ -221,7 +216,6 @@ def _track_fire_and_forget(
     return task
 
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 async def notify_signal(
     *,
     symbol: str,
@@ -273,18 +267,11 @@ async def notify_signal(
     sent = await _send(msg)
     if sent:
         _mark_sent(cooldown_key)
-<<<<<<< HEAD
-    asyncio.ensure_future(
-        _discord.discord_signal(
-            symbol=symbol, action=action, confidence=confidence, reason=reason
-        )
-=======
     _track_fire_and_forget(
         _discord.discord_signal(
             symbol=symbol, action=action, confidence=confidence, reason=reason
         ),
         label=f"discord_signal symbol={symbol} action={action}",
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     )
     return sent
 
@@ -319,14 +306,9 @@ async def notify_kill_switch(
         + "\nAll trading halted. Deactivate at localhost:3010"
     )
     result = await _send(msg)
-<<<<<<< HEAD
-    asyncio.ensure_future(
-        _discord.discord_kill_switch(reason=reason, message=message)
-=======
     _track_fire_and_forget(
         _discord.discord_kill_switch(reason=reason, message=message),
         label=f"discord_kill_switch reason={reason}",
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     )
     return result
 
@@ -372,18 +354,11 @@ async def notify_approval_required(
         f"Approve at localhost:3010/trades/pending-approvals"
     )
     result = await _send(msg)
-<<<<<<< HEAD
-    asyncio.ensure_future(
-        _discord.discord_approval_required(
-            symbol=symbol, action=action, confidence=0.0,
-        )
-=======
     _track_fire_and_forget(
         _discord.discord_approval_required(
             symbol=symbol, action=action, confidence=0.0,
         ),
         label=f"discord_approval_required symbol={symbol} action={action}",
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     )
     return result
 
@@ -432,14 +407,6 @@ async def notify_trade_closed(
         f"P&L: {pnl_str} ({result_word})"
     )
     sent = await _send(msg)
-<<<<<<< HEAD
-    if sent:
-        _mark_sent(cooldown_key)
-    asyncio.ensure_future(
-        _discord.discord_trade_closed(
-            symbol=symbol, action=action, pnl=pnl
-        )
-=======
     if not sent:
         _record_alert_failure(
             alert_type="trade_closed",
@@ -461,7 +428,6 @@ async def notify_trade_closed(
             "message": msg,
             "symbol": symbol,
         },
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     )
     return sent
 
@@ -500,9 +466,6 @@ async def notify_trade_opened(
     lines.append(f"({source}, paper)")
     msg = "\n".join(lines)
     sent = await _send(msg)
-<<<<<<< HEAD
-    asyncio.ensure_future(
-=======
     if not sent:
         _record_alert_failure(
             alert_type="trade_opened",
@@ -512,15 +475,11 @@ async def notify_trade_opened(
             error="OpenClaw WhatsApp send returned False (see logs)",
         )
     _track_fire_and_forget(
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         _discord.discord_trade_opened(
             symbol=symbol,
             action=action,
             quantity=float(quantity) if quantity else 1.0,
             entry_price=float(entry_price),
-<<<<<<< HEAD
-        )
-=======
         ),
         label=f"discord_trade_opened symbol={symbol} action={action}",
         record_failure={
@@ -529,7 +488,6 @@ async def notify_trade_opened(
             "message": msg,
             "symbol": symbol,
         },
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     )
     return sent
 
@@ -574,14 +532,9 @@ async def notify_target(
     sent = await _send(msg)
     if sent:
         _mark_sent(cooldown_key)
-<<<<<<< HEAD
-    asyncio.ensure_future(
-        _discord.discord_target(market=market, pnl=pnl, target=target)
-=======
     _track_fire_and_forget(
         _discord.discord_target(market=market, pnl=pnl, target=target),
         label=f"discord_target market={market}",
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     )
     return sent
 
@@ -612,14 +565,9 @@ async def notify_ib_disconnect(last_connected_at: str = "") -> bool:
         f"Restart IB Gateway and reconnect."
     )
     result = await _send(msg)
-<<<<<<< HEAD
-    asyncio.ensure_future(
-        _discord.discord_ib_disconnect(last_connected_at=last_connected_at)
-=======
     _track_fire_and_forget(
         _discord.discord_ib_disconnect(last_connected_at=last_connected_at),
         label="discord_ib_disconnect",
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     )
     return result
 
@@ -637,14 +585,9 @@ async def notify_kill_switch_cleared(*, authorized_by: str = "") -> bool:
         f"Review positions before new entries."
     )
     result = await _send(msg)
-<<<<<<< HEAD
-    asyncio.ensure_future(
-        _discord.discord_kill_switch_deactivated()
-=======
     _track_fire_and_forget(
         _discord.discord_kill_switch_deactivated(),
         label="discord_kill_switch_cleared",
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     )
     return result
 
@@ -671,14 +614,9 @@ async def notify_kill_switch_deactivated(
         f"Review positions before new entries."
     )
     result = await _send(msg)
-<<<<<<< HEAD
-    asyncio.ensure_future(
-        _discord.discord_kill_switch_deactivated()
-=======
     _track_fire_and_forget(
         _discord.discord_kill_switch_deactivated(),
         label="discord_kill_switch_deactivated",
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     )
     return result
 
@@ -763,18 +701,11 @@ async def notify_regime_change(symbol: str, old_regime: str, new_regime: str) ->
     ts = _ct_time()
     msg = f"JARVIS Regime Alert\n" f"{symbol}: {old_regime} → {new_regime}\n" f"Time: {ts} CT"
     result = await _send(msg)
-<<<<<<< HEAD
-    asyncio.ensure_future(
-        _discord.discord_regime_change(
-            symbol=symbol, old_regime=old_regime, new_regime=new_regime
-        )
-=======
     _track_fire_and_forget(
         _discord.discord_regime_change(
             symbol=symbol, old_regime=old_regime, new_regime=new_regime
         ),
         label=f"discord_regime_change symbol={symbol}",
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     )
     return result
 

@@ -32,8 +32,6 @@ _DATA_DIR = _ENGINE_DIR / "data" / "options_signals"
 @router.get("/latest")
 async def get_latest_options_signals():
     """Return the most recent options-implied snapshot, verbatim."""
-<<<<<<< HEAD
-=======
     return _read_latest_snapshot()
 
 
@@ -81,7 +79,6 @@ async def get_options_opportunity_board():
 
 def _read_latest_snapshot() -> dict:
     """Return the most recent options-implied snapshot, or raise HTTPException."""
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     path = _DATA_DIR / "latest.json"
     if not path.exists():
         raise HTTPException(status_code=404, detail="no options signals snapshot generated yet")

@@ -23,14 +23,6 @@ def _validate_required_env_vars():
     """
     # Load .env into os.environ so the checks below see file-based values
     # Use override=True to ensure .env values take precedence over system env vars (e.g., ANTHROPIC_API_KEY=test from system)
-<<<<<<< HEAD
-    try:
-        from dotenv import load_dotenv as _load_dotenv
-
-        _load_dotenv(dotenv_path=".env", override=True)
-    except ImportError:
-        pass  # python-dotenv not installed — fall back to os.environ only
-=======
     #
     # Skip entirely under pytest (TESTING=1, set by tests/conftest.py before
     # config is ever imported): loading the LIVE .env here would clobber
@@ -47,7 +39,6 @@ def _validate_required_env_vars():
             _load_dotenv(dotenv_path=".env", override=True)
         except ImportError:
             pass  # python-dotenv not installed — fall back to os.environ only
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
     required_vars = {
         # API Security — must be set to something other than the default stub
@@ -652,10 +643,6 @@ class TradingConfig(BaseSettings):
         "All three are active in the FuturesMarketModule.",
     )
     # Options module: dry-run in paper before enabling live routing; see docs/backlog/EPICS_12_17_FOLLOWONS.md
-<<<<<<< HEAD
-    OPTIONS_WATCHLIST: Union[str, list[str]] = Field(
-        default=["SPY", "QQQ", "AAPL", "TSLA"], description="Underlying symbols for options trading"
-=======
     # 2026-08-17: AAPL/TSLA REMOVED — daily SMA-trend gate-v2 WFO certification
     # FAILED both (AAPL sample-starvation 1-3 OOS trades; TSLA p_edge 0.50-0.56).
     # SPY/QQQ PASSED (p_edge 0.68-0.73, 15-30 OOS trades). Verdicts in
@@ -663,7 +650,6 @@ class TradingConfig(BaseSettings):
     # (display-only scanner never routes).
     OPTIONS_WATCHLIST: Union[str, list[str]] = Field(
         default=["SPY", "QQQ"], description="Underlying symbols for options trading"
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     )
     # HiddenPivots scan universe — futures + ETFs + liquid individual names.
     # Display/analysis only (the HP scanner never routes orders), so the roster

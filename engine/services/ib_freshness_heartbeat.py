@@ -66,10 +66,7 @@ class IBFreshnessHeartbeat:
         self._task: asyncio.Task | None = None
         self.last_beat_ts: float | None = None      # epoch of last successful stamp
         self.last_attempt_ts: float | None = None    # epoch of last probe attempt
-<<<<<<< HEAD
-=======
         self._consecutive_probe_failures = 0          # 2026-08-15: see _beat()
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
     async def start(self) -> None:
         if self._running:
@@ -133,10 +130,6 @@ class IBFreshnessHeartbeat:
                 ibkr.get_snapshot_price(self._symbol, True), timeout=8.0
             )
         except Exception as e:
-<<<<<<< HEAD
-            logger.debug("[IBHeartbeat] snapshot probe failed: %s", e)
-            return
-=======
             # 2026-08-15 incident: this was the ONE component honestly detecting
             # a wedged Gateway (socket up, API not answering -- is_connected
             # can't see it) and it logged the fact at DEBUG, where nobody looks.
@@ -155,7 +148,6 @@ class IBFreshnessHeartbeat:
                 logger.debug("[IBHeartbeat] snapshot probe failed: %s", e)
             return
         self._consecutive_probe_failures = 0
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
         if result and result.get("last_price"):
             rec = getattr(self.data, "_record_ibkr_freshness", None)

@@ -291,8 +291,6 @@ class IBGatewayManager:
         self._status = IBConnectionStatus.DISCONNECTED
         self._connect_time: Optional[float] = None
         self._last_error: Optional[str] = None
-<<<<<<< HEAD
-=======
         # Set when get_positions() finds reqPositionsAsync() AND the local
         # position cache BOTH empty while is_connected() reports True — the
         # 2026-08-03/08-10 failure signature where the execution leg's own
@@ -304,7 +302,6 @@ class IBGatewayManager:
         # in data/market_data.py).
         self._positions_stale: bool = False
         self._last_known_positions: dict[str, float] = {}
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
         logger.info(
             "IBGatewayManager created | broker=%s host=%s port=%d client_id=%d account=%s",
@@ -715,8 +712,6 @@ class IBGatewayManager:
         if action_upper is None:
             return None
 
-<<<<<<< HEAD
-=======
         # Defense-in-depth: SafetyLayer._check_do_not_trade_symbols() is the
         # designed choke point for this halt list, but not every caller routes
         # through SafetyLayer first (2026-08-11: a test called this method
@@ -734,7 +729,6 @@ class IBGatewayManager:
             )
             return None
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         order_type_upper = order_type.upper()
 
         # Tag every JARVIS-routed order so reconciliation can filter our fills
@@ -1122,11 +1116,7 @@ class IBGatewayManager:
 
     # ── Positions ─────────────────────────────────────────────────────────
 
-<<<<<<< HEAD
-    async def get_positions(self) -> list[dict]:
-=======
     async def get_positions(self, _retrying: bool = False) -> list[dict]:
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         """
         Return current IB positions as a list of dicts.
 
@@ -1191,17 +1181,11 @@ class IBGatewayManager:
                         "account": pos.account,
                     }
                 )
-<<<<<<< HEAD
-            return result
-=======
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
         except Exception as exc:
             logger.error("get_positions failed: %s", exc, exc_info=True)
             return []
 
-<<<<<<< HEAD
-=======
         return await self._reconcile_positions_staleness(result, _retrying=_retrying)
 
     async def _reconcile_positions_staleness(
@@ -1243,7 +1227,6 @@ class IBGatewayManager:
         reconnect."""
         return self._positions_stale
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     def get_cached_position(self, symbol: str) -> Optional[float]:
         """
         Sync, no-I/O net position for ``symbol`` from ib_async's continuously-
@@ -1349,11 +1332,8 @@ class IBGatewayManager:
           open_orders     (int)
           last_error      (str | None)
           ib_library      (str)
-<<<<<<< HEAD
-=======
           broker_probe_ok (bool)        — socket up AND all RPC probes responded
           degraded_reason (str | None)  — which probe(s) failed, when degraded
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         """
         start = time.monotonic()
 
@@ -1361,11 +1341,6 @@ class IBGatewayManager:
         latency_ms: Optional[float] = None
         net_liq: float = 0.0
         open_order_count: int = 0
-<<<<<<< HEAD
-
-        if connected:
-            # Measure round-trip latency with a lightweight reqCurrentTime call
-=======
         # Honesty signal: a socket that is "connected" can still have every RPC
         # probe time out / auth-fail. Narrow the excepts so a degraded broker is
         # surfaced (broker_probe_ok=False) rather than masquerading as healthy
@@ -1381,20 +1356,10 @@ class IBGatewayManager:
             # as the 2026-08-15 data-leg incident (data/market_data.py's
             # IBKRDataConnector.health_check) -- a failed round-trip means we are
             # not actually connected, whatever the socket flag says.
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             try:
                 t0 = time.monotonic()
                 await asyncio.wait_for(self._ib.reqCurrentTimeAsync(), timeout=5.0)
                 latency_ms = (time.monotonic() - t0) * 1000
-<<<<<<< HEAD
-            except Exception:
-                latency_ms = None
-
-            try:
-                net_liq = await self.get_portfolio_value()
-            except Exception:
-                pass
-=======
             except (asyncio.TimeoutError, ConnectionError, OSError) as exc:
                 latency_ms = None
                 probe_errors.append(f"latency:{type(exc).__name__}")
@@ -1411,19 +1376,13 @@ class IBGatewayManager:
             except (asyncio.TimeoutError, ConnectionError, OSError, AttributeError) as exc:
                 probe_errors.append(f"net_liq:{type(exc).__name__}")
                 logger.warning("health_check portfolio_value probe failed: %s", exc)
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
             try:
                 orders = await self.get_open_orders()
                 open_order_count = len(orders)
-<<<<<<< HEAD
-            except Exception:
-                pass
-=======
             except (asyncio.TimeoutError, ConnectionError, OSError, AttributeError) as exc:
                 probe_errors.append(f"open_orders:{type(exc).__name__}")
                 logger.warning("health_check open_orders probe failed: %s", exc)
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
         uptime: Optional[float] = None
         if self._connect_time is not None:
@@ -1445,11 +1404,8 @@ class IBGatewayManager:
             "last_error": self._last_error,
             "ib_library": lib_name,
             "paper_trading_only": True,  # SAFETY: always True — port 4001 is disabled
-<<<<<<< HEAD
-=======
             "broker_probe_ok": connected and not probe_errors,
             "degraded_reason": ("; ".join(probe_errors) or None),
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         }
 
         elapsed = (time.monotonic() - start) * 1000
@@ -1475,8 +1431,6 @@ class IBGatewayManager:
             f"status={self._status.value}, "
             f"account={self._config.account!r})"
         )
-<<<<<<< HEAD
-=======
 
 
 def classify_positions_staleness(
@@ -1517,4 +1471,3 @@ def classify_positions_staleness(
         return False, {}, []
 
     return True, last_known, unexplained
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2

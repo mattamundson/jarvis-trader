@@ -1,8 +1,3 @@
-<<<<<<< HEAD
-# pnpm 10.16+ moved per-project settings here (the package.json "pnpm" field
-# is no longer read). Approve native build scripts so `pnpm install` does not
-# fail with ERR_PNPM_IGNORED_BUILDS in CI.
-=======
 allowBuilds:
   sharp: true
   unrs-resolver: true
@@ -12,7 +7,6 @@ allowBuilds:
 # verify-deps-before-run pre-script install succeeds.
 # allowBuilds (pnpm >=11.22 boolean map) supersedes onlyBuiltDependencies;
 # both are kept so pnpm 10.x and 11.x agree.
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 onlyBuiltDependencies:
   - sharp
   - unrs-resolver

@@ -107,11 +107,6 @@ class PortfolioAllocator:
         if not raw_allocs:
             return {}
 
-<<<<<<< HEAD
-        # Create a pivot table of daily P&L per cell
-        df_trades = pd.DataFrame(trades)
-        df_trades["date"] = pd.to_datetime(df_trades["exit_time"]).dt.date
-=======
         # Create a pivot table of daily P&L per cell.
         # Tolerant parse (2026-08-17): exit_time rows can be ISO with or without
         # microseconds/offset (e.g. "2026-07-01T00:50:04"), which strict inference
@@ -121,7 +116,6 @@ class PortfolioAllocator:
         df_trades["date"] = pd.to_datetime(
             df_trades["exit_time"], format="mixed", errors="coerce", utc=True
         ).dt.date
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
         # Extract cell key components
         def get_strategy(params_json):

@@ -503,9 +503,6 @@ class TestCorrelationPreviewEndpoint:
         assert resp.status_code == 200
         body = resp.json()
         assert body["pairs"] == {}
-<<<<<<< HEAD
-        assert body["wired_into_live_sizing"] is False
-=======
 
 
 class TestPipelineFunnel:
@@ -597,4 +594,3 @@ class TestPipelineFunnel:
         assert r90["period"] == "90d"
         assert r30["days"] == 30
         assert r90["days"] == 90
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2

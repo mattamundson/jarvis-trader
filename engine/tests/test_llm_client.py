@@ -308,8 +308,6 @@ class TestGeminiPrimaryRouting:
             assert agent not in llm_client.GEMINI_PRIMARY_AGENTS
 
 
-<<<<<<< HEAD
-=======
 class TestOrcaRouterLeg:
     """OrcaRouter additive provider leg (2026-08-24). Default OFF; per-agent routing."""
 
@@ -430,6 +428,5 @@ class TestOrcaRouterLeg:
         assert client.orcarouter_fallback_count == 1
 
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

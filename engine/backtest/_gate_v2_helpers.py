@@ -20,11 +20,8 @@ files need to change.
 
 from __future__ import annotations
 
-<<<<<<< HEAD
-=======
 import hashlib
 import json
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 import os
 from pathlib import Path
 
@@ -54,8 +51,6 @@ GATE_DSR: float = 0.10
 #: Deflated Sharpe ratio floor — ALT path (trend strategies on daily bars).
 GATE_DSR_ALT: float = 0.30
 
-<<<<<<< HEAD
-=======
 #: Fraction of OOS windows with PF > 1.0 required on the ALT path.
 #:
 #: NOT YET ENFORCED BY ANY RUNNER — this constant exists so the ALT path can be
@@ -83,7 +78,6 @@ GATE_DSR_ALT: float = 0.30
 #: analysis: of 9 recorded ALT-path PASS verdicts, exactly 1 would flip.
 GATE_P_EDGE_ALT: float = 0.60
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 #: Bootstrap win-rate CI lower-bound floor (Init 2C). Complements DSR — which a
 #: few large outlier wins can carry — by binding on win RELIABILITY. SHADOW /
 #: NOT YET ENFORCED: the runners record ``win_rate_ci_lower`` into gate_v2_metrics,
@@ -202,8 +196,6 @@ COST_SWEEP_TIERS: dict[str, dict[str, float]] = {
 COST_TIER_ORDER: list[str] = ["optimistic", "realistic", "pessimistic", "catastrophic"]
 
 
-<<<<<<< HEAD
-=======
 def _span_label(path: Path) -> str:
     """Human-readable span label from a cache filename (e.g. '7.3y')."""
     years = _span_years(path)
@@ -270,7 +262,6 @@ def _deep_cache_enforced() -> bool:
     }
 
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 def _find_latest_cache(
     data_dir: Path, prefix: str, suffix: str = "_1h.csv", *, prefer_complete: bool = True
 ) -> Path:
@@ -286,8 +277,6 @@ def _find_latest_cache(
     falls back to the latest-end file (the historical behavior) and logs a
     warning. Pass ``prefer_complete=False`` to force pure latest-end.
 
-<<<<<<< HEAD
-=======
  Deep-data standard (2026-08-17): only the deep cache certifies edge. Shallow
  (~2.3y) caches do NOT certify — they were moved out of the certification path
  during the deep revalidation to
@@ -297,7 +286,6 @@ def _find_latest_cache(
  ``MES_2015-01-01_2026-08-16_1h.csv`` (actual span 2019-05-05 → 2026-08-14,
  7.27y; filenames can lie — verify from data, not filename).
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     2026-07-06 correction: this docstring previously claimed the plain 1h futures
     caches (no ``_cont`` suffix) are RTH-only and therefore always fall back to
     latest-end unchanged. That was wrong — they are near-continuous (~23h Globex
@@ -394,29 +382,6 @@ def _find_latest_cache(
                 suffix,
                 holiday_dates=US_MARKET_HOLIDAYS | US_MARKET_EARLY_CLOSES,
             )
-<<<<<<< HEAD
-            chosen = Path(pick["path"])
-            log = logging.getLogger(__name__)
-            if not pick["chose_latest_end"]:
-                log.warning(
-                    "Cache completeness: latest-end %s is holed; using "
-                    "completeness-preferred %s (%s)",
-                    latest.name,
-                    chosen.name,
-                    pick["reason"],
-                )
-            elif pick["fallback"]:
-                log.warning(
-                    "Cache completeness: no fully-trustworthy %s%s cache; using "
-                    "latest-end %s which has %s suspicious gap(s)",
-                    prefix,
-                    suffix,
-                    latest.name,
-                    pick["n_suspicious_gaps"],
-                )
-            return chosen
-=======
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         except Exception as exc:  # never let the completeness check break loading
             logging.getLogger(__name__).warning(
                 "Cache completeness check failed (%s); using latest-end %s",
@@ -425,11 +390,6 @@ def _find_latest_cache(
             )
             return latest
 
-<<<<<<< HEAD
-    return latest
-
-
-=======
         chosen = Path(pick["path"])
         log = logging.getLogger(__name__)
         if not pick["chose_latest_end"]:
@@ -663,7 +623,6 @@ def deflation_report(symbol: str, n_grid_combos: int, verdict_root=None) -> dict
     }
 
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 def bootstrap_pf_ci_lower(oos_pfs: list[float], n: int = 5000) -> float:
     """Bootstrap 5th-percentile of mean PF distribution; inf-cap baked in."""
     # Cap inf/-inf before bootstrapping — np.percentile returns NaN via inf-inf interpolation
@@ -693,8 +652,6 @@ def classify_wfo_consistency(oos_pfs: list[float]) -> str:
     if pct >= 0.55:
         return "MODERATE"
     return "WEAK"
-<<<<<<< HEAD
-=======
 
 
 def window_quality(oos_results, gate_min_trades: int = MIN_OOS_TRADES_PER_WINDOW) -> dict:
@@ -754,4 +711,3 @@ def window_quality(oos_results, gate_min_trades: int = MIN_OOS_TRADES_PER_WINDOW
         "p_edge_excl_single_trade": round(_p_edge_of(windows, 2), 4),
         "p_edge_at_gate_floor": round(_p_edge_of(windows, gate_min_trades), 4),
     }
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2

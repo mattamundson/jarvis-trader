@@ -45,28 +45,6 @@ export type PipelineWsEvent =
   | AnalystSignalsEvent;
 
 // ── URL resolution ────────────────────────────────────────────────────────
-<<<<<<< HEAD
-
-function resolveWsUrl(): string {
-  // In the browser, use the engine origin from the env var when available,
-  // otherwise fall back to current window origin (Next.js proxy rewrite handles WS upgrade).
-  if (typeof window === "undefined") return "";
-  const engineHttp =
-    process.env.NEXT_PUBLIC_ENGINE_URL ?? window.location.origin;
-  return engineHttp.replace(/^http/, "ws");
-}
-
-// /ws/pipeline requires api_key auth (browsers can't send custom headers on a
-// WS upgrade — see engine/routers/pipeline_ws_router.py). When connecting
-// same-origin (no NEXT_PUBLIC_ENGINE_URL override), the Next.js rewrite in
-// next.config.ts injects the server-only ENGINE_API_KEY and the client sends
-// no key at all. NEXT_PUBLIC_ENGINE_API_KEY only matters for the direct-connect
-// fallback (Vercel/ngrok, local :3010 override) and must be explicitly set —
-// no hardcoded default. See dashboard/DEPLOY_VERCEL.md "Known limitation —
-// WebSocket pages" for why that fallback still carries the key client-side.
-function resolveApiKey(): string {
-  return process.env.NEXT_PUBLIC_ENGINE_API_KEY ?? "";
-=======
 //
 // SECURITY (2026-08-17): client-side WS now ALWAYS connects same-origin so
 // the Next.js rewrite in next.config.ts injects the server-only ENGINE_API_KEY
@@ -90,7 +68,6 @@ function resolveWsUrl(): string {
 // rewrite, not a client key.
 function resolveApiKey(): string {
   return "";
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 }
 
 // ── usePipelineSocket hook ─────────────────────────────────────────────────

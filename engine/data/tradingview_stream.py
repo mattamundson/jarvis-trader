@@ -50,11 +50,6 @@ class TVStreamer:
             self.redis_client = redis.from_url(
                 settings.REDIS_URL or "redis://localhost:6379/0",
                 encoding="utf-8",
-<<<<<<< HEAD
-                decode_responses=True
-            )
-            await self.redis_client.ping()
-=======
                 decode_responses=True,
                 # Bounded so a wedged/hung Redis (e.g. a relay that accepts TCP
                 # but never responds — 2026-08-17 crash-loop) cannot stall boot.
@@ -62,7 +57,6 @@ class TVStreamer:
                 socket_timeout=3.0,
             )
             await asyncio.wait_for(self.redis_client.ping(), timeout=3.0)
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             logger.info("✅ TVStreamer: Redis connection established")
         except Exception as e:
             logger.error(f"❌ TVStreamer: Redis connection failed: {e}")
@@ -218,8 +212,6 @@ class TVStreamer:
                         # errors at WARNING; route the rest to DEBUG to avoid the
                         # ~85k-line spam flood. (de-spam 2026-06-18)
                         low = text.lower()
-<<<<<<< HEAD
-=======
                         # The JS-eval "_chartWidgetCollection" error is routine
                         # chatter that CONTAINS the word "error" (JS evaluation
                         # error ...), so the keyword gate below would surface it
@@ -228,7 +220,6 @@ class TVStreamer:
                         if "_chartwidgetcollection" in low or "chartwidgetcollection" in low:
                             logger.debug(f"[TVStreamer:CLI] {text}")
                             continue
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                         if any(k in low for k in ("error", "exception", "traceback", "fatal", "failed")):
                             logger.warning(f"[TVStreamer:CLI] {text}")
                         else:

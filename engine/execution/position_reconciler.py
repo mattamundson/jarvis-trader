@@ -101,8 +101,6 @@ class PositionReconciler:
 
         except Exception as e:
             logger.error(f"[RECONCILER] Encountered an error: {e}", exc_info=True)
-<<<<<<< HEAD
-=======
             # This is the sole crash-recovery sweep that detects positions left
             # without a stop-loss after an engine restart (2026-08-11
             # fail-open-safety-checks audit finding #5). A failure here means
@@ -129,7 +127,6 @@ class PositionReconciler:
                 await notifier.send(message)
         except Exception as notify_exc:
             logger.warning("[RECONCILER] alert notify failed: %s", notify_exc)
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
     async def _handle_orphaned_position(self, symbol: str, quantity: int, avg_cost: float) -> None:
         # Default emergency stop-loss: 2% adverse from avg fill price.
@@ -166,23 +163,6 @@ class PositionReconciler:
                     stop_loss_price=stop_price
                 )
 
-<<<<<<< HEAD
-            # Send notification
-            try:
-                from notifications.whatsapp import get_notifier
-
-                notifier = get_notifier()
-                if getattr(notifier, "enabled", False):
-                    await notifier.send(
-                        f"🚨 ORPHANED POSITION ALERT: {symbol} qty={quantity}.\n"
-                        f"Crash recovery active. Force-attached emergency 2% STP @ {stop_price:.2f}."
-                    )
-            except ImportError:
-                pass
-
-        except Exception as e:
-            logger.error(f"[RECONCILER] Failed to attach emergency stop for {symbol}: {e}")
-=======
             await self._alert(
                 f"🚨 ORPHANED POSITION ALERT: {symbol} qty={quantity}.\n"
                 f"Crash recovery active. Force-attached emergency 2% STP @ {stop_price:.2f}."
@@ -201,4 +181,3 @@ class PositionReconciler:
                 "This position is unprotected right now -- attach a stop-loss "
                 "manually."
             )
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2

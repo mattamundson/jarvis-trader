@@ -28,14 +28,10 @@ output_path = engine_root / "data" / "_README.md"
 def _load_verdict(path: Path) -> dict:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
-<<<<<<< HEAD
-    except Exception:
-=======
     except Exception as exc:
         # Surface corruption (e.g. a verdict truncated by a crash mid-write)
         # instead of silently rendering the row blank.
         print(f"[gen_scoreboard] WARN: failed to parse {path.name}: {exc}", file=sys.stderr)
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         return {}
 
 

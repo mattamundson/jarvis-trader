@@ -607,8 +607,6 @@ class BrierCalibrationTracker:
         """Diagnostic — per-agent Brier across the window."""
         return {agent: self.compute_brier(agent) for agent in self.agents}
 
-<<<<<<< HEAD
-=======
     def fit_current_calibration_curve(self, agent_name: str):
         """Fit a monotonic signal->probability curve on this agent's history (MR-1.1, second half).
 
@@ -629,7 +627,6 @@ class BrierCalibrationTracker:
         pairs = self._fetch_pairs(agent_name)
         return fit_isotonic_calibration(pairs)
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     def compute_rolling_brier(
         self,
         agents: Optional[List[str]] = None,

@@ -53,11 +53,7 @@ function stcLabel(value: number): string {
 }
 
 function signalVariant(signal: string): "bull" | "bear" | "neutral" {
-<<<<<<< HEAD
-  const upper = signal.toUpperCase();
-=======
   const upper = String(signal ?? "").toUpperCase();
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
   if (upper === "LONG" || upper === "BUY") return "bull";
   if (upper === "SHORT" || upper === "SELL") return "bear";
   return "neutral";
@@ -180,11 +176,7 @@ export function CurrentSignalWidget({ symbol = "MES" }: { symbol?: string }) {
                     {/* Signal badge */}
                     <span className="flex justify-center">
                       <Badge variant={signalVariant(row.stc_signal)}>
-<<<<<<< HEAD
-                        {row.stc_signal.toUpperCase()}
-=======
                         {String(row.stc_signal ?? "").toUpperCase() || "—"}
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                       </Badge>
                     </span>
 

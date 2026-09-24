@@ -6,16 +6,11 @@ Uses mocks for all Discord gateway and engine HTTP calls — no live connections
 
 from __future__ import annotations
 
-<<<<<<< HEAD
-from unittest.mock import AsyncMock, MagicMock, patch
-
-=======
 import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 import pytest
 
 # ---------------------------------------------------------------------------
@@ -148,8 +143,6 @@ def test_disabled_without_user_id():
 
 
 # ---------------------------------------------------------------------------
-<<<<<<< HEAD
-=======
 # 3. GATEWAY_INTENTS — no unused privileged intent, correct reaction scope
 # ---------------------------------------------------------------------------
 
@@ -188,7 +181,6 @@ def test_gateway_intents_targets_guild_reactions_not_direct_message_reactions():
 
 
 # ---------------------------------------------------------------------------
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 # 3. test_reaction_from_wrong_user_ignored
 # ---------------------------------------------------------------------------
 
@@ -371,8 +363,6 @@ def test_extract_candidate_id_returns_none_for_no_match():
     from discord.reaction_watcher import _extract_candidate_id
 
     assert _extract_candidate_id("Just a normal message") is None
-<<<<<<< HEAD
-=======
 
 
 # ---------------------------------------------------------------------------
@@ -484,4 +474,3 @@ async def test_stream_end_with_no_close_frame_logs_warning(caplog):
     assert any(
         "gateway stream ended with no close frame" in r.message for r in caplog.records
     )
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2

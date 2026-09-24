@@ -370,12 +370,6 @@ jobs:
       # Output is tee'd so the bundle-budget gate below can read the route table
       # instead of paying for a second ~2 minute build to reprint numbers this
       # one already produced. pipefail keeps a build failure fatal through tee.
-<<<<<<< HEAD
-      - name: Build Next.js
-        run: |
-          set -euo pipefail
-          pnpm run build 2>&1 | tee ../build-output.log
-=======
       # Retry once for the transient next/font/google network flake (fonts.gstatic.com
       # intermittently times out on the runner — proven flaky: the same build passed
       # on rerun with identical code, and master's own pre-deploy check failed the
@@ -400,7 +394,6 @@ jobs:
             fi
           done
           exit "$ec"
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         working-directory: dashboard
         env:
           NODE_ENV: production
@@ -413,9 +406,6 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
         working-directory: dashboard
 
-<<<<<<< HEAD
-      - name: Golden-path e2e (overview must not white-screen on degraded data)
-=======
       # No --project filter: this runs BOTH playwright.config.ts projects --
       # `smoke` (table-driven, all 50 manifest routes x degraded/offline/slow)
       # and `golden-path` (the hand-written domain specs, incl. the API-key-leak
@@ -424,7 +414,6 @@ jobs:
       # above, never a stale server. Step name predates the smoke suite --
       # kept the misnomer fixed here so CI logs describe what actually runs.
       - name: E2E -- smoke (50 routes) + golden-path
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         run: pnpm exec playwright test
         working-directory: dashboard
 
@@ -528,18 +517,6 @@ jobs:
       - name: Check for secret-shaped filenames
         run: |
           set -euo pipefail
-<<<<<<< HEAD
-          # Raw key material only — avoids false positives on settings.ANTHROPIC_API_KEY, risk_*, etc.
-          HITS=$(grep -rE "sk-ant-api[0-9]{2}-[A-Za-z0-9_-]{20,}|sk_live_[0-9a-zA-Z]{20,}|xox[baprs]-[0-9a-z-]{10,}|AKIA[0-9A-Z]{16}" \
-            --include="*.py" --include="*.ts" --include="*.tsx" --include="*.js" \
-            --exclude-dir=node_modules --exclude-dir=.venv --exclude-dir=.next \
-            engine/ dashboard/ 2>/dev/null || true)
-          if [[ -n "${HITS}" ]]; then
-            echo "${HITS}"
-            echo "ERROR: Potential raw API keys detected in repository."
-            exit 1
-          fi
-=======
           HITS=$(git ls-files | grep -E '[Ss]ecret.*\.csv$|[Cc]redential.*\.csv$|\.pem$|\.p12$|\.pfx$' || true)
           if [[ -n "${HITS}" ]]; then
             echo "${HITS}"
@@ -567,7 +544,6 @@ jobs:
             echo "ERROR: Potential raw API keys detected in repository."
             exit 1
           fi
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
           echo "Security scan passed: no high-signal secret patterns matched."
 
   ci-summary:

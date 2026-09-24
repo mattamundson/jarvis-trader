@@ -90,11 +90,7 @@ async def test_bear_call_llm_uses_client_and_weights(monkeypatch):
     assert "WEIGHTED_SCORE" in out
     last = agent._llm_client.calls[-1]
     assert last["agent_name"] == "bear_researcher"
-<<<<<<< HEAD
-    assert last["max_tokens"] == 256
-=======
     assert last["max_tokens"] == 800
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 
 async def test_call_llm_graceful_on_failure(monkeypatch):

@@ -31,14 +31,11 @@
   heartbeat-check.ps1 -LoopName morning-framing-brief (see
   register-framing-brief-loop.ps1).
 
-<<<<<<< HEAD
-=======
   Every ERROR exit also appends "<UTC timestamp>`t<reason>" to
   docs/loop-reports/morning-framing-brief.log so the failure reason survives
   after the Task Scheduler run ends (the .heartbeat file alone only records
   ERROR, not why). Same fix as morning-brief-loop.ps1 (2026-07-09).
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 .PARAMETER DryRun
   Passed straight through to morning_framing_brief.py --dry-run: generates and
   saves the brief but never posts to Discord. Use during the rollout gating
@@ -64,8 +61,6 @@ $venvPython = Join-Path $RepoRoot "engine\.venv\Scripts\python.exe"
 function Stop-WithError {
     param([string] $Reason)
     Write-LoopHeartbeat -LoopName $loopName -Status "ERROR"
-<<<<<<< HEAD
-=======
     if ($script:LoopReportDir) {
         try {
             $failLog = Join-Path $script:LoopReportDir "morning-framing-brief.log"
@@ -76,7 +71,6 @@ function Stop-WithError {
             Write-Warning "failure log write failed (non-fatal): $($_.Exception.Message)"
         }
     }
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     Send-LoopNotification -Message "[!!] jarvis morning-framing-brief FAILED - $Reason ($stamp)" | Out-Null
     Write-Warning "[morning-framing-brief-loop] ERROR - $Reason"
     exit 3

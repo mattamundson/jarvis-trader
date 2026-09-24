@@ -5,10 +5,7 @@ import os
 from pathlib import Path
 
 from es_research.demo import run_reproducibility_demo
-<<<<<<< HEAD
-=======
 from es_research.pipeline.synthetic import run_synthetic_pipeline
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 
 def default_registry_path() -> Path:
@@ -24,10 +21,7 @@ def main() -> None:
     demo_parser = subparsers.add_parser("demo")
     demo_sub = demo_parser.add_subparsers(dest="command", required=True)
     demo_sub.add_parser("reproducibility")
-<<<<<<< HEAD
-=======
     demo_sub.add_parser("synthetic-pipeline")
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     parser.add_argument("--registry-path", type=Path, default=default_registry_path())
     args = parser.parse_args()
     if args.area == "registry" and args.command == "init":
@@ -48,8 +42,6 @@ def main() -> None:
         for key, value in values.items():
             print(f"{key}={value}")
         return
-<<<<<<< HEAD
-=======
     if args.area == "demo" and args.command == "synthetic-pipeline":
         try:
             result = run_synthetic_pipeline(Path("data/registry/synthetic-demo"))
@@ -66,7 +58,6 @@ def main() -> None:
         print(f"parquet_path={result.parquet_path}")
         print(f"report_path={result.report_path}")
         return
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     parser.error("unknown command")
 
 

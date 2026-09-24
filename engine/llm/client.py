@@ -16,10 +16,7 @@ Cost per token (as of 2026-03-29):
 
 import asyncio
 import contextlib
-<<<<<<< HEAD
-=======
 import contextvars
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 import logging
 import os
 import time
@@ -40,8 +37,6 @@ from tenacity import (
 
 from .cost_tracker import CostTracker
 
-<<<<<<< HEAD
-=======
 # T4: current pipeline run context. The pipeline sets run_id + symbol before
 # fanning out agent calls so each LLM call can be attributed to a run in the
 # persistent pipeline_llm_costs table. Contextvar so concurrent runs (scanner
@@ -65,7 +60,6 @@ def clear_llm_run_context() -> None:
     """Clear the run context (end of pipeline run)."""
     _llm_run_context.set(None)
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 try:
     from utils.token_proxy import get_token_proxy
 
@@ -127,8 +121,6 @@ def _provider_from_model(model: str) -> str:
     return "anthropic"  # claude-* (direct or via Vertex — Vertex passes served_by)
 
 
-<<<<<<< HEAD
-=======
 def resolve_agent_model(llm_client, fallback: str, fast: bool = False) -> str:
     """Provider-aware model for agent call sites (T1, 2026-09-02).
 
@@ -146,7 +138,6 @@ def resolve_agent_model(llm_client, fallback: str, fast: bool = False) -> str:
     return fallback
 
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 def get_llm_provider_summary() -> dict:
     """Provider-redundancy snapshot for /health.
 
@@ -301,14 +292,11 @@ class JarvisLLMClient:
         # the response, so the conservative cache-miss rate is used here —
         # this will overstate cost on cache hits, never understate it.
         "kimi-k3": {"input": 3.0, "output": 15.0},
-<<<<<<< HEAD
-=======
         # OrcaRouter (2026-08-24): Qwen3.8-27B paid + free tiers.
         # qwen/qwen3.8-27b: $0.33/MTok in, $2.40/MTok out (262K ctx)
         # qwen/qwen3.8-27b-free: $0 (65K ctx, rate-limited)
         "qwen/qwen3.8-27b": {"input": 0.33, "output": 2.40},
         "qwen/qwen3.8-27b-free": {"input": 0.0, "output": 0.0},
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     }
 
     # Model fallback chain when overloaded
@@ -358,8 +346,6 @@ class JarvisLLMClient:
         "claude-haiku-4-5-20251001": "gpt-4o-mini",
     }
 
-<<<<<<< HEAD
-=======
     # 2026-08-13: on an Anthropic credit-exhaustion event, every pipeline agent
     # (technical_analyst, fundamental_analyst, news_analyst, social_analyst,
     # trader, risk_manager, fund_manager, debate agents) holds its OWN
@@ -385,7 +371,6 @@ class JarvisLLMClient:
         os.getenv("LLM_PROVIDER_DEGRADE_WINDOW_SECONDS", "45")
     )
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     # Agents routed to Gemini 2.5-flash as primary provider (not as fallback).
     # These are context-enrichment / classification tasks — not trade decisions.
     # Keeps credit consumption on cost-efficient Gemini; Anthropic reserved for
@@ -416,11 +401,8 @@ class JarvisLLMClient:
         "deepseek-reasoner": 64_000,
         "hermes3:latest": 4_096,
         "kimi-k3": 1_048_576,
-<<<<<<< HEAD
-=======
         "qwen/qwen3.8-27b": 262_000,
         "qwen/qwen3.8-27b-free": 65_536,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     }
 
     # Class-level default — read at line 445/650 etc. Subclasses or callers that
@@ -428,16 +410,12 @@ class JarvisLLMClient:
     # AttributeError.  __init__ overwrites with the env-derived value.
     provider: str = "ollama"
 
-<<<<<<< HEAD
-    def __init__(self, api_key: Optional[str] = None, db_path: str = "data/llm_costs.db"):
-=======
     def __init__(
         self,
         api_key: Optional[str] = None,
         db_path: str = "data/llm_costs.db",
         db_manager=None,
     ):
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         """
         Initialize the LLM client.
 
@@ -449,10 +427,7 @@ class JarvisLLMClient:
                 (run_id/symbol from the run context) and threshold alerts are
                 written to alert_log.
         """
-<<<<<<< HEAD
-=======
         self._db_manager = db_manager
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         self.provider = os.getenv("JARVIS_LLM_PROVIDER", "ollama").strip().lower()
         self.api_key = "" if self.provider == "ollama" else (api_key or "")
         # Hard wall-clock ceiling for any single provider call (see module note).
@@ -583,12 +558,6 @@ class JarvisLLMClient:
                 logger.warning("vertex failover disabled — could not build Vertex client: %s", exc)
                 self.vertex_failover_enabled = False
         self.cost_tracker = CostTracker(db_path=db_path)
-<<<<<<< HEAD
-        self.default_model = self.ollama_model if self.provider == "ollama" else "claude-sonnet-4-6"
-        self.fast_model = (
-            self.ollama_model if self.provider == "ollama" else "claude-haiku-4-5-20251001"
-        )
-=======
         # Provider-aware default/fast model selection (T1, 2026-09-02).
         # Previously this only branched on "ollama" — with JARVIS_LLM_PROVIDER
         # set to deepseek (or kimi), agents that passed model=None or relied on
@@ -608,7 +577,6 @@ class JarvisLLMClient:
         else:
             self.default_model = "claude-sonnet-4-6"
             self.fast_model = "claude-haiku-4-5-20251001"
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         self.compaction_count = 0
 
         # Phase 3 (2026-05-20): Google/Gemini provider — transparent fallback
@@ -715,8 +683,6 @@ class JarvisLLMClient:
         self._kimi_max_concurrency = _kimi_concurrency
         self._kimi_call_semaphore = asyncio.Semaphore(_kimi_concurrency)
 
-<<<<<<< HEAD
-=======
         # 2026-08-24: OrcaRouter — additive OpenAI-compatible provider leg.
         # Adaptive LLM router (Qwen3.8-27B free/paid tiers). SILENTLY DISABLED
         # with no key, exactly like the openai/kimi legs — nothing routes to it
@@ -745,7 +711,6 @@ class JarvisLLMClient:
                 a.strip() for a in _orca_raw.split(",") if a.strip()
             }
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         google_status = (
             "enabled"
             if self.google_fallback_enabled
@@ -762,14 +727,11 @@ class JarvisLLMClient:
             if self.kimi_fallback_enabled
             else ("disabled (no key)" if not self.kimi_api_key else "disabled (env flag)")
         )
-<<<<<<< HEAD
-=======
         orca_status = (
             "enabled"
             if self.orcarouter_enabled
             else ("disabled (no key)" if not self.orcarouter_api_key else "disabled (env flag)")
         )
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         decision_primary_status = (
             self.decision_primary_model
             if (
@@ -783,12 +745,8 @@ class JarvisLLMClient:
             f"✅ JarvisLLMClient initialized with cost tracking at {db_path} "
             f"(provider={self.provider}, decision_primary={decision_primary_status}, "
             f"google_fallback={google_status}, "
-<<<<<<< HEAD
-            f"openai_fallback={openai_status}, deepseek={deepseek_status}, kimi={kimi_status})"
-=======
             f"openai_fallback={openai_status}, deepseek={deepseek_status}, kimi={kimi_status}, "
             f"orca={orca_status})"
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         )
 
         # Snapshot the wired legs for /health provider-redundancy reporting.
@@ -837,11 +795,6 @@ class JarvisLLMClient:
             # here when Kimi is already listed as the primary above (avoids
             # double-listing it), mirroring the Gemini guard.
             configured.append("kimi")
-<<<<<<< HEAD
-        _LLM_PATH_STATE["primary_provider"] = primary_provider
-        _LLM_PATH_STATE["providers_configured"] = configured
-
-=======
         if self.orcarouter_enabled:
             # OrcaRouter is a per-agent override leg (default OFF). Listed so
             # /health provider-redundancy reporting reflects that it's wired
@@ -877,7 +830,6 @@ class JarvisLLMClient:
                 self._PROVIDER_DEGRADE_WINDOW_SECONDS,
             )
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     async def _bounded(self, coro, *, what: str, model: str, agent_name: str):
         """Run a provider coroutine under a hard wall-clock ceiling.
 
@@ -1018,15 +970,10 @@ class JarvisLLMClient:
                 proxy.set_cached(
                     compressed_key, result_obj, model=str(current_model), salt=cache_salt
                 )
-<<<<<<< HEAD
-            except Exception:
-                pass  # graceful — cache write failure never breaks API call
-=======
             except Exception as exc:
                 # graceful — cache write failure never breaks the API call, but
                 # log it so a consistently-failing proxy (disk full, perms) is visible
                 logger.debug("TokenProxy cache write failed: %s", exc)
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
         return result_obj
 
@@ -1161,16 +1108,12 @@ class JarvisLLMClient:
         # Leg 2: Gemini — preserves quality tier (Opus/Sonnet -> 2.5-flash,
         # Haiku -> 2.0-flash) and returns a normal LLMCallResult so call sites
         # are provider-agnostic.
-<<<<<<< HEAD
-        if self.google_fallback_enabled:
-=======
         if self.google_fallback_enabled and self._is_provider_cooling_down("gemini"):
             logger.warning(
                 f"[{current_model}] skipping Gemini fallback for {agent_name} "
                 f"-- cooling down from a recent 429 (thundering-herd guard)"
             )
         elif self.google_fallback_enabled:
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             google_model = self.GOOGLE_FAILOVER_MAP.get(current_model, "gemini-2.5-flash")
             logger.warning(
                 f"[{current_model}] anthropic {failure_label} for {agent_name} -- "
@@ -1211,10 +1154,7 @@ class JarvisLLMClient:
                     cache_salt=cache_salt,
                 )
             except Exception as gex:
-<<<<<<< HEAD
-=======
                 self._note_provider_rate_limited("gemini", gex)
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                 logger.error(
                     f"[{google_model}] Gemini fallback also failed for "
                     f"{agent_name}: {type(gex).__name__}: {gex}"
@@ -1223,16 +1163,12 @@ class JarvisLLMClient:
 
         # Leg 3: OpenAI — last resort before Kimi. Opus/Sonnet -> gpt-4o,
         # Haiku -> gpt-4o-mini.
-<<<<<<< HEAD
-        if self.openai_fallback_enabled:
-=======
         if self.openai_fallback_enabled and self._is_provider_cooling_down("openai"):
             logger.warning(
                 f"[{current_model}] skipping OpenAI fallback for {agent_name} "
                 f"-- cooling down from a recent 429 (thundering-herd guard)"
             )
         elif self.openai_fallback_enabled:
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             openai_model = self.OPENAI_FAILOVER_MAP.get(current_model, "gpt-4o-mini")
             logger.warning(
                 f"[{current_model}] Anthropic+Vertex+Gemini failed for {agent_name} -- "
@@ -1272,10 +1208,7 @@ class JarvisLLMClient:
                     cache_salt=cache_salt,
                 )
             except Exception as oex:
-<<<<<<< HEAD
-=======
                 self._note_provider_rate_limited("openai", oex)
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                 logger.error(
                     f"[{openai_model}] OpenAI fallback also failed for "
                     f"{agent_name}: {type(oex).__name__}: {oex}"
@@ -1560,8 +1493,6 @@ class JarvisLLMClient:
         if self.provider == "ollama":
             current_model = self.ollama_model_per_agent.get(agent_name, self.ollama_model)
 
-<<<<<<< HEAD
-=======
         # 2026-08-24: OrcaRouter per-agent routing — a named agent (e.g. a
         # strategy-analysis agent) runs on Qwen3.8-27B via OrcaRouter while the
         # reviewed trade-decision chain stays untouched. Default OFF (empty
@@ -1600,7 +1531,6 @@ class JarvisLLMClient:
                 self.orcarouter_fallback_count += 1
                 # fall through to the normal chain on failure
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         if compact:
             try:
                 working_messages = await self._maybe_compact_messages(
@@ -1652,10 +1582,7 @@ class JarvisLLMClient:
             self.provider != "ollama"
             and self.google_fallback_enabled
             and google_primary_model is not None
-<<<<<<< HEAD
-=======
             and not self._is_provider_cooling_down("gemini")
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         ):
             # Enrichment/classification agents (news/technical/fundamental, etc.)
             # are pinned to the cost-efficient flash tier as their PRIMARY — they
@@ -1691,10 +1618,7 @@ class JarvisLLMClient:
                     cache_salt=cache_salt,
                 )
             except Exception as gex:
-<<<<<<< HEAD
-=======
                 self._note_provider_rate_limited("gemini", gex)
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
                 logger.warning(
                     "[%s] Gemini primary failed for %s — falling through to Anthropic: %s",
                     google_model,
@@ -2174,8 +2098,6 @@ class JarvisLLMClient:
             content=[SimpleNamespace(text=text)],
         )
 
-<<<<<<< HEAD
-=======
     async def _call_orcarouter(
         self,
         system: str,
@@ -2246,7 +2168,6 @@ class JarvisLLMClient:
             content=[SimpleNamespace(text=text)],
         )
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     async def _call_deepseek(
         self,
         system: str,
@@ -2566,8 +2487,6 @@ class JarvisLLMClient:
             success=success,
         )
 
-<<<<<<< HEAD
-=======
         # T4: persist raw calls into the pipeline table too (same best-effort
         # semantics as the .call() path — never breaks the caller).
         run_ctx = get_llm_run_context()
@@ -2586,7 +2505,6 @@ class JarvisLLMClient:
                     "[LLM-COST] pipeline_llm_costs write failed (non-fatal): %s", _rec_err
                 )
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     async def get_daily_stats(self) -> dict:
         """
         Get daily cost and usage statistics.

@@ -11,8 +11,6 @@
 
 // Real-time / streaming tiers. Mirrors LIVE_SOURCES in engine/data/provenance.py.
 // A value from any of these CAN be live (subject to the server's freshness gate).
-<<<<<<< HEAD
-=======
 //
 // "ledger" (P4-2) is distinct from the market-data streaming tiers above: it
 // marks a value read synchronously from the closed-trade database, not a price
@@ -21,17 +19,13 @@
 // request, and should read LIVE, not STATIC, matching the server's honest
 // is_live=true verdict (see engine/routers/portfolio_router.py's
 // _ledger_envelope).
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 export const LIVE_SOURCES: ReadonlySet<string> = new Set([
   "ibkr",
   "schwab",
   "tradingview",
   "polygon_stream",
   "redis_fabric",
-<<<<<<< HEAD
-=======
   "ledger",
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 ]);
 
 export type ProvenanceStatus = "live" | "stale" | "static" | "unavailable";

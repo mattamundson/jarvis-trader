@@ -45,8 +45,6 @@ def _make_client(tmp_path, monkeypatch, **env):
     monkeypatch.delenv("MOONSHOT_API_KEY", raising=False)
     monkeypatch.delenv("JARVIS_CLAUDE_USE_VERTEX", raising=False)
     monkeypatch.delenv("JARVIS_LLM_VERTEX_FAILOVER", raising=False)
-<<<<<<< HEAD
-=======
     # Gate flags + endpoints: the live engine/.env sets these (e.g.
     # JARVIS_LLM_GOOGLE_FALLBACK=0, JARVIS_LLM_KIMI_FALLBACK=0) and
     # test_config_router._load_env() leaks them into os.environ at import
@@ -59,7 +57,6 @@ def _make_client(tmp_path, monkeypatch, **env):
     monkeypatch.delenv("OPENAI_ENDPOINT", raising=False)
     monkeypatch.delenv("MOONSHOT_ENDPOINT", raising=False)
     monkeypatch.delenv("KIMI_MAX_CONCURRENCY", raising=False)
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     for key, val in env.items():
         monkeypatch.setenv(key, val)
     return JarvisLLMClient(api_key="test-key-12345", db_path=str(tmp_path / "costs.db"))

@@ -3,8 +3,6 @@
 import useSWR from "swr";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-<<<<<<< HEAD
-=======
 import { useHonestTrades } from "@/lib/useHonestTrades";
 import { isHonestUnavailable, dailyPnl } from "@/lib/honestTrades";
 import { fetchPnlTruth, type PnlTruthResponse } from "@/lib/api";
@@ -37,7 +35,6 @@ function todayLocalDate(): string {
 function signed(n: number): string {
   return `${n >= 0 ? "+" : ""}${formatCurrency(n)}`;
 }
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 export function SessionSummaryWidget() {
   const { honest, isLoading: loadingHonest } = useHonestTrades();
@@ -106,17 +103,6 @@ export function SessionSummaryWidget() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           Session Summary
-<<<<<<< HEAD
-          <Badge variant="neutral">Not wired</Badge>
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        {/* Placeholder, not a live panel — must not read as data about to populate. */}
-        <p className="text-muted-foreground">
-          Placeholder — not yet wired to a data source. This panel shows no live
-          session data.
-        </p>
-=======
           <Badge
             variant="static"
             title="Honest deduped record unavailable — showing the engine's own /pnl/truth ledger instead (all-time, not scoped to today)."
@@ -150,7 +136,6 @@ export function SessionSummaryWidget() {
             </p>
           </div>
         )}
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       </CardContent>
     </Card>
   );

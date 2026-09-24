@@ -58,12 +58,6 @@ export function aggregationBannerState(
 // see tests/masterApiProxyPaths.node.test.ts for the full writeup.
 const BASE = "/api/master";
 
-<<<<<<< HEAD
-export async function fetchMasterStatus(): Promise<MasterStatus> {
-  const res = await fetch(`${BASE}/master/status`, { cache: "no-store" });
-  if (!res.ok) throw new Error(`master-api ${res.status}`);
-  return res.json();
-=======
 // master-api can hang instead of cleanly erroring (unlike a 401/503, which
 // the `!res.ok` check already handles). Shared timeout for every master-api
 // call below that needs a bounded-time guarantee (fetchMasterStatus,
@@ -98,7 +92,6 @@ export async function fetchMasterStatus(): Promise<MasterStatus> {
   } finally {
     clearTimeout(timeoutId);
   }
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 }
 
 export type Account = {
@@ -193,26 +186,12 @@ export type RealizedPnl = {
   caveats: string[];
 };
 
-<<<<<<< HEAD
-// master-api can hang instead of cleanly erroring (unlike a 401/503, which
-// the `!res.ok` check already handles). This function backs the shared
-// `useHonestTrades()` hook -- consumed by ~30 widgets across the home,
-// /performance, and /validation pages (AccountROIWidget, HonestPnlCard,
-// RecentTradesTableWidget, BacktestVsPaperWidget, and more) -- so an
-// unbounded `fetch()` here means every one of those widgets can get stuck on
-// "Loading..." indefinitely if master-api stalls. An explicit timeout
-// guarantees this always resolves or rejects within a bounded time, which
-// SWR (or a caller's own try/catch) turns into a visible error/empty state.
-const MASTER_API_TIMEOUT_MS = 15000; // 15 seconds
-
-=======
 // This function backs the shared `useHonestTrades()` hook -- consumed by ~30
 // widgets across the home, /performance, and /validation pages
 // (AccountROIWidget, HonestPnlCard, RecentTradesTableWidget,
 // BacktestVsPaperWidget, and more) -- so an unbounded `fetch()` here means
 // every one of those widgets can get stuck on "Loading..." indefinitely if
 // master-api stalls. See MASTER_API_TIMEOUT_MS above.
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 export async function fetchRealizedPnl(): Promise<RealizedPnl> {
   const controller = new AbortController();
   const timeoutId = setTimeout(

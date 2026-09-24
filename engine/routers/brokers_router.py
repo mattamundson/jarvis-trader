@@ -275,11 +275,6 @@ async def get_broker_positions():
 
         # IBKR positions
         ibkr_raw: list = []
-<<<<<<< HEAD
-        if ibkr_conn:
-            try:
-                ibkr_raw = await _real_ibkr().get_positions() or []
-=======
         ibkr_positions_stale = False
         if ibkr_conn:
             try:
@@ -292,7 +287,6 @@ async def get_broker_positions():
                 # positions_stale().
                 if hasattr(real, "positions_stale"):
                     ibkr_positions_stale = bool(real.positions_stale())
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             except Exception as exc:
                 logger.warning("IBKR get_positions failed: %s", exc)
 
@@ -330,14 +324,11 @@ async def get_broker_positions():
             "ibkr": {
                 "connected": ibkr_conn,
                 "positions": ibkr_normalised,
-<<<<<<< HEAD
-=======
                 # True when the last read hit the "previously non-zero, now
                 # empty, no explaining fill on record" desync signature and a
                 # reconnect+retry couldn't resync it -- see
                 # classify_positions_staleness() in execution/ib_gateway.py.
                 "positions_stale": ibkr_positions_stale,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             },
             "schwab": {
                 "connected": schwab_conn,

@@ -156,8 +156,6 @@ class TestInsertPaperTradeGuard:
     # and require schema bootstrapping that the real DB provides for free.
 
 
-<<<<<<< HEAD
-=======
 class TestInsertPaperTradePersistsTakeProfit:
     """Regression net for the 2026-08-16 take_profit column drop.
 
@@ -362,7 +360,6 @@ class TestInsertTradePersistsBrackets:
         assert row[1] == 5530.0, f"insert_trade take_profit not persisted: {row[1]}"
 
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 class TestPatchPositionGuard:
     """update_position must raise HTTP 422 on an inverted stop update."""
 

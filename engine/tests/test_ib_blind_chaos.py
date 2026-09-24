@@ -23,15 +23,10 @@ is ever made.
 
 from __future__ import annotations
 
-<<<<<<< HEAD
-import math
-import os
-=======
 import asyncio
 import math
 import os
 import time
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -42,11 +37,7 @@ from fastapi.testclient import TestClient
 from analytics.metrics import calmar, max_drawdown_pct, sharpe, total_return_pct
 from config import settings
 from data import market_data as market_data_module
-<<<<<<< HEAD
-from data.market_data import MarketDataManager
-=======
 from data.market_data import IBKRDataConnector, MarketDataManager
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 from data.provenance import derive_is_live
 from main import app
 
@@ -274,8 +265,6 @@ class TestPricesSnapshotHonestUnderIBBlind:
         assert data["source"] == "unavailable"
         assert data["is_live"] is False
         assert data["last_price"] is None
-<<<<<<< HEAD
-=======
 
 
 # ── (d) Wedged, not blind: socket alive but the API never answers ───────────
@@ -419,4 +408,3 @@ class TestDataLegHealthCheckVerifiesRoundTrip:
         assert result["connected"] is False
         assert result["status"] == "disconnected"
         conn._ib.reqCurrentTimeAsync.assert_not_called()
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2

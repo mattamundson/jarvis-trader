@@ -109,8 +109,6 @@ class CostTracker:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_agent ON llm_calls(agent_name)")
         # Index by provider for the direct-vs-Vertex A/B breakdown
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_provider ON llm_calls(provider)")
-<<<<<<< HEAD
-=======
 
         # T4: once-per-period alert state. period_key like 'daily:2026-08-18'
         # or 'monthly:2026-08'; a row means the threshold alert already fired
@@ -126,7 +124,6 @@ class CostTracker:
             )
             """
         )
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
         conn.commit()
         conn.close()

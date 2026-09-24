@@ -119,22 +119,15 @@ def _load_vix_data(start: str = "2022-01-01") -> pd.DataFrame:
 
 
 def _load_mes_data(data_dir: Path) -> pd.DataFrame:
-<<<<<<< HEAD
-    from backtest._gate_v2_helpers import _find_latest_cache
-=======
     from backtest._gate_v2_helpers import _find_latest_cache, cache_provenance
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
     data_file = _find_latest_cache(data_dir, "MES")
     print(f"[MES] Selected {data_file.name}")
     df = pd.read_csv(data_file)
-<<<<<<< HEAD
-=======
     # Record content-addressed provenance on the frame so any runner can drop it into its
     # verdict with one line. Verdict provenance was unverifiable across all 76 artifacts
     # before this (see docs/research/verdict-artifact-audit-2026-09-17.md).
     df.attrs["cache_provenance"] = cache_provenance(data_file)
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     df.columns = [c.lower() for c in df.columns]
     ts_col = "timestamp" if "timestamp" in df.columns else "datetime"
     df[ts_col] = pd.to_datetime(df[ts_col])
@@ -276,10 +269,7 @@ from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_
 from backtest._gate_v2_helpers import (  # noqa: E402
     classify_wfo_consistency as _classify_wfo_consistency,
 )
-<<<<<<< HEAD
-=======
 from backtest._gate_v2_helpers import window_quality as _window_quality  # noqa: E402
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 
 def _run_fixed_params_sweep(
@@ -387,8 +377,6 @@ def _compute_gate_v2(
     # Sharpes (a 1-2 trade window's giant Sharpe deflated to a fake ~1.0 and
     # auto-passed both gate floors). See _gate_v2_trade_metrics for the why.
     dsr = trade_level_dsr(oos_results, n_grid_combos=n_grid_combos, initial_capital=CAPITAL)
-<<<<<<< HEAD
-=======
     # Honest deflation, reported BOTH ways (2026-09-17). The grid count keeps comparability with
     # historical verdicts; the campaign count is derived from the artifact store and is the honest
     # one (MES = 214 trials vs the 4 this runner used, and 0.2885 < the 0.30 ALT floor at that
@@ -408,7 +396,6 @@ def _compute_gate_v2(
         f"  |  campaign n={deflation['n_trials_campaign']} dsr={deflation['dsr_campaign']:.4f}"
         f"  (alt floor {GATE_DSR_ALT})"
     )
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
     wfo_consistency = _classify_wfo_consistency(oos_pfs)
     fixed_params_min_pf = fixed_params_metrics.get("fixed_params_min_pf", 0.0)
@@ -453,11 +440,8 @@ def _compute_gate_v2(
         "mc_95th_dd": round(mc_95th_dd, 6),
         "mc_95th_dd_pct": round(mc_95th_dd * 100, 4),
         "dsr": round(dsr, 6),
-<<<<<<< HEAD
-=======
         # Both deflation bases (additive, report-only — no threshold reads this).
         "deflation": deflation,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         "wfo_consistency": wfo_consistency,
         "fixed_params_min_pf": fixed_params_min_pf,
         "fixed_params_mean_pf": fixed_params_metrics.get("fixed_params_mean_pf", 0.0),
@@ -466,10 +450,7 @@ def _compute_gate_v2(
         "n_oos_windows": len(oos_results),
         "n_oos_windows_with_trades": len(oos_pfs),
         "total_oos_trades": all_trades,
-<<<<<<< HEAD
-=======
         "window_quality": _window_quality(oos_results),
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     }
 
 
@@ -606,8 +587,6 @@ def run_wfo() -> dict:
         f"{gate['n_oos_windows']} total"
     )
     print(f"  Total OOS trades     = {gate['total_oos_trades']}")
-<<<<<<< HEAD
-=======
     _wq = gate.get("window_quality", {})
     if _wq:
         print("  --- window quality (audit only; no effect on pass/fail) ---")
@@ -622,7 +601,6 @@ def run_wfo() -> dict:
             f"median trades/window = {_wq['median_trades_per_window']} | "
             f"gate-floor adequate = {_wq['sample_adequate_at_gate_floor']}"
         )
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     print(f"{'=' * 70}")
 
     verdicts_dir = engine_root / "data" / "gate_v2_verdicts"
@@ -631,13 +609,10 @@ def run_wfo() -> dict:
 
     verdict_doc = {
         "symbol": SYMBOL,
-<<<<<<< HEAD
-=======
         # Which cache produced this verdict, content-addressed. Added 2026-09-17 after the
         # audit found 0/76 verdicts recorded provenance; filename labels alone proved
         # unreliable (8 duplicate-content groups with conflicting labels).
         "cache_provenance": df.attrs.get("cache_provenance", {}),
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         "family": "trend_vix_pctile",
         "rank": 1,
         "verdict": gate["verdict"],
@@ -656,17 +631,11 @@ def run_wfo() -> dict:
         "gate_v2_metrics": {
             "pf_ci_lower": gate["pf_ci_lower"],
             "p_edge": gate["p_edge"],
-<<<<<<< HEAD
-            "mc_95th_dd": gate["mc_95th_dd"],
-            "mc_95th_dd_pct": gate["mc_95th_dd_pct"],
-            "dsr": gate["dsr"],
-=======
             "window_quality": gate["window_quality"],
             "mc_95th_dd": gate["mc_95th_dd"],
             "mc_95th_dd_pct": gate["mc_95th_dd_pct"],
             "dsr": gate["dsr"],
             "deflation": gate["deflation"],
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             "wfo_consistency": gate["wfo_consistency"],
             "fixed_params_min_pf": gate["fixed_params_min_pf"],
             "fixed_params_mean_pf": gate["fixed_params_mean_pf"],

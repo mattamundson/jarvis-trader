@@ -33,10 +33,7 @@ function ItemCard({ it }: { it: ActionableItem }) {
   const dead = it.status === "invalidated" || it.status === "expired";
   return (
     <div
-<<<<<<< HEAD
-=======
       data-testid="actionable-item"
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       className={`rounded-lg border border-border bg-card/50 p-3 space-y-1.5 ${
         dead ? "opacity-60" : ""
       }`}
@@ -142,11 +139,6 @@ export function ActionableBoardWidget() {
           there are no opportunities.
         </p>
       ) : data.items.length === 0 ? (
-<<<<<<< HEAD
-        <p className="text-xs text-muted-foreground">
-          No recent directional decisions — nothing actionable right now.
-        </p>
-=======
         <div className="space-y-1">
           <p className="text-xs text-muted-foreground">
             Nothing on the board right now.
@@ -168,7 +160,6 @@ export function ActionableBoardWidget() {
             </p>
           )}
         </div>
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       ) : (
         <div className="space-y-2">
           {data.items.map((it) => (

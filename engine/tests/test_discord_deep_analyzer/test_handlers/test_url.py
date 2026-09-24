@@ -75,8 +75,6 @@ async def test_url_handler_handles_404(fake_llm):
                 {"message_id": "m9", "url": "https://example.com/gone", "content": None}
             )
     assert out.summary  # 404 doesn't kill the row — LLM gets URL as context
-<<<<<<< HEAD
-=======
 
 
 @pytest.mark.asyncio
@@ -99,4 +97,3 @@ async def test_url_handler_handles_malformed_url_port(fake_llm):
     # Handler still reached the LLM with the URL as context (graceful fallback).
     prompt = mock_llm.call_args.kwargs["prompt"]
     assert bad_url in prompt
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2

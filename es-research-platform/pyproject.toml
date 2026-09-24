@@ -13,10 +13,7 @@ dependencies = [
   "pydantic>=2.7.0",
   "pyarrow>=16.0.0",
   "polars>=1.0.0",
-<<<<<<< HEAD
-=======
   "PyYAML>=6.0.2",
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 ]
 
 [project.optional-dependencies]
@@ -24,13 +21,9 @@ dev = [
   "pytest>=8.2.0",
   "ruff>=0.5.0",
   "mypy>=1.10.0",
-<<<<<<< HEAD
-]
-=======
   "types-PyYAML>=6.0.12.20250516",
 ]
 databento = ["databento>=0.50.0"]
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 [tool.ruff]
 line-length = 100
@@ -49,9 +42,5 @@ plugins = ["pydantic.mypy"]
 where = ["src"]
 
 [[tool.mypy.overrides]]
-<<<<<<< HEAD
-module = ["duckdb", "pyarrow", "pyarrow.*"]
-=======
 module = ["databento", "duckdb", "pyarrow", "pyarrow.*"]
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 ignore_missing_imports = true

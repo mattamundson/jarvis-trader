@@ -20,10 +20,7 @@ interface PositionSizingData {
   atr: number;
   riskConfig: RiskConfig;
   accountValue: number;
-<<<<<<< HEAD
-=======
   accountValueIsLive: boolean;
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -154,14 +151,6 @@ export function PositionSizingWidget() {
         atr_target_multiplier: typeof cfg.atr_target_multiplier === "number" ? cfg.atr_target_multiplier : 1.5,
       };
 
-<<<<<<< HEAD
-      const accountValue =
-        typeof safetyStatus?.portfolio_equity === "number" && safetyStatus.portfolio_equity > 0
-          ? safetyStatus.portfolio_equity
-          : ACCOUNT_VALUE_FALLBACK;
-
-      setData({ atr, riskConfig, accountValue });
-=======
       const accountValueIsLive =
         typeof safetyStatus?.portfolio_equity === "number" && safetyStatus.portfolio_equity > 0;
       const accountValue = accountValueIsLive
@@ -169,7 +158,6 @@ export function PositionSizingWidget() {
         : ACCOUNT_VALUE_FALLBACK;
 
       setData({ atr, riskConfig, accountValue, accountValueIsLive });
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       setError(null);
       setLastFetch(new Date().toLocaleTimeString());
     } catch (e) {
@@ -191,10 +179,7 @@ export function PositionSizingWidget() {
   const maxContractsCap = data ? data.riskConfig.max_contracts : 3;
   const effectiveContracts = metrics ? metrics.effectiveContracts : 0;
   const accountValue = data ? data.accountValue : ACCOUNT_VALUE_FALLBACK;
-<<<<<<< HEAD
-=======
   const accountValueIsLive = data ? data.accountValueIsLive : false;
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
   return (
     <Card>
@@ -278,11 +263,6 @@ export function PositionSizingWidget() {
           <div style={{ color: "#888" }}>
             floor(risk_per_trade / (ATR × {stopMult} × $1.25))
           </div>
-<<<<<<< HEAD
-          <div className="mt-1" style={{ color: "#666" }}>
-            risk_per_trade = account × {riskPct}% = ${(accountValue * (parseFloat(riskPct) / 100)).toFixed(0)}
-            {" "}(on ${accountValue.toLocaleString()})
-=======
           <div className="mt-1 flex items-center gap-1.5 flex-wrap" style={{ color: "#666" }}>
             <span>
               risk_per_trade = account × {riskPct}% = ${(accountValue * (parseFloat(riskPct) / 100)).toFixed(0)}
@@ -297,7 +277,6 @@ export function PositionSizingWidget() {
                 Static
               </Badge>
             )}
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
           </div>
         </div>
 

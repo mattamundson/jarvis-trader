@@ -13,11 +13,8 @@ import { fetchApprovedPaperGates } from "@/lib/api";
 import type { ApprovedPaperGatesResponse } from "@/lib/api";
 import { eligibilityRows, eligibleCount } from "@/lib/tradingEligibility";
 import { InstrumentEligibilityCard } from "@/components/InstrumentEligibilityCard";
-<<<<<<< HEAD
-=======
 import { TradingStatusReconciliation } from "@/components/TradingStatusReconciliation";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 // Polled well under the 5-minute dashboard market-data-freshness bar; matches
 // the cadence /validation section 1B (PRB-36) uses for this same endpoint.
@@ -71,13 +68,10 @@ export default function TradingEligibilityPage() {
         </div>
       </div>
 
-<<<<<<< HEAD
-=======
       <WidgetErrorBoundary name="Trading Status Reconciliation">
         <TradingStatusReconciliation />
       </WidgetErrorBoundary>
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
       {error && (
         <div className="flex items-center gap-2 p-4 bg-bear/10 border border-bear/20 text-bear rounded-lg text-sm">
           <WifiOff className="h-4 w-4 shrink-0" />

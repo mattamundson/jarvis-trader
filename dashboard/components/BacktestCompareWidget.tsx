@@ -9,24 +9,15 @@ import {
   type HonestTradeSet,
 } from "@/lib/honestTrades";
 import { useHonestTrades } from "@/lib/useHonestTrades";
-<<<<<<< HEAD
-=======
 import {
   annualizedSharpe,
   recordTradesPerYear,
 } from "@/lib/honestAnnualized";
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 
 // ── Backtest benchmarks (static saved-backtest reference — NOT live) ──────────
 // Source: MES 1h gate-v2 backtest run (historical). These are fixed constants
 // from the best historical backtest; they do NOT update with live data.
-<<<<<<< HEAD
-
-const BACKTEST = {
-  profit_factor: 5.27,
-  sharpe_ratio: 4.16,
-=======
 //
 // C3 metric-honesty pass (2026-08-18): the as-run Sharpe (4.16) was annualized
 // at a fixed 252. The honest reference is deflated to the backtest's OWN
@@ -46,7 +37,6 @@ const BACKTEST_SHARPE_HONEST =
 const BACKTEST = {
   profit_factor: 5.27,
   sharpe_ratio: BACKTEST_SHARPE_HONEST,
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
   win_rate: 0.72,
   total_trades: 312,
   max_drawdown: -0.031,
@@ -190,13 +180,10 @@ export function BacktestCompareWidget() {
 
   function buildRows(): Row[] {
     if (!data) return [];
-<<<<<<< HEAD
-=======
     // Honest annualized Sharpe from the deduped record: per-trade Sharpe ×
     // sqrt(observed trades/yr). Null when the record spans < 90 days or has
     // < 2 trades — never falls back to the 252-scaled number.
     const liveSharpe = annualizedSharpe(set!.trades);
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     return [
       {
         metric: "Profit Factor",
@@ -207,14 +194,8 @@ export function BacktestCompareWidget() {
           : "neutral",
       },
       {
-<<<<<<< HEAD
-        // Sharpe cannot be computed from the deduped record (no annualisation baseline)
-        metric: "Sharpe Ratio",
-        live: "—",
-=======
         metric: "Sharpe Ratio (annualized)",
         live: liveSharpe !== null ? liveSharpe.toFixed(2) : "—",
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
         backtest: BACKTEST.sharpe_ratio.toFixed(2),
         color: "neutral",
       },
@@ -256,11 +237,7 @@ export function BacktestCompareWidget() {
           <div>
             <CardTitle>Live vs Backtest Comparison</CardTitle>
             <p className="text-xs text-muted-foreground mt-1">
-<<<<<<< HEAD
-              Static backtest ref: MES 1h &nbsp;|&nbsp; PF 5.27 &nbsp;|&nbsp; Sharpe 4.16 &nbsp;|&nbsp; +47.2%
-=======
               Static backtest ref: MES 1h &nbsp;|&nbsp; PF 5.27 &nbsp;|&nbsp; Sharpe {BACKTEST.sharpe_ratio.toFixed(2)} (deflated, {BACKTEST_TRADES_PER_YEAR.toFixed(0)} trades/yr) &nbsp;|&nbsp; +47.2%
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             </p>
           </div>
           <Badge variant={badge.variant}>{badge.label}</Badge>
@@ -314,13 +291,9 @@ export function BacktestCompareWidget() {
             </table>
 
             <p className="mt-4 text-[11px] text-muted-foreground leading-relaxed border-t border-border pt-3">
-<<<<<<< HEAD
-              Live: {caveat || "deduped trades"}. Sharpe not computed (requires annualisation baseline).
-=======
               Live: {caveat || "deduped trades"}. Annualized Sharpe = per-trade Sharpe × √(observed
               trades/yr), never the fixed-252 figure (C3 honesty pass). Backtest Sharpe deflated the
               same way from its own 312 trades over 7.27y (4.16 as-run @252 → {BACKTEST.sharpe_ratio.toFixed(2)}).
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
               Backtest column = saved static reference, not live. Targets: PF &ge; 2.0.
             </p>
           </div>

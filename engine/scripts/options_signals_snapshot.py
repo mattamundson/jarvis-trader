@@ -65,10 +65,7 @@ _LATEST_PATH = _DATA_DIR / "latest.json"
 _REGIME_CACHE_PATH = _DATA_DIR / "vix_term_structure.json"
 _IV_HISTORY_PATH = _DATA_DIR / "iv_history.jsonl"
 _EM_TRACKING_PATH = _DATA_DIR / "em_tracking.jsonl"
-<<<<<<< HEAD
-=======
 _CHAIN_SNAPSHOT_DIR = _DATA_DIR / "chain_snapshots"
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 # RTH gate in CT: first fire a few minutes after the 08:30 CT equity open,
 # last useful snapshot just after the 15:00 CT close print settles.
@@ -147,8 +144,6 @@ def _atomic_write_json(path: Path, payload: dict) -> None:
         raise
 
 
-<<<<<<< HEAD
-=======
 def _symbol_from_chain_url(url: str) -> str:
     stem = url.rsplit("/", 1)[-1].split(".", 1)[0]
     return "".join(ch for ch in stem.upper() if ch.isalnum()) or "UNKNOWN"
@@ -172,7 +167,6 @@ def _archive_raw_chain(symbol: str, raw: dict, now_ct: datetime) -> Path:
     return path
 
 
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 def _update_iv_history(snapshot: dict, today_iso: str) -> None:
     """One JSONL row per symbol per day, last snapshot of the day wins —
     accumulates toward an honest local ATM-IV rank (usable after ~20 sessions;
@@ -296,10 +290,6 @@ async def _run(symbols: tuple[str, ...], dry_run: bool) -> int:
     today_iso = now_ct.date().isoformat()
 
     regime, regime_error = await _regime_for_today(today_iso)
-<<<<<<< HEAD
-    snapshot, exit_code = await build_snapshot(
-        symbols, regime=regime, regime_error=regime_error, now_ct=now_ct
-=======
 
     async def fetch_and_archive(url: str) -> dict:
         from analysis.options_implied import _default_fetch_json  # noqa: PLC0415
@@ -313,7 +303,6 @@ async def _run(symbols: tuple[str, ...], dry_run: bool) -> int:
 
     snapshot, exit_code = await build_snapshot(
         symbols, fetch_json=fetch_and_archive, regime=regime, regime_error=regime_error, now_ct=now_ct
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     )
 
     sym_status = " | ".join(

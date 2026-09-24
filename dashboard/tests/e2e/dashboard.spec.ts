@@ -4,9 +4,6 @@ test("dashboard route smoke: /dashboard resolves to command center content", asy
   await page.goto("/dashboard");
   await page.waitForURL("**/command-center");
 
-<<<<<<< HEAD
-  await expect(page.getByRole("heading", { name: /JARVIS TRADER.*COMMAND CENTER/i })).toBeVisible();
-=======
   // /dashboard is a client-side redirect stub to /command-center: the redirect
   // completes AFTER domcontentloaded (a router push, not a server 30x), so
   // reading url()/content() immediately races it -- page.content() can even
@@ -29,5 +26,4 @@ test("dashboard route smoke: /dashboard resolves to command center content", asy
   } else {
     expect(html).toContain("/command-center");
   }
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 });

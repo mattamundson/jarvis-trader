@@ -345,8 +345,6 @@ def test_no_duplicate_candidates_for_same_symbol_direction(tmp_path: Path) -> No
     # If the tick correctly checks, it would NOT insert a second row.
     # Verify the guard works for the opposite direction too.
     assert _has_pending_candidate(db_path, "MCL", "SHORT") is False
-<<<<<<< HEAD
-=======
 
 
 @pytest.mark.asyncio
@@ -483,4 +481,3 @@ async def test_approve_ledger_failure_does_not_fail_order(tmp_path: Path) -> Non
         mod._db_path = original_db
         mod._dedup = original_dedup
         mod._paper_tracker = original_tracker
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2

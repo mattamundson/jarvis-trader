@@ -23,18 +23,6 @@ from typing import Optional
 
 import numpy as np
 
-<<<<<<< HEAD
-try:
-    from stable_baselines3 import PPO
-    from stable_baselines3.common.callbacks import BaseCallback
-
-    SB3_AVAILABLE = True
-except ImportError:
-    SB3_AVAILABLE = False
-    PPO = None  # type: ignore
-
-from strategies.rl_config import (
-=======
 # ── Lazy SB3/torch import ─────────────────────────────────────────────────────
 # stable-baselines3 pulls in torch, whose first import compiles bytecode for
 # minutes and holds the GIL. Importing it eagerly at module load (this module is
@@ -127,81 +115,17 @@ class TrainingProgressCallback:  # noqa
         pass
 
 from strategies.rl_config import (  # noqa: E402
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
     ACTION_NAMES,
     PPO_CONFIG,
     RL_MODELS_DIR,
     VALIDATION_GATES,
     Action,
 )
-<<<<<<< HEAD
-from strategies.rl_environment import TradingEnvironment
-=======
 from strategies.rl_environment import TradingEnvironment  # noqa: E402
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 
 logger = logging.getLogger(__name__)
 
 
-<<<<<<< HEAD
-# ── Training Callback ─────────────────────────────────────────────────────────
-
-
-if SB3_AVAILABLE:
-
-    class TrainingProgressCallback(BaseCallback):
-        """
-        Logs episode reward and action distribution at each checkpoint interval.
-        Stores progress for retrieval via the API.
-        """
-
-        def __init__(self, log_interval: int = 1000, verbose: int = 0):
-            super().__init__(verbose=verbose)
-            self.log_interval = log_interval
-            self.episode_rewards: list[float] = []
-            self.action_counts: dict[str, int] = dict.fromkeys(ACTION_NAMES.values(), 0)
-            self._last_log_step = 0
-
-        def _on_step(self) -> bool:
-            # Track actions
-            if hasattr(self, "locals") and "actions" in self.locals:
-                for act in np.atleast_1d(self.locals["actions"]):
-                    name = ACTION_NAMES.get(int(act), "UNKNOWN")
-                    self.action_counts[name] = self.action_counts.get(name, 0) + 1
-
-            # Log at interval
-            if self.num_timesteps - self._last_log_step >= self.log_interval:
-                self._last_log_step = self.num_timesteps
-                if self.model.ep_info_buffer:
-                    mean_reward = np.mean([ep["r"] for ep in self.model.ep_info_buffer])
-                    self.episode_rewards.append(float(mean_reward))
-                    logger.debug(
-                        f"[RL] Step {self.num_timesteps:,} | "
-                        f"Mean ep reward: {mean_reward:.4f} | "
-                        f"Actions: {self.action_counts}"
-                    )
-            return True
-
-        def get_summary(self) -> dict:
-            total = sum(self.action_counts.values()) or 1
-            return {
-                "timesteps": self.num_timesteps,
-                "episode_rewards": self.episode_rewards[-20:],  # last 20 checkpoints
-                "action_distribution": {
-                    k: round(v / total, 4) for k, v in self.action_counts.items()
-                },
-            }
-
-
-else:
-
-    class TrainingProgressCallback:  # noqa
-        """Dummy stub when stable-baselines3 is not available."""
-
-        def __init__(self, *args, **kwargs):
-            pass
-=======
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
 # ── Agent ─────────────────────────────────────────────────────────────────────
 
 
@@ -225,11 +149,7 @@ class RLTradingAgent:
         env: TradingEnvironment,
         model_path: Optional[str] = None,
     ):
-<<<<<<< HEAD
-        if not SB3_AVAILABLE:
-=======
         if not _ensure_sb3():
->>>>>>> e9ab478a30fb5d2b005069b9003501d801cea0b2
             raise ImportError("stable-baselines3 is required: pip install stable-baselines3[extra]")
 
         self.symbol = symbol.upper()
