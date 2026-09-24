@@ -46,6 +46,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from backtest.verdict_schema import NON_VERDICT_ARTIFACTS
+
 logger = logging.getLogger(__name__)
 
 # Weekly cron cadence is 7 days — 14 days tolerates one missed run before
@@ -167,6 +169,13 @@ def _iter_verdict_files(verdicts_dir: Optional[Path] = None):
     if not d.exists():
         return
     for p in d.glob("*.json"):
+        # Evidence/provenance artifacts share this directory by design but are
+        # not verdicts (no `rank`, not VerdictSchema-shaped). Skipping them here
+        # keeps the authorization path quiet instead of emitting one WARNING per
+        # file on every call — that spam previously grew engine-error.log to
+        # 14.5 MB and buried real warnings.
+        if p.name in NON_VERDICT_ARTIFACTS:
+            continue
         try:
             doc = json.loads(p.read_text())
             yield VerdictSnapshot.from_dict(doc)
@@ -285,6 +294,7 @@ def is_strategy_authorized(
     """
     # Lazy imports avoid circular dependencies at module load time.
     from agents.pipeline import VALIDATION_ONLY_INSTRUMENTS  # noqa: PLC0415
+
     from backtest.paper_config import PAPER_CONFIGS  # noqa: PLC0415
 
     sym_upper = symbol.upper()

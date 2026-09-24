@@ -12,13 +12,13 @@ closes the loophole where a stale PASS could masquerade as a current one.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
-
 from backtest.gate_v2_policy import (
     MAX_VERDICT_AGE_DAYS,
     VerdictSnapshot,
@@ -27,6 +27,7 @@ from backtest.gate_v2_policy import (
     is_ungate_eligible,
     list_verdicts,
 )
+from backtest.verdict_schema import NON_VERDICT_ARTIFACTS
 
 # ---------------------------------------------------------- #
 # Fixtures                                                   #
@@ -770,3 +771,45 @@ def test_iter_verdict_files_skips_corrupt_file(tmp_verdicts_dir):
     # Only the valid file loads; corrupt one is silently skipped
     assert len(results) == 1
     assert results[0].rank == 7
+
+
+def test_iter_verdict_files_silently_skips_classified_non_verdict_artifacts(
+    tmp_verdicts_dir, caplog
+):
+    """Classified evidence artifacts sharing the verdicts dir load nothing and log nothing.
+
+    Regression: `_iter_verdict_files` globbed every ``*.json`` and emitted one
+    WARNING per unparseable file on every call. Five MES deep-analysis evidence
+    artifacts are deliberately kept in ``data/gate_v2_verdicts/`` (they let a
+    reviewer audit a promotion decision without chasing side paths — see the
+    comment on ``NON_VERDICT_ARTIFACTS``), so the runtime authorization path
+    logged 5 WARNINGs per call. That spam grew ``engine/logs/engine-error.log``
+    to 14.5 MB and buried real warnings.
+
+    They must be skipped BEFORE parsing, so the skip is silent rather than a
+    caught-and-warned parse failure.
+    """
+    _write_verdict(
+        tmp_verdicts_dir,
+        symbol="MES",
+        family="trend",
+        rank=11,
+        verdict="PASS",
+        passed_via="alt",
+    )
+    # Shape matches the real MES_DEEP_* files: an evidence/provenance marker, but
+    # no `rank` and no verdict-shaped `symbol`/`family`.
+    artifact_name = sorted(NON_VERDICT_ARTIFACTS)[0]
+    (tmp_verdicts_dir / artifact_name).write_text(
+        json.dumps({"scope": "MES deep-cache family robustness", "verdict": "PASS"}),
+        encoding="utf-8",
+    )
+
+    with caplog.at_level(logging.WARNING, logger="backtest.gate_v2_policy"):
+        results = list_verdicts(tmp_verdicts_dir)
+
+    assert [r.rank for r in results] == [11]
+    assert not caplog.records, (
+        "non-verdict artifacts must be skipped before parsing (silent), but "
+        "warnings were logged: " + "; ".join(r.getMessage() for r in caplog.records)
+    )
