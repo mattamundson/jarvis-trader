@@ -15,6 +15,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # See .github/actions/free-disk-space/action.yml for why this runs before
+      # setup-python restores the pip cache. The pre-deploy job installs the same
+      # disk-heavy engine/requirements-core.txt stack as CI; without this cleanup,
+      # the ~3.5GB pip cache restore plus torch/RL wheels repeatedly exhausts the
+      # ubuntu-latest runner during dependency install.
+      - name: Free disk space (unused Android SDK + .NET toolchains)
+        uses: ./.github/actions/free-disk-space
+
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
