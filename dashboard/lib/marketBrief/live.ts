@@ -10,6 +10,9 @@ interface Bar {
 
 const SYMBOLS = ["SPY", "QQQ", "^VIX", "ES=F", "NQ=F"] as const;
 const MODEL_VERSION = "market-brief-public-live-v1";
+// Upstream Yahoo bars are cached in Next's data cache so a public request does not
+// hammer the upstream provider or add multi-second latency to every page view.
+const YAHOO_REVALIDATE_SECONDS = 300;
 const WALKFORWARD_VERDICT = {
   n: 1197,
   mean_brier_model: 0.594619,
@@ -32,7 +35,7 @@ function isoDateFromUnix(ts: number): string {
 async function fetchYahooDaily(symbol: string, range = "5y"): Promise<Bar[]> {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${encodeURIComponent(range)}&interval=1d&includePrePost=false`;
   const response = await fetch(url, {
-    cache: "no-store",
+    next: { revalidate: YAHOO_REVALIDATE_SECONDS },
     headers: { "User-Agent": "Mozilla/5.0 jarvis-public-market-brief" },
   });
   if (!response.ok) throw new Error(`Yahoo daily ${symbol} HTTP ${response.status}`);
