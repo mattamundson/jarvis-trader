@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { decideDashboardAuth, readDashboardAuthEnv } from "@/lib/dashboardAuth";
 import { isPublicReadOnlyPath } from "@/lib/publicRoutes";
 
 /**
@@ -13,13 +14,19 @@ import { isPublicReadOnlyPath } from "@/lib/publicRoutes";
  *   DASHBOARD_AUTH_USER  — username
  *   DASHBOARD_AUTH_PASS  — password
  *
- * Behavior:
- *   - Both vars set  -> enforced. Missing/wrong creds get 401 + WWW-Authenticate
- *                       (browser shows the native credential prompt).
- *   - Either unset   -> ALLOW all. This keeps local dev and CI previews working
- *                       without a shared secret; production deployment must set
- *                       both. Logs a warning on first request so the gap is
- *                       visible in server logs.
+ * Behavior (see lib/dashboardAuth.ts for the policy and its unit tests):
+ *   - Both vars set   -> enforced. Missing/wrong creds get 401 + WWW-Authenticate
+ *                        (browser shows the native credential prompt).
+ *   - Neither set, on a hosted deployment -> FAIL CLOSED (503). This is the
+ *                        important case: a Vercel deploy without DASHBOARD_AUTH_*
+ *                        previously served the whole dashboard and the
+ *                        /api/engine/* proxy (which injects the engine API key
+ *                        server-side) to the public internet. Refusing traffic is
+ *                        the safe failure mode.
+ *   - Neither set, plain localhost -> allowed, so local dev and CI need no shared
+ *                        secret. Logs a warning so the gap stays visible.
+ *   - DASHBOARD_AUTH_DISABLED=1 -> allowed even on a hosted deployment, for a
+ *                        deliberate public demo. Never set this in production.
  *
  * Security notes:
  *   - Uses a constant-time comparison (crypto.timingSafeEqual) to avoid
@@ -61,9 +68,24 @@ export function middleware(req: NextRequest) {
   const user = process.env.DASHBOARD_AUTH_USER;
   const pass = process.env.DASHBOARD_AUTH_PASS;
 
-  // No credentials configured — allow (dev/CI). Log once-ish so the gap is
-  // visible in server output instead of silent.
-  if (!user || !pass) {
+  const decision = decideDashboardAuth(readDashboardAuthEnv());
+
+  if (decision === "deny") {
+    if (!warnedUnauthenticated) {
+      warnedUnauthenticated = true;
+      console.error(
+        "[auth] DASHBOARD_AUTH_USER/DASHBOARD_AUTH_PASS not set on a hosted deployment — refusing to serve private routes. " +
+          "Set both, or set DASHBOARD_AUTH_DISABLED=1 deliberately for a public demo.",
+      );
+    }
+    return new NextResponse(
+      "Dashboard authentication is not configured on this deployment. " +
+        "Set DASHBOARD_AUTH_USER and DASHBOARD_AUTH_PASS.",
+      { status: 503, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+
+  if (decision === "allow") {
     if (!warnedUnauthenticated) {
       warnedUnauthenticated = true;
       console.warn(
@@ -72,6 +94,10 @@ export function middleware(req: NextRequest) {
     }
     return NextResponse.next();
   }
+
+  // decision === "enforce" implies both are configured; this narrows the types and
+  // fails closed if that invariant is ever broken.
+  if (!user || !pass) return unauthorized();
 
   const auth = req.headers.get("authorization") ?? "";
   const [scheme, encoded] = auth.split(" ");
