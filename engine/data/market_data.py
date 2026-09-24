@@ -440,10 +440,14 @@ class IBKRDataConnector:
     def _make_contract(self, symbol: str, is_futures: bool):
         from ib_async import Future, Index, Stock
 
-        if symbol.upper() in ("VIX",):
-            return Index(symbol, "CBOE")
-        if is_futures or symbol.upper() in FUTURES_MAP:
-            exchange = FUTURES_EXCHANGE.get(symbol.upper(), "CME")
+        sym_upper = symbol.upper()
+        # Map Yahoo-format index symbols to IBKR Index contracts
+        if sym_upper in ("VIX", "^VIX"):
+            return Index("VIX", "CBOE")
+        if sym_upper in ("^GSPC",):
+            return Index("SPX", "CBOE")
+        if is_futures or sym_upper in FUTURES_MAP:
+            exchange = FUTURES_EXCHANGE.get(sym_upper, "CME")
             return Future(symbol, exchange=exchange, currency="USD")
         return Stock(symbol, "SMART", "USD")
 
