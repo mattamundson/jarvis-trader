@@ -4,7 +4,7 @@
 **Purpose:** one row per repo in the 2026-09-12 audit consolidation map, with verified disposition.
 **Companion docs:** `docs/research/strategy-registry-schema.md`, `docs/research/backtest-critique-checklist.md`,
 `docs/research/chart-review-runbook.md`, `docs/research/macro-regime-context-spec.md`,
-`docs/research/sentinel-observability-runbook.md` (PR #895, open).
+`docs/research/sentinel-observability-runbook.md` (PR #906, merged 2026-09-22).
 **Provenance:** `GITHUB_REPO_CONSOLIDATION_TRADING_AUDIT_2026-09-12.md` (2026-09-12 audit),
 `HANDOFF_2026-09-12_github-repo-consolidation-wave1.md` (Wave 1 handoff).
 
@@ -34,7 +34,7 @@
 
 | Repo | Disposition | Action taken | Verified |
 |---|---|---|---|
-| `mattamundson/jarvis-trader` | Keep — canonical trading system | PRs #816 (Wave 1) and #895 (Wave 2) merged/open; topics `canonical-system`, `trading-system` applied | ✓ Push 2026-09-12; topics read back |
+| `mattamundson/jarvis-trader` | Keep — canonical trading system | PRs #816 (Wave 1) and #906 (Wave 2) merged; topics `canonical-system`, `trading-system` applied | ✓ Push 2026-09-12; topics read back |
 | `mattamundson/master-jarvis` | Keep — cross-domain operator | PR #6 (Wave 1) merged; `REPO_AUTHORITY.md` added; topics `canonical-system`, `orchestration`, `repo-authority` applied | ✓ Push 2026-09-11; topics read back |
 | `mattamundson/second-brain` | Keep — research/journal authority | No changes this wave; remains canonical for journal/research memory | ✓ Pushed 2026-09-11 |
 | `mattamundson/hermes-state` | Keep — encrypted DR backup | No changes this wave; remains canonical for encrypted disaster recovery | ✓ Pushed 2026-09-12 |
@@ -57,7 +57,7 @@
 
 | Repo | Disposition | Action taken | Verified |
 |---|---|---|---|
-| `mattamundson/jarvis-sentinel` | Folded (conceptually) → `home-scripts` + `jarvis-trader` health endpoints + this inventory | Probe/deadman concepts consolidated into `docs/research/sentinel-observability-runbook.md` (PR #895); existing `jarvis_data_integrity_sentinel.py` in `home-scripts` is the deployed asset; topics applied | ✓ Topics: `agent-reference`, `archive-candidate`, `consolidation-candidate` |
+| `mattamundson/jarvis-sentinel` | Folded (conceptually) → `home-scripts` + `jarvis-trader` health endpoints + this inventory | Probe/deadman concepts consolidated into `docs/research/sentinel-observability-runbook.md` (PR #906, merged 2026-09-22); existing `jarvis_data_integrity_sentinel.py` in `home-scripts` is the deployed asset; topics applied | ✓ Topics: `agent-reference`, `archive-candidate`, `consolidation-candidate` |
 | `mattamundson/jarvis-mission-control` | Folded (conceptually) → `master-jarvis` + `second-brain` + this inventory | Mission YAML + evidence schema concepts noted in `docs/research/sentinel-observability-runbook.md`; runtime control-plane code kept only if actively deployed; topics applied | ✓ Topics applied |
 | `mattamundson/master-jarvis-lifeos` | Folded (conceptually) → `master-jarvis` + `second-brain` + this inventory | Reusable agent/runbook/MCP/observability pieces absorbed into the agent-ops source of truth (active Hermes skills + `second-brain` + `home-scripts`); topics applied | ✓ Topics applied |
 | `mattamundson/personal-agent-skills` | Folded (conceptually) → active Hermes profile skills + `second-brain` + this inventory | Reusable agent skills merged into active Hermes profile; topics applied | ✓ Topics applied |
@@ -84,7 +84,7 @@
 
 > The audit's Wave 2 item 3 asked to mine these eight repos for concrete JARVIS additions, preferring distilled
 > docs/checklists/tests over vendoring large forks. All eight have topics applied. Five reference-fork distillations
-> are in PR #895 (open); the remaining patterns are noted below for future waves.
+> are in PR #906 (merged 2026-09-22); the remaining patterns are noted below for future waves.
 
 | Repo | Disposition | Action taken | Verified |
 |---|---|---|---|
@@ -149,7 +149,7 @@
 
 ---
 
-## 3. Wave 2 distillation docs (PR #895 — open, CI green)
+## 3. Wave 2 distillation docs (PR #906 — merged 2026-09-22)
 
 | Doc | Source repos distilled | What it gives JARVIS |
 |---|---|---|
@@ -159,9 +159,9 @@
 | `docs/research/macro-regime-context-spec.md` | `fredapi` + `claude-trading-skills` macro-regime-detector | FRED/ALFRED as regime filter and context feature only — never a direct order trigger; data-contract fields; freshness/staleness rules |
 | `docs/research/sentinel-observability-runbook.md` | `jarvis-sentinel`, `jarvis-mission-control`, `home-scripts` hygiene tooling | One probe inventory (IB Gateway, engine, dashboard, PM2 dump secret hygiene, feed freshness, paper order drift, kill-switch state); evidence contract; ownership; no third always-on process rule |
 
-**PR:** https://github.com/mattamundson/jarvis-trader/pull/895  
-**CI:** `MIP metadata contract` pass, `Vercel Preview Comments` pass, `Vercel` pass  
-**Branch:** `fix/dce-nightly-runner-20260910` (peer-owned; PR body updated this run to satisfy MIP governance contract)  
+**PR:** https://github.com/mattamundson/jarvis-trader/pull/906  
+**Merged:** 2026-09-22T10:10:12Z  
+**Branch:** `docs/wave2-reference-distillates-20260922`  
 **No live-trading surfaces touched:** `.env`, `engine/config.py`, broker routing, API keys, PM2 state, scheduled trading tasks, risk limits, kill-switch code all unchanged.
 
 ---
@@ -207,7 +207,7 @@ confirmed or topic-updated. Treated as unresolvable — same as Wave 1. No actio
 
 ### 6.2 One next action
 
-**Review and merge PR #895.** After merge, this inventory note is the final Word from the consolidation program:
+**Review and merge PR #919.** After merge, this inventory note is the final Word from the consolidation program:
 every repo in the audit map has a verified disposition. No further repo action is required unless Amo wants
 additional reference-fork mining (awesome-quant shortlist, agent-workflow-patterns doc) as a future wave.
 

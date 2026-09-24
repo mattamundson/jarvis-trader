@@ -111,9 +111,9 @@ Every strategy that enters the JARVIS research loop gets a record. Records are v
 A strategy record advances only when the gate for the next state is satisfied:
 
 1. **`hypothesis` → `backtesting`:** hypothesis, kill criterion, asset class, instruments, data sources, and parameter set are documented.
-2. **`backtesting` → `walkforward`:** a completed backtest critique with a Deploy or Refine verdict is attached, and the critique's JARVIS-specific gates pass (data provenance, point-in-time integrity, execution model coherence, circuit-breaker coherence, kill criterion written, no live config mutation).
+2. **`backtesting` → `walkforward`:** a completed backtest critique with a **Deploy** verdict is attached, and the critique's JARVIS-specific gates pass (data provenance, point-in-time integrity, execution model coherence, circuit-breaker coherence, kill criterion written, no live config mutation). A **Refine** verdict keeps the record in `backtesting` and requires fixes and a backtest rerun before any further advancement.
 3. **`walkforward` → `paper`:** walk-forward verdict supports entry, and the strategy record's paper-shadow section is initialized.
-4. **`paper` → `live`:** paper minimum duration is met, paper result is documented, and a fresh safety review has signed off on the live path. No live config, risk limit, kill-switch, broker routing, or API key change happens without that review.
+4. **`paper` → `live`:** paper minimum duration is met, paper result is documented, and a fresh safety review has signed off on the live path. The registry record's `promotion_state` may move to `promoted` only when `gate_verdict.verdict == "PASS"` and `evidence_paths` includes the gate card and a PR or decision-ledger reference. A registry entry never authorizes routing by itself — live trading eligibility is read from `GET /paper/validation/approved-paper-gates` (dashboard `/trading-eligibility`). No live config, risk limit, kill-switch, broker routing, or API key change happens without that review.
 5. **Any state → `closed`:** strategy is stopped or retired; closure reason and date are recorded; lessons are filed.
 
 ---
@@ -130,6 +130,8 @@ docs/research/strategy-registry/
 ```
 
 Records are plain YAML, readable without tooling. A helper script may validate required fields and promote-state consistency, but the source of truth is the file.
+
+> **Note:** This YAML layout is the human-readable strategy record format. For the machine-readable, schema-validated JSON registry (with JSON Schema validation, seed entries, and programmatic discovery), see `docs/research/strategy-registry/` (README.md + schema.json). The YAML records in this directory and the JSON entries in `strategy-registry/entries/` serve different purposes: YAML for the research narrative, JSON for the validated ledger that existing registry tooling discovers.
 
 ---
 
