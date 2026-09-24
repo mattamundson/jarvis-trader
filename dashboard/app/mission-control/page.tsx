@@ -12,6 +12,7 @@ import { TradingStatusReconciliation } from "@/components/TradingStatusReconcili
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { SpxIntradayAnalysisCard } from "@/components/SpxIntradayAnalysisCard";
 import { MarketBriefCard } from "@/components/MarketBriefCard";
+import { PaperTradeAuditCard } from "@/components/PaperTradeAuditCard";
 
 /**
  * MISSION CONTROL — single command-center view fusing trading state
@@ -69,6 +70,12 @@ export default function MissionControlPage() {
             analysis-only; it never routes orders or mutates risk state. */}
         <WidgetErrorBoundary name="SPX Intraday Decision">
           <SpxIntradayAnalysisCard />
+        </WidgetErrorBoundary>
+
+        {/* Panel 1f — Paper trade audit. Read-only summary of paper trading
+            activity: P&L, trade count, MES status. Refreshes every 30s. */}
+        <WidgetErrorBoundary name="Paper Trade Audit">
+          <PaperTradeAuditCard />
         </WidgetErrorBoundary>
 
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
