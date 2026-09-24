@@ -27,7 +27,13 @@ slowapi==0.1.9            # Rate limiting for FastAPI
 anthropic==0.50.0
 google-auth==2.50.0       # required by anthropic AsyncAnthropicVertex (Claude-on-Vertex transport)
 google-genai==1.72.0      # Gemini / Vertex AI via the current Google Gen AI SDK
-claude-agent-sdk==0.1.57  # Claude Managed Agents SDK (public beta, 2026-04-08)
+claude-agent-sdk==0.1.58  # Claude Managed Agents SDK (public beta, 2026-04-08). 0.1.57 was
+                          # yanked from PyPI (available: 0.1.56, 0.1.58, 0.2.82+) — repinned
+                          # per the schwab-py precedent above; the closest surviving version
+                          # was chosen to avoid a 0.1->0.2 API migration. 0.1.x trails 0.2.159,
+                          # so treat this as a reprieve: this beta SDK belongs in an optional
+                          # group (main.py already guards the import) so a future yank cannot
+                          # fail the CI dependency install.
 
 # ── IB Gateway ─────────────────────────────────────────────────────────────
 ib_async==2.1.0            # Interactive Brokers API (paper port 4002)
