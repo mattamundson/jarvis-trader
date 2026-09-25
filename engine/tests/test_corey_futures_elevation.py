@@ -114,7 +114,7 @@ def test_elevation_handles_non_string_symbol():
 # ── Symmetric with the futures-sentiment-source directive ────────────────────
 
 
-@pytest.mark.parametrize("symbol", list(COREY_FUTURES_SYMBOLS))
+@pytest.mark.parametrize("symbol", sorted(COREY_FUTURES_SYMBOLS))
 def test_all_four_futures_tickers_get_elevation(symbol):
     """Mirror of the social_analyst.py futures-sentiment-source regression test:
     every ticker gated for Corey-only sentiment should also receive the

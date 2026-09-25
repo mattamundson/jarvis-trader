@@ -560,3 +560,40 @@ def safety_layer_mock():
     mock.check_order.return_value = MagicMock(approved=True, rejection_reason=None, warnings=[])
     mock.on_connection_state_change = MagicMock()
     return mock
+
+
+# ---------------------------------------------------------------------------
+# Broker-order test guard (defense in depth for pyproject's default -m filter).
+# ---------------------------------------------------------------------------
+# pyproject.toml's addopts deselect `manual` and `integration_ib`, but ANY `-m`
+# on the command line replaces that default. The commonly documented fast-suite
+# command `pytest tests/ -m "not slow"` therefore re-collects the
+# integration_ib tests, which connect to 127.0.0.1:4002 and submit REAL paper
+# orders (MCL/MNQ market buys) whenever IB Gateway is up -- the normal state on
+# the trading box. Skip them unless the marker is positively selected
+# (`-m integration_ib`) or the operator sets JARVIS_ALLOW_IB_ORDER_TESTS=1.
+_OPT_IN_ONLY_MARKERS = ("integration_ib", "manual")
+_IB_ORDER_TESTS_OPT_IN_ENV = "JARVIS_ALLOW_IB_ORDER_TESTS"
+
+
+def _marker_positively_selected(markexpr: str, marker: str) -> bool:
+    """True when *markexpr* names *marker* other than as ``not <marker>``."""
+    return marker in markexpr.replace(f"not {marker}", "")
+
+
+def pytest_collection_modifyitems(config, items):
+    if os.environ.get(_IB_ORDER_TESTS_OPT_IN_ENV) == "1":
+        return
+    markexpr = config.getoption("markexpr", default="") or ""
+    for marker in _OPT_IN_ONLY_MARKERS:
+        if _marker_positively_selected(markexpr, marker):
+            continue
+        skip = pytest.mark.skip(
+            reason=(
+                f"'{marker}' tests are opt-in only (may place real IB paper orders); "
+                f"run with -m {marker} or {_IB_ORDER_TESTS_OPT_IN_ENV}=1"
+            )
+        )
+        for item in items:
+            if item.get_closest_marker(marker) is not None:
+                item.add_marker(skip)
