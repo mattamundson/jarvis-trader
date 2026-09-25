@@ -69,9 +69,13 @@ jobs:
           ) || echo "::notice::Full-tree mypy remains advisory; see issue #942 for debt burn-down."
 
           echo "=== Running Tests (fast then slow — parity with ci.yml engine-test) ==="
-          pytest engine/tests/ -m "not slow" \
+          # Restate the pyproject marker exclusions: a CLI -m overrides pyproject's
+          # addopts -m, so a bare "not slow" would re-collect manual and
+          # integration_ib tests -- the latter submits REAL paper orders when IB
+          # Gateway is reachable. Keep parity with ci.yml's engine-test markers.
+          pytest engine/tests/ -m "not slow and not manual and not integration_ib" \
             -v --tb=short --cov=engine --cov-report=term-missing --cov-report=xml
-          pytest engine/tests/ -m slow \
+          pytest engine/tests/ -m "slow and not manual and not integration_ib" \
             -v --tb=short --cov=engine --cov-append --cov-report=term-missing --cov-report=xml \
             || { ec=$?; if [[ $ec -eq 5 ]]; then echo "No slow tests collected; skipping slow pass"; exit 0; fi; exit "$ec"; }
 
