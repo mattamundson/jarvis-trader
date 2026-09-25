@@ -13,6 +13,10 @@ import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { SpxIntradayAnalysisCard } from "@/components/SpxIntradayAnalysisCard";
 import { MarketBriefCard } from "@/components/MarketBriefCard";
 import { PaperTradeAuditCard } from "@/components/PaperTradeAuditCard";
+import { TOSLiveQuotesCard } from "@/components/TOSLiveQuotesCard";
+import { TOSIndicatorCard } from "@/components/TOSIndicatorCard";
+import { GatewayWatchdogCard } from "@/components/GatewayWatchdogCard";
+import { TradeRecommendationsCard } from "@/components/TradeRecommendationsCard";
 
 /**
  * MISSION CONTROL — single command-center view fusing trading state
@@ -78,6 +82,12 @@ export default function MissionControlPage() {
           <PaperTradeAuditCard />
         </WidgetErrorBoundary>
 
+        {/* Panel 1g — Gateway health watchdog. One-glance confidence:
+            port 4002 alive, engine connected, market data fresh. */}
+        <WidgetErrorBoundary name="Gateway Watchdog">
+          <GatewayWatchdogCard />
+        </WidgetErrorBoundary>
+
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           {/* Panel 2 — Positions & Paper Performance */}
           <WidgetErrorBoundary name="Positions & Performance">
@@ -104,6 +114,30 @@ export default function MissionControlPage() {
         <WidgetErrorBoundary name="Environment Fleet">
           <EnvironmentFleetPanel />
         </WidgetErrorBoundary>
+
+        {/* Panel 7 — Live quotes (SPY/QQQ/VIX from the engine's market-data
+            waterfall, TOS RTD at Tier 0) + the newest pipeline recommendation.
+            Read-only, analysis-only: neither card routes or sizes anything. */}
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+          <WidgetErrorBoundary name="TOS Live Quotes">
+            <TOSLiveQuotesCard />
+          </WidgetErrorBoundary>
+
+          <WidgetErrorBoundary name="Trade Recommendations">
+            <TradeRecommendationsCard />
+          </WidgetErrorBoundary>
+        </div>
+
+        {/* Panel 8 — Derived indicator set mirroring the TOS /ES chart layout:
+            ATR(14), Keltner Channels (20, 3.5), 5/15/30-min support &
+            resistance, and the day-range compression gauge. Computed in-process
+            from the live RTD price stream (tagged `derived`), not read from
+            ThinkScript studies. Read-only. */}
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+          <WidgetErrorBoundary name="TOS Indicators">
+            <TOSIndicatorCard />
+          </WidgetErrorBoundary>
+        </div>
       </main>
     </div>
   );

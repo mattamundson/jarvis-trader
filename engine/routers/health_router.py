@@ -966,6 +966,15 @@ async def _health_inner() -> dict:
         "ibgateway_alive": ibgateway_alive,
         "ibgateway_port": ibgateway_port,
         "schwab_connected": bool(schwab_connector and schwab_connector.is_connected),
+        # Tier 0 market-data source — thinkorswim desktop RTD
+        # (engine/data/tos_rtd_adapter.py, injected via main.py).
+        # `is_connected` is a plain bool property on the connector; the full
+        # status dict is attached below as `tos_rtd_details` when available.
+        "tos_rtd_connected": bool(
+            data_manager is not None
+            and getattr(data_manager, "tos_rtd", None) is not None
+            and data_manager.tos_rtd.is_connected
+        ),
         "uptime_seconds": (now - _start_time).total_seconds() if _start_time else 0.0,
         "llm_available": True,
         "llm_path_healthy": llm_path_healthy,
@@ -985,6 +994,14 @@ async def _health_inner() -> dict:
         response["llm_path_details"] = llm_path_details
     if tv_mcp_details:
         response["tradingview_mcp_details"] = tv_mcp_details
+    # Tier 0 (thinkorswim RTD) detail block. Best-effort: status() is cheap and
+    # non-blocking, but a probe failure must never break /health itself.
+    _tos_conn = getattr(data_manager, "tos_rtd", None) if data_manager is not None else None
+    if _tos_conn is not None:
+        try:
+            response["tos_rtd_details"] = _tos_conn.status()
+        except Exception as _tos_err:  # noqa: BLE001 - health must never raise
+            response["tos_rtd_details"] = {"error": str(_tos_err)}
     return response
 
 
