@@ -546,6 +546,22 @@ jobs:
           fi
           echo "No unresolved merge conflict markers found."
 
+      # The filename check above is trivially bypassed by renaming: a credential export called
+      # `value-export-root.archived` passes it while its plaintext bytes stay committed (that
+      # happened in archive/security-filename-quarantine/2026-09-24/). This step inspects
+      # CONTENT, so the file name is irrelevant. It prints key names and locations only, and is
+      # deliberately scoped to avoid documentation/example false positives.
+      - name: Check for credential exports by content (filename-agnostic)
+        run: |
+          set -euo pipefail
+          if command -v python3 >/dev/null 2>&1; then PY=python3
+          elif command -v python >/dev/null 2>&1; then PY=python
+          else
+            echo "ERROR: no python interpreter available for the credential-export content scan."
+            exit 1
+          fi
+          "$PY" scripts/check_credential_exports.py
+
       - name: Check for hardcoded secrets
         run: |
           set -euo pipefail
