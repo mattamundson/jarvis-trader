@@ -200,7 +200,7 @@ class TestClearPerAccountKillWithDb:
 
 
 class TestGetPerAccountKillStateException:
-    def test_corrupt_db_path_returns_active_fail_closed(self, mock_settings):
+    def test_corrupt_db_path_returns_active_fail_closed(self, mock_settings, tmp_path):
         """When DB connect fails (bad path chars on Windows), FAILS CLOSED (GT-49).
 
         A DB read failure is an unknown state, not a safe one ΓÇö the account
@@ -211,7 +211,10 @@ class TestGetPerAccountKillStateException:
         os.environ["ENABLE_PARALLEL_PAPER"] = "1"
         try:
             sl = SafetyLayer(mock_settings)
-            sl._db_path = "Z:\\nonexistent\\path\\db.sqlite"
+            # Parent dir does not exist, so sqlite cannot open it on any OS. (A
+            # "Z:\\..." literal is only unopenable on Windows; on Linux sqlite
+            # created it as a file in cwd and the test passed via another branch.)
+            sl._db_path = str(tmp_path / "nonexistent_dir" / "db.sqlite")
             state = sl.get_per_account_kill_state("A")
             assert state["active"] is True
             assert state["reason"] is not None
