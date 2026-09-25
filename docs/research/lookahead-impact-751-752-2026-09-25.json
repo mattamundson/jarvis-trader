@@ -1,0 +1,968 @@
+{
+  "generated_at": "2026-09-25T06:30:36+00:00",
+  "issue_751_ib": [
+    {
+      "symbol": "MES",
+      "mode": "go",
+      "target_mult": 1.5,
+      "open_minutes": 30,
+      "premarket_leak_rows": 44166,
+      "current": {
+        "trades": 217,
+        "pf": 1.088,
+        "net_pnl": 1020.31
+      },
+      "causal": {
+        "trades": 362,
+        "pf": 1.007,
+        "net_pnl": 141.11
+      }
+    },
+    {
+      "symbol": "MES",
+      "mode": "go",
+      "target_mult": 1.5,
+      "open_minutes": 60,
+      "premarket_leak_rows": 44166,
+      "current": {
+        "trades": 262,
+        "pf": 1.031,
+        "net_pnl": 425.86
+      },
+      "causal": {
+        "trades": 313,
+        "pf": 1.014,
+        "net_pnl": 222.15
+      }
+    },
+    {
+      "symbol": "MES",
+      "mode": "go",
+      "target_mult": 2.0,
+      "open_minutes": 30,
+      "premarket_leak_rows": 44166,
+      "current": {
+        "trades": 255,
+        "pf": 1.268,
+        "net_pnl": 3651.45
+      },
+      "causal": {
+        "trades": 340,
+        "pf": 1.11,
+        "net_pnl": 1967.98
+      }
+    },
+    {
+      "symbol": "MES",
+      "mode": "go",
+      "target_mult": 2.0,
+      "open_minutes": 60,
+      "premarket_leak_rows": 44166,
+      "current": {
+        "trades": 225,
+        "pf": 1.027,
+        "net_pnl": 315.88
+      },
+      "causal": {
+        "trades": 224,
+        "pf": 1.082,
+        "net_pnl": 1012.21
+      }
+    },
+    {
+      "symbol": "MES",
+      "mode": "fade",
+      "target_mult": 1.5,
+      "open_minutes": 30,
+      "premarket_leak_rows": 44166,
+      "current": {
+        "trades": 258,
+        "pf": 0.654,
+        "net_pnl": -1441.93
+      },
+      "causal": {
+        "trades": 541,
+        "pf": 0.79,
+        "net_pnl": -1727.23
+      }
+    },
+    {
+      "symbol": "MES",
+      "mode": "fade",
+      "target_mult": 1.5,
+      "open_minutes": 60,
+      "premarket_leak_rows": 44166,
+      "current": {
+        "trades": 279,
+        "pf": 0.625,
+        "net_pnl": -1458.71
+      },
+      "causal": {
+        "trades": 478,
+        "pf": 0.865,
+        "net_pnl": -905.63
+      }
+    },
+    {
+      "symbol": "MES",
+      "mode": "fade",
+      "target_mult": 2.0,
+      "open_minutes": 30,
+      "premarket_leak_rows": 44166,
+      "current": {
+        "trades": 259,
+        "pf": 0.697,
+        "net_pnl": -1314.51
+      },
+      "causal": {
+        "trades": 534,
+        "pf": 0.779,
+        "net_pnl": -1899.76
+      }
+    },
+    {
+      "symbol": "MES",
+      "mode": "fade",
+      "target_mult": 2.0,
+      "open_minutes": 60,
+      "premarket_leak_rows": 44166,
+      "current": {
+        "trades": 279,
+        "pf": 0.641,
+        "net_pnl": -1396.21
+      },
+      "causal": {
+        "trades": 474,
+        "pf": 0.887,
+        "net_pnl": -745.29
+      }
+    },
+    {
+      "symbol": "MGC",
+      "mode": "go",
+      "target_mult": 1.5,
+      "open_minutes": 30,
+      "premarket_leak_rows": 54672,
+      "current": {
+        "trades": 105,
+        "pf": 0.805,
+        "net_pnl": -1277.75
+      },
+      "causal": {
+        "trades": 283,
+        "pf": 0.888,
+        "net_pnl": -1613.05
+      }
+    },
+    {
+      "symbol": "MGC",
+      "mode": "go",
+      "target_mult": 1.5,
+      "open_minutes": 60,
+      "premarket_leak_rows": 54672,
+      "current": {
+        "trades": 131,
+        "pf": 1.346,
+        "net_pnl": 2070.15
+      },
+      "causal": {
+        "trades": 313,
+        "pf": 1.327,
+        "net_pnl": 4685.95
+      }
+    },
+    {
+      "symbol": "MGC",
+      "mode": "go",
+      "target_mult": 2.0,
+      "open_minutes": 30,
+      "premarket_leak_rows": 54672,
+      "current": {
+        "trades": 145,
+        "pf": 1.019,
+        "net_pnl": 171.25
+      },
+      "causal": {
+        "trades": 424,
+        "pf": 0.975,
+        "net_pnl": -658.4
+      }
+    },
+    {
+      "symbol": "MGC",
+      "mode": "go",
+      "target_mult": 2.0,
+      "open_minutes": 60,
+      "premarket_leak_rows": 54672,
+      "current": {
+        "trades": 149,
+        "pf": 0.976,
+        "net_pnl": -184.15
+      },
+      "causal": {
+        "trades": 369,
+        "pf": 1.244,
+        "net_pnl": 4542.35
+      }
+    },
+    {
+      "symbol": "MGC",
+      "mode": "fade",
+      "target_mult": 1.5,
+      "open_minutes": 30,
+      "premarket_leak_rows": 54672,
+      "current": {
+        "trades": 154,
+        "pf": 0.94,
+        "net_pnl": -240.9
+      },
+      "causal": {
+        "trades": 444,
+        "pf": 1.029,
+        "net_pnl": 294.1
+      }
+    },
+    {
+      "symbol": "MGC",
+      "mode": "fade",
+      "target_mult": 1.5,
+      "open_minutes": 60,
+      "premarket_leak_rows": 54672,
+      "current": {
+        "trades": 169,
+        "pf": 0.872,
+        "net_pnl": -494.15
+      },
+      "causal": {
+        "trades": 381,
+        "pf": 0.869,
+        "net_pnl": -1051.35
+      }
+    },
+    {
+      "symbol": "MGC",
+      "mode": "fade",
+      "target_mult": 2.0,
+      "open_minutes": 30,
+      "premarket_leak_rows": 54672,
+      "current": {
+        "trades": 159,
+        "pf": 0.906,
+        "net_pnl": -412.15
+      },
+      "causal": {
+        "trades": 440,
+        "pf": 0.887,
+        "net_pnl": -1212.0
+      }
+    },
+    {
+      "symbol": "MGC",
+      "mode": "fade",
+      "target_mult": 2.0,
+      "open_minutes": 60,
+      "premarket_leak_rows": 54672,
+      "current": {
+        "trades": 172,
+        "pf": 0.905,
+        "net_pnl": -385.7
+      },
+      "causal": {
+        "trades": 384,
+        "pf": 0.851,
+        "net_pnl": -1243.9
+      }
+    }
+  ],
+  "issue_752_vwap": {
+    "data_file": "MES_2024-04-26_2026-06-25_1h.csv",
+    "bars": 12477,
+    "rth_bars": 3783,
+    "combos": [
+      {
+        "band_mult": 1.5,
+        "stop_mult": 0.25,
+        "require_reversal_bar": true,
+        "regime_filter": true,
+        "entries": 623,
+        "entries_outside_rth": 588,
+        "pct_outside_rth": 0.9438,
+        "current": {
+          "total_trades": 438,
+          "profit_factor": 1.973,
+          "net_pnl": 8361.08
+        },
+        "rth_only": {
+          "total_trades": 15,
+          "profit_factor": 8.024,
+          "net_pnl": 2221.89
+        }
+      },
+      {
+        "band_mult": 1.5,
+        "stop_mult": 0.25,
+        "require_reversal_bar": true,
+        "regime_filter": false,
+        "entries": 733,
+        "entries_outside_rth": 698,
+        "pct_outside_rth": 0.9523,
+        "current": {
+          "total_trades": 506,
+          "profit_factor": 1.688,
+          "net_pnl": 7281.81
+        },
+        "rth_only": {
+          "total_trades": 17,
+          "profit_factor": 7.898,
+          "net_pnl": 2354.41
+        }
+      },
+      {
+        "band_mult": 1.5,
+        "stop_mult": 0.25,
+        "require_reversal_bar": false,
+        "regime_filter": true,
+        "entries": 2211,
+        "entries_outside_rth": 1839,
+        "pct_outside_rth": 0.8318,
+        "current": {
+          "total_trades": 1033,
+          "profit_factor": 3.293,
+          "net_pnl": 50071.27
+        },
+        "rth_only": {
+          "total_trades": 85,
+          "profit_factor": 7.054,
+          "net_pnl": 15395.28
+        }
+      },
+      {
+        "band_mult": 1.5,
+        "stop_mult": 0.25,
+        "require_reversal_bar": false,
+        "regime_filter": false,
+        "entries": 2482,
+        "entries_outside_rth": 2095,
+        "pct_outside_rth": 0.8441,
+        "current": {
+          "total_trades": 1133,
+          "profit_factor": 3.003,
+          "net_pnl": 49976.82
+        },
+        "rth_only": {
+          "total_trades": 102,
+          "profit_factor": 6.468,
+          "net_pnl": 17367.97
+        }
+      },
+      {
+        "band_mult": 1.5,
+        "stop_mult": 0.5,
+        "require_reversal_bar": true,
+        "regime_filter": true,
+        "entries": 623,
+        "entries_outside_rth": 588,
+        "pct_outside_rth": 0.9438,
+        "current": {
+          "total_trades": 382,
+          "profit_factor": 1.96,
+          "net_pnl": 11135.52
+        },
+        "rth_only": {
+          "total_trades": 15,
+          "profit_factor": 6.023,
+          "net_pnl": 2116.76
+        }
+      },
+      {
+        "band_mult": 1.5,
+        "stop_mult": 0.5,
+        "require_reversal_bar": true,
+        "regime_filter": false,
+        "entries": 733,
+        "entries_outside_rth": 698,
+        "pct_outside_rth": 0.9523,
+        "current": {
+          "total_trades": 432,
+          "profit_factor": 1.737,
+          "net_pnl": 10404.83
+        },
+        "rth_only": {
+          "total_trades": 17,
+          "profit_factor": 6.038,
+          "net_pnl": 2249.28
+        }
+      },
+      {
+        "band_mult": 1.5,
+        "stop_mult": 0.5,
+        "require_reversal_bar": false,
+        "regime_filter": true,
+        "entries": 2211,
+        "entries_outside_rth": 1839,
+        "pct_outside_rth": 0.8318,
+        "current": {
+          "total_trades": 891,
+          "profit_factor": 2.998,
+          "net_pnl": 54833.53
+        },
+        "rth_only": {
+          "total_trades": 85,
+          "profit_factor": 6.081,
+          "net_pnl": 15964.9
+        }
+      },
+      {
+        "band_mult": 1.5,
+        "stop_mult": 0.5,
+        "require_reversal_bar": false,
+        "regime_filter": false,
+        "entries": 2482,
+        "entries_outside_rth": 2095,
+        "pct_outside_rth": 0.8441,
+        "current": {
+          "total_trades": 951,
+          "profit_factor": 2.781,
+          "net_pnl": 54683.09
+        },
+        "rth_only": {
+          "total_trades": 100,
+          "profit_factor": 5.595,
+          "net_pnl": 17828.1
+        }
+      },
+      {
+        "band_mult": 1.5,
+        "stop_mult": 0.75,
+        "require_reversal_bar": true,
+        "regime_filter": true,
+        "entries": 623,
+        "entries_outside_rth": 588,
+        "pct_outside_rth": 0.9438,
+        "current": {
+          "total_trades": 344,
+          "profit_factor": 2.015,
+          "net_pnl": 13111.77
+        },
+        "rth_only": {
+          "total_trades": 15,
+          "profit_factor": 4.82,
+          "net_pnl": 2011.62
+        }
+      },
+      {
+        "band_mult": 1.5,
+        "stop_mult": 0.75,
+        "require_reversal_bar": true,
+        "regime_filter": false,
+        "entries": 733,
+        "entries_outside_rth": 698,
+        "pct_outside_rth": 0.9523,
+        "current": {
+          "total_trades": 389,
+          "profit_factor": 1.76,
+          "net_pnl": 12193.44
+        },
+        "rth_only": {
+          "total_trades": 17,
+          "profit_factor": 4.887,
+          "net_pnl": 2144.14
+        }
+      },
+      {
+        "band_mult": 1.5,
+        "stop_mult": 0.75,
+        "require_reversal_bar": false,
+        "regime_filter": true,
+        "entries": 2211,
+        "entries_outside_rth": 1839,
+        "pct_outside_rth": 0.8318,
+        "current": {
+          "total_trades": 794,
+          "profit_factor": 2.759,
+          "net_pnl": 53801.54
+        },
+        "rth_only": {
+          "total_trades": 85,
+          "profit_factor": 5.693,
+          "net_pnl": 15763.28
+        }
+      },
+      {
+        "band_mult": 1.5,
+        "stop_mult": 0.75,
+        "require_reversal_bar": false,
+        "regime_filter": false,
+        "entries": 2482,
+        "entries_outside_rth": 2095,
+        "pct_outside_rth": 0.8441,
+        "current": {
+          "total_trades": 850,
+          "profit_factor": 2.557,
+          "net_pnl": 53584.19
+        },
+        "rth_only": {
+          "total_trades": 100,
+          "profit_factor": 5.468,
+          "net_pnl": 17905.11
+        }
+      },
+      {
+        "band_mult": 2.0,
+        "stop_mult": 0.25,
+        "require_reversal_bar": true,
+        "regime_filter": true,
+        "entries": 409,
+        "entries_outside_rth": 395,
+        "pct_outside_rth": 0.9658,
+        "current": {
+          "total_trades": 286,
+          "profit_factor": 1.733,
+          "net_pnl": 4090.23
+        },
+        "rth_only": {
+          "total_trades": 4,
+          "profit_factor": 23.57,
+          "net_pnl": 1100.04
+        }
+      },
+      {
+        "band_mult": 2.0,
+        "stop_mult": 0.25,
+        "require_reversal_bar": true,
+        "regime_filter": false,
+        "entries": 506,
+        "entries_outside_rth": 492,
+        "pct_outside_rth": 0.9723,
+        "current": {
+          "total_trades": 348,
+          "profit_factor": 1.418,
+          "net_pnl": 3103.71
+        },
+        "rth_only": {
+          "total_trades": 5,
+          "profit_factor": 26.801,
+          "net_pnl": 1257.55
+        }
+      },
+      {
+        "band_mult": 2.0,
+        "stop_mult": 0.25,
+        "require_reversal_bar": false,
+        "regime_filter": true,
+        "entries": 1437,
+        "entries_outside_rth": 1272,
+        "pct_outside_rth": 0.8852,
+        "current": {
+          "total_trades": 655,
+          "profit_factor": 3.715,
+          "net_pnl": 35321.37
+        },
+        "rth_only": {
+          "total_trades": 37,
+          "profit_factor": 7.618,
+          "net_pnl": 10377.42
+        }
+      },
+      {
+        "band_mult": 2.0,
+        "stop_mult": 0.25,
+        "require_reversal_bar": false,
+        "regime_filter": false,
+        "entries": 1668,
+        "entries_outside_rth": 1497,
+        "pct_outside_rth": 0.8975,
+        "current": {
+          "total_trades": 743,
+          "profit_factor": 3.35,
+          "net_pnl": 36270.1
+        },
+        "rth_only": {
+          "total_trades": 44,
+          "profit_factor": 8.709,
+          "net_pnl": 12552.12
+        }
+      },
+      {
+        "band_mult": 2.0,
+        "stop_mult": 0.5,
+        "require_reversal_bar": true,
+        "regime_filter": true,
+        "entries": 409,
+        "entries_outside_rth": 395,
+        "pct_outside_rth": 0.9658,
+        "current": {
+          "total_trades": 252,
+          "profit_factor": 1.766,
+          "net_pnl": 6112.12
+        },
+        "rth_only": {
+          "total_trades": 4,
+          "profit_factor": 23.57,
+          "net_pnl": 1100.04
+        }
+      },
+      {
+        "band_mult": 2.0,
+        "stop_mult": 0.5,
+        "require_reversal_bar": true,
+        "regime_filter": false,
+        "entries": 506,
+        "entries_outside_rth": 492,
+        "pct_outside_rth": 0.9723,
+        "current": {
+          "total_trades": 298,
+          "profit_factor": 1.561,
+          "net_pnl": 5764.92
+        },
+        "rth_only": {
+          "total_trades": 5,
+          "profit_factor": 26.801,
+          "net_pnl": 1257.55
+        }
+      },
+      {
+        "band_mult": 2.0,
+        "stop_mult": 0.5,
+        "require_reversal_bar": false,
+        "regime_filter": true,
+        "entries": 1437,
+        "entries_outside_rth": 1272,
+        "pct_outside_rth": 0.8852,
+        "current": {
+          "total_trades": 571,
+          "profit_factor": 3.176,
+          "net_pnl": 37795.43
+        },
+        "rth_only": {
+          "total_trades": 36,
+          "profit_factor": 6.558,
+          "net_pnl": 10123.9
+        }
+      },
+      {
+        "band_mult": 2.0,
+        "stop_mult": 0.5,
+        "require_reversal_bar": false,
+        "regime_filter": false,
+        "entries": 1668,
+        "entries_outside_rth": 1497,
+        "pct_outside_rth": 0.8975,
+        "current": {
+          "total_trades": 625,
+          "profit_factor": 2.961,
+          "net_pnl": 39028.02
+        },
+        "rth_only": {
+          "total_trades": 42,
+          "profit_factor": 7.795,
+          "net_pnl": 12377.6
+        }
+      },
+      {
+        "band_mult": 2.0,
+        "stop_mult": 0.75,
+        "require_reversal_bar": true,
+        "regime_filter": true,
+        "entries": 409,
+        "entries_outside_rth": 395,
+        "pct_outside_rth": 0.9658,
+        "current": {
+          "total_trades": 229,
+          "profit_factor": 1.918,
+          "net_pnl": 8251.88
+        },
+        "rth_only": {
+          "total_trades": 4,
+          "profit_factor": 23.57,
+          "net_pnl": 1100.04
+        }
+      },
+      {
+        "band_mult": 2.0,
+        "stop_mult": 0.75,
+        "require_reversal_bar": true,
+        "regime_filter": false,
+        "entries": 506,
+        "entries_outside_rth": 492,
+        "pct_outside_rth": 0.9723,
+        "current": {
+          "total_trades": 270,
+          "profit_factor": 1.71,
+          "net_pnl": 8327.83
+        },
+        "rth_only": {
+          "total_trades": 5,
+          "profit_factor": 26.801,
+          "net_pnl": 1257.55
+        }
+      },
+      {
+        "band_mult": 2.0,
+        "stop_mult": 0.75,
+        "require_reversal_bar": false,
+        "regime_filter": true,
+        "entries": 1437,
+        "entries_outside_rth": 1272,
+        "pct_outside_rth": 0.8852,
+        "current": {
+          "total_trades": 506,
+          "profit_factor": 2.928,
+          "net_pnl": 37680.44
+        },
+        "rth_only": {
+          "total_trades": 36,
+          "profit_factor": 6.193,
+          "net_pnl": 10029.06
+        }
+      },
+      {
+        "band_mult": 2.0,
+        "stop_mult": 0.75,
+        "require_reversal_bar": false,
+        "regime_filter": false,
+        "entries": 1668,
+        "entries_outside_rth": 1497,
+        "pct_outside_rth": 0.8975,
+        "current": {
+          "total_trades": 555,
+          "profit_factor": 2.727,
+          "net_pnl": 38955.08
+        },
+        "rth_only": {
+          "total_trades": 42,
+          "profit_factor": 7.359,
+          "net_pnl": 12282.76
+        }
+      },
+      {
+        "band_mult": 2.5,
+        "stop_mult": 0.25,
+        "require_reversal_bar": true,
+        "regime_filter": true,
+        "entries": 239,
+        "entries_outside_rth": 236,
+        "pct_outside_rth": 0.9874,
+        "current": {
+          "total_trades": 170,
+          "profit_factor": 1.613,
+          "net_pnl": 2036.49
+        },
+        "rth_only": {
+          "total_trades": 2,
+          "profit_factor": 99.0,
+          "net_pnl": 1122.52
+        }
+      },
+      {
+        "band_mult": 2.5,
+        "stop_mult": 0.25,
+        "require_reversal_bar": true,
+        "regime_filter": false,
+        "entries": 318,
+        "entries_outside_rth": 315,
+        "pct_outside_rth": 0.9906,
+        "current": {
+          "total_trades": 223,
+          "profit_factor": 1.369,
+          "net_pnl": 1804.83
+        },
+        "rth_only": {
+          "total_trades": 2,
+          "profit_factor": 99.0,
+          "net_pnl": 1122.52
+        }
+      },
+      {
+        "band_mult": 2.5,
+        "stop_mult": 0.25,
+        "require_reversal_bar": false,
+        "regime_filter": true,
+        "entries": 895,
+        "entries_outside_rth": 820,
+        "pct_outside_rth": 0.9162,
+        "current": {
+          "total_trades": 432,
+          "profit_factor": 4.068,
+          "net_pnl": 26960.72
+        },
+        "rth_only": {
+          "total_trades": 17,
+          "profit_factor": 12.749,
+          "net_pnl": 8165.18
+        }
+      },
+      {
+        "band_mult": 2.5,
+        "stop_mult": 0.25,
+        "require_reversal_bar": false,
+        "regime_filter": false,
+        "entries": 1083,
+        "entries_outside_rth": 1006,
+        "pct_outside_rth": 0.9289,
+        "current": {
+          "total_trades": 509,
+          "profit_factor": 3.452,
+          "net_pnl": 27031.18
+        },
+        "rth_only": {
+          "total_trades": 21,
+          "profit_factor": 15.278,
+          "net_pnl": 9922.61
+        }
+      },
+      {
+        "band_mult": 2.5,
+        "stop_mult": 0.5,
+        "require_reversal_bar": true,
+        "regime_filter": true,
+        "entries": 239,
+        "entries_outside_rth": 236,
+        "pct_outside_rth": 0.9874,
+        "current": {
+          "total_trades": 146,
+          "profit_factor": 1.878,
+          "net_pnl": 4125.21
+        },
+        "rth_only": {
+          "total_trades": 2,
+          "profit_factor": 99.0,
+          "net_pnl": 1122.52
+        }
+      },
+      {
+        "band_mult": 2.5,
+        "stop_mult": 0.5,
+        "require_reversal_bar": true,
+        "regime_filter": false,
+        "entries": 318,
+        "entries_outside_rth": 315,
+        "pct_outside_rth": 0.9906,
+        "current": {
+          "total_trades": 185,
+          "profit_factor": 1.618,
+          "net_pnl": 4146.14
+        },
+        "rth_only": {
+          "total_trades": 2,
+          "profit_factor": 99.0,
+          "net_pnl": 1122.52
+        }
+      },
+      {
+        "band_mult": 2.5,
+        "stop_mult": 0.5,
+        "require_reversal_bar": false,
+        "regime_filter": true,
+        "entries": 895,
+        "entries_outside_rth": 820,
+        "pct_outside_rth": 0.9162,
+        "current": {
+          "total_trades": 371,
+          "profit_factor": 3.817,
+          "net_pnl": 31044.1
+        },
+        "rth_only": {
+          "total_trades": 17,
+          "profit_factor": 12.749,
+          "net_pnl": 8165.18
+        }
+      },
+      {
+        "band_mult": 2.5,
+        "stop_mult": 0.5,
+        "require_reversal_bar": false,
+        "regime_filter": false,
+        "entries": 1083,
+        "entries_outside_rth": 1006,
+        "pct_outside_rth": 0.9289,
+        "current": {
+          "total_trades": 416,
+          "profit_factor": 3.144,
+          "net_pnl": 29396.84
+        },
+        "rth_only": {
+          "total_trades": 21,
+          "profit_factor": 15.278,
+          "net_pnl": 9922.61
+        }
+      },
+      {
+        "band_mult": 2.5,
+        "stop_mult": 0.75,
+        "require_reversal_bar": true,
+        "regime_filter": true,
+        "entries": 239,
+        "entries_outside_rth": 236,
+        "pct_outside_rth": 0.9874,
+        "current": {
+          "total_trades": 133,
+          "profit_factor": 2.075,
+          "net_pnl": 5654.79
+        },
+        "rth_only": {
+          "total_trades": 2,
+          "profit_factor": 99.0,
+          "net_pnl": 1122.52
+        }
+      },
+      {
+        "band_mult": 2.5,
+        "stop_mult": 0.75,
+        "require_reversal_bar": true,
+        "regime_filter": false,
+        "entries": 318,
+        "entries_outside_rth": 315,
+        "pct_outside_rth": 0.9906,
+        "current": {
+          "total_trades": 168,
+          "profit_factor": 1.8,
+          "net_pnl": 6145.9
+        },
+        "rth_only": {
+          "total_trades": 2,
+          "profit_factor": 99.0,
+          "net_pnl": 1122.52
+        }
+      },
+      {
+        "band_mult": 2.5,
+        "stop_mult": 0.75,
+        "require_reversal_bar": false,
+        "regime_filter": true,
+        "entries": 895,
+        "entries_outside_rth": 820,
+        "pct_outside_rth": 0.9162,
+        "current": {
+          "total_trades": 339,
+          "profit_factor": 3.432,
+          "net_pnl": 31139.03
+        },
+        "rth_only": {
+          "total_trades": 17,
+          "profit_factor": 12.749,
+          "net_pnl": 8165.18
+        }
+      },
+      {
+        "band_mult": 2.5,
+        "stop_mult": 0.75,
+        "require_reversal_bar": false,
+        "regime_filter": false,
+        "entries": 1083,
+        "entries_outside_rth": 1006,
+        "pct_outside_rth": 0.9289,
+        "current": {
+          "total_trades": 379,
+          "profit_factor": 3.04,
+          "net_pnl": 31531.31
+        },
+        "rth_only": {
+          "total_trades": 21,
+          "profit_factor": 15.278,
+          "net_pnl": 9922.61
+        }
+      }
+    ]
+  }
+}
