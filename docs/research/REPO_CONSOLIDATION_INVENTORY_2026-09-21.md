@@ -219,4 +219,7 @@ confirmed or topic-updated. Treated as unresolvable — same as Wave 1. No actio
 
 ---
 
-*Generated 2026-09-21 by Hermes Agent cron run continuing the 2026-09-12 GitHub repo consolidation + trading-system leverage audit.*
+*Generated 2026-09-25 by Hermes Agent cron run finalizing the 2026-09-12 GitHub repo consolidation audit.
+Verified close-out: 4 merged PRs (#816, #906, #919, #935), 3 source repos archived with imported provenance,
+8 priority reference forks mined with dedicated JARVIS doc artifacts, 10 business repos topic-isolated.
+PR #936 lands this inventory as the final word from the consolidation program.*
