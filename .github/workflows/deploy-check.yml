@@ -57,9 +57,16 @@ jobs:
           # ruff format --check intentionally not enforced (see ci.yml note).
           cd ..
 
-          echo "=== Running Type Checking (non-blocking debt) ==="
-          mypy engine/ --ignore-missing-imports --config-file engine/pyproject.toml \
-            --explicit-package-bases --namespace-packages || echo "::warning::mypy debt — tighten in follow-up"
+          echo "=== Running Type Checking (advisory mypy debt) ==="
+          # Full-tree mypy is intentionally advisory until issue #942 burns down the
+          # inherited baseline. Run from engine/ to match engine/pyproject.toml's
+          # package-base assumptions, keep the debt visible in logs, and avoid
+          # GitHub warning annotations for an expected non-blocking signal.
+          (
+            cd engine
+            mypy . --ignore-missing-imports --config-file pyproject.toml \
+              --explicit-package-bases --namespace-packages
+          ) || echo "::notice::Full-tree mypy remains advisory; see issue #942 for debt burn-down."
 
           echo "=== Running Tests (fast then slow — parity with ci.yml engine-test) ==="
           pytest engine/tests/ -m "not slow" \
