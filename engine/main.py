@@ -192,6 +192,7 @@ from routers.tos_router import (
     router as tos_router,
     inject_dependencies as inject_tos_deps,
 )
+from routers.pnl_attribution_router import router as pnl_attribution_router
 from routers.auction_bias_router import (
     router as auction_bias_router,
     inject_dependencies as inject_auction_bias_deps,
@@ -3353,6 +3354,7 @@ app.include_router(sentiment_router)
 app.include_router(settings_router)
 app.include_router(prices_router)
 app.include_router(tos_router)
+app.include_router(pnl_attribution_router)
 app.include_router(auction_bias_router)
 app.include_router(websocket_router)
 app.include_router(thinkscript_router)
