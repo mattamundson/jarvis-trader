@@ -1653,9 +1653,10 @@ class MarketDataManager:
         # latency when TOS is running. Only serves while its session is
         # heartbeating; any failure falls through untouched. `as_of` is carried
         # so the provenance envelope can honestly re-derive liveness.
-        if self.tos_rtd is not None and self.tos_rtd.is_connected:
+        tos_rtd = getattr(self, "tos_rtd", None)
+        if tos_rtd is not None and tos_rtd.is_connected:
             try:
-                rtd = await self.tos_rtd.get_current_price(symbol)
+                rtd = await tos_rtd.get_current_price(symbol)
                 if rtd and rtd.get("last_price"):
                     self._last_price_source = "rtd_tos"
                     logger.debug(
@@ -1787,9 +1788,10 @@ class MarketDataManager:
         # heartbeating. Placed ahead of the Redis fabric tier because it is the
         # vendor's own quote stream rather than a derived cache. Any failure
         # falls through untouched — this tier can never break the tick path.
-        if self.tos_rtd is not None and self.tos_rtd.is_connected:
+        tos_rtd = getattr(self, "tos_rtd", None)
+        if tos_rtd is not None and tos_rtd.is_connected:
             try:
-                rtd = await self.tos_rtd.get_current_price(symbol)
+                rtd = await tos_rtd.get_current_price(symbol)
                 if rtd and rtd.get("last_price"):
                     self._last_price_source = "rtd_tos"
                     return {
@@ -1975,9 +1977,10 @@ class MarketDataManager:
         # Tier 0: thinkorswim desktop RTD (see data/tos_rtd_adapter.py).
         # Verified live: TOS answers ("LAST","VIX") — note ("LAST","$VIX.X")
         # returns 'N/A', so the bare symbol is the one to ask for.
-        if self.tos_rtd is not None and self.tos_rtd.is_connected:
+        tos_rtd = getattr(self, "tos_rtd", None)
+        if tos_rtd is not None and tos_rtd.is_connected:
             try:
-                rtd = await self.tos_rtd.get_current_price("VIX")
+                rtd = await tos_rtd.get_current_price("VIX")
                 if rtd and rtd.get("last_price"):
                     return {
                         "value": float(rtd["last_price"]),
