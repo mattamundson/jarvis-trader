@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { decideDashboardAuth, readDashboardAuthEnv } from "@/lib/dashboardAuth";
-import { isPublicReadOnlyPath } from "@/lib/publicRoutes";
+import { isPublicReadOnlyPath, isWebSocketPath, isWebSocketUpgrade } from "@/lib/publicRoutes";
 
 /**
  * HTTP Basic Auth for the JARVIS trading dashboard.
@@ -62,6 +62,13 @@ function unauthorized(): NextResponse {
 
 export function middleware(req: NextRequest) {
   if (isPublicReadOnlyPath(req.nextUrl.pathname)) {
+    return NextResponse.next();
+  }
+
+  // WebSocket handshakes cannot carry an Authorization header, so a genuine upgrade must be
+  // allowed through. An ordinary GET under /ws/ is NOT an upgrade and falls through to the
+  // auth checks below — otherwise the whole /ws/ prefix is an unauthenticated hole.
+  if (isWebSocketPath(req.nextUrl.pathname) && isWebSocketUpgrade(req.headers.get("upgrade"))) {
     return NextResponse.next();
   }
 
@@ -127,10 +134,14 @@ export const config = {
   // are fine to gate too — the browser resends credentials after the 401,
   // and it prevents unauthenticated probing of build assets).
   //
-  // /ws/:path* is EXCLUDED: WebSocket upgrades from browsers cannot carry the
-  // Authorization header, so gating them here would break every live stream.
-  // The engine authenticates WS itself (/ws/pipeline requires ?api_key=, which
-  // the Next.js rewrite injects server-side; /ws/events is a public event
-  // stream). See lib/pipeline_ws.ts security note (2026-08-17).
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|ws/).*)"],
+  // /ws/:path* is NO LONGER excluded from the matcher.
+  //
+  // Excluding the whole `ws/` prefix meant any ORDINARY GET under /ws/ bypassed Basic Auth
+  // and was proxied to the engine tunnel — which disclosed the tunnel hostname to anonymous
+  // callers and exposed its unauthenticated surface. WebSocket traffic genuinely cannot
+  // carry an Authorization header, so the decision now lives in the request instead of the
+  // path: a real `Upgrade: websocket` handshake passes, and everything else under /ws/ must
+  // authenticate like any other route. See lib/publicRoutes.ts (isWebSocketPath /
+  // isWebSocketUpgrade) and the lib/pipeline_ws.ts security note.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };
