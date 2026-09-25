@@ -30,10 +30,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -83,10 +83,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -113,7 +113,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
 
       # See .github/actions/free-disk-space/action.yml for why this runs here
       # (engine/requirements-core.txt's torch/gymnasium/stable-baselines3 install
@@ -122,7 +122,7 @@ jobs:
         uses: ./.github/actions/free-disk-space
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -161,14 +161,14 @@ jobs:
     env:
       COVERAGE_FILE: ${{ github.workspace }}/.coverage.fast
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
 
       # See .github/actions/free-disk-space/action.yml for why this runs here.
       - name: Free disk space (unused Android SDK + .NET toolchains)
         uses: ./.github/actions/free-disk-space
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -214,7 +214,7 @@ jobs:
 
       - name: Upload coverage data
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: coverage-data-fast
           path: .coverage.fast
@@ -229,14 +229,14 @@ jobs:
     env:
       COVERAGE_FILE: ${{ github.workspace }}/.coverage.slow
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
 
       # See .github/actions/free-disk-space/action.yml for why this runs here.
       - name: Free disk space (unused Android SDK + .NET toolchains)
         uses: ./.github/actions/free-disk-space
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -256,7 +256,7 @@ jobs:
 
       - name: Upload coverage data
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: coverage-data-slow
           path: .coverage.slow
@@ -271,14 +271,14 @@ jobs:
     needs: [engine-test-fast, engine-test-slow]
     if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && needs.engine-test-fast.result == 'success' && needs.engine-test-slow.result == 'success' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
 
       # See .github/actions/free-disk-space/action.yml for why this runs here.
       - name: Free disk space (unused Android SDK + .NET toolchains)
         uses: ./.github/actions/free-disk-space
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -288,14 +288,14 @@ jobs:
         run: pip install -q -r engine/requirements-core.txt
 
       - name: Download fast coverage data
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8.0.1
         with:
           name: coverage-data-fast
           path: cov-fast
 
       - name: Download slow coverage data
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8.0.1
         with:
           name: coverage-data-slow
           path: cov-slow
@@ -321,7 +321,7 @@ jobs:
 
       - name: Upload coverage artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: coverage-report
           path: coverage.xml
@@ -343,7 +343,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
       - name: Check for case-only duplicate filenames (Vercel's build FS is case-sensitive)
         run: |
           dupes=$(git ls-files | sort -f | uniq -Di)
@@ -354,12 +354,12 @@ jobs:
           fi
 
       - name: Set up Node 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7.0.0
         with:
           node-version: '22'
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6.1.0
         with:
           version: 10.33.2  # pinned: "latest" drifted to pnpm 11 which hard-fails on ignored builds
 
@@ -456,10 +456,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
 
       - name: Set up Node 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7.0.0
         with:
           node-version: '22'
 
@@ -472,7 +472,7 @@ jobs:
         working-directory: dashboard
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6.1.0
         with:
           version: 10.33.2  # pinned to match dashboard-build
 
@@ -496,7 +496,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
 
       - name: Check for .env files
         run: |
