@@ -1,6 +1,6 @@
 # JARVIS Repo Consolidation — Inventory and Disposition Log
 
-**Status:** wave 2.5 complete · **Author:** Hermes Agent cron run · **Date:** 2026-09-21
+**Status:** wave 3 complete · **Author:** Hermes Agent cron run · **Date:** 2026-09-25
 **Purpose:** one row per repo in the 2026-09-12 audit consolidation map, with verified disposition.
 **Companion docs:** `docs/research/strategy-registry-schema.md`, `docs/research/backtest-critique-checklist.md`,
 `docs/research/chart-review-runbook.md`, `docs/research/macro-regime-context-spec.md`,
@@ -196,20 +196,26 @@ confirmed or topic-updated. Treated as unresolvable — same as Wave 1. No actio
 
 ### 6.1 This run did not do (deferred by design)
 
-- **Wave 2 backlog item 5** (agent/ops consolidation for the 13 repos through a more detailed per-repo note): the
-  operating rule says consolidate through docs/provenance only; this inventory note is that documentation. No clean
-  reusable script exists for most of these repos, so no code move is warranted.
-- **Wave 3 archive sweep** (archive stale Greenfield/business repos or tag them `business-archive`): all 10 business
-  repos have topics applied. Actual archive action is gated on Amo's business-domain decision, not this run.
+- **Wave 3 archive sweep** (archive stale Greenfield/business repos or tag them `business-archive`): all 10 business repos have topics applied. Actual archive action is gated on Amo's business-domain decision, not this run.
 - **JARVIS-relevant awesome-quant shortlist:** a future wave candidate, not this run.
-- **Agent workflow patterns doc** (`docs/research/agent-workflow-patterns.md`) distilling `claude-trading-skills`
-  skills-index.yaml + TradingAgents decision-log pattern: a future wave candidate, not this run.
+- **Agent workflow patterns doc** (`docs/research/agent-workflow-patterns.md`) distilling `claude-trading-skills` skills-index.yaml + TradingAgents decision-log pattern: a future wave candidate, not this run.
 
-### 6.2 One next action
+### 6.2 Consolidation program — completion
 
-**Review and merge PR #919.** After merge, this inventory note is the final Word from the consolidation program:
-every repo in the audit map has a verified disposition. No further repo action is required unless Amo wants
-additional reference-fork mining (awesome-quant shortlist, agent-workflow-patterns doc) as a future wave.
+**The 2026-09-12 audit's consolidation recommendations are complete.**
+
+| Recommendation | Status | Evidence |
+|---|---|---|
+| Canonical keep: jarvis-trader, master-jarvis, second-brain, home-scripts, hermes-state | Done | Inventory §2.1; PRs #816, #6 merged |
+| Fold jarvis-quant, jarvis-positions-check, autotrade → jarvis-trader + archive | Done | PR #816; all 3 archived true; Wave 1 README provenance |
+| Fold 13 agent/ops repos via docs/provenance | Done | Inventory §2.3; topics applied; no third always-on process |
+| Mine 8 priority reference forks for JARVIS additions | Done | PR #906 (5 distillate docs) + PR #919 (corrections) + mining summary; all 8 have dedicated JARVIS doc artifacts |
+| Small verified PRs: strategy registry, backtest critique, chart review, macro/FRED, sentinel | Done | PR #906 merged 2026-09-22; registry schema + seed + 10 entries; first critique PR #935 merged 2026-09-25 |
+| Archive source repos with imported provenance | Done | 3 of 3 archived; Wave 1 README provenance; check_positions.py sanitized |
+| Convert repo sprawl into searchable inventory | Done | This file — every repo in audit map has verified disposition |
+| **procoil-enterprise** | Unresolvable | 404 on gh repo view; excluded per audit's own note |
+
+**One next action:** The consolidation program is complete. The audit's remaining "future waves" items (awesome-quant shortlist, agent-workflow-patterns doc, business-archive sweep) are optional research/ops work, not consolidation debt. If Amo wants to advance `MES_sma_trend_vix_pctile` toward paper shadow, the 5 open items in `docs/research/backtest-critique-mes_sma_trend_vix_pctile-2026-09-24.json` are the concrete work list (bootstrap PF CI first).
 
 ---
 
