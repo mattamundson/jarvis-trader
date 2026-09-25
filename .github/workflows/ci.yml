@@ -201,7 +201,7 @@ jobs:
           ec=0
           for i in $(seq 1 "$attempts"); do
             echo "::group::pytest fast (attempt $i/$attempts)"
-            pytest engine/tests/ -m "not slow and not manual" \
+            pytest engine/tests/ -m "not slow and not manual and not integration_ib" \
               -v --tb=short --cov=engine --cov-report=term-missing
             ec=$?
             echo "::endgroup::"
@@ -248,9 +248,13 @@ jobs:
 
       - name: Run pytest (-m "slow and not manual")
         run: |
-          # `not manual` restated: a CLI -m overrides pyproject's `-m "not manual"`
-          # default, and the IB-Gateway e2e tests must never be collected in CI.
-          pytest engine/tests/ -m "slow and not manual" \
+          # `not manual` and `not integration_ib` restated: a CLI -m replaces
+          # pyproject's addopts `-m "not manual and not integration_ib"` default,
+          # so a partial marker expression re-collects the IB-Gateway tests that
+          # submit REAL paper orders when Gateway is reachable. Keep both
+          # exclusions literal here; conftest's collection guard is the backstop,
+          # not a substitute for stating them.
+          pytest engine/tests/ -m "slow and not manual and not integration_ib" \
             -v --tb=short --cov=engine --cov-report=term-missing \
             || { ec=$?; if [[ $ec -eq 5 ]]; then echo "No slow tests collected; skipping slow slice"; exit 0; fi; exit "$ec"; }
 
