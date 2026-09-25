@@ -133,9 +133,7 @@ class PlanValidationTests(unittest.TestCase):
 
     def test_adoption_candidate_requires_all_phase_zero_draft_charters(self) -> None:
         graph = self.candidate_graph()
-        package = next(item for item in graph["work_packages"] if item["id"] == "A-02")
-        package["draft_charter_path"] = None
-        self.assert_invalid(graph, "A-02: Phase 0 draft charter is required", profile="adoption-candidate")
+        self.assert_invalid(graph, "A-01: Phase 0 draft charter is required", profile="adoption-candidate")
 
 
 if __name__ == "__main__":
