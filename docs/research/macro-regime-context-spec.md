@@ -1,148 +1,64 @@
-# Macro / FRED Regime-Context Spec
+# FRED / macro regime-context spec
 
-**Status:** draft · **Owner:** strategy-research + data · **Audience:** strategy authors, data engineers, agent workflow authors  
-**Purpose:** define how macro regime context enters JARVIS — as a **filter and feature**, never as a direct order trigger.
-
-> This spec distills the `fredapi` Python API (Federal Reserve Economic Data / ALFRED) and the `claude-trading-skills` macro-regime-detector concept into a JARVIS-native contract. Macro context informs posture and features; it does not place trades.
+**Purpose:** define how JARVIS consumes FRED/macro data — as a regime filter and context feature only, never as a direct trade trigger. Distilled from `fredapi` (the Python FRED/ALFRED wrapper) and `sunday-quant-scientist` technique catalog, aligned with the audit's "Market data and macro context" guidance.
 
 ---
 
-## 1. Design principle
+## 1. Role and boundary
 
-Macro data is a **regime filter and context feature**, not a signal generator and not an execution trigger.
-
-- **Allowed:** include FRED series as features in a strategy, use them to compute a regime posture that gates risk allowance, surface them in a pre-trade brief.
-- **Not allowed:** let a macro release directly place or cancel an order, mutate risk limits, or flip a kill-switch without passing through the same backtest → walk-forward → paper → safety-review pipeline as any other strategy component.
-
-This matches the `claude-trading-skills` guidance: macro regime is one layer in a multi-layer stack, and execution stays manual or gated by the engine's existing risk layer.
+- **Role:** macro/FRED data provides regime context and feature columns for strategy signals. It answers "what regime are we in?" and "is the macro backdrop consistent with this signal?"
+- **Boundary:** macro data does **not** place trades directly. No FRED series triggers an order by itself. Any strategy that appears to trade on a macro series must decompose that into a tradable instrument signal (e.g. VIX level → MES trend filter, not "FRED VIXCLS crossed X → buy").
+- **Freshness gate:** macro features used in a live signal must have a defined staleness threshold. If a series hasn't updated within its expected release cadence, the feature is treated as stale and the signal either falls back or is suppressed, depending on the strategy's risk posture.
 
 ---
 
-## 2. Canonical FRED usage in JARVIS
+## 2. Candidate FRED series for regime features
 
-### 2.1 What FRED is
+Derived from common macro-timing use cases; not an exhaustive or endorsed list — each must be validated against JARVIS' instruments before use:
 
-`fredapi` is a Python client for the Federal Reserve Economic Data (FRED) and Archival FRED (ALFRED) services, operated by the St. Louis Fed. It retrieves series by ID, with point-in-time support via ALFRED for vintage data.
+| Series ID | Description | Regime use case |
+|---|---|---|
+| FEDFUNDS | Effective Federal Funds Rate | Monetary-policy regime / rate-direction context |
+| CPIAUCSL | CPI All Items | Inflation regime |
+| SP500 | S&P 500 (FRED) | Equity regime proxy (level, not a trade signal) |
+| VIXCLS | CBOE Volatility Index | Volatility regime; directly relevant to MES/VIX strategies |
+| T10Y2Y | 10Y-2Y Treasury spread | Yield-curve regime (inversion as recession proxy) |
+| INDPRO | Industrial Production | Growth regime |
+| PAYEMS | Nonfarm Payrolls | Labor-market regime (release-day noise caveat) |
+| UMCSENT | U of Michigan Consumer Sentiment | Sentiment regime |
 
-Key facts relevant to JARVIS:
-
-- Free API key required; sign up at the St. Louis Fed FRED site.
-- `fredapi` supports per-series requests with start/end dates, frequency, and observation count limits.
-- ALFRED supports vintage queries for point-in-time integrity on series that have been revised.
-
-### 2.2 What we use it for
-
-- **Regime features:** rate differentials, yield-curve shape, inflation readings, unemployment, industrial production — as strategy features or regime filters.
-- **Regime posture:** a coarse risk-on / risk-off / transitioning label that informs exposure allowance in the daily regime workflow.
-- **Calendar awareness:** known release schedule and revision windows so the engine and reviewers know when a macro-driven feature may change.
-
-### 2.3 What we do not use it for
-
-- Direct order triggers.
-- Live risk-limit changes without a strategy promotion gate.
-- Any path that bypasses the JARVIS data provenance and backtest critique pipeline.
+**Release cadence caveat:** series like PAYEMS and CPI are monthly with a known release calendar. A strategy that keys off them must handle the gap between "data release date" and "data is queryable" and must not treat a missing update as a regime change.
 
 ---
 
 ## 3. Data contract
 
-Every macro feature used by a JARVIS strategy must carry the following provenance in the strategy record or data-layer metadata:
-
-| Field | Meaning |
-|---|---|
-| `fred_series_id` | The FRED series ID (e.g. a Treasury yield, CPI, unemployment rate). |
-| `source` | `"fred"` or `"alfred"` depending on whether live or vintage data is used. |
-| `api_key_env` | The env var name used for the FRED API key (do not record the key). |
-| `observation_start` / `observation_end` | The exact range used in the backtest or live feature. |
-| `frequency` | The requested frequency after FRED aggregation, if any. |
-| `vintage_date` | For ALFRED point-in-time fetches, the vintage date used. |
-| `release_date` | The scheduled or known release date of the observation. For series such as CPI, the observation date precedes the publication date; a backtest must use only values whose release_date is before the simulated decision time. |
-| `effective_date` | When the observation became visible (may differ from observation_date for revised series). |
-| `revision_note` | Any known revision behavior for the series (e.g. CPI revisions, payroll revisions). |
-| `refresh cadence` | How often the feature is refreshed in live/paper (e.g. daily, on-release). |
-| `freshness gate` | The max age of the latest observation before the feature is considered stale for a decision. |
+- **Source:** `fredapi` (PyPI package) is the JARVIS FRED adapter — do not vendor the library. Install as a dependency; wrap it in a small internal client that normalizes the response into JARVIS' bar/event schema with provenance columns.
+- **Provenance columns:** every macro feature row carries `series_id`, `observation_date`, `release_date` (when available from ALFRED), `freshness_seen_at`, and `source` = "FRED".
+- **Archival / revisions:** ALFRED provides vintaged revisions. If a strategy uses vintaged data for backtesting, that must be stated explicitly — otherwise use the latest observation and do not claim "as-of-release" realism.
+- **Error handling:** FRED API errors / rate limits must not crash the engine. A failed macro fetch degrades to "macro feature unavailable" for that cycle, not " engine error."
 
 ---
 
-## 4. Freshness and staleness
+## 4. Backtest realism
 
-Macro features are only useful if they are current enough for the decision they inform.
-
-- A regime posture used for a daily exposure decision must be computed from observations no older than the freshness gate defined for that series.
-- If a feature is stale, the workflow must either skip the macro layer or mark the decision as macro-blind, depending on how critical the layer is to the strategy.
-- The data layer must record the fetch timestamp alongside the observation date so reviewers can tell "data as of" from "observation date."
-
-This is the same freshness-thinking already present in the JARVIS data watchdog and the `claude-trading-skills` market-calendar-dependency policy.
+- **Point-in-time rule:** backtests using FRED data must use the observation as it was known at decision time, not the revised latest value, if the strategy claims realism. `fredapi` + ALFRED vintaged queries enable this; using `latest` observation for a historical backtest is a look-ahead risk.
+- **Release-day gap:** a macro series observed on its release date may not be available at the same intraday moment a futures signal fires. State the assumed availability time (e.g. "CPI used from day+1 open") or the backtest overstates realism.
+- **Cost model note:** macro context features do not carry a separate execution cost, but any strategy whose edge depends on a macro series must still pass the backtest critique checklist's execution-realism leg.
 
 ---
 
-## 5. Regime posture model (lightweight)
+## 5. What NOT to do
 
-A regime posture is a coarse label that summarizes macro context for a risk decision. It is not a forecast and not a trade signal.
-
-Suggested minimal model:
-
-1. Pick 2–4 macro features relevant to the strategy's asset class and horizon.
-2. Define a simple rule for each feature: e.g. yield curve slope positive/negative, inflation above/below a threshold, unemployment trend up/flat/down.
-3. Combine into a posture: `risk_on`, `risk_off`, `transitioning`, or `inconclusive`.
-4. Use the posture as a **filter or context feature**, not as a standalone decision.
-
-The posture must be documented in the strategy record, including the exact features, thresholds, and combination rule, so the same posture can be reconstructed from the data.
+- Do not let a macro threshold place a trade without an instrument-level signal.
+- Do not use macro series as the sole edge for a live futures strategy without a documented regime-stability test.
+- Do not backtest a macro-driven strategy using revised data and claim point-in-time realism.
+- Do not let a missing FRED API key or rate limit silence the engine — degrade gracefully.
 
 ---
 
-## 6. Integration points
+## 6. Relationship to other docs
 
-### 6.1 Strategy registry
-
-A macro-bearing strategy record includes:
-
-- The list of FRED series used, with provenance fields from §3.
-- The freshness gate for each series.
-- The regime posture rule, if any, that the strategy applies.
-- A note on whether the macro layer is a filter, a feature, or both.
-
-### 6.2 Backtest critique
-
-When a strategy uses macro features, the backtest critique checklist must verify:
-
-- No look-ahead on release dates or revisions. The critique must confirm that for each macro feature, the `release_date` (or `effective_date` for revised series) is before the simulated decision time at every point in the backtest window.
-- Point-in-time integrity if ALFRED vintages are used. For revised series, the critique must confirm each selected vintage's `realtime_start` (the first date the value was known) precedes the simulated decision time. Causal forward-fill of a previously published daily or monthly value onto later bars is permitted; backward fills, future values, and stale data are prohibited.
-- That the freshness gate used in the backtest matches the intended live behavior.
-- That the macro layer does not become the sole driver of the edge.
-
-### 6.3 Agent workflows
-
-If an agent workflow (Hermes skill, Claude skill, or engine agent command) surfaces macro context in a pre-trade brief:
-
-- State the series, observation date, fetch timestamp, and freshness.
-- State the posture or feature value and how it was derived.
-- State any staleness or revision uncertainty.
-- Do not present the macro read as a directive; present it as context.
-
-### 6.4 Data layer
-
-The data layer should treat FRED/ALFRED as one feed among several (Databento, IBKR, YFinance, CSV), with the same provenance, freshness, and adjustment columns. Do not let macro data have a special unchecked path.
-
----
-
-## 7. API and secret handling
-
-- The FRED API key lives in `engine/.env` (or the equivalent config for the environment) under a named env var; it is never committed.
-- `fredapi`-style clients read the key from the environment, not from a hardcoded file path, so the same client can run in dev, paper, and any CI that supplies the key.
-- If a macro feature is used in a public doc, example, or runbook, redact the key and use placeholder series IDs or a documented sample range.
-
----
-
-## 8. Related
-
-- Backtest critique checklist: `docs/research/backtest-critique-checklist.md`
-- Strategy registry schema: `docs/research/strategy-registry-schema.md`
-- Chart review runbook: `docs/research/chart-review-runbook.md`
-- Source client: `fredapi` — https://github.com/mattamundson/fredapi (Python API for FRED/ALFRED)
-- Source concept: `claude-trading-skills` macro-regime-detector and market-calendar-dependency policy
-- JARVIS data watchdog and freshness gates (existing engine/docs)
-
----
-
-*This spec is a distillation and extension, not a fork. `fredapi` remains the canonical client; this doc is the JARVIS contract for how macro context may be used.*
+- Complements `strategy-research-operating-model.md` (the idea → data → backtest → walk-forward → paper → promotion pipeline; macro features are part of the "data" step).
+- Feeds the `backtest-critique-checklist.md` regime-split section (a macro-aware strategy must show regime splits).
+- The `mes_sma_trend_vix_pctile` strategy already uses VIX percentile as a feature; this spec is the boundary document for expanding macro context beyond VIX without introducing direct macro-trading.
