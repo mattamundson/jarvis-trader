@@ -158,6 +158,22 @@ class HealthResponse(BaseModel):
         description="Which broker probe(s) failed (e.g. 'latency:TimeoutError'), populated only when ibkr_broker_probe_ok=false",
     )
     schwab_connected: bool = Field(False, description="Whether Schwab is connected")
+    tos_rtd_connected: bool = Field(
+        False,
+        description=(
+            "Whether the thinkorswim desktop RTD feed (Tier 0 market-data source) "
+            "has an active RTD session. False when TOS is not running or the adapter "
+            "failed to start — quotes then fall through to IBKR/Polygon."
+        ),
+    )
+    tos_rtd_details: Optional[dict] = Field(
+        None,
+        description=(
+            "thinkorswim RTD session detail (source, server_started, heartbeat_ok, "
+            "heartbeat_age_s, observed_topics, priced_topics, last_error). "
+            "Populated only when the adapter is injected."
+        ),
+    )
     uptime_seconds: float = Field(0, description="Server uptime in seconds")
     paper_trading: Optional[PaperTradingStatus] = Field(None, description="Paper trading status")
     cache: Optional[CacheStatus] = Field(None, description="Cache status")

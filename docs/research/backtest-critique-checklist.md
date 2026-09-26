@@ -1,110 +1,62 @@
-# JARVIS Backtest Critique Checklist
+# Backtest critique checklist
 
-**Status:** draft · **Owner:** strategy-research · **Review cadence:** per-strategy promotion gate  
-**Derived from:** `claude-trading-skills` backtest-expert skill (5-dimension scoring, 10+ red flags, Deploy/Refine/Abandon verdict) + `awesome-quant` backtesting library patterns + JARVIS promotion policy.
+**Purpose:** standard critique pass for any JARVIS strategy backtest before the verdict is recorded in the strategy registry. Derived from `claude-trading-skills`/`backtest-expert`, `tradingview-mcp`/`strategy-report`, and the audit's tooling-stack backtest-gate entry.
 
-> This checklist is a mandatory review artifact at the backtest → walk-forward → paper promotion gate. A strategy record in the registry must carry a completed critique before it advances.
-
----
-
-## 1. Five-dimension scorecard (0–100)
-
-Score each dimension independently, then sum. A strategy scoring below 60 total, or any dimension below 8, fails the gate automatically.
-
-| Dimension | Weight | What we measure | Top score | Zero score |
-|---|---|---|---|---|
-| **Sample size** | 20 | Trade count, trades/year density, number of independent market environments | ≥200 trades across ≥3 regimes | <30 trades or single-regime backtest |
-| **Expectancy** | 20 | Profit factor, win rate × avg win / loss rate × avg loss, R-multiple distribution, **uncertainty estimates (bootstrap CI on PF, DSR or equivalent)** | PF ≥1.5, positive expectancy after costs, **tight uncertainty bounds** | PF ≤1.0 or negative after costs, **or wide/overlapping confidence intervals** |
-| **Risk management** | 20 | Max drawdown severity, recovery time, ruin risk, position-sizing coherence | DD <15%, full recovery within 1× strategy cycle | DD >40% or no documented sizing rule |
-| **Robustness** | 20 | Parameter count, parameter stability, out-of-sample / walk-forward performance, regime split | ≤4 parameters, OOS within 10% of in-sample, stable across regimes | >7 tunable parameters, OOS degradation >30%, single-regime curve fit |
-| **Execution realism** | 20 | Slippage modeled, commission/fee modeling, realistic fill assumptions, latency considered | Slippage at 1.5–2× estimated, commissions modeled, fills realistic | No slippage, idealized fills, no latency model |
-
-**Verdict bands:**
-
-- **Deploy** (≥80, no critical red flags) — advance to walk-forward / paper shadow.
-- **Refine** (60–79, or non-critical red flags) — document required fixes; re-run backtest before advancing.
-- **Abandon** (<60, or any critical red flag) — strategy record is closed; capture lessons in `second-brain`.
+**Scope:** applies to engine backtests (`engine/backtest/`) and any Pine-script backtest captured via TradingView MCP. Not a substitute for walk-forward or paper-shadow validation — those are separate promotion gates.
 
 ---
 
-## 2. Mandatory red-flag scan
+## 1. Trade identity and data hygiene
 
-Any **critical** red flag fails the gate. **Warning** flags require a written mitigation in the strategy record.
+- [ ] Bar-aligned: signals evaluated on bar `t` use only data from `<= t` (no `t+1` close in an entry decision). Confirm no `shift(-1)` / `illy` patterns in the entry logic.
+- [ ] Corporate-action / continuous-contract handling documented: allocation/roll convention stated (e.g. MES continuous roll at first notice / expiry), and backtest bars match the live data source shape.
+- [ ] Slippage/fee model stated explicitly: commission per contract, slippage in ticks, any spread assumption. If the backtest used a different model than the runtime config, that divergence is recorded (see `mes_sma_trend_vix_pctile` cost-tier divergence note).
+- [ ] Look-ahead guard: no use of `high`/`low`/`close` of the same bar for an intraday-entry signal that would have been unavailable at decision time.
+- [ ] Survivorship-free instrument set: if the universe is more than one contract, confirm no instrument was removed from the test after the fact.
 
-### Critical (auto-fail)
+## 2. Return and risk metrics
 
-- Fewer than 30 trades total, or fewer than 10 trades per year of test window.
-- Negative expectancy after modeled costs (commission + slippage).
-- 7 or more freely tuned parameters with no out-of-sample validation.
-- Maximum drawdown >40% of peak equity.
-- No slippage or commission modeling at all.
-- Test window shorter than 3 years with no regime diversity.
-- Look-ahead bias: any feature or signal that uses data not available at decision time.
-- Survivorship bias: universe construction that excludes delisted/inactive instruments without a documented adjustment.
-- Uncertainty evidence absent: no bootstrap CI on profit factor, no Monte Carlo path distribution reporting the 95th-percentile drawdown (`mc_95th_dd`), or no multiple-testing control when the strategy was selected from many trials. DSR measures Sharpe significance after selection-bias adjustment and is not a drawdown-survival estimate; when drawdown survival is intended, path-based/Monte Carlo drawdown evidence must accompany the performance statistics.
+- [ ] Net PnL and CAGR (or annualized return) reported for the full test window.
+- [ ] Max drawdown ($ and % of notional) reported.
+- [ ] Sharpe and/or Sortino reported; if only one, say why.
+- [ ] Profit factor reported (gross profit / gross loss). The strategy-report skill treats >1.5 as a soft target — flag anything below it.
+- [ ] Trade count reported; if low, flag that metric stability is weak.
+- [ ] Average trade ($ and % of risk) reported; win rate reported alongside.
+- [ ] Max consecutive losses reported.
+- [ ] Long vs short breakdown reported if the strategy trades both sides.
 
-### Warning (require documented mitigation)
+## 3. Parameter stability and overfitting guard
 
-- Profit factor between 1.0 and 1.2 after costs.
-- Max drawdown 25–40%.
-- Parameter count 5–7 with partial OOS validation.
-- Test window 3–5 years with only one dominant market regime.
-- Slippage modeled at less than 1× estimated real cost.
-- Trade clustering in a single year or single volatility regime.
-- Win rate >70% with avg win ≤ avg loss (likely overfit to a thin positive tail).
-- No walk-forward or out-of-sample split documented.
+- [ ] Parameter sensitivity stated: what happens to the headline metrics if the key lookback/threshold is moved ±10–20%?
+- [ ] If a parameter sweep was run, the chosen parameter set is not the single best point in-sample unless there's an out-of-sample or walk-forward justification.
+- [ ] Walk-forward or out-of-sample window stated if claimed; the split point is before the review date.
 
----
+## 4. Regime split
 
-## 3. JARVIS-specific gates
+- [ ] Results split by at least one regime dimension (e.g. trending vs range-bound, high vs low VIX, bull vs bear SPX) if the strategy is regime-sensitive.
+- [ ] If the strategy collapses in one regime, that's documented as a known failure mode, not hidden.
 
-These are in addition to the generic scorecard above. All must pass for a strategy to enter paper shadow in JARVIS.
+## 5. Monte Carlo / ruin risk
 
-- **[ ] Data provenance recorded:** source (Databento / IBKR / YFinance / CSV), contract/venue, bar frequency, first/last date, any gap or adjustment notes.
-- **[ ] Point-in-time integrity:** no backward fills, no future values, no stale data, and no adjusted-price leakage. For daily or monthly features aligned onto intraday bars, causal forward-fill of a previously published value is permitted under the freshness gate; the source value must be available before the bars it fills.
-- **[ ] Futures roll and session validation:** for futures strategies, continuous-contract construction, roll date/method, symbol mappings, timezone, and session calendar are documented and consistent with the backtest data. A stitched or back-adjusted series without explicit roll handling fails this gate.
-- **[ ] Regime split reported:** backtest metrics are broken down by at least coarse regime segments (e.g. high-vol / low-vol, trend / range, risk-on / risk-off) so a single calm regime cannot hide a strategy that only works in one environment. A strategy with no regime diversity in its test window is a warning flag; a strategy whose edge exists only in one regime must say so in the record.
-- **[ ] Execution model matches JARVIS reality:** same broker/slippage assumptions used in backtest as will be used in paper/live; IB Gateway fill model documented if applicable.
-- **[ ] Circuit-breaker coherence:** strategy's max position, daily loss limit, and drawdown halt are compatible with JARVIS risk layer limits in `engine/risk/`.
-- **[ ] Kill-criterion written:** every strategy record carries an explicit "what makes this wrong" clause before paper entry (from `claude-trading-skills` quant-strategy-framework kill rule).
-- **[ ] Paper shadow duration met:** minimum 20 trading days or 1 full volatility regime cycle, whichever is longer, before live promotion consideration. (This gate applies at the paper→live transition; the backtest→paper step only initializes the shadow. See `strategy-registry-schema.md` step 4 for the paper→live gate.)
-- **[ ] No live config mutation:** backtest critique does not touch `engine/config.py`, `.env`, broker routing, API keys, or live order behavior. Those changes require a separate safety review.
+- [ ] If the strategy is live or near-live, a simple Monte Carlo of trade-order reshuffles or equity-curve bootstrap is run and the ruin/deep-drawdown probability is recorded.
+- [ ] If not run, say why (e.g. insufficient trade count).
 
----
+## 6. Execution realism (separate leg — not satisfied by backtest alone)
 
-## 4. Output artifacts
+- [ ] Paper/live fill comparison planned or completed; the backtest cost model is not assumed to match live fills.
+- [ ] For `mes_sma_trend_vix_pctile`, this leg is explicitly NOT closed: the backtest used `COST_SWEEP_TIERS` (commission 0.62, slippage 2.0 ticks) which diverges from `engine/config.py` defaults (commission 1.42, slippage 1.0 tick). The execution-realism leg remains open pending a fill-comparison study.
 
-Every completed critique produces:
+## 7. Verdict recording
 
-1. **`backtest-critique-<strategy-slug>-<YYYY-MM-DD>.json`** — machine-readable scorecard + red-flag list + verdict.
-2. **`backtest-critique-<strategy-slug>-<YYYY-MM-DD>.md`** — human-readable report with dimension scores, red-flag narrative, and required fixes for Refine verdicts.
-3. **Strategy record update:** the strategy registry YAML/record is updated with `backtest_critique_ref` pointing to the above artifacts and a `promotion_state` of `walkforward`, `paper`, or `closed`.
+- [ ] Verdict recorded in the strategy registry entry with: hypothesis, instruments, data source, features, parameters, train/test windows, WFO verdict, paper verdict, owner, promotion state.
+- [ ] Evidence path(s) pointing to the backtest report and any critique artifacts.
+- [ ] If the verdict is `robustness`, the open legs are enumerated (e.g. "execution-realism leg not closed").
 
 ---
 
-## 5. Red_flag quick reference (from backtest-expert)
+## Quick severity guide
 
-| # | Flag | Type | Fix |
-|---|---|---|---|
-| 1 | Too few trades (<30) | Critical | Extend test window or broaden universe; do not promote on small samples |
-| 2 | Negative expectancy after costs | Critical | Revisit edge hypothesis; do not paper trade a negative-E strategy |
-| 3 | Over-optimization (7+ parameters) | Critical | Reduce parameter count; add OOS / walk-forward |
-| 4 | Extreme drawdown (>40%) | Critical | Reduce position size; add circuit-breaker; re-evaluate risk model |
-| 5 | Untested slippage | Critical | Add slippage model at 1.5–2× estimate; re-run |
-| 6 | Short test period (<3 years) | Critical | Extend window; if unavailable, mark as "insufficient sample" |
-| 7 | Look-ahead bias | Critical | Fix feature construction; re-run from clean point-in-time data |
-| 8 | Survivorship bias | Critical | Rebuild universe with delisting/+adjustment history |
-| 9 | Low profit factor (1.0–1.2) | Warning | Document; require walk-forward confirmation before paper |
-| 10 | High drawdown (25–40%) | Warning | Document sizing reduction and risk-layer compatibility |
-| 11 | Parameter instability | Warning | Report parameter stability range; narrow to stable plateau |
-| 12 | Single-regime test | Warning | Note regime diversity gap; paper shadow must span a regime change |
-
----
-
-## 6. Related
-
-- Strategy registry schema: `docs/research/strategy-registry-schema.md`
-- Macro/FRED regime-context spec: `docs/research/macro-regime-context-spec.md`
-- Chart review runbook: `docs/research/chart-review-runbook.md`
-- Source skill: `claude-trading-skills` backtest-expert — https://github.com/tradermonty/claude-trading-skills/blob/main/skills/backtest-expert/ (MIT, distilled as a checklist; original skill package remains the canonical interactive version)
-- Source playbook: `claude-trading-skills` quant-strategy-framework — 7-layer signal stack + kill rule
+- **Blocker:** data-leakage / look-ahead confirmed and not fixed → do not promote.
+- **P1:** cost model divergence from runtime not recorded → record before verdict.
+- **P2:** regime split missing on a regime-sensitive strategy → add before paper.
+- **P3:** Monte Carlo not run on a low-trade-count strategy → note as caveat.

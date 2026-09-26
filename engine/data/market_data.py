@@ -440,10 +440,14 @@ class IBKRDataConnector:
     def _make_contract(self, symbol: str, is_futures: bool):
         from ib_async import Future, Index, Stock
 
-        if symbol.upper() in ("VIX",):
-            return Index(symbol, "CBOE")
-        if is_futures or symbol.upper() in FUTURES_MAP:
-            exchange = FUTURES_EXCHANGE.get(symbol.upper(), "CME")
+        sym_upper = symbol.upper()
+        # Map Yahoo-format index symbols to IBKR Index contracts
+        if sym_upper in ("VIX", "^VIX"):
+            return Index("VIX", "CBOE")
+        if sym_upper in ("^GSPC",):
+            return Index("SPX", "CBOE")
+        if is_futures or sym_upper in FUTURES_MAP:
+            exchange = FUTURES_EXCHANGE.get(sym_upper, "CME")
             return Future(symbol, exchange=exchange, currency="USD")
         return Stock(symbol, "SMART", "USD")
 
@@ -1170,6 +1174,9 @@ class MarketDataManager:
         self._config = config
         self.ibkr: Optional[IBKRDataConnector] = None
         self.schwab: Optional["SchwabConnector"] = None
+        # Tier 0: thinkorswim desktop RTD (injected from main.py via inject_tos_rtd).
+        # Typed loosely to avoid a hard import of the adapter at module load.
+        self.tos_rtd = None
         self.polygon: Optional[PolygonDataConnector] = None
         self.polygon_streamer: Optional[PolygonStreamer] = None
         self.finnhub: Optional[FinnhubConnector] = None
@@ -1193,6 +1200,17 @@ class MarketDataManager:
         """Wire in a SchwabConnector at startup (called from main.py after Schwab connects)."""
         self.schwab = connector
         logger.info("MarketDataManager: SchwabConnector injected as Tier 2 data source")
+
+    def inject_tos_rtd(self, connector) -> None:
+        """Wire in a ``TOSRTDConnector`` (thinkorswim desktop RTD) as Tier 0.
+
+        Called from main.py. The connector owns its own COM worker thread, so
+        injecting it is cheap and non-blocking; it only serves prices once its
+        RTD session has started and is heartbeating. Read-only source — it is
+        never consulted by risk, kill-switch or execution code.
+        """
+        self.tos_rtd = connector
+        logger.info("MarketDataManager: TOSRTDConnector injected as Tier 0 data source")
 
     def _mark_symbol_fresh(self, symbol: str) -> None:
         """Record the wall-clock time we last served data for `symbol` (any tier).
@@ -1631,6 +1649,31 @@ class MarketDataManager:
         """
         is_futures = is_futures or symbol.upper() in FUTURES_MAP
 
+        # Tier 0: thinkorswim desktop RTD — broker-direct push feed, lowest
+        # latency when TOS is running. Only serves while its session is
+        # heartbeating; any failure falls through untouched. `as_of` is carried
+        # so the provenance envelope can honestly re-derive liveness.
+        tos_rtd = getattr(self, "tos_rtd", None)
+        if tos_rtd is not None and tos_rtd.is_connected:
+            try:
+                rtd = await tos_rtd.get_current_price(symbol)
+                if rtd and rtd.get("last_price"):
+                    self._last_price_source = "rtd_tos"
+                    logger.debug(
+                        f"TOS RTD Tier 0 price for {symbol}: {rtd['last_price']}"
+                    )
+                    return {
+                        "last_price": float(rtd["last_price"]),
+                        "prev_close": rtd.get("prev_close"),
+                        "change_pct": rtd.get("change_pct"),
+                        "bid": rtd.get("bid"),
+                        "ask": rtd.get("ask"),
+                        "as_of": rtd.get("as_of"),
+                        "source": "rtd_tos",
+                    }
+            except Exception as _rtd_err:  # noqa: BLE001 — tier must never break the flow
+                logger.debug(f"TOS RTD Tier 0 failed for {symbol}: {_rtd_err}")
+
         # Tier 1: IBKR
         if self.ibkr and self.ibkr.is_connected:
             result = await self.ibkr.get_snapshot_price(symbol, is_futures)
@@ -1739,6 +1782,29 @@ class MarketDataManager:
         TV, keeping per-position reads to sub-200ms when IBKR/Schwab are up.
         """
         is_futures = is_futures or symbol.upper() in FUTURES_MAP
+
+        # Tier 0: thinkorswim desktop RTD (see data/tos_rtd_adapter.py).
+        # A broker-direct push feed; only serves while the RTD session is
+        # heartbeating. Placed ahead of the Redis fabric tier because it is the
+        # vendor's own quote stream rather than a derived cache. Any failure
+        # falls through untouched — this tier can never break the tick path.
+        tos_rtd = getattr(self, "tos_rtd", None)
+        if tos_rtd is not None and tos_rtd.is_connected:
+            try:
+                rtd = await tos_rtd.get_current_price(symbol)
+                if rtd and rtd.get("last_price"):
+                    self._last_price_source = "rtd_tos"
+                    return {
+                        "last_price": float(rtd["last_price"]),
+                        "prev_close": rtd.get("prev_close"),
+                        "change_pct": rtd.get("change_pct"),
+                        "bid": rtd.get("bid"),
+                        "ask": rtd.get("ask"),
+                        "as_of": rtd.get("as_of"),
+                        "source": "rtd_tos",
+                    }
+            except Exception as _rtd_err:  # noqa: BLE001 — tier must never break the flow
+                logger.debug(f"[get_tick_price] TOS RTD Tier 0 failed for {symbol}: {_rtd_err}")
 
         # Tier 0: Redis Real-Time Fabric (Phase 2.1)
         #
@@ -1908,6 +1974,23 @@ class MarketDataManager:
         """
         now = datetime.now(timezone.utc).isoformat()
 
+        # Tier 0: thinkorswim desktop RTD (see data/tos_rtd_adapter.py).
+        # Verified live: TOS answers ("LAST","VIX") — note ("LAST","$VIX.X")
+        # returns 'N/A', so the bare symbol is the one to ask for.
+        tos_rtd = getattr(self, "tos_rtd", None)
+        if tos_rtd is not None and tos_rtd.is_connected:
+            try:
+                rtd = await tos_rtd.get_current_price("VIX")
+                if rtd and rtd.get("last_price"):
+                    return {
+                        "value": float(rtd["last_price"]),
+                        "source": "rtd_tos",
+                        "ts": now,
+                        "as_of": rtd.get("as_of"),
+                    }
+            except Exception as _rtd_err:  # noqa: BLE001 — tier must never break the flow
+                logger.debug(f"[get_vix] TOS RTD Tier 0 failed: {_rtd_err}")
+
         # Tier 1: IBKR real-time index quote
         if self.ibkr and self.ibkr.is_connected:
             try:
@@ -1991,13 +2074,38 @@ class MarketDataManager:
             try:
                 from ib_async import Stock
 
+                ib = self.ibkr._ib
+                if ib is None:
+                    raise RuntimeError("IBKR connector has no live IB() session")
+
                 contract = Stock(symbol, "SMART", "USD")
-                chains = await self._ibkr_ib.reqSecDefOptParamsAsync(
-                    "", "", contract.secType, contract.conId
+                # reqSecDefOptParams needs a conId for tight matching; qualify first
+                # (a bare Stock() carries conId=0 and can return nothing). Fall back
+                # to symbol-only matching if qualification yields no contract.
+                try:
+                    qualified = await ib.qualifyContractsAsync(contract)
+                    if qualified:
+                        contract = qualified[0]
+                except Exception as qexc:  # noqa: BLE001 — non-fatal, symbol match still works
+                    logger.debug("qualifyContractsAsync failed for %s: %s", symbol, qexc)
+
+                chains = await ib.reqSecDefOptParamsAsync(
+                    contract.symbol, "", contract.secType, contract.conId
                 )
                 if chains:
-                    expirations = sorted(chains[0].expirations)
+                    # Prefer the SMART/USD chain when several exchanges return data.
+                    smart = [c for c in chains if getattr(c, "exchange", "") == "SMART"]
+                    chosen = smart[0] if smart else chains[0]
+                    expirations = sorted(chosen.expirations)
                     return list(expirations)
+                logger.warning(
+                    "IBKR sec-def returned no option chains for %s "
+                    "(conId=%s qualified=%s) — entitlement not yet active at the "
+                    "Gateway, or market closed for this underlying.",
+                    symbol,
+                    contract.conId,
+                    bool(contract.conId),
+                )
             except Exception as e:
                 logger.warning(f"IBKR get_options_expirations failed for {symbol}: {e}")
 

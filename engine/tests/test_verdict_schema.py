@@ -16,22 +16,20 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from backtest.verdict_schema import VerdictSchema, _sanitize_json, load_verdict_validated
+from backtest.verdict_schema import (
+    NON_VERDICT_ARTIFACTS as _KNOWN_NON_VERDICT_ARTIFACTS,
+)
+from backtest.verdict_schema import (
+    VerdictSchema,
+    _sanitize_json,
+    load_verdict_validated,
+)
 
 _VERDICTS_DIR = Path(__file__).parent.parent / "data" / "gate_v2_verdicts"
 
-# Research evidence/provenance artifacts deliberately live beside verdicts so
-# reviewers can audit a promotion decision without chasing side paths. They are
-# not themselves promotion verdicts and should not be parsed as VerdictSchema.
-# Keep this explicit so a future non-verdict JSON added to the directory fails
-# CI until it is either moved or deliberately classified here.
-_KNOWN_NON_VERDICT_ARTIFACTS = {
-    "MES_DEEP_ADJACENT_FAMILY_DM_2026-09-12.json",
-    "MES_DEEP_CACHE_PROVENANCE_2026-09-12.json",
-    "MES_DEEP_DATE_ALIGNED_DM_2026-09-12.json",
-    "MES_DEEP_FAMILY_DEFLECTION_2026-09-12.json",
-    "MES_DEEP_TOP3_COST_SENSITIVITY_2026-09-12.json",
-}
+# The non-verdict classification is imported (not redefined) so this CI gate and
+# the runtime authorization path in backtest.gate_v2_policy cannot drift apart:
+# one list, one source of truth (see `NON_VERDICT_ARTIFACTS` in verdict_schema).
 
 
 # ---------------------------------------------------------------------------
