@@ -1,5 +1,4 @@
 {
-  "$schema": "https://github.com/mattamundson/jarvis-trader/docs/research/strategy-registry/schema.json",
   "schema_version": "1.0",
   "strategy_id": "mes_sma_trend_vix_pctile",
   "name": "MES SMA Trend + VIX Percentile Tier Block",
@@ -41,8 +40,7 @@
     "test": null,
     "walk_forward": {
       "start": "2019-11",
-      "end": "2026-08",
-      "config": "train_months=6, test_months=1, step_months=1, n_windows=82, n_oos_windows=82, n_oos_windows_with_trades=54"
+      "end": "2026-08"
     }
   },
   "metrics": {
