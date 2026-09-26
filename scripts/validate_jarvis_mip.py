@@ -211,7 +211,7 @@ def validate_graph(graph: dict[str, Any], profile: str = "adoption-candidate") -
     for phase in phases:
         require(phase.get("exit_gate") in gate_by_id, f"phase {phase.get('id')}: unknown exit gate")
     if profile == "adoption-candidate":
-        for package_id in PHASE_ZERO_CHARTERS:
+        for package_id in sorted(PHASE_ZERO_CHARTERS):
             require(by_id[package_id].get("draft_charter_path"), f"{package_id}: Phase 0 draft charter is required")
 
     return {
