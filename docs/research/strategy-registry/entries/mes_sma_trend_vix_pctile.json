@@ -44,14 +44,9 @@
     }
   },
   "metrics": {
-    "net_pnl": null,
-    "cagr": null,
     "max_drawdown": 0.008902,
-    "sharpe": null,
-    "sortino": null,
     "profit_factor": 1.6478,
     "trade_count": 122,
-    "win_rate": null,
     "exposure": "Long-only MES 1h; active in ~54 of 82 OOS windows (65.9%); median 1 trade/window reflects low signal frequency",
     "fees_slippage_assumption": "Four-tier cost model: optimistic PF 1.706 / realistic 1.648 / pessimistic 1.602 / catastrophic 1.508; all pass. Realistic tier matches engine/risk/ backtest cost config; catastrophic is an intentional 1.5-2x sensitivity stress. See execution-model-cost-tier-link-...-2026-09-26.md.",
     "regime_split": "OOS PF by tier-block combo: unblocked 1.648 (122 trades), +Crisis block 1.494 (112), +Crisis+HighVol block 1.479 (89), +HighVol block 1.666 (99). Edge persists across all blocks; HighVol-only block is the strongest.",
