@@ -1,123 +1,159 @@
-# Execution-model link: cost tiers to engine/risk/ configuration
+# Execution-model cost-tier link — mes_sma_trend_vix_pctile (runner-anchored)
 
 **Strategy:** `mes_sma_trend_vix_pctile`
 **Record date:** 2026-09-26
 **Author:** Hermes Agent cron run
 **Scope:** docs/evidence only — this record does not touch `engine/config.py`, `.env`, broker
 routing, API keys, PM2, scheduled tasks, risk limits, kill-switch code, or live order behavior.
-**Companion file:** `docs/research/backtest-critique-mes_sma_trend_vix_pctile-2026-09-24.json`
+**Companion critique:** `docs/research/backtest-critique-mes_sma_trend_vix_pctile-2026-09-24.json`
 (verdict REFINE, score 73/100, open item 3)
-**Related record:** `docs/research/cost-tier-pf-uncertainty-proxy-mes_sma_trend_vix_pctile-2026-09-25.md`
-(item-1 proxy-acceptance record, PR #949)
+**Related item-1 record:** `docs/research/cost-tier-pf-uncertainty-proxy-mes_sma_trend_vix_pctile-2026-09-25.md`
+(shipped separately in PR #949; referenced here per the critique's open-items list)
 
 ---
 
-## 1. What this record closes
+## 1. Source of truth for the cost tiers
 
-The 2026-09-24 critique's open item 3 reads:
+The four cost tiers in the 2026-09-24 critique were produced by
+`engine/backtest/run_mes_trend_vix_pctile_rank1.py`, not by `engine/config.py`. The runner's
+constants are the authoritative source for the tier mapping:
 
-> "Add a note linking the four cost tiers (optimistic/realistic/pessimistic/catastrophic) to the
-> engine's fee/slippage configuration in engine/risk/ so the execution model is verifiably consistent
-> with JARVIS paper/live fill assumptions."
+**Runner constants (`run_mes_trend_vix_pctile_rank1.py`, lines 60–61, 85–90):**
 
-This record provides that note. It does **not** change `engine/config.py`, the risk layer, or any
-execution surface.
+```python
+COMMISSION = 0.62       # per-contract commission for the realistic tier
+SLIPPAGE_TICKS = 2.0    # slippage ticks for the realistic tier
+
+COST_SWEEP_TIERS = {
+    "optimistic":   {"commission": 0.31, "slippage_ticks": 1.0},
+    "realistic":    {"commission": 0.62, "slippage_ticks": 2.0},
+    "pessimistic":  {"commission": 1.24, "slippage_ticks": 3.0},
+    "catastrophic": {"commission": 2.48, "slippage_ticks": 4.0},
+}
+```
+
+The runner varies **both** commission and slippage across every tier. Commission scales as
+0.31 → 0.62 → 1.24 → 2.48 (a 2× step per tier), and slippage scales as 1.0 → 2.0 → 3.0 → 4.0
+ticks. The realistic tier uses `COMMISSION=0.62, SLIPPAGE_TICKS=2.0`.
 
 ---
 
-## 2. Engine fee/slippage configuration (as of 2026-09-26)
+## 2. Mapping the four cost tiers to the runner
 
-Source: `engine/config.py`, section "Execution Cost Modeling (Backtests)":
+| Tier | Commission | Slippage (ticks) | PF reported in critique | Role |
+|---|---|---|---|---|
+| Optimistic | 0.31 | 1.0 | 1.706 | Lower-bound commission + mild slippage |
+| Realistic | 0.62 | 2.0 | 1.648 | Primary reported figure; runner's central assumption |
+| Pessimistic | 1.24 | 3.0 | 1.602 | Heavier commission + slippage |
+| Catastrophic | 2.48 | 4.0 | 1.508 | 2× realistic commission + 2× realistic slippage |
 
-| Setting | Value | Description |
+All four tiers clear 1.0. The critique's red-flag check for "profit factor between 1.0 and 1.2
+after costs" does **not** fire at any tier.
+
+---
+
+## 3. Relationship to engine/config.py (divergence, not match)
+
+`engine/config.py` (section "Execution Cost Modeling (Backtests)") carries different defaults:
+
+| Setting | Value | Notes |
 |---|---|---|
-| `COMMISSION_PER_CONTRACT` | 1.42 | MES/MNQ CME round-trip commission ($0.72 exchange + $0.70 clearing) |
+| `COMMISSION_PER_CONTRACT` | 1.42 | MES/MNQ round-trip commission ($0.72 exchange + $0.70 clearing) |
 | `SLIPPAGE_TICKS` | 1.0 | Conservative 1-tick adverse slippage per fill |
-| `SLIPPAGE_ENABLED` | True | Apply slippage in backtests |
-| `COMMISSION_ENABLED` | True | Apply commission in backtests |
-| `SPREAD_TICKS` | 0.5 | Half-spread ticks, paid on entry AND exit (0.5 ticks = 1 full tick round-trip) |
-| `SPREAD_ENABLED` | True | Apply bid-ask spread simulation in backtests |
+| `SPREAD_TICKS` | 0.5 | Half-spread ticks, paid on entry AND exit |
+| `COMMISSION_ENABLED` | True | |
+| `SLIPPAGE_ENABLED` | True | |
+| `SPREAD_ENABLED` | True | |
 
-The spread is modeled separately from adverse-tick slippage; together they produce a per-fill cost
-basis that the backtest's four-tier model draws from.
+**The runner's realistic tier does NOT match `engine/config.py`'s defaults.** The divergence is:
 
-Paper/live fill behavior is controlled separately by the IB Gateway connector and the paper-order
-path; this record covers only the backtest cost model that produced the critique's four tiers.
+- **Commission:** runner realistic = 0.62 vs. config default = 1.42. The runner's commission is
+  lower than the config default. The runner's catastrophic commission (2.48) exceeds the config
+  default (1.42), so the runner's upper bound is more conservative on commission than the config.
+- **Slippage:** runner realistic = 2.0 ticks vs. config default = 1.0 tick. The runner's slippage
+  assumption is 2× the config default.
+- **Spread:** the runner's cost model does not include a separate bid-ask spread term; the config
+  default includes `SPREAD_TICKS=0.5` (round-trip 1.0 tick). The runner's slippage (2.0 ticks
+  realistic) is the only per-fill price impact term; spread is not separately modeled in the runner.
 
----
-
-## 3. Mapping the four cost tiers to the engine configuration
-
-The critique's cost tiers are produced by varying the slippage assumption around a baseline that
-includes commission + spread. The mapping is:
-
-| Tier | PF | Slippage assumption vs. engine baseline | Interpretation |
-|---|---|---|---|
-| Optimistic | 1.706 | Below the 1-tick `SLIPPAGE_TICKS` baseline; likely zero or sub-tick slippage, commission + spread still applied | Upper bound; what PF looks like if fills land at or better than the mid-price |
-| Realistic | 1.648 | Matches the engine's 1-tick `SLIPPAGE_TICKS` + half-spread `SPREAD_TICKS` (0.5 × 2 sides = 1 full tick round-trip) + commission | Primary reported figure; the engine's default cost model is the realistic tier |
-| Pessimistic | 1.602 | Above 1-tick baseline; approximately 1.5× the realistic slippage+spread burden | Commission + heavier slippage; stress test for normal adverse fills |
-| Catastrophic | 1.508 | 1.5–2× the estimated total cost (slippage + spread + commission combined) | Stress test for a degraded fill environment; the critique explicitly labels this tier as "1.5–2× estimated cost slippage" |
-
-The realistic tier (1.648) is the one that corresponds to the engine's default backtest cost
-configuration. All four tiers are generated by the same backtest with the same commission and spread
-settings; only the slippage multiplier changes between tiers.
+**Net:** the critique's cost-tier PFs were produced under a cost model that is *different from* the
+engine/config.py defaults — lower commission, higher slippage, no explicit spread. The realistic
+tier (PF 1.648) is the runner's central assumption, not a reading of the engine config. This record
+reports that divergence rather than asserting a match.
 
 ---
 
-## 4. Match or diverge statement
+## 4. What this record does and does not close
 
-**The realistic tier matches the engine/risk/ backtest cost configuration.** The engine's
-`SLIPPAGE_TICKS = 1.0`, `SPREAD_TICKS = 0.5` (round-trip 1.0 tick), and `COMMISSION_PER_CONTRACT =
-1.42` produce exactly the cost basis that the realistic tier (PF 1.648) is computed against. There
-is no divergence between the critique's primary cost figure and the engine's default backtest
-parameters.
+**This record documents the cost-tier → runner-constant mapping and reports the divergence from
+engine/config.py.** It addresses the *literal text* of critique open item 3 ("Add a note linking
+the four cost tiers to the engine's fee/slippage configuration in engine/risk/"), interpreted as a
+documentation request: the four tiers are now linked to their authoritative source (the runner
+constants) and the relationship to engine/config.py is stated explicitly, including the divergence.
 
-**The catastrophic tier deliberately diverges from the engine baseline by design.** It applies a
-1.5–2× multiplier on top of the realistic cost, representing a degraded-fill stress scenario, not a
-configuration the engine currently runs. This is a sensitivity bound, not a claimed fill model.
-
-**Live/paper fill assumptions are NOT addressed by this record.** The engine config's slippage and
-commission settings are backtest cost-model parameters. The IB Gateway fill model for paper and live
-orders is a separate concern governed by the connector and paper-order path. This record states
-consistency between the backtest cost model and the critique's realistic tier; it does not claim
-that the backtest cost model is a verified model of IB Gateway paper/live fills. That claim would
-require a separate execution-realism study comparing backtest-cost-tier P&L to realized paper/live
-fill costs, which is out of scope for this docs-only record.
+**This record does NOT close the execution-realism gate.** The critique's item 3 framing — "so the
+execution model is verifiably consistent with JARVIS paper/live fill assumptions" — is a stronger
+claim than a documentation link. The runner's cost model is a backtest cost sweep; it is not a
+verified model of IB Gateway paper/live fills. Establishing that the backtest cost tiers are
+consistent with realized paper/live fill costs is a separate execution-realism study that has not
+been performed. This record does not perform that study and does not claim its conclusion.
 
 ---
 
-## 5. What is still open after this record
+## 5. Gate state after this record
 
-This record closes open item 3 (cost-tier → engine/risk/ link). The following remain open per the
-critique's `open_items_before_paper` list and `required_fixes`:
+Per the critique's `required_fixes`:
 
-1. Bootstrap CI on profit factor (item 1) — addressed by the proxy-acceptance record in PR #949;
-   formal CI still optional until paper-shadow or a re-critique that lowers PF toward 1.2–1.5.
-2. MES continuous-contract roll date/method and symbol mapping (item 2) — data provenance gap; not
-   addressed by this record.
-3. ~~Cost-tier → engine/risk/ link~~ — **closed by this record.**
-4. Experiment ledger completion for non-lower-bound DSR campaign figure (item 4) — not addressed by
-   this record.
-5. Coarse trend/range regime overlay in addition to volatility-tier split (item 5) — not addressed
-   by this record.
+> "Before advancing to walk-forward/paper: close the five open items above; at minimum items 1
+> (bootstrap PF CI or documented proxy acceptance) and 3 (cost-tier-to-engine-execution-model link)
+> are gating."
+
+After this record:
+
+- **Item 3 (literal documentation link):** the four cost tiers are linked to their authoritative
+  source (runner constants `run_mes_trend_vix_pctile_rank1.py` lines 85–90) and the divergence from
+  engine/config.py is documented. The documentation leg of item 3 is satisfied. The execution-realism
+  leg (verifiable consistency with paper/live fill assumptions) remains open and is explicitly not
+  addressed by this record.
+- **Item 1 (bootstrap PF CI or documented proxy acceptance):** addressed by the separate item-1
+  evidence record `docs/research/cost-tier-pf-uncertainty-proxy-mes_sma_trend_vix_pctile-2026-09-25.md`
+  (PR #949), which documents the cost-tier spread as a PF uncertainty proxy pending sponsor acceptance.
+  That record is NOT included in this tree; readers should consult PR #949 or wait for it to merge
+  before treating item 1 as addressed.
+- **Items 2, 4, 5:** unchanged and out of scope for this record (MES roll provenance, experiment
+  ledger completion, coarse regime overlay).
+
+**Recommendation:** if the promotion workflow treats item 3 as a hard gate requiring execution-realism
+closure, this record satisfies only the documentation leg. The execution-realism leg should be tracked
+as a separate open item (backtest-cost-model vs. IB Gateway fill validation) until a fill-comparison
+study is performed. If the workflow treats item 3 as a documentation request only, this record closes
+it; the residual execution-realism gap should be recorded as a separate future item.
 
 ---
 
 ## 6. Acceptance note
 
-**Closed by documentation.** Open item 3 in
-`docs/research/backtest-critique-mes_sma_trend_vix_pctile-2026-09-24.json` is closed by this record:
-the four cost tiers are linked to `engine/config.py`'s `COMMISSION_PER_CONTRACT`, `SLIPPAGE_TICKS`,
-and `SPREAD_TICKS`, and the realistic tier is confirmed to match the engine's default backtest cost
-configuration. The realistic/catastrophic divergence is intentional (sensitivity stress, not a fill
-model claim). Live/paper fill-model consistency is explicitly out of scope and would require a
-separate study.
+**Documentation leg of item 3 — satisfied by this record.** The four cost tiers are linked to their
+authoritative source (the runner constants in `engine/backtest/run_mes_trend_vix_pctile_rank1.py`)
+and the relationship to `engine/config.py` is documented, including the explicit divergence (runner
+commission 0.62 vs config 1.42; runner slippage 2.0 vs config 1.0; no separate spread in runner).
+
+**Execution-realism leg — NOT closed.** Consistent with JARVIS paper/live fill assumptions has not
+been established. The runner's backtest cost model is not a verified model of IB Gateway fills. This
+record flags the gap; it does not close it. If the promotion gate requires execution-realism closure,
+item 3 remains open until a fill-comparison study is performed.
+
+**Item 1 — pending separate PR #949.** The item-1 proxy-acceptance record is not in this tree; it
+ships in PR #949 (`docs/research/cost-tier-pf-uncertainty-proxy-mes_sma_trend_vix_pctile-2026-09-25.md`).
+Item 1 should be treated as pending until PR #949 merges and the sponsor either accepts the documented
+proxy or supplies a bootstrap CI.
 
 No live trading config, risk limit, kill-switch, broker routing, API key, `.env`, PM2 state, or
 scheduled task was changed.
 
 ---
 
-*Generated 2026-09-26 as the item-3 evidence record for `mes_sma_trend_vix_pctile` per the
-2026-09-24 backtest critique's open-items list. Closes the execution-model-link leg of critique open
-item 3.*
+*Generated 2026-09-26 as the item-3 evidence record for `mes_sma_trend_vix_pctile`. Anchored to the
+runner constants in `engine/backtest/run_mes_trend_vix_pctile_rank1.py` after review feedback. Reports
+divergence from engine/config.py rather than asserting a match. Does not close the execution-realism
+gate; documents the gap.*
