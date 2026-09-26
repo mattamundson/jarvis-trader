@@ -188,6 +188,11 @@ from routers.prices_router import (
     router as prices_router,
     inject_dependencies as inject_prices_deps,
 )
+from routers.tos_router import (
+    router as tos_router,
+    inject_dependencies as inject_tos_deps,
+)
+from routers.pnl_attribution_router import router as pnl_attribution_router
 from routers.auction_bias_router import (
     router as auction_bias_router,
     inject_dependencies as inject_auction_bias_deps,
@@ -823,6 +828,48 @@ async def lifespan(app: FastAPI):
     if schwab_connector is not None and schwab_connector.is_connected:
         data_manager.inject_schwab(schwab_connector)
         logger.info("✅ Schwab wired into MarketDataManager as Tier 2 price source")
+
+    # Wire thinkorswim RTD into MarketDataManager as Tier 0 (broker-direct quotes
+    # for MES/SPY/QQQ/VIX via thinkorswim's own RTD COM server, which proxies to
+    # its TCP listener on 127.0.0.1:12001). Read-only source — no order path.
+    # Injection is cheap; the session itself is brought up in the background so
+    # startup never blocks on COM. Absent TOS / pywin32 it degrades to Tier 0
+    # inactive with the waterfall unchanged.
+    #
+    # The bring-up MUST stay on the event-loop thread: RTDService.dll registers
+    # no ThreadingModel, so COM treats it as Apartment-threaded and the object
+    # must be created in the process's first apartment. Moving this to a worker
+    # thread makes ServerStart hang forever with no exception (see the THREADING
+    # section of data/tos_rtd_adapter.py). The wait_for is a bound on the await,
+    # not a fix for that.
+    tos_rtd_connector = None
+    try:
+        from data.tos_rtd_adapter import TOSRTDConnector
+
+        tos_rtd_connector = TOSRTDConnector()
+        data_manager.inject_tos_rtd(tos_rtd_connector)
+        # Expose the derived-indicator engine over /tos/indicators (ATR, Keltner,
+        # multi-TF S/R, day-range gauge). Injected here so the router sees the
+        # same connector instance the waterfall uses.
+        inject_tos_deps(tos_rtd_connector)
+        logger.info("✅ thinkorswim RTD wired into MarketDataManager as Tier 0 price source")
+
+        async def _bring_up_tos_rtd(connector):
+            try:
+                if await asyncio.wait_for(connector.connect(), timeout=30):
+                    logger.info("✅ thinkorswim RTD session live (Tier 0 active)")
+                else:
+                    logger.info(
+                        "thinkorswim RTD session not started — Tier 0 inactive, "
+                        "waterfall unchanged"
+                    )
+            except Exception as _rtd_bringup_err:  # noqa: BLE001 — never fatal
+                logger.warning("thinkorswim RTD bring-up failed (non-fatal): %s", _rtd_bringup_err)
+
+        asyncio.create_task(_bring_up_tos_rtd(tos_rtd_connector))
+    except Exception as _tos_err:
+        logger.warning("thinkorswim RTD connector unavailable (non-fatal): %s", _tos_err)
+        tos_rtd_connector = None
 
     # JARVIS Super-Engine: Initialize ArbScout and RegimeGuard once data_manager is ready
     arb_scout = ArbScout(polymarket_connector=polymarket, data_manager=data_manager)
@@ -3112,6 +3159,15 @@ async def lifespan(app: FastAPI):
     if ib_freshness_heartbeat:
         await ib_freshness_heartbeat.stop()
 
+    # Stop thinkorswim RTD session (Tier 0 market-data source — calls
+    # ServerTerminate on the RTD server and cancels its keep-warm task)
+    if tos_rtd_connector is not None:
+        try:
+            await tos_rtd_connector.close()
+            logger.info("🛑 thinkorswim RTD session closed")
+        except Exception:
+            pass
+
     # Stop Paper stop-loss monitor
     if paper_stop_monitor:
         await paper_stop_monitor.stop()
@@ -3297,6 +3353,8 @@ app.include_router(watchlist_router)
 app.include_router(sentiment_router)
 app.include_router(settings_router)
 app.include_router(prices_router)
+app.include_router(tos_router)
+app.include_router(pnl_attribution_router)
 app.include_router(auction_bias_router)
 app.include_router(websocket_router)
 app.include_router(thinkscript_router)
