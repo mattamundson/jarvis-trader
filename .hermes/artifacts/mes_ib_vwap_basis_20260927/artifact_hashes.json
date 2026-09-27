@@ -1,0 +1,57 @@
+{
+  "phase1": {
+    "champion_id": "stop_entry__opposite_ib__full_ib__slip1",
+    "row_count_raw": 162,
+    "row_count_reported": 162,
+    "net_pnl_raw": -1930.04,
+    "net_pnl_reported": -1930.04,
+    "profit_factor_raw": 0.81187,
+    "profit_factor_reported": 0.81187,
+    "max_abs_trade_ledger_residual": 0.0,
+    "aggregate_cost_identity_residual": 0.0,
+    "verified": true
+  },
+  "phase2": {
+    "rows_raw": 1068,
+    "rows_reported": 1068,
+    "mean_brier_model_raw": 0.566434,
+    "mean_brier_model_reported": 0.566434,
+    "mean_brier_baseline_raw": 0.567764,
+    "mean_brier_baseline_reported": 0.567764,
+    "paired_diff_raw": 0.00133,
+    "paired_diff_reported": 0.00133,
+    "earliest_signal_trade_count_raw": 229,
+    "earliest_signal_trade_count_reported": 229,
+    "expectancy_raw": 23.165153,
+    "expectancy_reported": 23.165153,
+    "max_probability_sum_error": 1.000000082740371e-10,
+    "holm_adjusted_p_price_above_vwap": 0.08198,
+    "holm_adjusted_p_unconditional": 1.0,
+    "retained": false,
+    "verified": true
+  },
+  "phase3": {
+    "theoretical_recomputed": 7808.54126443,
+    "theoretical_reported": 7808.54126443,
+    "translated_level_reported": 7808.5,
+    "all_validation_flags_true": true,
+    "verified": true
+  },
+  "all_verified": true,
+  "artifact_hashes": {
+    "audit_cache_candidates.py": "77f5b2f5c9267385d65ac9891b7394b1462dbd6c999b4952647732eeb7b4e179",
+    "cache_candidate_audit.json": "2a1b74af80081bcfa37f1cf6950d0e08951f64e77fc906737d9e10328e45e986",
+    "cache_candidate_audit.log": "98a95f6fe67dbfc59fc40b4c1d29632f5ad7d7fb839c7e5b0e1293c07f9ba058",
+    "data_provenance.json": "06037385af7bc5163e6b884646c9d1281fe289d171250587b3f1fbaa5ef0612a",
+    "manifest.json": "19f371c0c87aed774d967332c67a41f70bcd8ba8d8fadd68050f0562565f1ec7",
+    "phase1_is_trades.csv": "a89ee15e2bbebb7b59e737d1d0c5cf4880f14f1c0d70591cf6f83b639dc5d364",
+    "phase1_ladder_events.csv": "6cce2a331cfe9ae6f054ca9773efac0d677e631b4cd2954497dbfc89cf78d776",
+    "phase1_mes_ib_ladder.json": "104161cceee655365d9f8d49c90d9ef5bba94f75d51454ccacb0b3c908c046ca",
+    "phase1_oos_trades_all_costs.csv": "a2c7060deaa07d8090367d89a2c9c24b96d174660115fea3dc29ed971f15b79d",
+    "phase2_acceptance_records.csv": "32d332300dc6b93ed05684678925ad259cee09fc9a20c86f97e008ffa5f36a0e",
+    "phase2_walkforward_rows.jsonl": "944a98f6d7d34016b0e2f5ebf0d70d2e2cc2817abf941566557888a961c4da34",
+    "phase2_weekly_vwap_acceptance.json": "56dcefcbe712dc113b22eab49a047555422d24da60a383bad0df1fd91a59df82",
+    "phase3_spx_es_basis.json": "40538576631112fa2c626afc87c15886d5a4d6c485b1c84d7959a7628cc46242",
+    "run.log": "11207e224ab0bf3f9228fb7526f286aaf1626ff461baccdddb2972da3acd1fb4"
+  }
+}
