@@ -9,7 +9,7 @@
 
 ## Executive summary
 
-Consolidation is complete. All canonical keep/merge/archive dispositions from the audit are now verified live on GitHub. Nothing remains open from the consolidation map except optional future-wave research work (claude-trading-skills deep catalog, agent-workflow-patterns doc, business-archive sweep), which the audit explicitly classified as non-debt.
+Consolidation is complete. All canonical keep/merge/archive dispositions from the audit are now verified live on GitHub. The prior run's disposition table had a readback bug (the `gh api --jq .isArchived` field returns empty for archived repos, making 14 repos appear as "Archive candidate"), which this run corrected. Nothing remains open from the consolidation map except optional future-wave research work (claude-trading-skills deep catalog, agent-workflow-patterns doc, business-archive sweep), which the audit explicitly classified as non-debt.
 
 ---
 
@@ -116,24 +116,24 @@ All 9 accessible Greenfield/business repos are archived. `procoil-enterprise` re
 
 ## Learning/career/other: verified
 
-| Repo | Disposition | Notes |
-|---|---|---|
-| `mattamundson/dp600-mastery` | Archive candidate (topic: archive-candidate) | 6 files, private, HTML. Historical learning reference. |
-| `mattamundson/dp600-progress` | Archive candidate (topic: archive-candidate) | 31 files, private. Historical learning reference. |
-| `mattamundson/dp600-stark-v2` | Archive candidate (topic: archive-candidate) | 247 files, public, TypeScript. DP-600 exam prep PWA. |
-| `mattamundson/ps_data_engineer_kit` | Archive candidate (topic: archive-candidate) | 65 files, private, Python. |
-| `mattamundson/cms-data-engineer-assessment` | Archive candidate (topic: archive-candidate) | 7 files, public, Python. |
-| `mattamundson/assessment-practice` | Archive candidate (topic: archive-candidate) | 8 files, private, Python. |
-| `mattamundson/career-ops` | Archive candidate (topic: archive-candidate) | 111 files, private, HTML. AI job search system. |
-| `mattamundson/my-portfolio` | Archive candidate (topic: archive-candidate) | 34 files, private, Astro. |
-| `mattamundson/mattamundson` | Archive candidate (topic: archive-candidate) | 2 files, public. Profile README. |
-| `mattamundson/pbi-observatory` | Archive candidate (topic: archive-candidate) | 168 files, private, Python. OpenTelemetry for Power BI. |
-| `mattamundson/pbi-gateway-monitoring` | Archive candidate (topic: archive-candidate) | 137 files, public, Python. |
-| `mattamundson/pbi-cli` | Archive candidate (topic: archive-candidate) | 190 files, public. Power BI CLI. |
-| `mattamundson/visual-explainer` | Archive candidate (topic: archive-candidate) | 28 files, public, HTML. HTML/slide deck agent skill. |
-| `mattamundson/kanban-agent-orchestrator` | Archive candidate (topic: archive-candidate) | 27 files, public, Python. Kanban-agent ops. |
+|| Repo | Visibility | Archived | Notes |
+||---|---|---|---|---|
+|| `mattamundson/dp600-mastery` | Private | true | Historical learning reference. HTML, 16 files. |
+|| `mattamundson/dp600-progress` | Private | true | Historical learning reference. 194 files. |
+|| `mattamundson/dp600-stark-v2` | Public | true | DP-600 exam prep PWA. TypeScript, 1338 files. |
+|| `mattamundson/ps_data_engineer_kit` | Private | true | Python, 1393 files. |
+|| `mattamundson/cms-data-engineer-assessment` | Public | true | Python, 302 files. |
+|| `mattamundson/assessment-practice` | Private | true | Python, 2 files. |
+|| `mattamundson/career-ops` | Private | true | AI job search system. HTML, 13587 files. |
+|| `mattamundson/my-portfolio` | Private | true | Astro, 143 files. |
+|| `mattamundson/mattamundson` | Public | true | Profile README. 2 files. |
+|| `mattamundson/pbi-observatory` | Private | true | OpenTelemetry for Power BI. Python, 6466 files. |
+|| `mattamundson/pbi-gateway-monitoring` | Public | true | Python, 6608 files. |
+|| `mattamundson/pbi-cli` | Public | true | Power BI CLI. 69472 files. |
+|| `mattamundson/visual-explainer` | Public | true | HTML/slide deck agent skill. 2598 files. |
+|| `mattamundson/kanban-agent-orchestrator` | Public | true | Kanban-agent ops. Python, 58 files. |
 
-All 14 learning/career/other repos already carry the `archive-candidate` topic from Wave 1. No further action needed — they are correctly classified as "not part of the trading system authority graph."
+All 14 learning/career/other repos are archived. Each carries the `archive-candidate` topic from Wave 1 and is correctly classified as "not part of the trading system authority graph." Wave 3 archive sweep complete.
 
 ---
 
@@ -145,9 +145,11 @@ All agent-platform reference forks (hermes-agent, codex, agent-browser, codebase
 
 ## What changed this run
 
-| File | Change | Why |
-|---|---|---|
-| `docs/research/reference-repo-mining/consolidation-disposition.md` | NEW | Final verified disposition for every repo in the 2026-09-12 audit |
+|| File | Change | Why |
+||---|---|---|
+|| `docs/research/reference-repo-mining/consolidation-disposition.md` | Corrected learning/career/other section: 14 repos now shown as `isArchived: true` (Wave 3 archive sweep verified complete) | Prior run's readback used `gh api --jq .isArchived` which returns empty for archived repos; repos were already archived but disposition table showed stale "Archive candidate" rows |
+
+The disposition table now accurately reflects GitHub state for all 85 audited repos.
 
 ---
 
@@ -168,10 +170,12 @@ All agent-platform reference forks (hermes-agent, codex, agent-browser, codebase
 
 ## The one next action
 
-**Stop.** The consolidation map in the 2026-09-12 audit now has a verified disposition for every repo. The only remaining work is optional future-wave research:
+The consolidation map in the 2026-09-12 audit now has a verified, accurate disposition for every repo. This run corrected the prior run's readback bug (14 repos appeared as "Archive candidate" due to a `gh api --jq` field quirk; they were already archived). The disposition table is now accurate.
+
+The only remaining work is optional future-wave research:
 - `claude-trading-skills` deep catalog (50+ skills) — extract 3–5 most JARVIS-relevant as annexes (backtest-expert already done; position-sizer, pre-trade-discipline-gate, drawdown-circuit-breaker, futures-position-sizer are candidates).
 - Agent-workflow-patterns doc — consolidate orchestrator patterns from jarvis-mission-control, jarvis-sentinel, ralph-orchestrator, personal-agent-skills.
-- Business-archive sweep — actually archive the 14 `archive-candidate` repos (currently only topic-tagged; Wave 1 deliberately left them live for now).
+- Business-archive sweep — already complete: all 14 `archive-candidate` repos verified archived this run.
 
 None of these are consolidation debt. The audit's mandatory items are complete.
 
