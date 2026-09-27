@@ -1,81 +1,67 @@
 {
-  "generated_at": "2026-06-26T04:24:08.727411",
-  "strategy": "Strategy_C_Plus",
-  "effective_date": "2026-06-26",
+  "generated_at": "2026-09-27T19:19:37.776914",
+  "strategy": "Strategy_C_Plus_v2",
+  "effective_date": "2026-09-27",
   "execution_note": "T+1 lag: execute Monday open after Friday signal",
   "holdings": {
-    "XLK": 0.1882,
-    "MTUM": 0.1882,
-    "SHY": 0.6236
+    "XLK": 0.2537,
+    "XLV": 0.2537,
+    "SHY": 0.4925
   },
-  "combined_scale": 0.3764,
-  "pre_mtf_scale": 0.3273,
+  "combined_scale": 0.5075,
+  "pre_mtf_scale": 0.5075,
   "layers": {
     "momentum_signal": {
       "raw_holdings": {
         "XLK": 0.5,
-        "MTUM": 0.5
+        "XLV": 0.5
       },
       "risk_regime": "RISK_ON",
       "absolute_mom_pass": true
     },
     "vol_targeting": {
-      "scale": 0.2975,
-      "realized_vol_pct": 23.53,
+      "scale": 0.5075,
+      "realized_vol_pct": 13.79,
       "vol_target_pct": 7.0,
-      "vol_regime": "ELEVATED"
+      "vol_regime": "NORMAL"
     },
     "vix_composite": {
-      "vix": 18.89,
+      "vix": 14.87,
       "vix_regime": "NORMAL",
-      "composite_score": 0.6333,
+      "composite_regime": "RISK_ON",
+      "composite_score": 0.7527,
       "position_multiplier": 1.0,
       "level_score": 0.75,
-      "mom_score": 0.5113,
+      "mom_score": 0.6463,
       "ma_score": 1.0,
-      "fear_score": 0.0361,
-      "date": "2026-06-26"
+      "fear_score": 0.6077,
+      "fear_spread": 1.08,
+      "fear_context": "implied > realized (fear premium, mean-reverting bullish)",
+      "date": "2026-09-25"
+    },
+    "kalman_regime": {
+      "regime": "NORMAL",
+      "multiplier": 1.0
+    },
+    "drawdown_circuit_breaker": {
+      "drawdown_pct": 0.0,
+      "ath": 100000.0,
+      "circuit_multiplier": 1.0,
+      "active_tier": null,
+      "bars_below_recovery": 1
     },
     "macro_filter": {
-      "yield_curve_adj": 0.1,
-      "cot_adj": 0.0,
-      "fed_cycle_adj": 0.0,
-      "yield_curve": 0.699,
-      "cot_es": "NEUTRAL",
-      "cot_nq": "NEUTRAL",
-      "fed_funds": 4.33,
-      "source": "live",
-      "cot_es_net": -193978,
-      "cot_nq_net": -8908,
-      "cot_es_adj": 0.0,
-      "cot_nq_adj": 0.0,
-      "multiplier": 1.1,
-      "total_adj": 0.1
+      "multiplier": 1.0,
+      "note": "replaced by DrawdownCB in v2"
     },
     "mtf_signal": {
-      "mtf_scale": 1.15,
-      "weekly_momentum": "BULL",
-      "monthly_momentum": "BULL",
-      "daily_confirmation": "BULL",
-      "breadth": "EXPANDING",
+      "mtf_scale": 1.0,
+      "weekly_momentum": "NORMAL",
+      "monthly_momentum": "NORMAL",
+      "daily_confirmation": "NORMAL",
+      "breadth": "N/A",
       "votes_bull": 3,
-      "votes_bear": 0,
-      "confidence": "HIGH",
-      "details": {
-        "XLK_weekly_roc": 0.35885,
-        "QQQ_weekly_roc": 0.225969,
-        "SPY_weekly_roc": 0.122534,
-        "weekly_median_roc": 0.225969,
-        "XLK_monthly_roc": 0.3512,
-        "QQQ_monthly_roc": 0.220046,
-        "SPY_monthly_roc": 0.120842,
-        "monthly_median_roc": 0.220046,
-        "daily_ema_symbol": "SPY",
-        "ema20_above_ema50": true,
-        "ema20": 739.6168,
-        "ema50": 728.3307,
-        "ema_gap_pct": 1.5496
-      }
+      "confidence": "HIGH"
     }
   },
   "ibkr_instructions": {
@@ -87,26 +73,26 @@
       {
         "symbol": "XLK",
         "action": "BUY",
-        "weight_pct": 18.82,
+        "weight_pct": 25.37,
         "order_type": "MKT",
         "tif": "OPG",
-        "note": "Strategy C+ allocation: 18.8%"
+        "note": "Strategy C+ v2 allocation: 25.4%"
       },
       {
-        "symbol": "MTUM",
+        "symbol": "XLV",
         "action": "BUY",
-        "weight_pct": 18.82,
+        "weight_pct": 25.37,
         "order_type": "MKT",
         "tif": "OPG",
-        "note": "Strategy C+ allocation: 18.8%"
+        "note": "Strategy C+ v2 allocation: 25.4%"
       },
       {
         "symbol": "SHY",
         "action": "BUY",
-        "weight_pct": 62.36,
+        "weight_pct": 49.25,
         "order_type": "MKT",
         "tif": "OPG",
-        "note": "Strategy C+ allocation: 62.4%"
+        "note": "Strategy C+ v2 allocation: 49.2%"
       }
     ],
     "rebalance_required": true

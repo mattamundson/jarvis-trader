@@ -103,6 +103,9 @@ class StrategyCConfigV2:
         execution_mode: str = "moc_friday",
         # T1-4: COT historical (optional — requires CFTC API)
         use_cot_historical: bool = False,
+        # Lookahead guard: overlays computed at Friday close t may only size
+        # the return of week t+1. 0 = legacy (biased) behavior.
+        overlay_lag_weeks: int = 1,
         # Universe
         risk_on: Optional[list] = None,
         risk_off: Optional[list] = None,
@@ -134,6 +137,7 @@ class StrategyCConfigV2:
         self.use_transaction_costs = use_transaction_costs
         self.execution_mode = execution_mode
         self.use_cot_historical = use_cot_historical
+        self.overlay_lag_weeks = overlay_lag_weeks
         self.risk_on = risk_on or ["QQQ", "SPY", "EFA", "USMV", "MTUM", "XLK", "XLV"]
         self.risk_off = risk_off or ["IEF", "SHY"]
 
@@ -315,9 +319,22 @@ class StrategyCEngineV2:
 
         # ── Compute portfolio returns with all layers ──────────────────────────
         print("[StrategyC+ v2] Computing portfolio returns...")
+        # Lookahead guard (2026-09-27 audit): vol/VIX/Kalman/COT are all
+        # computed from data through Friday t, while weekly_returns[t] is the
+        # Fri(t-1)->Fri(t) return. Without a lag the overlay "sees" the week
+        # it sizes. Lagging 1w dropped full-period Sharpe 1.35 -> 0.55.
+        lag = int(getattr(c, "overlay_lag_weeks", 1) or 0)
+        if lag > 0:
+            vs_series = vol_df["scale"].shift(lag).bfill()
+            vix_mult = vix_mult.shift(lag).fillna(1.0)
+            kalman_mult = kalman_mult.shift(lag).fillna(1.0)
+            cot_mult = cot_mult.shift(lag).fillna(1.0)
+        else:
+            vs_series = vol_df["scale"]
+        self._overlay_lag_weeks = lag
         equity_curve, alloc_log = self._compute_returns_v2(
             wp, signal_df,
-            vol_scale=vol_df["scale"],
+            vol_scale=vs_series,
             vix_mult=vix_mult,
             kalman_mult=kalman_mult,
             cot_mult=cot_mult,
@@ -408,7 +425,7 @@ class StrategyCEngineV2:
             if self.rp_sizer and holdings_raw and risk_regime not in ("RISK_OFF", "RISK_OFF_MA"):
                 risk_on_assets = [a for a in holdings_raw if a not in ("IEF", "SHY")]
                 if len(risk_on_assets) > 1:
-                    as_of = date
+                    as_of = date - pd.Timedelta(weeks=getattr(self, "_overlay_lag_weeks", 0))
                     rp_weights = self.rp_sizer.size_portfolio(
                         risk_on_assets, daily_prices, as_of
                     )
