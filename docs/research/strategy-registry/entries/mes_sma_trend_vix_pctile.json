@@ -40,7 +40,8 @@
     "test": null,
     "walk_forward": {
       "start": "2019-11",
-      "end": "2026-08"
+      "end": "2026-08",
+      "config": "4 tier-block combos (unblocked, +Crisis, +Crisis+HighVol, +HighVol); fixed SMA/ATR params (fast=60, slow=200, atr_trail=2.0) held at rank11 champion values; only tier-block selection varies across windows"
     }
   },
   "metrics": {
