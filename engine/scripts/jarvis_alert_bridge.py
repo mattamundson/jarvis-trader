@@ -27,6 +27,8 @@ WATCHED CONDITIONS
   trading_mode      paper/live mode changed
   engine_down       /health became unreachable
   engine_up         /health recovered
+  dashboard_down    Mission Control stopped accepting connections
+  dashboard_up      Mission Control recovered
 
 OUTPUT
 ------
@@ -51,6 +53,7 @@ from datetime import datetime, timezone
 
 ENGINE_HOST = os.environ.get("JARVIS_ENGINE_HOST", "127.0.0.1")
 ENGINE_PORT = int(os.environ.get("JARVIS_ENGINE_PORT", "8010"))
+DASHBOARD_PORT = int(os.environ.get("JARVIS_DASHBOARD_PORT", "3010"))
 IB_PORT = int(os.environ.get("JARVIS_IB_PORT", "4002"))
 HTTP_TIMEOUT_S = float(os.environ.get("ALERT_HTTP_TIMEOUT", "8"))
 DRAWDOWN_WARN_PCT = float(os.environ.get("ALERT_DRAWDOWN_WARN", "15"))
@@ -134,13 +137,14 @@ def load_state() -> dict:
         return {}
 
 
-def save_state(state: dict) -> None:
+def save_state(state: dict) -> bool:
     try:
         os.makedirs(os.path.dirname(STATE_PATH), exist_ok=True)
         with open(STATE_PATH, "w", encoding="utf-8") as fh:
             json.dump(state, fh, indent=2, sort_keys=True)
+        return True
     except OSError:
-        pass
+        return False
 
 
 # ── snapshot ─────────────────────────────────────────────────────────────────
@@ -155,6 +159,7 @@ def take_snapshot() -> dict:
     snap: dict = {
         "ts": datetime.now(timezone.utc).isoformat(),
         "engine_up": health is not None and health_err is None,
+        "dashboard_up": port_open(DASHBOARD_PORT),
         "gateway_open": port_open(IB_PORT),
         "kill_switch": None,
         "trading_mode": None,
@@ -213,6 +218,16 @@ def diff(prev: dict, curr: dict) -> list[str]:
     elif not prev.get("engine_up") and curr.get("engine_up"):
         alerts.append("ENGINE RECOVERED — /health responding again")
 
+    # Dashboard liveness
+    if prev.get("dashboard_up") and not curr.get("dashboard_up"):
+        alerts.append(
+            f"DASHBOARD DOWN — port {DASHBOARD_PORT} stopped accepting connections"
+        )
+    elif not prev.get("dashboard_up") and curr.get("dashboard_up"):
+        alerts.append(
+            f"DASHBOARD RECOVERED — port {DASHBOARD_PORT} accepting connections"
+        )
+
     # Gateway
     if prev.get("gateway_open") and not curr.get("gateway_open"):
         alerts.append(f"GATEWAY LOST — port {IB_PORT} stopped accepting connections")
@@ -270,13 +285,22 @@ def main() -> int:
     alerts = diff(prev, curr)
 
     # Always persist the new baseline, even when silent.
-    save_state(curr)
+    if not save_state(curr):
+        print(f"ALERT BRIDGE ERROR: could not persist state to {STATE_PATH}")
+        return 1
 
     if not alerts:
         if "--verbose" in sys.argv:
             print("alert-bridge: no change")
-            for k in ("engine_up", "gateway_open", "kill_switch", "trading_mode",
-                      "data_fresh", "drawdown_pct"):
+            for k in (
+                "engine_up",
+                "dashboard_up",
+                "gateway_open",
+                "kill_switch",
+                "trading_mode",
+                "data_fresh",
+                "drawdown_pct",
+            ):
                 print(f"  {k}: {curr.get(k)}")
         return 0
 
