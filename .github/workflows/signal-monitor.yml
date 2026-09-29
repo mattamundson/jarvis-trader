@@ -113,6 +113,8 @@ jobs:
           git push -q origin "HEAD:$STATE_BRANCH"
           echo "state pushed"
 
-      - name: Mark run red on critical
-        if: steps.run.outputs.exit_code == '2'
-        run: exit 1
+      - name: Mark run red on critical / config error / undelivered alert
+        if: contains(fromJSON('["2","3","4"]'), steps.run.outputs.exit_code)
+        run: |
+          echo "::error::signal_monitor exit ${{ steps.run.outputs.exit_code }} (2 critical · 3 config error · 4 Discord delivery failed)"
+          exit 1

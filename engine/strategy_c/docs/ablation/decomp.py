@@ -1,10 +1,11 @@
 # Research driver for docs/2026-09-27_vol_estimator_lookahead_audit.md — not engine code.
 # ruff: noqa: E731, C408, B023
+# These wrappers apply their own lags, so the native engine lag is set to 0 here.
 import contextlib
 import io
 import sys
 
-sys.path.insert(0, "/home/user/workspace/jarvis-repo-fresh")
+sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[4]))
 import pandas as pd
 from engine.strategy_c.engine_v2 import StrategyCConfigV2, StrategyCEngineV2
 
@@ -42,7 +43,7 @@ def make(lag_vol, lag_vix, lag_kal, lag_rp, cost):
     return f
 
 
-eng0 = StrategyCEngineV2(StrategyCConfigV2())
+eng0 = StrategyCEngineV2(StrategyCConfigV2(overlay_lag_weeks=0))
 with contextlib.redirect_stdout(io.StringIO()):
     eng0.load_data()
 base = (eng0._weekly_prices, eng0._daily_prices, eng0._weekly_vix)
@@ -56,7 +57,7 @@ steps = [
 ]
 for lbl, a in steps:
     StrategyCEngineV2._compute_returns_v2 = make(*a)
-    e = StrategyCEngineV2(StrategyCConfigV2())
+    e = StrategyCEngineV2(StrategyCConfigV2(overlay_lag_weeks=0))
     e._weekly_prices, e._daily_prices, e._weekly_vix = base
     with contextlib.redirect_stdout(io.StringIO()):
         r = e.run_backtest(end=END)

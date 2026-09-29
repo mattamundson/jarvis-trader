@@ -58,6 +58,24 @@ with contextlib.redirect_stdout(io.StringIO()):
     r1 = v1.run_backtest(end=END)
 eq_v1 = r1["equity_curve"]
 
+# engine.py has no cost model — charge v1 the same 2 bps per unit of effective
+# turnover the benchmarks pay (post-scale weights incl. the SHY cash sleeve).
+import ast  # noqa: E402
+
+_al = r1["allocation_log"]
+_eff = []
+for _, row in _al.iterrows():
+    h = ast.literal_eval(row["holdings"]) if isinstance(row["holdings"], str) else {}
+    sc = float(row["combined_scale"])
+    w = {a: x * sc for a, x in h.items()}
+    w["SHY"] = w.get("SHY", 0.0) + max(0.0, 1.0 - sc)
+    _eff.append(w)
+_effdf = pd.DataFrame(_eff, index=_al.index).fillna(0.0)
+_v1_cost = (_effdf.diff().abs().sum(axis=1).fillna(0.0) * COST).reindex(eq_v1.index).fillna(0.0)
+_v1_ret = eq_v1.pct_change().fillna(0.0) - _v1_cost
+eq_v1 = (1 + _v1_ret).cumprod() * float(eq_v1.iloc[0])
+V1_ANNUAL_COST_BPS = round(float(_v1_cost.mean() * 52 * 1e4), 1)
+
 R = wp.pct_change()
 shy = R["SHY"].fillna(0.0)
 
@@ -134,7 +152,8 @@ def metrics(r: pd.Series) -> dict:
     eq = (1 + r).cumprod()
     yrs = len(r) / 52
     cagr = eq.iloc[-1] ** (1 / yrs) - 1
-    dd = (eq / eq.cummax() - 1).min()
+    ddser = eq / eq.cummax() - 1  # full-curve drawdown; windows keep the pre-window peak
+    dd = ddser.min()
     vol = r.std() * np.sqrt(52)
     return {
         "cagr": round(cagr * 100, 2),
@@ -144,25 +163,11 @@ def metrics(r: pd.Series) -> dict:
         "mdd": round(float(dd) * 100, 2),
         "calmar": round(float(cagr / abs(dd)), 3) if dd < 0 else None,
         "dd_2020": round(
-            float(
-                (
-                    (1 + r.loc["2020-02-15":"2020-04-30"])
-                    .cumprod()
-                    .pipe(lambda e: e / e.cummax() - 1)
-                ).min()
-            )
-            * 100,
+            float(ddser.loc["2020-02-15":"2020-04-30"].min()) * 100,
             2,
         ),
         "dd_2022": round(
-            float(
-                (
-                    (1 + r.loc["2022-01-01":"2022-12-31"])
-                    .cumprod()
-                    .pipe(lambda e: e / e.cummax() - 1)
-                ).min()
-            )
-            * 100,
+            float(ddser.loc["2022-01-01":"2022-12-31"].min()) * 100,
             2,
         ),
         "oos_excess_sharpe": round(
@@ -214,6 +219,7 @@ for sname in strat:
         }
 
 res = {
+    "v1_annual_cost_bps": V1_ANNUAL_COST_BPS,
     "window": [str(ix[0].date()), str(ix[-1].date())],
     "weeks": len(ix),
     "target_vol_pct": round(target_vol * 100, 2),

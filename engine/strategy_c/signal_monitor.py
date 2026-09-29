@@ -23,7 +23,8 @@ values, 498 weekly bars 2017-03 → 2026-09; see docs/2026-09-28_strategy_c_benc
   T6 scale out of band              < p2.5 or > p97.5 of full 498w history  ~1.4/yr
                                     (a 2y window fired ~6.8/yr). Live history replaces
                                     the band only at >= 104 weeks, percentile-based.
-Exit codes: 0 healthy/info only · 1 warning · 2 critical/stale · 3 config error
+Exit codes: 0 healthy/info only · 1 warning · 2 critical/stale · 3 config error ·
+            4 alert delivery failed
 """
 
 from __future__ import annotations
@@ -65,15 +66,35 @@ def _load(p: Path, default: Any) -> Any:
 
 
 def last_friday(today: date | None = None) -> date:
+    """Most recent Friday on or before `today` (calendar only; used for week keys)."""
     t = today or datetime.now(timezone.utc).date()
     return t - timedelta(days=(t.weekday() - 4) % 7)
 
 
-def post_discord(embed: dict) -> None:
+# Friday generation is scheduled 21:30 UTC; allow 90 min for the run to land.
+GENERATION_READY_UTC = (23, 0)
+
+
+def expected_signal_friday(now: datetime | None = None) -> date:
+    """The Friday whose signal should exist at `now`.
+
+    Before this Friday's post-close generation window, the valid signal is still
+    last week's — treating today as the expected week would raise a false
+    critical on every Friday check before 23:00 UTC.
+    """
+    n = now or datetime.now(timezone.utc)
+    lf = last_friday(n.date())
+    if n.date() == lf and (n.hour, n.minute) < GENERATION_READY_UTC:
+        lf -= timedelta(days=7)
+    return lf
+
+
+def post_discord(embed: dict) -> bool:
+    """Returns True only if Discord accepted the message (or no webhook is configured)."""
     if not DISCORD_WEBHOOK:
         print("[monitor] DISCORD_WEBHOOK_URL not set — printing embed instead")
         print(json.dumps(embed, indent=1)[:3000])
-        return
+        return True
     req = urllib.request.Request(
         DISCORD_WEBHOOK,
         data=json.dumps({"embeds": [embed]}).encode(),
@@ -81,9 +102,11 @@ def post_discord(embed: dict) -> None:
         method="POST",
     )
     try:
-        urllib.request.urlopen(req, timeout=10)
-    except urllib.error.URLError as e:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return 200 <= r.status < 300
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
         print(f"[monitor] Discord post failed: {e}")
+        return False
 
 
 def flat(sig: dict) -> dict:
@@ -163,7 +186,7 @@ def evaluate(sig: dict, baseline: dict, history: list[dict], mode: str) -> dict[
             out["critical"].append(f"Missing layer: {lk}")
 
     # Freshness — the signal must be for the most recent Friday
-    lf = last_friday()
+    lf = expected_signal_friday()
     try:
         eff = date.fromisoformat(str(f["week_of"]))
         lag_days = (lf - eff).days
@@ -356,8 +379,9 @@ def main() -> int:
             json.dumps([f.get("effective_date"), res["critical"], res["warning"]]).encode()
         ).hexdigest()[:12]
         state = _load(STATE_FILE, {})
+        delivered = True
         if sev != "ok" and state.get("last_fingerprint") != fp:
-            post_discord(
+            delivered = post_discord(
                 {
                     "title": f"{'🚨' if sev == 'critical' else '⚠️'} Strategy C+ signal {sev.upper()}",
                     "color": RED if sev == "critical" else AMBER,
@@ -367,19 +391,25 @@ def main() -> int:
                 }
             )
         elif sev == "ok" and state.get("last_severity") not in (None, "ok"):
-            post_discord(
+            delivered = post_discord(
                 {
                     "title": "✅ Strategy C+ signal recovered",
                     "color": GREEN,
                     "timestamp": now.isoformat(),
                 }
             )
-        STATE_FILE.write_text(
-            json.dumps(
-                {"last_fingerprint": fp, "last_severity": sev, "checked_at": now.isoformat()},
-                indent=2,
+        # Only advance the dedupe fingerprint once the alert was actually delivered;
+        # otherwise the next check retries instead of suppressing an unsent alert.
+        if delivered:
+            STATE_FILE.write_text(
+                json.dumps(
+                    {"last_fingerprint": fp, "last_severity": sev, "checked_at": now.isoformat()},
+                    indent=2,
+                )
             )
-        )
+        else:
+            print("[monitor] alert not delivered — fingerprint not advanced (will retry)")
+            return 4
 
     return {"critical": 2, "warning": 1, "ok": 0}[sev]
 

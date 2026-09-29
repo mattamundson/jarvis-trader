@@ -1,32 +1,33 @@
 {
+  "v1_annual_cost_bps": 29.6,
   "window": [
     "2017-03-17",
     "2026-09-25"
   ],
   "weeks": 498,
-  "target_vol_pct": 7.39,
+  "target_vol_pct": 7.46,
   "raw": {
     "Strategy C+ v2 (corrected)": {
-      "cagr": 3.96,
-      "vol": 7.39,
-      "excess_sharpe": 0.328,
-      "excess_cagr": 2.17,
-      "mdd": -10.88,
-      "calmar": 0.364,
-      "dd_2020": -7.45,
-      "dd_2022": -6.82,
-      "oos_excess_sharpe": 0.443
+      "cagr": 4.8,
+      "vol": 7.46,
+      "excess_sharpe": 0.434,
+      "excess_cagr": 3.0,
+      "mdd": -11.03,
+      "calmar": 0.435,
+      "dd_2020": -8.52,
+      "dd_2022": -11.03,
+      "oos_excess_sharpe": 0.583
     },
     "Strategy C+ v1 (corrected)": {
-      "cagr": 7.28,
+      "cagr": 6.96,
       "vol": 8.67,
-      "excess_sharpe": 0.654,
-      "excess_cagr": 5.43,
-      "mdd": -13.24,
-      "calmar": 0.55,
-      "dd_2020": -6.17,
-      "dd_2022": -8.96,
-      "oos_excess_sharpe": 0.789
+      "excess_sharpe": 0.62,
+      "excess_cagr": 5.12,
+      "mdd": -13.37,
+      "calmar": 0.521,
+      "dd_2020": -7.58,
+      "dd_2022": -13.37,
+      "oos_excess_sharpe": 0.752
     },
     "SPY buy&hold": {
       "cagr": 14.89,
@@ -35,8 +36,8 @@
       "excess_cagr": 12.89,
       "mdd": -31.83,
       "calmar": 0.468,
-      "dd_2020": -30.99,
-      "dd_2022": -22.48,
+      "dd_2020": -31.83,
+      "dd_2022": -23.93,
       "oos_excess_sharpe": 0.789
     },
     "60/40 SPY/IEF": {
@@ -46,8 +47,8 @@
       "excess_cagr": 7.65,
       "mdd": -20.76,
       "calmar": 0.458,
-      "dd_2020": -18.0,
-      "dd_2022": -19.22,
+      "dd_2020": -18.32,
+      "dd_2022": -20.76,
       "oos_excess_sharpe": 0.642
     },
     "40/60 SPY/SHY": {
@@ -57,8 +58,8 @@
       "excess_cagr": 5.36,
       "mdd": -12.64,
       "calmar": 0.571,
-      "dd_2020": -12.29,
-      "dd_2022": -11.71,
+      "dd_2020": -12.64,
+      "dd_2022": -12.52,
       "oos_excess_sharpe": 0.789
     },
     "40/60 XLK/SHY": {
@@ -68,8 +69,8 @@
       "excess_cagr": 9.09,
       "mdd": -16.44,
       "calmar": 0.669,
-      "dd_2020": -10.93,
-      "dd_2022": -14.64,
+      "dd_2020": -11.73,
+      "dd_2022": -16.44,
       "oos_excess_sharpe": 0.892
     },
     "SPY vol-target 7% (21d)": {
@@ -79,8 +80,8 @@
       "excess_cagr": 5.82,
       "mdd": -12.81,
       "calmar": 0.6,
-      "dd_2020": -7.64,
-      "dd_2022": -11.19,
+      "dd_2020": -8.33,
+      "dd_2022": -12.81,
       "oos_excess_sharpe": 0.748
     },
     "SPY 200d SMA timing": {
@@ -90,8 +91,8 @@
       "excess_cagr": 9.31,
       "mdd": -16.78,
       "calmar": 0.67,
-      "dd_2020": -11.16,
-      "dd_2022": -12.9,
+      "dd_2020": -12.25,
+      "dd_2022": -14.53,
       "oos_excess_sharpe": 0.83
     },
     "Dual momentum GEM (12m)": {
@@ -101,8 +102,8 @@
       "excess_cagr": 3.13,
       "mdd": -34.55,
       "calmar": 0.143,
-      "dd_2020": -19.24,
-      "dd_2022": -29.05,
+      "dd_2020": -20.23,
+      "dd_2022": -30.37,
       "oos_excess_sharpe": 0.196
     },
     "Risk parity SPY/IEF": {
@@ -113,269 +114,269 @@
       "mdd": -17.92,
       "calmar": 0.286,
       "dd_2020": -4.49,
-      "dd_2022": -16.1,
+      "dd_2022": -17.92,
       "oos_excess_sharpe": 0.331
     }
   },
   "vol_matched": {
     "Strategy C+ v2 (corrected)": {
-      "cagr": 3.96,
-      "vol": 7.39,
-      "excess_sharpe": 0.328,
-      "excess_cagr": 2.17,
-      "mdd": -10.88,
-      "calmar": 0.364,
-      "dd_2020": -7.45,
-      "dd_2022": -6.82,
-      "oos_excess_sharpe": 0.443
+      "cagr": 4.8,
+      "vol": 7.46,
+      "excess_sharpe": 0.434,
+      "excess_cagr": 3.0,
+      "mdd": -11.03,
+      "calmar": 0.435,
+      "dd_2020": -8.52,
+      "dd_2022": -11.03,
+      "oos_excess_sharpe": 0.583
     },
     "Strategy C+ v1 (corrected)": {
-      "cagr": 6.5,
-      "vol": 7.42,
-      "excess_sharpe": 0.654,
-      "excess_cagr": 4.66,
-      "mdd": -12.06,
-      "calmar": 0.539,
-      "dd_2020": -5.14,
-      "dd_2022": -8.32,
-      "oos_excess_sharpe": 0.789
+      "cagr": 6.27,
+      "vol": 7.48,
+      "excess_sharpe": 0.62,
+      "excess_cagr": 4.44,
+      "mdd": -12.24,
+      "calmar": 0.512,
+      "dd_2020": -6.4,
+      "dd_2022": -12.24,
+      "oos_excess_sharpe": 0.752
     },
     "SPY buy&hold": {
-      "cagr": 7.55,
-      "vol": 7.43,
+      "cagr": 7.6,
+      "vol": 7.49,
       "excess_sharpe": 0.783,
-      "excess_cagr": 5.7,
-      "mdd": -13.52,
-      "calmar": 0.558,
-      "dd_2020": -13.15,
-      "dd_2022": -12.17,
+      "excess_cagr": 5.75,
+      "mdd": -13.65,
+      "calmar": 0.557,
+      "dd_2020": -13.65,
+      "dd_2022": -13.08,
       "oos_excess_sharpe": 0.789
     },
     "60/40 SPY/IEF": {
-      "cagr": 7.19,
-      "vol": 7.49,
+      "cagr": 7.23,
+      "vol": 7.55,
       "excess_sharpe": 0.753,
-      "excess_cagr": 5.35,
-      "mdd": -16.01,
+      "excess_cagr": 5.4,
+      "mdd": -16.11,
       "calmar": 0.449,
-      "dd_2020": -12.16,
-      "dd_2022": -14.81,
+      "dd_2020": -12.49,
+      "dd_2022": -16.11,
       "oos_excess_sharpe": 0.642
     },
     "40/60 SPY/SHY": {
-      "cagr": 7.52,
-      "vol": 7.38,
+      "cagr": 7.57,
+      "vol": 7.45,
       "excess_sharpe": 0.783,
-      "excess_cagr": 5.66,
-      "mdd": -13.43,
-      "calmar": 0.56,
-      "dd_2020": -13.06,
-      "dd_2022": -12.12,
+      "excess_cagr": 5.71,
+      "mdd": -13.56,
+      "calmar": 0.558,
+      "dd_2020": -13.56,
+      "dd_2022": -13.03,
       "oos_excess_sharpe": 0.789
     },
     "40/60 XLK/SHY": {
-      "cagr": 9.23,
-      "vol": 7.42,
+      "cagr": 9.3,
+      "vol": 7.49,
       "excess_sharpe": 0.999,
-      "excess_cagr": 7.35,
-      "mdd": -14.26,
-      "calmar": 0.647,
-      "dd_2020": -8.55,
-      "dd_2022": -12.72,
+      "excess_cagr": 7.42,
+      "mdd": -14.34,
+      "calmar": 0.648,
+      "dd_2020": -9.29,
+      "dd_2022": -14.34,
       "oos_excess_sharpe": 0.892
     },
     "SPY vol-target 7% (21d)": {
-      "cagr": 7.45,
-      "vol": 7.4,
+      "cagr": 7.5,
+      "vol": 7.46,
       "excess_sharpe": 0.771,
-      "excess_cagr": 5.6,
-      "mdd": -12.51,
-      "calmar": 0.596,
-      "dd_2020": -7.27,
-      "dd_2022": -10.93,
+      "excess_cagr": 5.65,
+      "mdd": -12.57,
+      "calmar": 0.597,
+      "dd_2020": -8.0,
+      "dd_2022": -12.57,
       "oos_excess_sharpe": 0.748
     },
     "SPY 200d SMA timing": {
-      "cagr": 7.6,
-      "vol": 7.37,
+      "cagr": 7.65,
+      "vol": 7.44,
       "excess_sharpe": 0.78,
-      "excess_cagr": 5.74,
-      "mdd": -11.64,
+      "excess_cagr": 5.79,
+      "mdd": -11.71,
       "calmar": 0.653,
-      "dd_2020": -6.43,
-      "dd_2022": -9.29,
+      "dd_2020": -7.14,
+      "dd_2022": -10.48,
       "oos_excess_sharpe": 0.83
     },
     "Dual momentum GEM (12m)": {
-      "cagr": 3.69,
-      "vol": 7.45,
+      "cagr": 3.7,
+      "vol": 7.52,
       "excess_sharpe": 0.292,
-      "excess_cagr": 1.9,
-      "mdd": -20.59,
+      "excess_cagr": 1.92,
+      "mdd": -20.74,
       "calmar": 0.179,
-      "dd_2020": -9.78,
-      "dd_2022": -18.25,
+      "dd_2020": -10.41,
+      "dd_2022": -19.29,
       "oos_excess_sharpe": 0.196
     },
     "Risk parity SPY/IEF": {
-      "cagr": 5.63,
-      "vol": 7.26,
+      "cagr": 5.67,
+      "vol": 7.32,
       "excess_sharpe": 0.609,
-      "excess_cagr": 3.86,
-      "mdd": -19.8,
+      "excess_cagr": 3.9,
+      "mdd": -19.93,
       "calmar": 0.284,
-      "dd_2020": -5.24,
-      "dd_2022": -17.83,
+      "dd_2020": -5.29,
+      "dd_2022": -19.93,
       "oos_excess_sharpe": 0.331
     }
   },
   "bootstrap_strategy_minus_other_excess_sharpe": {
     "Strategy C+ v2 (corrected)": {
       "Strategy C+ v1 (corrected)": {
-        "mean": -0.325,
+        "mean": -0.182,
         "ci95": [
-          -0.522,
-          -0.119
+          -0.369,
+          0.007
         ],
-        "p_strategy_better": 0.0
+        "p_strategy_better": 0.03
       },
       "SPY buy&hold": {
-        "mean": -0.486,
+        "mean": -0.378,
         "ci95": [
-          -0.983,
-          0.007
+          -0.855,
+          0.106
         ],
-        "p_strategy_better": 0.03
+        "p_strategy_better": 0.07
       },
       "60/40 SPY/IEF": {
-        "mean": -0.455,
+        "mean": -0.347,
         "ci95": [
-          -0.965,
-          0.067
+          -0.832,
+          0.166
         ],
-        "p_strategy_better": 0.04
+        "p_strategy_better": 0.09
       },
       "40/60 SPY/SHY": {
-        "mean": -0.486,
+        "mean": -0.378,
         "ci95": [
-          -0.983,
-          0.007
+          -0.855,
+          0.106
         ],
-        "p_strategy_better": 0.03
+        "p_strategy_better": 0.07
       },
       "40/60 XLK/SHY": {
-        "mean": -0.669,
+        "mean": -0.561,
         "ci95": [
-          -1.098,
-          -0.216
-        ],
-        "p_strategy_better": 0.0
-      },
-      "SPY vol-target 7% (21d)": {
-        "mean": -0.461,
-        "ci95": [
-          -0.897,
-          -0.042
+          -0.976,
+          -0.124
         ],
         "p_strategy_better": 0.01
       },
-      "SPY 200d SMA timing": {
-        "mean": -0.463,
+      "SPY vol-target 7% (21d)": {
+        "mean": -0.354,
         "ci95": [
-          -0.904,
-          -0.035
+          -0.762,
+          0.05
         ],
-        "p_strategy_better": 0.02
+        "p_strategy_better": 0.04
+      },
+      "SPY 200d SMA timing": {
+        "mean": -0.356,
+        "ci95": [
+          -0.787,
+          0.071
+        ],
+        "p_strategy_better": 0.06
       },
       "Dual momentum GEM (12m)": {
-        "mean": 0.005,
+        "mean": 0.112,
         "ci95": [
-          -0.482,
-          0.487
+          -0.375,
+          0.582
         ],
-        "p_strategy_better": 0.51
+        "p_strategy_better": 0.68
       },
       "Risk parity SPY/IEF": {
-        "mean": -0.299,
+        "mean": -0.191,
         "ci95": [
-          -0.927,
-          0.345
+          -0.801,
+          0.44
         ],
-        "p_strategy_better": 0.18
+        "p_strategy_better": 0.26
       }
     },
     "Strategy C+ v1 (corrected)": {
       "Strategy C+ v2 (corrected)": {
-        "mean": 0.325,
+        "mean": 0.182,
         "ci95": [
-          0.119,
-          0.522
+          -0.007,
+          0.369
         ],
-        "p_strategy_better": 1.0
+        "p_strategy_better": 0.97
       },
       "SPY buy&hold": {
-        "mean": -0.161,
+        "mean": -0.196,
         "ci95": [
-          -0.663,
-          0.326
+          -0.698,
+          0.29
         ],
-        "p_strategy_better": 0.27
+        "p_strategy_better": 0.23
       },
       "60/40 SPY/IEF": {
-        "mean": -0.13,
+        "mean": -0.165,
         "ci95": [
-          -0.623,
-          0.372
+          -0.657,
+          0.337
         ],
-        "p_strategy_better": 0.31
+        "p_strategy_better": 0.26
       },
       "40/60 SPY/SHY": {
-        "mean": -0.161,
+        "mean": -0.196,
         "ci95": [
-          -0.663,
-          0.326
+          -0.698,
+          0.29
         ],
-        "p_strategy_better": 0.27
+        "p_strategy_better": 0.23
       },
       "40/60 XLK/SHY": {
-        "mean": -0.344,
+        "mean": -0.379,
         "ci95": [
-          -0.765,
-          0.083
+          -0.798,
+          0.048
         ],
-        "p_strategy_better": 0.06
+        "p_strategy_better": 0.04
       },
       "SPY vol-target 7% (21d)": {
-        "mean": -0.137,
+        "mean": -0.172,
         "ci95": [
-          -0.583,
-          0.271
+          -0.617,
+          0.239
         ],
-        "p_strategy_better": 0.27
+        "p_strategy_better": 0.22
       },
       "SPY 200d SMA timing": {
-        "mean": -0.139,
+        "mean": -0.173,
         "ci95": [
-          -0.578,
-          0.304
+          -0.61,
+          0.266
         ],
-        "p_strategy_better": 0.27
+        "p_strategy_better": 0.22
       },
       "Dual momentum GEM (12m)": {
-        "mean": 0.329,
+        "mean": 0.295,
         "ci95": [
-          -0.163,
-          0.792
+          -0.201,
+          0.757
         ],
-        "p_strategy_better": 0.91
+        "p_strategy_better": 0.88
       },
       "Risk parity SPY/IEF": {
-        "mean": 0.026,
+        "mean": -0.009,
         "ci95": [
-          -0.553,
-          0.629
+          -0.584,
+          0.594
         ],
-        "p_strategy_better": 0.53
+        "p_strategy_better": 0.48
       }
     }
   }

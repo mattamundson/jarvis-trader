@@ -182,6 +182,8 @@ class VIXComposite:
                 return "RISK_OFF"
 
         result["composite_regime"] = result["composite_score"].apply(score_to_composite_regime)
+        # Mirror the position_multiplier hard override: EXTREME VIX is fully risk-off.
+        result.loc[result["vix_regime"] == "EXTREME", "composite_regime"] = "RISK_OFF"
 
         return result
 

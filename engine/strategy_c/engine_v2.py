@@ -4,7 +4,7 @@ Strategy C+ Engine v2 — Full Upgraded Implementation
 All 13 improvements wired in. Replaces engine.py for backtesting.
 Live signal generation still uses engine.py (stable); swap after validation.
 STATUS 2026-09-28: RESEARCH ONLY. Lag-corrected v2 underperforms lag-corrected v1
-(excess Sharpe -0.33, 95% CI [-0.52, -0.12]); see docs/2026-09-28_strategy_c_benchmark_study.md.
+(excess Sharpe -0.18, 95% CI [-0.37, +0.01], P(v2 better)=0.03); see docs/2026-09-28_strategy_c_benchmark_study.md.
 
 Layer stack (v2):
   Layer 1: Dual Momentum + Factor Tilt + AbsoluteMomentumGate (T2-6)
@@ -272,11 +272,17 @@ class StrategyCEngineV2:
             abs_gate_df = self.abs_mom_gate.compute_gate_series(
                 self._weekly_prices.loc[start:end], spy_daily
             )
-            # Override RISK_ON → RISK_OFF when MA bear zone + return below bear threshold
-            for date in abs_gate_df.index:
+            # Override RISK_ON → RISK_OFF when MA bear zone + return below bear threshold.
+            # signal_df is already T+1-lagged; the gate at Friday t uses prices through
+            # t, so lag it by the same overlay lag or the exit sees the week it sizes.
+            gate_pass = abs_gate_df["abs_mom_pass"].astype(bool)
+            _lag = int(getattr(self.config, "overlay_lag_weeks", 1) or 0)
+            if _lag > 0:
+                gate_pass = gate_pass.shift(_lag).fillna(True).astype(bool)
+            for date in gate_pass.index:
                 if date not in signal_df.index:
                     continue
-                if not abs_gate_df.loc[date, "abs_mom_pass"]:
+                if not gate_pass.loc[date]:
                     row = signal_df.loc[date]
                     if isinstance(row.get("risk_regime"), str) and "RISK_ON" in row.get("risk_regime", ""):
                         signal_df.at[date, "risk_regime"] = "RISK_OFF_MA"
@@ -405,7 +411,7 @@ class StrategyCEngineV2:
         alloc_records = []
         equity_running = initial_capital
         prev_equity = initial_capital
-        prev_holdings = {}
+        prev_eff: dict = {}
 
         # Reset stateful risk controls
         if self.dd_circuit:
@@ -474,16 +480,20 @@ class StrategyCEngineV2:
 
             # ── TCM cost deduction (T1-3) ────────────────────────────────
             if self.tcm:
+                # Effective (post-scale) weights incl. the SHY cash sleeve, so scale
+                # changes pay turnover and expense ratios match what is held.
+                eff = {a: w * combined_scale for a, w in holdings_raw.items()}
+                eff["SHY"] = eff.get("SHY", 0.0) + cash_frac
                 cost_est = self.tcm.estimate_portfolio_weekly_cost(
-                    holdings_raw, prev_holdings, portfolio_value=equity_running
+                    eff, prev_eff, portfolio_value=equity_running
                 )
+                prev_eff = eff
                 port_ret -= cost_est["total_cost_pct"]
 
             portfolio_returns.iloc[i] = port_ret
             prev_equity = equity_running
             equity_running *= (1 + port_ret)
 
-            prev_holdings = dict(holdings_raw)
 
             alloc_records.append({
                 "date": date,

@@ -210,8 +210,16 @@ class TransactionCostModel:
             if avg_wt < 0.001:
                 continue  # Negligible position
 
-            rate = self.weekly_cost_rate(ticker, is_rebalancing=is_rebalancing)
-            position_cost_pct = avg_wt * rate
+            # Expense ratio accrues on the held weight; spread + slippage are paid
+            # only on the traded amount (turnover), not on the whole position.
+            hold_rate = self.weekly_cost_rate(ticker, is_rebalancing=False)
+            exec_rate = (
+                self.weekly_cost_rate(ticker, is_rebalancing=True) - hold_rate
+                if is_rebalancing
+                else 0.0
+            )
+            rate = hold_rate + exec_rate
+            position_cost_pct = avg_wt * hold_rate + wt_change * exec_rate
             total_cost_pct += position_cost_pct
 
             breakdown[ticker] = {

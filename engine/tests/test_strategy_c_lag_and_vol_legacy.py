@@ -100,8 +100,16 @@ BASE = {
 }
 
 
-def _sig(scale=0.6, rv=14.0, vol_regime="NORMAL", vix=15.0, vix_regime="NORMAL", regime="RISK_ON",
-         week_of=None, holdings=None):
+def _sig(
+    scale=0.6,
+    rv=14.0,
+    vol_regime="NORMAL",
+    vix=15.0,
+    vix_regime="NORMAL",
+    regime="RISK_ON",
+    week_of=None,
+    holdings=None,
+):
     wk = week_of or mon.last_friday()
     return {
         "effective_date": (wk + timedelta(days=3)).isoformat(),
@@ -109,8 +117,12 @@ def _sig(scale=0.6, rv=14.0, vol_regime="NORMAL", vix=15.0, vix_regime="NORMAL",
         "holdings": holdings or {"XLK": scale / 2, "XLV": scale / 2, "SHY": 1 - scale},
         "layers": {
             "momentum_signal": {"risk_regime": regime},
-            "vol_targeting": {"scale": scale, "realized_vol_pct": rv, "vol_target_pct": 8.0,
-                              "vol_regime": vol_regime},
+            "vol_targeting": {
+                "scale": scale,
+                "realized_vol_pct": rv,
+                "vol_target_pct": 8.0,
+                "vol_regime": vol_regime,
+            },
             "vix_composite": {"vix": vix, "vix_regime": vix_regime, "fear_score": 0.9},
             "macro_filter": {"multiplier": 1.0},
         },
@@ -154,3 +166,59 @@ def test_low_band_breach_warns():
 
 def test_last_friday_is_friday():
     assert mon.last_friday(date(2026, 9, 28)) == date(2026, 9, 25)
+
+
+# ── PR #960 review regressions ───────────────────────────────────────────────
+def test_friday_before_generation_expects_prior_friday():
+    from datetime import datetime, timezone
+
+    fri_morning = datetime(2026, 9, 25, 12, 0, tzinfo=timezone.utc)
+    fri_evening = datetime(2026, 9, 25, 23, 30, tzinfo=timezone.utc)
+    sunday = datetime(2026, 9, 27, 18, 0, tzinfo=timezone.utc)
+    assert mon.expected_signal_friday(fri_morning) == date(2026, 9, 18)
+    assert mon.expected_signal_friday(fri_evening) == date(2026, 9, 25)
+    assert mon.expected_signal_friday(sunday) == date(2026, 9, 25)
+
+
+def test_failed_delivery_does_not_advance_fingerprint(tmp_path, monkeypatch):
+    import json as _json
+
+    sig_file, state_file = tmp_path / "sig.json", tmp_path / "state.json"
+    base_file, hist_file = tmp_path / "base.json", tmp_path / "hist.json"
+    sig_file.write_text(_json.dumps(_sig(week_of=mon.last_friday() - timedelta(days=21))))
+    base_file.write_text(_json.dumps(BASE))
+    for name, p in (
+        ("SIGNAL_FILE", sig_file),
+        ("STATE_FILE", state_file),
+        ("BASELINE_FILE", base_file),
+        ("HISTORY_FILE", hist_file),
+    ):
+        monkeypatch.setattr(mon, name, p)
+    monkeypatch.setattr(mon, "post_discord", lambda embed: False)
+    monkeypatch.setattr(sys, "argv", ["signal_monitor.py", "--mode", "check"])
+    assert mon.main() == 4
+    assert not state_file.exists()
+    monkeypatch.setattr(mon, "post_discord", lambda embed: True)
+    assert mon.main() == 2
+    assert _json.loads(state_file.read_text())["last_severity"] == "critical"
+
+
+def test_transaction_costs_charge_execution_on_turnover_only():
+    tc = _load("_sc_tc", SC / "transaction_costs.py")
+    m = tc.TransactionCostModel()
+    small = m.estimate_portfolio_weekly_cost({"SPY": 0.51, "SHY": 0.49}, {"SPY": 0.49, "SHY": 0.51})
+    hold = m.estimate_portfolio_weekly_cost({"SPY": 0.50, "SHY": 0.50}, {"SPY": 0.50, "SHY": 0.50})
+    exec_rate = m.weekly_cost_rate("SPY", True) - m.weekly_cost_rate("SPY", False)
+    # A 2% rebalance may add at most ~2% x (spread+slippage) per leg over holding costs
+    assert (
+        small["total_cost_pct"] - hold["total_cost_pct"]
+        <= 0.02
+        * 2
+        * max(exec_rate, m.weekly_cost_rate("SHY", True) - m.weekly_cost_rate("SHY", False))
+        + 1e-12
+    )
+
+
+def test_extreme_vix_composite_label_is_risk_off():
+    src = (SC / "vix_composite.py").read_text()
+    assert 'result.loc[result["vix_regime"] == "EXTREME", "composite_regime"] = "RISK_OFF"' in src

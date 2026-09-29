@@ -1,15 +1,16 @@
 # Research driver for docs/2026-09-27_vol_estimator_lookahead_audit.md — not engine code.
 # ruff: noqa: E731, C408, B023
+# These wrappers apply their own lags, so the native engine lag is set to 0 here.
 import contextlib
 import io
 import sys
 
-sys.path.insert(0, "/home/user/workspace/jarvis-repo-fresh")
+sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[4]))
 import numpy as np
 import pandas as pd
 from engine.strategy_c.engine_v2 import StrategyCConfigV2, StrategyCEngineV2
 
-e = StrategyCEngineV2(StrategyCConfigV2())
+e = StrategyCEngineV2(StrategyCConfigV2(overlay_lag_weeks=0))
 with contextlib.redirect_stdout(io.StringIO()):
     e.load_data()
     r = e.run_backtest(end="2026-09-25")
