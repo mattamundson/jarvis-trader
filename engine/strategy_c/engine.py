@@ -92,6 +92,7 @@ class StrategyCConfig:
         # Risk-on universe
         risk_on: Optional[list] = None,
         risk_off: Optional[list] = None,
+        overlay_lag_weeks: int = 1,  # backtest lookahead guard; 0 = legacy biased
     ):
         self.vol_target = vol_target
         self.vol_lookback_days = vol_lookback_days
@@ -104,6 +105,7 @@ class StrategyCConfig:
         self.use_factor_tilt = use_factor_tilt
         self.use_macro_filter = use_macro_filter
         self.use_cot = use_cot
+        self.overlay_lag_weeks = overlay_lag_weeks
         self.use_mtf = use_mtf
         self.mtf_symbols = mtf_symbols  # None → MTFFilter defaults to ["XLK", "QQQ", "SPY"]
         self.risk_on = risk_on or ["QQQ", "SPY", "EFA", "USMV", "MTUM", "XLK", "XLV"]
@@ -276,8 +278,17 @@ class StrategyCEngine:
 
         # ── Compute Portfolio Returns ─────────────────────────────────────────
         print("[Strategy C+] Computing portfolio returns...")
+        # Lookahead guard (2026-09-27 audit): vol/VIX/macro overlays are computed
+        # through Friday t but weekly_returns[t] is the Fri(t-1)->Fri(t) return.
+        # Lag them one week so the overlay never sizes the week it observed.
+        lag = int(getattr(self.config, "overlay_lag_weeks", 1) or 0)
+        vol_scale = vol_df["scale"]
+        if lag > 0:
+            vol_scale = vol_scale.shift(lag).bfill()
+            vix_multiplier = vix_multiplier.shift(lag).fillna(1.0)
+            macro_mult = macro_mult.shift(lag).fillna(1.0)
         equity_curve, allocation_log = self._compute_returns(
-            wp, signal_df, vol_df["scale"],
+            wp, signal_df, vol_scale,
             vix_multiplier, macro_mult, initial_capital
         )
 

@@ -1,0 +1,118 @@
+name: Strategy C+ Signal Monitor
+
+# Schedules only fire from the default branch (master).
+#
+#   generate   Fri 21:30 UTC  (after the 4pm ET close, DST and standard time)
+#   check      every 6h       → Discord only when the issue set changes
+#   premarket  Mon 00:00 UTC  (Sun 7pm CDT / 6pm CST) → always-post pre-open gate
+#
+# Runtime state (live signal, signal_history, monitor_state) is NOT tracked on
+# master — see .gitignore and the 2026-06-06 incident where a checkout reverted
+# the live signal. It lives on the orphan branch `state/strategy-c`, which no
+# normal checkout touches. Each run restores state from that branch, runs, and
+# pushes the updated state back.
+on:
+  schedule:
+    - cron: '30 21 * * 5'
+    - cron: '0 */6 * * *'
+    - cron: '0 0 * * 1'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'generate | check | premarket'
+        default: 'premarket'
+
+concurrency:
+  group: strategy-c-signal
+  cancel-in-progress: false
+
+env:
+  STATE_BRANCH: state/strategy-c
+  OUT_DIR: engine/strategy_c/output
+  STATE_FILES: strategy_c_plus_live_signal.json signal_history.json monitor_state.json
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Restore state from ${{ env.STATE_BRANCH }}
+        run: |
+          if git fetch --depth=1 origin "$STATE_BRANCH" 2>/dev/null; then
+            for f in $STATE_FILES; do
+              git show "FETCH_HEAD:$f" > "$OUT_DIR/$f" 2>/dev/null && echo "restored $f" || rm -f "$OUT_DIR/$f"
+            done
+          else
+            echo "No state branch yet — first run."
+          fi
+
+      - name: Resolve mode
+        id: mode
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then M="${{ inputs.mode }}"
+          elif [[ "${{ github.event.schedule }}" == "30 21 * * 5" ]]; then M=generate
+          elif [[ "${{ github.event.schedule }}" == "0 0 * * 1" ]]; then M=premarket
+          else M=check; fi
+          # First run / lost state: generate instead of alerting "signal missing"
+          # every 6h until the first Friday (the signal is gitignored on master).
+          if [[ "$M" != "generate" && ! -s "$OUT_DIR/strategy_c_plus_live_signal.json" ]]; then
+            echo "No live signal in state — generating first."; M=generate
+          fi
+          echo "mode=$M" >> "$GITHUB_OUTPUT"; echo "mode=$M"
+
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Install deps
+        run: pip install -q pandas numpy scipy yfinance requests matplotlib
+        if: steps.mode.outputs.mode == 'generate'
+
+      - name: Generate live signal
+        if: steps.mode.outputs.mode == 'generate'
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          IB_ACCOUNT_ID: ${{ secrets.IB_ACCOUNT_ID }}
+        run: python -m engine.strategy_c.live_signal
+
+      - name: Run monitor
+        id: run
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          set +e
+          M="${{ steps.mode.outputs.mode }}"; [[ "$M" == "generate" ]] && M=check
+          python engine/strategy_c/signal_monitor.py --mode "$M"
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Persist state to ${{ env.STATE_BRANCH }}
+        if: always()
+        run: |
+          set -euo pipefail
+          TMP=$(mktemp -d)
+          cd "$TMP"
+          git init -q
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote add origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          if git fetch -q --depth=1 origin "$STATE_BRANCH" 2>/dev/null; then
+            git checkout -q -b "$STATE_BRANCH" FETCH_HEAD
+          else
+            git checkout -q --orphan "$STATE_BRANCH"
+          fi
+          for f in $STATE_FILES; do
+            if [[ -f "$GITHUB_WORKSPACE/$OUT_DIR/$f" ]]; then cp -f "$GITHUB_WORKSPACE/$OUT_DIR/$f" .; fi
+          done
+          git add -A
+          if git diff --cached --quiet; then echo "state unchanged"; exit 0; fi
+          git commit -q -m "state(strategy-c): ${{ steps.mode.outputs.mode }} run ${{ github.run_id }}"
+          git push -q origin "HEAD:$STATE_BRANCH"
+          echo "state pushed"
+
+      - name: Mark run red on critical
+        if: steps.run.outputs.exit_code == '2'
+        run: exit 1
