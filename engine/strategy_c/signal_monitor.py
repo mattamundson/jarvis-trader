@@ -24,7 +24,7 @@ values, 498 weekly bars 2017-03 → 2026-09; see docs/2026-09-28_strategy_c_benc
                                     (a 2y window fired ~6.8/yr). Live history replaces
                                     the band only at >= 104 weeks, percentile-based.
 Exit codes: 0 healthy/info only · 1 warning · 2 critical/stale · 3 config error ·
-            4 alert delivery failed
+            4 alert delivery failed · 5 monitor crashed
 """
 
 from __future__ import annotations
@@ -310,6 +310,11 @@ def main() -> int:
     mode = ap.parse_args().mode
     now = datetime.now(timezone.utc)
 
+    if os.environ.get("GITHUB_ACTIONS") == "true" and not DISCORD_WEBHOOK:
+        # In CI a missing/renamed secret must not look like a delivered alert.
+        print("::error::DISCORD_WEBHOOK_URL secret is not configured — alerts cannot be delivered")
+        return 3
+
     sig = _load(SIGNAL_FILE, None)
     if not sig:
         post_discord(
@@ -425,5 +430,18 @@ def main() -> int:
     return {"critical": 2, "warning": 1, "ok": 0}[sev]
 
 
+def run() -> int:
+    """Entry point: uncaught exceptions exit 5 so a crash is never read as a warning (1)."""
+    try:
+        return main()
+    except SystemExit:
+        raise
+    except Exception:
+        import traceback
+
+        traceback.print_exc()
+        return 5
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run())

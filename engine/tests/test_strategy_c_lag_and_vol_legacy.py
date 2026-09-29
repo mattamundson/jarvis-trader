@@ -251,3 +251,18 @@ def test_transaction_costs_charge_execution_on_turnover_only():
 def test_extreme_vix_composite_label_is_risk_off():
     src = (SC / "vix_composite.py").read_text()
     assert 'result.loc[result["vix_regime"] == "EXTREME", "composite_regime"] = "RISK_OFF"' in src
+
+
+def test_missing_webhook_in_actions_is_config_error(monkeypatch):
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setattr(mon, "DISCORD_WEBHOOK", "")
+    monkeypatch.setattr(sys, "argv", ["signal_monitor.py", "--mode", "check"])
+    assert mon.main() == 3
+
+
+def test_crash_exits_5_not_warning(monkeypatch):
+    def boom():
+        raise TypeError("holdings is not a dict")
+
+    monkeypatch.setattr(mon, "main", boom)
+    assert mon.run() == 5

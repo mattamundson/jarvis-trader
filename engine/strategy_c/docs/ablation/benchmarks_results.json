@@ -96,12 +96,12 @@
       "oos_excess_sharpe": 0.83
     },
     "Dual momentum GEM (12m)": {
-      "cagr": 4.94,
-      "vol": 13.89,
-      "excess_sharpe": 0.292,
-      "excess_cagr": 3.13,
+      "cagr": 5.74,
+      "vol": 14.31,
+      "excess_sharpe": 0.34,
+      "excess_cagr": 3.91,
       "mdd": -34.55,
-      "calmar": 0.143,
+      "calmar": 0.166,
       "dd_2020": -20.23,
       "dd_2022": -30.37,
       "oos_excess_sharpe": 0.196
@@ -208,14 +208,14 @@
       "oos_excess_sharpe": 0.83
     },
     "Dual momentum GEM (12m)": {
-      "cagr": 3.81,
-      "vol": 7.98,
-      "excess_sharpe": 0.292,
-      "excess_cagr": 2.02,
-      "mdd": -21.82,
-      "calmar": 0.175,
-      "dd_2020": -11.14,
-      "dd_2022": -20.14,
+      "cagr": 4.21,
+      "vol": 7.97,
+      "excess_sharpe": 0.34,
+      "excess_cagr": 2.41,
+      "mdd": -21.28,
+      "calmar": 0.198,
+      "dd_2020": -10.78,
+      "dd_2022": -19.72,
       "oos_excess_sharpe": 0.196
     },
     "Risk parity SPY/IEF": {
@@ -289,12 +289,12 @@
         "p_strategy_better": 0.38
       },
       "Dual momentum GEM (12m)": {
-        "mean": 0.4,
+        "mean": 0.348,
         "ci95": [
-          -0.149,
-          0.963
+          -0.159,
+          0.885
         ],
-        "p_strategy_better": 0.92
+        "p_strategy_better": 0.9
       },
       "Risk parity SPY/IEF": {
         "mean": 0.096,
@@ -363,12 +363,12 @@
         "p_strategy_better": 0.53
       },
       "Dual momentum GEM (12m)": {
-        "mean": 0.485,
+        "mean": 0.433,
         "ci95": [
-          -0.054,
-          1.019
+          -0.066,
+          0.924
         ],
-        "p_strategy_better": 0.96
+        "p_strategy_better": 0.95
       },
       "Risk parity SPY/IEF": {
         "mean": 0.182,

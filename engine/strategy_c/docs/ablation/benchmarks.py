@@ -103,7 +103,8 @@ spy_d = np.log(dp["SPY"] / dp["SPY"].shift(1))
 rv21 = (spy_d.rolling(21).std() * np.sqrt(252) * 100).reindex(R.index, method="ffill")
 spy_200 = dp["SPY"].rolling(200).mean().reindex(R.index, method="ffill")
 spy_px = wp["SPY"]
-mom52 = wp.pct_change(52)
+# Momentum from the full pre-window weekly history (wp is sliced at START).
+mom52 = v2._weekly_prices.pct_change(52).reindex(wp.index)
 
 bench = {}
 bench["SPY buy&hold"] = static({"SPY": 1})

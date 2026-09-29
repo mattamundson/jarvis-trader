@@ -32,7 +32,7 @@ Follows `2026-09-27_vol_estimator_lookahead_audit.md` (one-week overlay lookahea
 | 60/40 SPY/IEF | 7.57 | 0.753 | -16.79 | -13.34 | -16.79 | 0.642 |
 | **C+ v2 (corrected)** | 7.47 | 0.731 | -11.22 | -6.09 | -10.64 | 0.688 |
 | Risk parity SPY/IEF | 5.90 | 0.609 | -20.79 | -5.64 | -20.79 | 0.331 |
-| Dual momentum GEM (12m) | 3.81 | 0.292 | -21.82 | -11.14 | -20.14 | 0.196 |
+| Dual momentum GEM (12m) | 4.21 | 0.340 | -21.28 | -10.78 | -19.72 | 0.196 |
 
 † XLK was chosen after the fact because it was the decade's best sector. Treat it as a hindsight ceiling.
 
@@ -72,10 +72,12 @@ Raw values for C+: v1 CAGR 9.28%, vol 9.31%, MDD -13.37%; v2 CAGR 7.47%, vol 7.9
   - v2 controls consumed the unlagged regime.
   - The v2 cost model double-counted expense ratios.
   - Research drivers now pass `save_results=False` (they previously overwrote the live-signal JSON).
+  - The GEM benchmark's 12-month momentum now uses pre-window history (it previously earned 0% in year 1).
   - Result: the numbers above.
 
 ## Caveats
 
 - yfinance auto-adjusted closes. No tax or borrow modelling.
 - One path, 9.5 years, and about 3 real stress episodes.
+- **Execution timing is not modelled.** Live C+ fills at Monday's open (TIF=OPG), but both engines book Friday-close to Friday-close returns. The Friday-close to Monday-open gap, and the Monday-open to Friday-close week actually held, are not simulated. The rule-based benchmarks use the same Friday-to-Friday convention, so the comparisons here are like-for-like. What the gap does affect is how closely any of these backtests predicts live fills. Fixing it needs daily open prices in the return engine; that's the next research-harness item.
 - [Assumption] The COT layer (live-only, not vectorized) is neutral on average; it is excluded from all backtests.
