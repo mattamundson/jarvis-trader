@@ -43,8 +43,8 @@
   },
   "trigger_fire_counts_full_history": {
     "T1 RISK_ON & VIX>=30": 16,
-    "T2 CRISIS & scale NOT compressed (critical)": 0,
-    "T2 CRISIS & compressed (info)": 22,
+    "T2 CRISIS & vol scale NOT compressed (critical)": 0,
+    "T2 CRISIS & vol scale compressed (info)": 24,
     "T5 v1 rule rel>30%": 154,
     "T5 v2 rule |d|>=0.20 & rel>30%": 80,
     "T6 outside p2.5/p97.5 (2y prior)": 65,

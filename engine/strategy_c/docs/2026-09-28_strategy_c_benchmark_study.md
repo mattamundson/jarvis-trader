@@ -1,74 +1,81 @@
 # Strategy C+ — Corrected Backtest vs Benchmark Allocations
 
-Date: 2026-09-28 (revised after PR #960 review) · Window: 2017-03-17 → 2026-09-25 (498 weekly bars)
+Date: 2026-09-28 (revision 3, after two PR #960 review rounds) · Window: 2017-03-17 → 2026-09-25 (498 weekly bars)
 Driver: `docs/ablation/benchmarks.py` → `docs/ablation/benchmarks_results.json`
 Follows `2026-09-27_vol_estimator_lookahead_audit.md` (one-week overlay lookahead).
 
 ## Method
 
-- **Strategies.** Both engines run with overlays lagged one week (`overlay_lag_weeks=1`).
-  - **v1** = `engine.py` with the exact production `live_signal.py` config (vol target 8%, 10d, floor 6, factor tilt, macro filter; COT is live-only).
-  - **v2** = `engine_v2.py` full stack. Its absolute-momentum gate is now lagged too (review fix).
+- **Strategies.** Both engines run with overlays lagged one week (`overlay_lag_weeks=1`) and start on 2016-02-26, so the 53-week momentum WARMUP (100% SHY) ends before the comparison window opens.
+  - **v1** = `engine.py` with the exact production `live_signal.py` config.
+  - **v2** = `engine_v2.py` full stack. Its absolute-momentum gate and the regime consumed by its controls are lagged too.
 - **Costs.**
-  - v1 has no native cost model. The harness charges it 2 bps per unit of effective (post-scale, incl. SHY) turnover, about 30 bps/yr, matching the benchmarks.
-  - v2 uses its own `TransactionCostModel`. As of the review fix, spread and slippage apply to turnover, not position size, on post-scale weights.
-  - Every rule-based benchmark trades on data through Friday t-1 and pays 2 bps per unit of turnover.
-- **Primary metric: excess Sharpe over SHY.** SHY is the cash leg; SHY alone has a raw Sharpe of about 1.2, so raw Sharpe flatters any allocation that is about 50% SHY.
-- **Vol-matched view.** Each series' excess over SHY is scaled to v2's realized vol (7.46%).
-- **Drawdowns.** Computed on the full equity curve, so the 2020 and 2022 windows keep their pre-window peak (review fix).
+  - v1 has no native cost model. The harness charges it 2 bps per unit of effective turnover (about 29 bps/yr), the same as the benchmarks.
+  - v2 uses its `TransactionCostModel`: spread and slippage on turnover of post-scale weights. Expense ratios are off, because auto-adjusted prices already net them out.
+  - Every rule-based benchmark trades on data through Friday t-1.
+- **Primary metric: excess Sharpe over SHY.** SHY is the cash leg; raw Sharpe flatters any allocation that is about 50% SHY.
+- **Vol-matched view.** Each series' excess over SHY is scaled to v2's realized vol (7.93%).
+- **Drawdowns.** Computed on the full equity curve, keeping the pre-window peak.
 - **Significance.** 8-week block bootstrap, 2,000 resamples.
 - **OOS.** 2021-05 onward.
 
-## Results (vol-matched to 7.46%)
+## Results (vol-matched to 7.93%)
 
 | Series | CAGR | Excess Sharpe | MDD | DD 2020 | DD 2022 | OOS excess Sharpe |
 |---|---|---|---|---|---|---|
-| 40/60 XLK/SHY † | 9.30 | 0.999 | -14.34 | -9.29 | -14.34 | 0.892 |
-| SPY buy&hold | 7.60 | 0.783 | -13.65 | -13.65 | -13.08 | 0.789 |
-| 40/60 SPY/SHY | 7.57 | 0.783 | -13.56 | -13.56 | -13.03 | 0.789 |
-| SPY 200d SMA timing | 7.65 | 0.780 | -11.71 | -7.14 | -10.48 | 0.830 |
-| SPY vol-target 7% (21d) | 7.50 | 0.771 | -12.57 | -8.00 | -12.57 | 0.748 |
-| 60/40 SPY/IEF | 7.23 | 0.753 | -16.11 | -12.49 | -16.11 | 0.642 |
-| **C+ v1 (production, corrected)** | 6.27 | 0.620 | -12.24 | -6.40 | -12.24 | 0.752 |
-| Risk parity SPY/IEF | 5.67 | 0.609 | -19.93 | -5.29 | -19.93 | 0.331 |
-| **C+ v2 (corrected)** | 4.80 | 0.434 | -11.03 | -8.52 | -11.03 | 0.583 |
-| Dual momentum GEM (12m) | 3.70 | 0.292 | -20.74 | -10.41 | -19.29 | 0.196 |
+| 40/60 XLK/SHY † | 9.77 | 0.999 | -14.92 | -9.96 | -14.92 | 0.892 |
+| **C+ v1 (production, corrected)** | 8.19 | 0.812 | -12.16 | -6.32 | -12.16 | 0.752 |
+| SPY buy&hold | 7.96 | 0.783 | -14.58 | -14.58 | -13.60 | 0.789 |
+| 40/60 SPY/SHY | 7.92 | 0.783 | -14.48 | -14.48 | -13.54 | 0.789 |
+| SPY 200d SMA timing | 8.01 | 0.780 | -12.22 | -7.64 | -10.88 | 0.830 |
+| SPY vol-target 7% (21d) | 7.85 | 0.771 | -13.04 | -8.63 | -13.04 | 0.748 |
+| 60/40 SPY/IEF | 7.57 | 0.753 | -16.79 | -13.34 | -16.79 | 0.642 |
+| **C+ v2 (corrected)** | 7.47 | 0.731 | -11.22 | -6.09 | -10.64 | 0.688 |
+| Risk parity SPY/IEF | 5.90 | 0.609 | -20.79 | -5.64 | -20.79 | 0.331 |
+| Dual momentum GEM (12m) | 3.81 | 0.292 | -21.82 | -11.14 | -20.14 | 0.196 |
 
-† XLK was chosen after the fact because it was the decade's best sector. Treat it as a hindsight ceiling, not an investable benchmark.
+† XLK was chosen after the fact because it was the decade's best sector. Treat it as a hindsight ceiling.
 
-The raw, un-matched values are in `benchmarks_results.json`. For C+: v1 CAGR 6.96%, vol 8.67%, MDD -13.37%; v2 CAGR 4.80%, vol 7.46%, MDD -11.03%.
+Raw values for C+: v1 CAGR 9.28%, vol 9.31%, MDD -13.37%; v2 CAGR 7.47%, vol 7.93%, MDD -11.22%.
 
 ## Significance (excess Sharpe, strategy minus X)
 
 | X | v1 − X (95% CI) | P(v1 better) | v2 − X (95% CI) | P(v2 better) |
 |---|---|---|---|---|
-| 40/60 SPY/SHY | -0.196 [-0.698, +0.290] | 0.23 | -0.378 [-0.855, +0.106] | 0.07 |
-| SPY vol-target 7% (21d) | -0.172 [-0.617, +0.239] | 0.22 | -0.354 [-0.762, +0.050] | 0.04 |
-| SPY 200d SMA timing | -0.173 [-0.610, +0.266] | 0.22 | -0.356 [-0.787, +0.071] | 0.06 |
-| 60/40 SPY/IEF | -0.165 [-0.657, +0.337] | 0.26 | -0.347 [-0.832, +0.166] | 0.09 |
-| C+ v1 | — | — | -0.182 [-0.369, +0.007] | 0.03 |
+| 40/60 SPY/SHY | -0.005 [-0.486, +0.486] | 0.49 | -0.091 [-0.645, +0.437] | 0.38 |
+| SPY vol-target 7% (21d) | +0.019 [-0.360, +0.376] | 0.55 | -0.066 [-0.465, +0.299] | 0.38 |
+| SPY 200d SMA timing | +0.017 [-0.416, +0.437] | 0.53 | -0.068 [-0.518, +0.361] | 0.38 |
+| 60/40 SPY/IEF | +0.026 [-0.484, +0.535] | 0.54 | -0.060 [-0.622, +0.492] | 0.42 |
+| C+ v1 | — | — | -0.085 [-0.269, +0.098] | 0.19 |
 
 ## Conclusions
 
-1. **Do not promote v2 to live.** Corrected v2 trails corrected v1 by 0.18 excess Sharpe. The CI just includes 0, and P(v2 better) is 0.03. v2 also trails every simple risk-matched benchmark except dual momentum. It adds five layers of complexity for a probable loss.
-2. **v1 has no demonstrated alpha.** v1 is statistically indistinguishable from 40/60 SPY/SHY and from SPY vol-targeting; its point estimate is about 0.17–0.20 lower and P(v1 better) ≈ 0.22.
-   - Its one measured edge is the 2020 crash: -6.4% vs -13.6% for 40/60 at equal vol.
-   - In 2022 it was no better (-12.2% vs -13.0%).
-   - That is one independent stress event. Treat it as weak evidence of a defensive property, not an edge.
-3. **The as-built v1 backtest was also biased.** Before costs, v1 raw Sharpe falls from 1.79 to 0.85 and CAGR from 14.6% to 7.28% once overlays are lagged. Any v1 metric published before this change (dashboard `/v1/strategy_c/metrics`, earlier docs) overstates it by roughly 2x.
-4. **Next research step (not in this PR).** Pre-register "SPY vol-target 7% (21d)" as the hurdle. Any C+ layer must beat it out of sample on excess Sharpe with a bootstrap CI that excludes 0. If v1 can't clear it, the honest production choice is the simpler benchmark.
+1. **v1 matches simple allocations; it does not beat them.** Once the lookahead, warm-up and costs are handled, v1's excess Sharpe is 0.812.
+   - That is statistically identical to 40/60 SPY/SHY (0.783) and SPY vol-target 7% (0.771): every difference is within ±0.03, with CIs of about ±0.4–0.5.
+   - Its 2020 drawdown was shallower at equal vol (-6.3% vs -14.5%). 2022 was similar (-12.2% vs -13.5%).
+   - That is one independent stress event: weak evidence of a defensive property, not alpha.
+2. **Do not promote v2.** v2 − v1 = -0.085 [-0.269, +0.098], P(v2 better) = 0.19. The data can't separate them, so v2's five extra layers show no benefit, and they carry the known unfixed defects listed in PR #960. Absent evidence of improvement, the simpler engine stays live.
+3. **The as-built backtests were heavily biased.** Before costs, v1's native `run_backtest` falls from raw Sharpe 1.79 / CAGR 14.6% to 0.85 / 7.28% once overlays are lagged. Previously published C+ metrics (dashboard `/v1/strategy_c/metrics`, earlier docs) overstate performance by roughly 2x.
+4. **Next research step (not in this PR).** Pre-register "SPY vol-target 7% (21d)" as the hurdle. Any C+ layer must beat it out of sample with a bootstrap CI that excludes 0. So far nothing does. The honest framing of C+ today is "a reasonable defensive allocation with more moving parts than its equal-performing simple alternatives".
 
 ## Revision log
 
-- **2026-09-28 (initial).** v2 excess Sharpe was 0.328 and v2 − v1 was -0.33 [-0.52, -0.12], a significant gap. v1 was reported with a 2022 drawdown edge. Both were affected by defects found in review:
-  - The v2 cost model charged execution cost on whole positions. That biased against v2; fixing it raises v2 by about 0.1.
-  - v2's absolute-momentum gate was unlagged, biasing for v2.
-  - v1 was run without costs, biasing for v1.
-  - Crisis-window drawdowns dropped the pre-window peak, understating 2020 and 2022 drawdowns for every series.
+- **rev 1** (initial): v2 − v1 was -0.33 [-0.52, -0.12], and v1 was reported with 2020 and 2022 drawdown edges.
+- **rev 2** (review round 1):
+  - v2 cost model: execution cost moved to turnover and post-scale weights.
+  - v2 absolute-momentum gate lagged.
+  - v1 charged turnover costs.
+  - Drawdowns computed from the full curve.
+  - Result: v2 − v1 = -0.18 [-0.37, +0.01].
+- **rev 3** (review round 2):
+  - The comparison window previously contained the strategies' 53-week WARMUP (100% SHY). This was the largest single bias, and it was against both strategies.
+  - v2 controls consumed the unlagged regime.
+  - The v2 cost model double-counted expense ratios.
+  - Research drivers now pass `save_results=False` (they previously overwrote the live-signal JSON).
+  - Result: the numbers above.
 
 ## Caveats
 
 - yfinance auto-adjusted closes. No tax or borrow modelling.
 - One path, 9.5 years, and about 3 real stress episodes.
 - [Assumption] The COT layer (live-only, not vectorized) is neutral on average; it is excluded from all backtests.
-- Known v2 defects that remain unfixed are listed in PR #960 (live-path only, or spec deviations; v2 is research-only).

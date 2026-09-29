@@ -3,8 +3,9 @@ Strategy C+ Engine v2 — Full Upgraded Implementation
 =====================================================
 All 13 improvements wired in. Replaces engine.py for backtesting.
 Live signal generation still uses engine.py (stable); swap after validation.
-STATUS 2026-09-28: RESEARCH ONLY. Lag-corrected v2 underperforms lag-corrected v1
-(excess Sharpe -0.18, 95% CI [-0.37, +0.01], P(v2 better)=0.03); see docs/2026-09-28_strategy_c_benchmark_study.md.
+STATUS 2026-09-28: RESEARCH ONLY. Lag-corrected v2 shows no improvement over lag-corrected
+v1 (excess Sharpe -0.085, 95% CI [-0.269, +0.098]) and has known unfixed
+defects (PR #960); see docs/2026-09-28_strategy_c_benchmark_study.md.
 
 Layer stack (v2):
   Layer 1: Dual Momentum + Factor Tilt + AbsoluteMomentumGate (T2-6)
@@ -197,7 +198,13 @@ class StrategyCEngineV2:
         self.min_hold = MinimumHoldPeriod(min_hold_weeks=c.min_hold_weeks) if c.use_min_hold else None
 
         # TCM
-        self.tcm = TransactionCostModel(execution_mode=c.execution_mode) if c.use_transaction_costs else None
+        # include_expense_ratio=False: yfinance auto_adjust=True returns are already
+        # net of fund expenses, so charging ERs again would double-count them.
+        self.tcm = (
+            TransactionCostModel(execution_mode=c.execution_mode, include_expense_ratio=False)
+            if c.use_transaction_costs
+            else None
+        )
 
         # Data cache
         self._weekly_prices: Optional[pd.DataFrame] = None
@@ -265,6 +272,12 @@ class StrategyCEngineV2:
         # ── Layer 1: Momentum signals ─────────────────────────────────────────
         print("[StrategyC+ v2] L1: Momentum signals...")
         signal_df = self.signals.generate_signals(wp, t1_lag=True)
+        # generate_signals(t1_lag=True) shifts only `holdings`; risk_regime still
+        # describes Friday t. Lag it too so v2 controls (abs gate, risk parity,
+        # min-hold) never act on the week they size. signals.py is shared with the
+        # v1 live path, so the lag is applied here rather than there.
+        if int(getattr(c, "overlay_lag_weeks", 1) or 0) > 0:
+            signal_df["risk_regime"] = signal_df["risk_regime"].shift(1).fillna("WARMUP")
 
         # T2-6: Enhanced absolute momentum gate (200d MA co-trigger)
         if self.abs_mom_gate is not None:

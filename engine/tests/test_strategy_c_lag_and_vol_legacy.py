@@ -110,7 +110,7 @@ def _sig(
     week_of=None,
     holdings=None,
 ):
-    wk = week_of or mon.last_friday()
+    wk = week_of or mon.expected_signal_friday()
     return {
         "effective_date": (wk + timedelta(days=3)).isoformat(),
         "combined_scale": scale,
@@ -148,15 +148,38 @@ def test_crisis_without_compression_is_critical():
     assert any("not compressing" in m for m in r["critical"])
 
 
+def test_t2_judges_vol_layer_not_combined_scale():
+    # vol layer failed (0.9) but a VIX multiplier dragged combined scale to 0.2
+    sig = _sig(scale=0.2, rv=40.0, vol_regime="CRISIS")
+    sig["layers"]["vol_targeting"]["scale"] = 0.9
+    assert any("not compressing" in m for m in _ev(sig)["critical"])
+
+
+def test_premarket_delivery_failure_exits_4(tmp_path, monkeypatch):
+    import json as _json
+
+    files = {
+        n: tmp_path / f"{n}.json"
+        for n in ("SIGNAL_FILE", "STATE_FILE", "BASELINE_FILE", "HISTORY_FILE")
+    }
+    files["SIGNAL_FILE"].write_text(_json.dumps(_sig(week_of=mon.expected_signal_friday())))
+    files["BASELINE_FILE"].write_text(_json.dumps(BASE))
+    for n, p in files.items():
+        monkeypatch.setattr(mon, n, p)
+    monkeypatch.setattr(mon, "post_discord", lambda embed: False)
+    monkeypatch.setattr(sys, "argv", ["signal_monitor.py", "--mode", "premarket"])
+    assert mon.main() == 4
+
+
 def test_wow_threshold_calibrated():
-    lf = mon.last_friday()
+    lf = mon.expected_signal_friday()
     prev = mon.flat(_sig(scale=0.60, week_of=lf - timedelta(days=7)))
     assert _ev(_sig(scale=0.90), [prev])["warning"] == []  # Δ0.30: normal for v1
     assert any("Scale" in m for m in _ev(_sig(scale=0.10), [prev])["warning"])  # Δ-0.50
 
 
 def test_stale_signal_is_critical():
-    r = _ev(_sig(week_of=mon.last_friday() - timedelta(days=14)))
+    r = _ev(_sig(week_of=mon.expected_signal_friday() - timedelta(days=14)))
     assert any("did not run" in m for m in r["critical"])
 
 
@@ -172,12 +195,16 @@ def test_last_friday_is_friday():
 def test_friday_before_generation_expects_prior_friday():
     from datetime import datetime, timezone
 
-    fri_morning = datetime(2026, 9, 25, 12, 0, tzinfo=timezone.utc)
     fri_evening = datetime(2026, 9, 25, 23, 30, tzinfo=timezone.utc)
+    sat_early = datetime(2026, 9, 26, 2, 0, tzinfo=timezone.utc)  # generation still landing
+    sat_ready = datetime(2026, 9, 26, 3, 0, tzinfo=timezone.utc)
     sunday = datetime(2026, 9, 27, 18, 0, tzinfo=timezone.utc)
-    assert mon.expected_signal_friday(fri_morning) == date(2026, 9, 18)
-    assert mon.expected_signal_friday(fri_evening) == date(2026, 9, 25)
+    thursday = datetime(2026, 10, 1, 12, 0, tzinfo=timezone.utc)
+    assert mon.expected_signal_friday(fri_evening) == date(2026, 9, 18)
+    assert mon.expected_signal_friday(sat_early) == date(2026, 9, 18)
+    assert mon.expected_signal_friday(sat_ready) == date(2026, 9, 25)
     assert mon.expected_signal_friday(sunday) == date(2026, 9, 25)
+    assert mon.expected_signal_friday(thursday) == date(2026, 9, 25)
 
 
 def test_failed_delivery_does_not_advance_fingerprint(tmp_path, monkeypatch):
@@ -185,7 +212,9 @@ def test_failed_delivery_does_not_advance_fingerprint(tmp_path, monkeypatch):
 
     sig_file, state_file = tmp_path / "sig.json", tmp_path / "state.json"
     base_file, hist_file = tmp_path / "base.json", tmp_path / "hist.json"
-    sig_file.write_text(_json.dumps(_sig(week_of=mon.last_friday() - timedelta(days=21))))
+    sig_file.write_text(
+        _json.dumps(_sig(week_of=mon.expected_signal_friday() - timedelta(days=21)))
+    )
     base_file.write_text(_json.dumps(BASE))
     for name, p in (
         ("SIGNAL_FILE", sig_file),

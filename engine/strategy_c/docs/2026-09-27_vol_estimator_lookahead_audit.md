@@ -3,7 +3,7 @@
 Date: 2026-09-27 · Window: 2017-03-06 → 2026-09-25 (498 weekly bars) · Engine: `engine_v2` full stack, only the vol estimator varied.
 Harness: `yfinance` auto-adjusted closes; Sharpe is raw (not excess of RF), same convention as `_compute_metrics`.
 
-> **Superseded in part by `2026-09-28_strategy_c_benchmark_study.md`.** Benchmark comparisons below use raw Sharpe, which flatters SHY-heavy allocations; the 09-28 study uses excess-over-SHY Sharpe and vol-matching. Production live signals stay on the v1 engine (`engine.py`), which received the same lag guard; v2 is research-only. Monitor trigger rates were re-calibrated on v1. The v2 step-wise numbers below predate two review fixes (turnover-based costs, lagged absolute-momentum gate), which move corrected v2 from 0.552 to 0.666 raw Sharpe (CAGR 3.88% → 4.80%). The step-wise attribution was not re-run.
+> **Superseded in part by `2026-09-28_strategy_c_benchmark_study.md`.** Benchmark comparisons below use raw Sharpe, which flatters SHY-heavy allocations; the 09-28 study uses excess-over-SHY Sharpe and vol-matching. Production live signals stay on the v1 engine (`engine.py`), which received the same lag guard; v2 is research-only. Monitor trigger rates were re-calibrated on v1. The v2 step-wise numbers below predate the PR #960 review fixes (turnover-based costs without double-counted expense ratios, lagged absolute-momentum gate, lagged regime for v2 controls), which move corrected v2 from 0.552 to 0.805 raw Sharpe (CAGR 3.88% → 5.83%, native `run_backtest` from 2017-03-06, warm-up included). The step-wise attribution was not re-run.
 
 ## 1. Headline: the backtest has a one-week lookahead
 

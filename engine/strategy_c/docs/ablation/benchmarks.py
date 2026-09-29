@@ -26,13 +26,17 @@ from engine.strategy_c import engine as E1  # noqa: E402
 from engine.strategy_c.engine_v2 import StrategyCConfigV2, StrategyCEngineV2  # noqa: E402
 
 START, END = "2017-03-06", "2026-09-25"
+# Start 53 weeks early so the momentum WARMUP rows (100% SHY) precede the
+# comparison window. save_results=False: v1's saver calls get_live_signal()
+# and would overwrite output/strategy_c_plus_live_signal.json.
+WARMUP_START = "2016-02-26"
 COST = 2e-4
 OUT = Path(__file__).parent
 
 # ── Strategy C+ v2 (lag fix is in-engine: overlay_lag_weeks=1) ────────────────
 v2 = StrategyCEngineV2(StrategyCConfigV2(overlay_lag_weeks=1))
 with contextlib.redirect_stdout(io.StringIO()):
-    r2 = v2.run_backtest(start=START, end=END)
+    r2 = v2.run_backtest(start=WARMUP_START, end=END)
 wp = v2._weekly_prices.loc[START:END]
 dp = v2._daily_prices
 eq_v2 = r2["equity_curve"]
@@ -55,7 +59,7 @@ v1 = E1.StrategyCEngine(
     )
 )
 with contextlib.redirect_stdout(io.StringIO()):
-    r1 = v1.run_backtest(end=END)
+    r1 = v1.run_backtest(start=WARMUP_START, end=END, save_results=False)
 eq_v1 = r1["equity_curve"]
 
 # engine.py has no cost model — charge v1 the same 2 bps per unit of effective

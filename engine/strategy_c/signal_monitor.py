@@ -14,7 +14,7 @@ values, 498 weekly bars 2017-03 → 2026-09; see docs/2026-09-28_strategy_c_benc
   T1 RISK_ON & VIX>=30              WARN      (~1.7/yr)
   T2 RISK_ON & RealVol CRISIS       CRITICAL only if vol targeting FAILED to compress
                                     scale (> 1.25x target/RV): 0 weeks in history.
-                                    Otherwise INFO (~2.3/yr).
+                                    Otherwise INFO (~2.5/yr).
   T3 RISK_ON & SHY>85%              INFO (redundant with T2 compression)
   T4 RISK_ON & fear_score>0.7       REMOVED (fired 42% of weeks; median fear 0.71 —
                                     VIX > realized vol is the normal state)
@@ -71,20 +71,24 @@ def last_friday(today: date | None = None) -> date:
     return t - timedelta(days=(t.weekday() - 4) % 7)
 
 
-# Friday generation is scheduled 21:30 UTC; allow 90 min for the run to land.
-GENERATION_READY_UTC = (23, 0)
+# Generation runs Sat 01:30 UTC (yfinance `end` is exclusive, so a Friday-dated
+# run would omit Friday's bar). Allow 90 min for the run to land.
+GENERATION_READY_UTC = (3, 0)  # Saturday
 
 
 def expected_signal_friday(now: datetime | None = None) -> date:
     """The Friday whose signal should exist at `now`.
 
-    Before this Friday's post-close generation window, the valid signal is still
-    last week's — treating today as the expected week would raise a false
-    critical on every Friday check before 23:00 UTC.
+    Until this week's generation has landed (Saturday 03:00 UTC), the valid
+    signal is still last week's — otherwise every Friday check would raise a
+    false CRITICAL.
     """
     n = now or datetime.now(timezone.utc)
     lf = last_friday(n.date())
-    if n.date() == lf and (n.hour, n.minute) < GENERATION_READY_UTC:
+    ready = n.date() > lf + timedelta(days=1) or (
+        n.date() == lf + timedelta(days=1) and (n.hour, n.minute) >= GENERATION_READY_UTC
+    )
+    if not ready:
         lf -= timedelta(days=7)
     return lf
 
@@ -232,9 +236,13 @@ def evaluate(sig: dict, baseline: dict, history: list[dict], mode: str) -> dict[
             or DEFAULT_VOL_TARGET_PCT
         )
         expected_max = min(1.0, vt / rv) * SCALE_FAIL_TOLERANCE
-        if scale > expected_max:
+        # Judge the vol layer itself: combined_scale also carries VIX/macro/MTF
+        # multipliers, which can mask a failed vol layer.
+        vol_s = f.get("vol_scale")
+        judged = vol_s if isinstance(vol_s, (int, float)) else scale
+        if judged > expected_max:
             out["critical"].append(
-                f"RealVol CRISIS ({rv:.1f}%) but scale {scale:.3f} > {expected_max:.3f} — vol targeting not compressing"
+                f"RealVol CRISIS ({rv:.1f}%) but vol scale {judged:.3f} > {expected_max:.3f} — vol targeting not compressing"
             )
         else:
             out["info"].append(
@@ -346,7 +354,7 @@ def main() -> int:
             "warning": "⚠️ Pre-Market Gate — review before open",
             "ok": "✅ Pre-Market Gate — clear to execute",
         }[sev]
-        post_discord(
+        pm_delivered = post_discord(
             {
                 "title": f"{title} ({f.get('effective_date')})",
                 "color": {"critical": RED, "warning": AMBER, "ok": GREEN}[sev],
@@ -374,6 +382,9 @@ def main() -> int:
                 "timestamp": now.isoformat(),
             }
         )
+        if not pm_delivered:
+            print("[monitor] pre-market gate NOT delivered to Discord")
+            return 4
     else:
         fp = hashlib.sha1(
             json.dumps([f.get("effective_date"), res["critical"], res["warning"]]).encode()

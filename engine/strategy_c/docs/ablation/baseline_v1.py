@@ -13,6 +13,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
 from engine.strategy_c.engine import StrategyCConfig, StrategyCEngine  # noqa: E402
 
 END = "2026-09-25"
+# Start 53 weeks early so the momentum WARMUP rows (100% SHY) precede the
+# comparison window instead of sitting inside it. save_results=False: v1's saver
+# calls get_live_signal() and would overwrite output/strategy_c_plus_live_signal.json.
+WARMUP_START = "2016-02-26"
 cfg = StrategyCConfig(
     vol_target=8.0,
     vol_lookback_days=10,
@@ -31,7 +35,7 @@ cfg = StrategyCConfig(
 # The 1w lag only matters for return attribution, not for what the signal shows.
 e = StrategyCEngine(cfg)
 with contextlib.redirect_stdout(io.StringIO()):
-    r = e.run_backtest(end=END)
+    r = e.run_backtest(start=WARMUP_START, end=END, save_results=False)
 al = (
     r["allocation_log"]
     if isinstance(r["allocation_log"], pd.DataFrame)
@@ -40,6 +44,7 @@ al = (
 if "date" in al.columns:
     al = al.set_index("date")
 al.index = pd.to_datetime(al.index)
+al = al.loc["2017-03-17":]
 s = al["combined_scale"].astype(float)
 vs = al["vol_scale"].astype(float)
 m = r.get("metrics") or r.get("full_metrics") or {}
@@ -93,8 +98,8 @@ print(
 )
 rates = {
     "T1 RISK_ON & VIX>=30": int((ro & (wv >= 30)).sum()),
-    "T2 CRISIS & scale NOT compressed (critical)": int((ro & crisis & (s > exp_max)).sum()),
-    "T2 CRISIS & compressed (info)": int((ro & crisis & (s <= exp_max)).sum()),
+    "T2 CRISIS & vol scale NOT compressed (critical)": int((ro & crisis & (vs > exp_max)).sum()),
+    "T2 CRISIS & vol scale compressed (info)": int((ro & crisis & (vs <= exp_max)).sum()),
     "T5 v1 rule rel>30%": int((rel > 0.30).sum()),
     "T5 v2 rule |d|>=0.20 & rel>30%": int(((d >= 0.20) & (rel > 0.30)).sum()),
     "T6 outside p2.5/p97.5 (2y prior)": int(((s < pr["p2_5"]) | (s > pr["p97_5"])).sum()),
