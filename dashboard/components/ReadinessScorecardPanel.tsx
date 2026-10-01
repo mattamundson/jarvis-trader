@@ -4,6 +4,7 @@ import useSWR from "swr";
 import { AlertTriangle, CheckCircle2, ShieldAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { fetchDashboardApi } from "@/lib/api";
 
 type BadgeKey =
   | "operator_analysis_ready"
@@ -95,7 +96,7 @@ function fmtCurrency(value: number): string {
 export function ReadinessScorecardPanel() {
   const { data, error, isLoading } = useSWR<ReadinessScorecard>(
     FEED_URL,
-    (url: string) => fetch(url).then((r) => r.json())
+    (url: string) => fetchDashboardApi<ReadinessScorecard>(url)
   );
 
   const generatedAt = data?.generated_at
