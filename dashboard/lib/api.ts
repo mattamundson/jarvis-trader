@@ -118,6 +118,13 @@ export async function fetchEngine<T = any>(path: string, options?: RequestInit):
   });
 }
 
+export async function fetchDashboardApi<T = any>(path: string, options?: RequestInit): Promise<T> {
+  return fetchWithRetry<T>(path, {
+    cache: "no-store",
+    ...options,
+  });
+}
+
 /**
  * Liveness-probe variant: single attempt, no retry, no 2s backoff.
  *
