@@ -1,0 +1,125 @@
+{
+  "schema_version": "1.0.0",
+  "mode": "ANALYSIS_ONLY",
+  "paper_only": true,
+  "orders_enabled": false,
+  "live_engine_touched": false,
+  "risk_config_touched": false,
+  "do_not_trade_symbols_excluded": [
+    "MCL",
+    "MNQ"
+  ],
+  "data_provenance": {
+    "path": "engine/backtest/cache/MES_2024-09-22_2026-05-29_5m_cont.csv",
+    "sha256": "516beb11568f3270e595035b1dada669654c6b337f87b81b35fc386dff092a12",
+    "rows": 119096,
+    "actual_span_first": "2024-09-22T22:00:00+00:00",
+    "actual_span_last": "2026-05-29T20:55:00+00:00",
+    "rth_sessions": 433,
+    "complete_causal_sessions": 417,
+    "continuous_contract_adjustment": "stitched_not_back_adjusted"
+  },
+  "reopening_contract": {
+    "requires_new_preregistration_id": true,
+    "requires_materially_different_mechanism_or_dataset": true,
+    "requires_new_locked_evaluation_window": true,
+    "forbids_reuse_of_rejected_oos_for_optimization": true
+  },
+  "retired_results": [
+    {
+      "candidate_id": "mes_ib_sequential_target_ladder",
+      "symbol": "MES",
+      "family": "initial_balance_ladder",
+      "feature": "sequential_targets",
+      "verdict": "REJECT",
+      "evidence_report": "docs/research/MES_IB_LADDER_20260927.md",
+      "evidence_artifact": ".hermes/artifacts/mes_ib_vwap_basis_20260927/phase1_mes_ib_ladder.json",
+      "trial_basis": {
+        "historical_campaign_lower_bound": 210,
+        "current_frozen_family_trials": 16,
+        "campaign_trial_lower_bound": 226
+      },
+      "principal_failure": "Locked OOS PF 0.811870, expectancy -11.913827 dollars/trade, observed-frequency Sharpe -1.330078, campaign-deflated DSR 0.0; worse than simple IB-break baseline."
+    },
+    {
+      "candidate_id": "mes_weekly_vwap_time_acceptance",
+      "symbol": "MES",
+      "family": "weekly_vwap_acceptance",
+      "feature": "time",
+      "verdict": "REJECT",
+      "evidence_report": "docs/research/MES_WEEKLY_VWAP_ACCEPTANCE_20260927.md",
+      "evidence_artifact": ".hermes/artifacts/mes_ib_vwap_basis_20260927/phase2_weekly_vwap_acceptance.json",
+      "trial_basis": {
+        "predictions": 1068,
+        "unique_signal_dates": 356,
+        "family_comparisons": 10,
+        "multiplicity_method": "Holm family-wise correction"
+      },
+      "principal_failure": "Failed to beat both price-above-VWAP and trailing unconditional probability baselines after multiplicity correction."
+    },
+    {
+      "candidate_id": "mes_weekly_vwap_volume_acceptance",
+      "symbol": "MES",
+      "family": "weekly_vwap_acceptance",
+      "feature": "volume",
+      "verdict": "REJECT",
+      "evidence_report": "docs/research/MES_WEEKLY_VWAP_ACCEPTANCE_20260927.md",
+      "evidence_artifact": ".hermes/artifacts/mes_ib_vwap_basis_20260927/phase2_weekly_vwap_acceptance.json",
+      "trial_basis": {
+        "predictions": 1068,
+        "unique_signal_dates": 356,
+        "family_comparisons": 10,
+        "multiplicity_method": "Holm family-wise correction"
+      },
+      "principal_failure": "Raw paired Brier improvement over price-above-VWAP did not survive Holm correction and model Brier was worse than the trailing unconditional baseline."
+    },
+    {
+      "candidate_id": "mes_weekly_vwap_developing_vpoc_acceptance",
+      "symbol": "MES",
+      "family": "weekly_vwap_acceptance",
+      "feature": "developing_vpoc",
+      "verdict": "REJECT",
+      "evidence_report": "docs/research/MES_WEEKLY_VWAP_ACCEPTANCE_20260927.md",
+      "evidence_artifact": ".hermes/artifacts/mes_ib_vwap_basis_20260927/phase2_weekly_vwap_acceptance.json",
+      "trial_basis": {
+        "predictions": 1068,
+        "unique_signal_dates": 356,
+        "family_comparisons": 10,
+        "multiplicity_method": "Holm family-wise correction"
+      },
+      "principal_failure": "Failed paired Brier and multiplicity gates; VPOC is an OHLCV range-allocation proxy rather than exchange volume-at-price."
+    },
+    {
+      "candidate_id": "mes_weekly_vwap_developing_tpo_poc_acceptance",
+      "symbol": "MES",
+      "family": "weekly_vwap_acceptance",
+      "feature": "developing_tpo_poc",
+      "verdict": "REJECT",
+      "evidence_report": "docs/research/MES_WEEKLY_VWAP_ACCEPTANCE_20260927.md",
+      "evidence_artifact": ".hermes/artifacts/mes_ib_vwap_basis_20260927/phase2_weekly_vwap_acceptance.json",
+      "trial_basis": {
+        "predictions": 1068,
+        "unique_signal_dates": 356,
+        "family_comparisons": 10,
+        "multiplicity_method": "Holm family-wise correction"
+      },
+      "principal_failure": "Failed to beat both probability baselines after multiplicity correction."
+    },
+    {
+      "candidate_id": "mes_weekly_vwap_ohlcv_clv_delta_acceptance",
+      "symbol": "MES",
+      "family": "weekly_vwap_acceptance",
+      "feature": "ohlcv_clv_delta_proxy",
+      "verdict": "REJECT",
+      "evidence_report": "docs/research/MES_WEEKLY_VWAP_ACCEPTANCE_20260927.md",
+      "evidence_artifact": ".hermes/artifacts/mes_ib_vwap_basis_20260927/phase2_weekly_vwap_acceptance.json",
+      "trial_basis": {
+        "predictions": 1068,
+        "unique_signal_dates": 356,
+        "family_comparisons": 10,
+        "multiplicity_method": "Holm family-wise correction"
+      },
+      "principal_failure": "Failed paired Brier and economic gates; CLV-volume is not true bid/ask cumulative delta."
+    }
+  ]
+}

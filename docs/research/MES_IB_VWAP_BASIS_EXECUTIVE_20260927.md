@@ -223,6 +223,9 @@ env -u PYTHONPATH API_KEY='local-research-sandbox-dummy-not-a-credential' \
 
 ## Artifact map
 
+- `docs/research/NEGATIVE_RESULT_REGISTRY_20261002.md`
+- `engine/backtest/research/negative_results_registry.json`
+- `engine/backtest/research/negative_results.py`
 - `docs/research/MES_IB_LADDER_20260927.md`
 - `docs/research/MES_WEEKLY_VWAP_ACCEPTANCE_20260927.md`
 - `docs/research/SPX_ES_BASIS_TRANSLATOR_20260927.md`
