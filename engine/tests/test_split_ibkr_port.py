@@ -27,6 +27,8 @@ class MockConfig:
     IBKR_MARKET_DATA_HOST: str | None = None
     IBKR_MARKET_DATA_PORT: int | None = None
     IBKR_MARKET_DATA_CLIENT_ID: int | None = None
+    POLYGON_API_KEY: str | None = None
+    FINNHUB_API_KEY: str | None = None
 
 
 class TestSplitIBKRPort:
@@ -167,7 +169,7 @@ class TestIBKRDataConnectorReadonly:
         """Connector should pass readonly parameter to ib_async connectAsync."""
         from data.market_data import IBKRDataConnector
         
-        with patch('data.market_data.IB') as mock_ib_class:
+        with patch('ib_async.IB') as mock_ib_class:
             mock_ib = Mock()
             mock_ib.connectAsync = AsyncMock()
             mock_ib.disconnectedEvent = Mock()
