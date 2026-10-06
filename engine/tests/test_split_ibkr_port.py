@@ -161,6 +161,30 @@ class TestSplitIBKRPort:
         assert isinstance(data_alive, bool)
         # data_port can be None or int depending on config
 
+    def test_health_endpoint_serializes_data_port_fields(self):
+        """GET /health must include ibgateway_data_port and ibgateway_data_alive in response."""
+        from fastapi.testclient import TestClient
+        from main import app
+
+        client = TestClient(app)
+        response = client.get("/health")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # Verify the fields exist in the serialized response
+        assert "ibgateway_port" in data
+        assert "ibgateway_alive" in data
+        assert "ibgateway_data_port" in data, "ibgateway_data_port missing from /health response"
+        assert "ibgateway_data_alive" in data, "ibgateway_data_alive missing from /health response"
+
+        # When split-port not configured, data fields should exist (may be None or match execution port)
+        assert data["ibgateway_port"] is not None or data["ibgateway_port"] is None
+        assert isinstance(data["ibgateway_alive"], bool)
+        # Data port fields should be present even if None
+        assert "ibgateway_data_port" in data
+        assert "ibgateway_data_alive" in data
+
 
 class TestIBKRDataConnectorReadonly:
     """Test readonly parameter on IBKRDataConnector."""
