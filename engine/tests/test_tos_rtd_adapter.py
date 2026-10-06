@@ -95,6 +95,8 @@ def test_resolve_tos_symbol_maps_engine_conventions() -> None:
     assert resolve_tos_symbol("MES") == "/MES:XCME"
     assert resolve_tos_symbol("mes") == "/MES:XCME"
     assert resolve_tos_symbol("ES") == "/ES:XCME"
+    assert resolve_tos_symbol("MGC") == "/MGC:XCEC"
+    assert resolve_tos_symbol("mcl") == "/MCL:XNYM"
     assert resolve_tos_symbol("SPY") == "SPY"
     assert resolve_tos_symbol("QQQ") == "QQQ"
     assert resolve_tos_symbol("VIX") == "VIX"
@@ -110,7 +112,30 @@ def test_resolve_tos_symbol_handles_caret_index_convention() -> None:
 def test_resolve_tos_symbol_passes_through_native_tos_symbols() -> None:
     assert resolve_tos_symbol("/MES:XCME") == "/MES:XCME"
     assert resolve_tos_symbol(".SPY260925C763") == ".SPY260925C763"
+
+
+def test_resolve_tos_symbol_stocks_resolve_as_is() -> None:
+    """Plain stock tickers that are NOT futures resolve as stock symbols."""
     assert resolve_tos_symbol("AAPL") == "AAPL"
+    assert resolve_tos_symbol("MSFT") == "MSFT"
+    assert resolve_tos_symbol("ORCL") == "ORCL"
+    assert resolve_tos_symbol("TSLA") == "TSLA"
+
+
+def test_resolve_tos_symbol_unmapped_futures_return_none() -> None:
+    """Known futures without TOS mappings must return None, never a stock quote.
+
+    M2K, MYM, RTY, YM, CL, GC are all futures in CONTRACT_SPECS but not (yet)
+    in TOS_RTD_SYMBOLS. They must fall through to IB, not be treated as stocks.
+    """
+    assert resolve_tos_symbol("M2K") is None
+    assert resolve_tos_symbol("MYM") is None
+    assert resolve_tos_symbol("RTY") is None
+    assert resolve_tos_symbol("YM") is None
+    assert resolve_tos_symbol("CL") is None
+    assert resolve_tos_symbol("GC") is None
+    assert resolve_tos_symbol("ZN") is None
+    assert resolve_tos_symbol("ZB") is None
 
 
 def test_resolve_tos_symbol_rejects_nonsense() -> None:
@@ -465,6 +490,23 @@ async def test_keepwarm_task_is_cancelled_on_close() -> None:
 
 
 def test_symbol_table_covers_the_required_watchlist() -> None:
-    """Scope is MES/SPY/QQQ/VIX (per the task constraints) — if someone widens
-    it, this test should be updated deliberately rather than silently."""
-    assert set(TOS_RTD_SYMBOLS) == {"MES", "ES", "MNQ", "NQ", "SPY", "QQQ", "VIX"}
+    """Scope expanded to include MGC and MCL futures mappings."""
+    assert set(TOS_RTD_SYMBOLS) == {"MES", "ES", "MNQ", "NQ", "MGC", "MCL", "SPY", "QQQ", "VIX"}
+
+
+def test_known_futures_excludes_etfs_and_options() -> None:
+    """ETFs and index options underlyings must not be in _KNOWN_FUTURES."""
+    from data.tos_rtd_adapter import _KNOWN_FUTURES
+
+    # ETFs should NOT be treated as futures
+    assert "SPY" not in _KNOWN_FUTURES
+    assert "QQQ" not in _KNOWN_FUTURES
+    assert "IWM" not in _KNOWN_FUTURES
+    # Index options underlyings should NOT be treated as futures
+    assert "SPX" not in _KNOWN_FUTURES
+    assert "XSP" not in _KNOWN_FUTURES
+    assert "VIX" not in _KNOWN_FUTURES
+    # But actual futures should be in the set
+    assert "MES" in _KNOWN_FUTURES
+    assert "MGC" in _KNOWN_FUTURES
+    assert "MCL" in _KNOWN_FUTURES

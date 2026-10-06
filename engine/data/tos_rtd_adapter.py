@@ -153,13 +153,15 @@ _OPTION_FIELDS = ("LAST", "BID", "ASK")
 #   VIX            -> 15.43      ($VIX.X and VIX.X do NOT resolve — 'N/A' / 0.0)
 #   SPY/QQQ        -> resolve as-is
 #   /MES:XCME      -> 7785.5     (bare "MES" returns 0.0, "/MES" returns 'N/A';
-#                                 TOS futures require the ":/<EXCHANGE>" suffix)
+#                                 TOS futures require the :<MIC> suffix, e.g. /MES:XCME)
 #   .SPY260925C763 -> 4.80       (option symbols need the leading dot)
 TOS_RTD_SYMBOLS: dict[str, str] = {
     "MES": "/MES:XCME",
     "ES": "/ES:XCME",
     "MNQ": "/MNQ:XCME",
     "NQ": "/NQ:XCME",
+    "MGC": "/MGC:XCEC",
+    "MCL": "/MCL:XNYM",
     "SPY": "SPY",
     "QQQ": "QQQ",
     "VIX": "VIX",
@@ -167,6 +169,21 @@ TOS_RTD_SYMBOLS: dict[str, str] = {
 
 # TOS returns these for unknown symbols / fields with no print.
 _NON_VALUES = frozenset({"n/a", "na", "nan", "null", "none", "-", "--", ""})
+
+# Known futures symbols from CONTRACT_SPECS. These must never be treated as stocks.
+# Explicit list extracted from CONTRACT_SPECS (as of 2026-10-06): equity index
+# futures (micro and full-size), energy, metals, rates, FX micros, and volatility futures.
+# CONTRACT_SPECS also contains SPY/QQQ/IWM (ETFs) and SPX/XSP/VIX (index options
+# underlyings), which are deliberately excluded from this set.
+_KNOWN_FUTURES = frozenset({
+    "MES", "MNQ", "M2K", "MYM",  # Equity index micros
+    "ES", "NQ", "RTY", "YM",     # Equity index full-size
+    "MCL", "CL",                  # Energy
+    "MGC", "GC",                  # Metals
+    "ZN", "ZB",                   # Treasury futures
+    "M6E", "M6B",                 # FX micros
+    "VX", "VXM",                  # Volatility futures
+})
 
 # Defaults
 DEFAULT_STALE_AFTER_S = 20.0
@@ -554,6 +571,9 @@ def resolve_tos_symbol(symbol: str) -> Optional[str]:
     Returns ``None`` for anything that is not a plausible TOS symbol, so the
     caller falls through to the next waterfall tier instead of subscribing to
     nonsense.
+
+    Known futures symbols that are NOT in TOS_RTD_SYMBOLS return None so they
+    fall through to IB rather than being incorrectly treated as stocks.
     """
     if not symbol:
         return None
@@ -567,6 +587,9 @@ def resolve_tos_symbol(symbol: str) -> Optional[str]:
     # Already-formed TOS symbol (futures "/ROOT:EXCHANGE" or option ".ROOT...").
     if key.startswith("/") or key.startswith(".") or ":" in key:
         return key
+    # Known futures must never be treated as stocks. Return None to fall through to IB.
+    if key in _KNOWN_FUTURES:
+        return None
     # Plain equity/ETF ticker.
     if key.replace(".", "").isalpha() and len(key) <= 6:
         return key
