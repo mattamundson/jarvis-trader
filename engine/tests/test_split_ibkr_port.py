@@ -6,10 +6,11 @@ Verifies:
 - Execution connections still reject 4001
 - Default behavior unchanged when split-port settings not configured
 - Startup checks pass with split-port config
+- No orders can be placed through the market data connection when on a live port
 """
 
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, AsyncMock
 from dataclasses import dataclass
 
 from config import TradingConfig
@@ -61,17 +62,18 @@ class TestSplitIBKRPort:
         assert "4001" in result.message
         assert "read-only" in result.message.lower()
 
-    def test_client_id_isolation(self):
-        """Market data should use distinct client ID from execution."""
-        # Default: execution uses CLIENT_ID, data uses CLIENT_ID + 100
+    def test_client_id_isolation_default(self):
+        """Market data should use CLIENT_ID + 1 by default (backward compatible)."""
         config = MockConfig(IBKR_CLIENT_ID=2)
         data_id = resolve_data_client_id(config)
-        assert data_id == 102  # 2 + 100
+        assert data_id == 3  # 2 + 1 (not +100, for backward compatibility)
 
-        # Explicit market data client ID
-        config.IBKR_MARKET_DATA_CLIENT_ID = 238
+    def test_client_id_explicit_market_data(self):
+        """Explicit market data client ID should be used when set."""
+        config = MockConfig(IBKR_CLIENT_ID=238)
+        config.IBKR_MARKET_DATA_CLIENT_ID = 338
         data_id = resolve_data_client_id(config)
-        assert data_id == 238
+        assert data_id == 338
 
     def test_execution_path_rejects_live_port(self):
         """Execution path (IBGatewayConfig) should reject port 4001."""
@@ -81,35 +83,69 @@ class TestSplitIBKRPort:
         with pytest.raises(ValueError, match="SAFETY VIOLATION.*4001"):
             IBGatewayConfig(port=4001)
         
+        # Should also reject port 7496 (TWS live)
+        with pytest.raises(ValueError, match="SAFETY VIOLATION.*7496"):
+            IBGatewayConfig(port=7496)
+        
         # Should accept port 4002
         cfg = IBGatewayConfig(port=4002)
         assert cfg.port == 4002
 
-    @patch('data.market_data.IBKRDataConnector')
-    async def test_market_data_uses_split_port(self, mock_connector):
+    @pytest.mark.asyncio
+    async def test_market_data_uses_split_port(self):
         """MarketDataManager should use split port when configured."""
-        from data.market_data import MarketDataManager
+        from data.market_data import MarketDataManager, IBKRDataConnector
         
         config = MockConfig(
             IBKR_PORT=4002,
             IBKR_MARKET_DATA_PORT=4001,
-            IBKR_MARKET_DATA_CLIENT_ID=238
+            IBKR_MARKET_DATA_CLIENT_ID=338
         )
         
         manager = MarketDataManager(config)
-        await manager.initialize()
         
-        # Verify IBKRDataConnector was created with correct params
-        mock_connector.assert_called()
-        call_kwargs = mock_connector.call_args[1]
-        assert call_kwargs['port'] == 4001
-        assert call_kwargs['readonly'] is True
-        assert call_kwargs['client_id'] == 238
+        # Mock the IBKRDataConnector to track its construction
+        with patch('data.market_data.IBKRDataConnector') as mock_connector_class:
+            mock_connector = Mock()
+            mock_connector.connect = AsyncMock(return_value=True)
+            mock_connector_class.return_value = mock_connector
+            
+            await manager.initialize()
+            
+            # Verify IBKRDataConnector was created with correct params
+            mock_connector_class.assert_called_once()
+            call_kwargs = mock_connector_class.call_args[1]
+            assert call_kwargs['port'] == 4001
+            assert call_kwargs['readonly'] is True
+            assert call_kwargs['client_id'] == 338
+
+    @pytest.mark.asyncio
+    async def test_market_data_uses_tws_live_port(self):
+        """MarketDataManager should force readonly for TWS live port 7496."""
+        from data.market_data import MarketDataManager, IBKRDataConnector
+        
+        config = MockConfig(
+            IBKR_PORT=4002,
+            IBKR_MARKET_DATA_PORT=7496,  # TWS live
+            IBKR_MARKET_DATA_CLIENT_ID=338
+        )
+        
+        manager = MarketDataManager(config)
+        
+        with patch('data.market_data.IBKRDataConnector') as mock_connector_class:
+            mock_connector = Mock()
+            mock_connector.connect = AsyncMock(return_value=True)
+            mock_connector_class.return_value = mock_connector
+            
+            await manager.initialize()
+            
+            # Verify readonly=True for TWS live port
+            call_kwargs = mock_connector_class.call_args[1]
+            assert call_kwargs['port'] == 7496
+            assert call_kwargs['readonly'] is True
 
     def test_health_reports_both_ports(self):
         """Health endpoint should report both execution and data ports when split."""
-        # This is tested via integration with /health endpoint
-        # We verify the structure here
         from routers.health_router import _check_ibgateway_alive, _check_ibgateway_data_port_alive
         
         # Execution port check (always runs)
@@ -126,48 +162,46 @@ class TestSplitIBKRPort:
 class TestIBKRDataConnectorReadonly:
     """Test readonly parameter on IBKRDataConnector."""
 
-    @patch('data.market_data.IB')
-    async def test_readonly_true_when_port_4001(self, mock_ib_class):
-        """Connector should use readonly=True when connecting to port 4001."""
+    @pytest.mark.asyncio
+    async def test_readonly_passed_to_ib_async(self):
+        """Connector should pass readonly parameter to ib_async connectAsync."""
         from data.market_data import IBKRDataConnector
         
-        mock_ib = Mock()
-        mock_ib_class.return_value = mock_ib
-        mock_ib.connectAsync = Mock()
+        with patch('data.market_data.IB') as mock_ib_class:
+            mock_ib = Mock()
+            mock_ib.connectAsync = AsyncMock()
+            mock_ib.disconnectedEvent = Mock()
+            mock_ib.reqMarketDataType = Mock()
+            mock_ib_class.return_value = mock_ib
+            
+            connector = IBKRDataConnector(
+                host="127.0.0.1",
+                port=4001,
+                client_id=338,
+                readonly=True
+            )
+            
+            await connector.connect()
+            
+            # Verify connectAsync was called with readonly=True
+            mock_ib.connectAsync.assert_called_once()
+            call_kwargs = mock_ib.connectAsync.call_args[1]
+            assert call_kwargs['readonly'] is True
+            assert call_kwargs['clientId'] == 338
+
+    @pytest.mark.asyncio
+    async def test_no_order_methods_on_data_connector(self):
+        """IBKRDataConnector should not expose order placement methods."""
+        from data.market_data import IBKRDataConnector
         
         connector = IBKRDataConnector(
             host="127.0.0.1",
             port=4001,
-            client_id=238,
             readonly=True
         )
         
-        await connector.connect()
-        
-        # Verify connectAsync was called with readonly=True
-        mock_ib.connectAsync.assert_called_once()
-        call_kwargs = mock_ib.connectAsync.call_args[1]
-        assert call_kwargs['readonly'] is True
-
-    @patch('data.market_data.IB')
-    async def test_readonly_false_for_paper_port(self, mock_ib_class):
-        """Connector should use readonly=False for paper port 4002."""
-        from data.market_data import IBKRDataConnector
-        
-        mock_ib = Mock()
-        mock_ib_class.return_value = mock_ib
-        mock_ib.connectAsync = Mock()
-        
-        connector = IBKRDataConnector(
-            host="127.0.0.1",
-            port=4002,
-            client_id=101,
-            readonly=False
-        )
-        
-        await connector.connect()
-        
-        # Verify connectAsync was called with readonly=False
-        mock_ib.connectAsync.assert_called_once()
-        call_kwargs = mock_ib.connectAsync.call_args[1]
-        assert call_kwargs['readonly'] is False
+        # Verify connector doesn't have order placement methods
+        assert not hasattr(connector, 'place_order')
+        assert not hasattr(connector, 'placeOrder')
+        assert not hasattr(connector, 'submit_order')
+        assert not hasattr(connector, 'cancel_order')

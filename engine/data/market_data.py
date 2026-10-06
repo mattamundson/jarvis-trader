@@ -190,7 +190,7 @@ def resolve_data_client_id(config) -> int:
     id made the data leg collide with the executor and fail to connect. Honor an
     explicit ``IBKR_DATA_CLIENT_ID`` when set (non-zero), or the new
     ``IBKR_MARKET_DATA_CLIENT_ID`` (split port mode), else offset the executor
-    id by +100 to safely isolate from execution and manual test clients.
+    id by +1 (backward compatible default).
     """
     # New split-port market data client ID (highest priority)
     if hasattr(config, "IBKR_MARKET_DATA_CLIENT_ID") and config.IBKR_MARKET_DATA_CLIENT_ID:
@@ -201,7 +201,7 @@ def resolve_data_client_id(config) -> int:
         explicit = int(explicit)
     except (TypeError, ValueError):
         explicit = 0
-    return explicit if explicit > 0 else int(config.IBKR_CLIENT_ID) + 100
+    return explicit if explicit > 0 else int(config.IBKR_CLIENT_ID) + 1
 
 
 # --- Connect-failure log throttle (SOTA plan P0.6) --------------------------
@@ -1321,12 +1321,15 @@ class MarketDataManager:
         ibkr_host = getattr(self._config, "IBKR_MARKET_DATA_HOST", None) or self._config.IBKR_HOST
         ibkr_port = getattr(self._config, "IBKR_MARKET_DATA_PORT", None) or self._config.IBKR_PORT
         
+        # Import LIVE_TRADING_PORTS to check if readonly should be forced
+        from execution.ib_gateway import LIVE_TRADING_PORTS
+        
         self.ibkr = IBKRDataConnector(
             host=ibkr_host,
             port=ibkr_port,
             client_id=resolve_data_client_id(self._config),
             connect_timeout=max(30.0, getattr(self._config, "IBKR_CONNECT_TIMEOUT_SECONDS", 30.0)),
-            readonly=(ibkr_port == 4001),  # Force readonly when connecting to live port 4001
+            readonly=(ibkr_port in LIVE_TRADING_PORTS),  # Force readonly for any live port
         )
         ibkr_connected = await self.ibkr.connect()
         if not ibkr_connected:
@@ -1375,6 +1378,9 @@ class MarketDataManager:
             ibkr_host = getattr(self._config, "IBKR_MARKET_DATA_HOST", None) or self._config.IBKR_HOST
             ibkr_port = getattr(self._config, "IBKR_MARKET_DATA_PORT", None) or self._config.IBKR_PORT
             
+            # Import LIVE_TRADING_PORTS to check if readonly should be forced
+            from execution.ib_gateway import LIVE_TRADING_PORTS
+            
             self.ibkr = IBKRDataConnector(
                 host=ibkr_host,
                 port=ibkr_port,
@@ -1382,7 +1388,7 @@ class MarketDataManager:
                 connect_timeout=max(
                     getattr(self._config, "IBKR_CONNECT_TIMEOUT_SECONDS", 5.0), timeout
                 ),
-                readonly=(ibkr_port == 4001),  # Force readonly when connecting to live port 4001
+                readonly=(ibkr_port in LIVE_TRADING_PORTS),  # Force readonly for any live port
             )
             ok = await self.ibkr.connect()
             if ok:
