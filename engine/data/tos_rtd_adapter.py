@@ -106,7 +106,6 @@ import time
 from datetime import date, datetime, timedelta
 from typing import Any, Iterable, Optional
 
-from backtest.contract_specs import CONTRACT_SPECS
 from data.provenance import SOURCE_TOS_RTD
 
 from .tos_indicator_engine import (
@@ -154,15 +153,15 @@ _OPTION_FIELDS = ("LAST", "BID", "ASK")
 #   VIX            -> 15.43      ($VIX.X and VIX.X do NOT resolve — 'N/A' / 0.0)
 #   SPY/QQQ        -> resolve as-is
 #   /MES:XCME      -> 7785.5     (bare "MES" returns 0.0, "/MES" returns 'N/A';
-#                                 TOS futures require the ":/X<EXCHANGE>" suffix)
+#                                 TOS futures require the :<MIC> suffix, e.g. /MES:XCME)
 #   .SPY260925C763 -> 4.80       (option symbols need the leading dot)
 TOS_RTD_SYMBOLS: dict[str, str] = {
     "MES": "/MES:XCME",
     "ES": "/ES:XCME",
     "MNQ": "/MNQ:XCME",
     "NQ": "/NQ:XCME",
-    "MGC": "/MGC:XCOMEX",
-    "MCL": "/MCL:XNYMEX",
+    "MGC": "/MGC:XCEC",
+    "MCL": "/MCL:XNYM",
     "SPY": "SPY",
     "QQQ": "QQQ",
     "VIX": "VIX",
@@ -171,11 +170,20 @@ TOS_RTD_SYMBOLS: dict[str, str] = {
 # TOS returns these for unknown symbols / fields with no print.
 _NON_VALUES = frozenset({"n/a", "na", "nan", "null", "none", "-", "--", ""})
 
-# Known futures symbols from contract specs. These must never be treated as stocks.
-_KNOWN_FUTURES = frozenset(
-    sym.upper() for sym, spec in CONTRACT_SPECS.items()
-    if spec.multiplier > 1.0 or sym in {"MES", "MNQ", "MCL", "MGC", "M2K", "MYM", "ES", "NQ", "RTY", "YM", "CL", "GC", "ZN", "ZB", "M6E", "M6B", "VX", "VXM"}
-)
+# Known futures symbols from CONTRACT_SPECS. These must never be treated as stocks.
+# Explicit list extracted from CONTRACT_SPECS (as of 2026-10-06): equity index
+# futures (micro and full-size), energy, metals, rates, FX micros, and volatility futures.
+# CONTRACT_SPECS also contains SPY/QQQ/IWM (ETFs) and SPX/XSP/VIX (index options
+# underlyings), which are deliberately excluded from this set.
+_KNOWN_FUTURES = frozenset({
+    "MES", "MNQ", "M2K", "MYM",  # Equity index micros
+    "ES", "NQ", "RTY", "YM",     # Equity index full-size
+    "MCL", "CL",                  # Energy
+    "MGC", "GC",                  # Metals
+    "ZN", "ZB",                   # Treasury futures
+    "M6E", "M6B",                 # FX micros
+    "VX", "VXM",                  # Volatility futures
+})
 
 # Defaults
 DEFAULT_STALE_AFTER_S = 20.0
