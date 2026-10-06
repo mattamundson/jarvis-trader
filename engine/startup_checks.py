@@ -84,20 +84,32 @@ def _check_api_key(config) -> CheckResult:
 
 def _check_ibkr_port(config) -> CheckResult:
     """
-    FAIL if port is 4001 (live trading).
-    PASS if port is 4002 (paper trading).
-    WARN if port is something else.
+    FAIL if execution port is 4001 (live trading).
+    PASS if execution port is 4002 (paper trading).
+    WARN if execution port is something else.
+    
+    When IBKR_MARKET_DATA_PORT is set to 4001 for read-only market data
+    while IBKR_PORT remains 4002, that is allowed.
     """
-    port = getattr(config, "IBKR_PORT", None)
+    exec_port = getattr(config, "IBKR_PORT", None)
+    data_port = getattr(config, "IBKR_MARKET_DATA_PORT", None)
 
-    if port == 4001:
+    # Check execution port (order/account-mutating path)
+    if exec_port == 4001:
         return CheckResult(
             name="IBKR Port",
             status="fail",
             message="IBKR_PORT is 4001 (live trading). Must use 4002 (paper) during paper phase.",
         )
 
-    if port == 4002:
+    if exec_port == 4002:
+        # Execution is paper — check if data port is separately configured
+        if data_port == 4001:
+            return CheckResult(
+                name="IBKR Port",
+                status="pass",
+                message=f"IBKR_PORT is 4002 (paper execution), IBKR_MARKET_DATA_PORT is 4001 (read-only market data from live Gateway)",
+            )
         return CheckResult(
             name="IBKR Port",
             status="pass",
@@ -107,7 +119,7 @@ def _check_ibkr_port(config) -> CheckResult:
     return CheckResult(
         name="IBKR Port",
         status="warn",
-        message=f"IBKR_PORT is {port} (unexpected value, expected 4001 or 4002)",
+        message=f"IBKR_PORT is {exec_port} (unexpected value, expected 4001 or 4002)",
     )
 
 

@@ -188,15 +188,20 @@ def resolve_data_client_id(config) -> int:
     a live connection. The execution leg (``execution/ibkr_executor.py``) connects
     with ``IBKR_CLIENT_ID``, so the data connector MUST NOT reuse it — sharing the
     id made the data leg collide with the executor and fail to connect. Honor an
-    explicit ``IBKR_DATA_CLIENT_ID`` when set (non-zero), else offset the executor
-    id by +1, matching the smoke/scanner convention elsewhere in the engine.
+    explicit ``IBKR_DATA_CLIENT_ID`` when set (non-zero), or the new
+    ``IBKR_MARKET_DATA_CLIENT_ID`` (split port mode), else offset the executor
+    id by +100 to safely isolate from execution and manual test clients.
     """
+    # New split-port market data client ID (highest priority)
+    if hasattr(config, "IBKR_MARKET_DATA_CLIENT_ID") and config.IBKR_MARKET_DATA_CLIENT_ID:
+        return int(config.IBKR_MARKET_DATA_CLIENT_ID)
+    # Legacy explicit data client ID
     explicit = getattr(config, "IBKR_DATA_CLIENT_ID", 0) or 0
     try:
         explicit = int(explicit)
     except (TypeError, ValueError):
         explicit = 0
-    return explicit if explicit > 0 else int(config.IBKR_CLIENT_ID) + 1
+    return explicit if explicit > 0 else int(config.IBKR_CLIENT_ID) + 100
 
 
 # --- Connect-failure log throttle (SOTA plan P0.6) --------------------------
@@ -299,7 +304,7 @@ def _log_connect_recovery(host: str, port: int) -> None:
 class IBKRDataConnector:
     """
     Connects to IB Gateway via ib_async.
-    Paper mode: port 4002. Live: port 4001.
+    Paper mode: port 4002. Live: port 4001 (read-only when readonly=True).
     Download IB Gateway: https://www.interactivebrokers.com/en/trading/ibgateway.php
     """
 
@@ -309,11 +314,13 @@ class IBKRDataConnector:
         port: int = 4002,
         client_id: int = 1,
         connect_timeout: float = 5.0,
+        readonly: bool = False,
     ):
         self._host = host
         self._port = port
         self._client_id = client_id
         self._connect_timeout = connect_timeout
+        self._readonly = readonly
         self._ib = None
         self._connected = False
         # Real-time bar subscriptions, replayed after a reconnect rebuilds the IB
@@ -355,7 +362,12 @@ class IBKRDataConnector:
             self._ib = IB()
             try:
                 await asyncio.wait_for(
-                    self._ib.connectAsync(self._host, self._port, clientId=self._client_id),
+                    self._ib.connectAsync(
+                        self._host, 
+                        self._port, 
+                        clientId=self._client_id,
+                        readonly=self._readonly,
+                    ),
                     timeout=self._connect_timeout,
                 )
                 self._connected = True
@@ -1305,16 +1317,21 @@ class MarketDataManager:
 
     async def initialize(self):
         """Connect to all available data sources."""
+        # Use separate market data port/host if configured, otherwise fall back to execution settings
+        ibkr_host = getattr(self._config, "IBKR_MARKET_DATA_HOST", None) or self._config.IBKR_HOST
+        ibkr_port = getattr(self._config, "IBKR_MARKET_DATA_PORT", None) or self._config.IBKR_PORT
+        
         self.ibkr = IBKRDataConnector(
-            host=self._config.IBKR_HOST,
-            port=self._config.IBKR_PORT,
+            host=ibkr_host,
+            port=ibkr_port,
             client_id=resolve_data_client_id(self._config),
             connect_timeout=max(30.0, getattr(self._config, "IBKR_CONNECT_TIMEOUT_SECONDS", 30.0)),
+            readonly=(ibkr_port == 4001),  # Force readonly when connecting to live port 4001
         )
         ibkr_connected = await self.ibkr.connect()
         if not ibkr_connected:
             logger.warning(
-                "IBKR not connected — start IB Gateway (port 4002 paper, 4001 live). "
+                f"IBKR not connected (tried {ibkr_host}:{ibkr_port}) — start IB Gateway. "
                 "Data will fall back to Polygon."
             )
 
@@ -1354,13 +1371,18 @@ class MarketDataManager:
                     await self.ibkr.disconnect()
                 except Exception:
                     pass
+            # Use separate market data port/host if configured
+            ibkr_host = getattr(self._config, "IBKR_MARKET_DATA_HOST", None) or self._config.IBKR_HOST
+            ibkr_port = getattr(self._config, "IBKR_MARKET_DATA_PORT", None) or self._config.IBKR_PORT
+            
             self.ibkr = IBKRDataConnector(
-                host=self._config.IBKR_HOST,
-                port=self._config.IBKR_PORT,
+                host=ibkr_host,
+                port=ibkr_port,
                 client_id=resolve_data_client_id(self._config),
                 connect_timeout=max(
                     getattr(self._config, "IBKR_CONNECT_TIMEOUT_SECONDS", 5.0), timeout
                 ),
+                readonly=(ibkr_port == 4001),  # Force readonly when connecting to live port 4001
             )
             ok = await self.ibkr.connect()
             if ok:
