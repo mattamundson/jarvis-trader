@@ -106,6 +106,7 @@ import time
 from datetime import date, datetime, timedelta
 from typing import Any, Iterable, Optional
 
+from backtest.contract_specs import CONTRACT_SPECS
 from data.provenance import SOURCE_TOS_RTD
 
 from .tos_indicator_engine import (
@@ -153,13 +154,15 @@ _OPTION_FIELDS = ("LAST", "BID", "ASK")
 #   VIX            -> 15.43      ($VIX.X and VIX.X do NOT resolve — 'N/A' / 0.0)
 #   SPY/QQQ        -> resolve as-is
 #   /MES:XCME      -> 7785.5     (bare "MES" returns 0.0, "/MES" returns 'N/A';
-#                                 TOS futures require the ":/<EXCHANGE>" suffix)
+#                                 TOS futures require the ":/X<EXCHANGE>" suffix)
 #   .SPY260925C763 -> 4.80       (option symbols need the leading dot)
 TOS_RTD_SYMBOLS: dict[str, str] = {
     "MES": "/MES:XCME",
     "ES": "/ES:XCME",
     "MNQ": "/MNQ:XCME",
     "NQ": "/NQ:XCME",
+    "MGC": "/MGC:XCOMEX",
+    "MCL": "/MCL:XNYMEX",
     "SPY": "SPY",
     "QQQ": "QQQ",
     "VIX": "VIX",
@@ -167,6 +170,12 @@ TOS_RTD_SYMBOLS: dict[str, str] = {
 
 # TOS returns these for unknown symbols / fields with no print.
 _NON_VALUES = frozenset({"n/a", "na", "nan", "null", "none", "-", "--", ""})
+
+# Known futures symbols from contract specs. These must never be treated as stocks.
+_KNOWN_FUTURES = frozenset(
+    sym.upper() for sym, spec in CONTRACT_SPECS.items()
+    if spec.multiplier > 1.0 or sym in {"MES", "MNQ", "MCL", "MGC", "M2K", "MYM", "ES", "NQ", "RTY", "YM", "CL", "GC", "ZN", "ZB", "M6E", "M6B", "VX", "VXM"}
+)
 
 # Defaults
 DEFAULT_STALE_AFTER_S = 20.0
@@ -554,6 +563,9 @@ def resolve_tos_symbol(symbol: str) -> Optional[str]:
     Returns ``None`` for anything that is not a plausible TOS symbol, so the
     caller falls through to the next waterfall tier instead of subscribing to
     nonsense.
+
+    Known futures symbols that are NOT in TOS_RTD_SYMBOLS return None so they
+    fall through to IB rather than being incorrectly treated as stocks.
     """
     if not symbol:
         return None
@@ -567,6 +579,9 @@ def resolve_tos_symbol(symbol: str) -> Optional[str]:
     # Already-formed TOS symbol (futures "/ROOT:EXCHANGE" or option ".ROOT...").
     if key.startswith("/") or key.startswith(".") or ":" in key:
         return key
+    # Known futures must never be treated as stocks. Return None to fall through to IB.
+    if key in _KNOWN_FUTURES:
+        return None
     # Plain equity/ETF ticker.
     if key.replace(".", "").isalpha() and len(key) <= 6:
         return key
