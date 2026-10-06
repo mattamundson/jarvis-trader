@@ -156,34 +156,63 @@ class TestSplitIBKRPort:
         assert isinstance(exec_alive, bool)
         assert isinstance(exec_port, int)
 
-        # Data port check (returns None when not configured)
-        data_alive, data_port = _check_ibgateway_data_port_alive()
+        # Data port check (mirrors execution when not configured, separate when configured)
+        data_alive, data_port = _check_ibgateway_data_port_alive(exec_alive, exec_port)
         assert isinstance(data_alive, bool)
-        # data_port can be None or int depending on config
+        assert isinstance(data_port, int)
 
-    def test_health_endpoint_serializes_data_port_fields(self):
-        """GET /health must include ibgateway_data_port and ibgateway_data_alive in response."""
+    @pytest.mark.parametrize("split_config,expected_data_port,expected_same", [
+        (None, 4002, True),    # Non-split: data fields mirror execution (4002)
+        (4001, 4001, False),   # Split: data port 4001 reported independently
+    ])
+    def test_health_endpoint_serializes_data_port_fields(self, split_config, expected_data_port, expected_same):
+        """GET /health must include ibgateway_data_port and ibgateway_data_alive in response.
+
+        Tests both non-split case (data fields equal execution fields) and split case
+        (data port 4001 reported independently). Mocks TCP probes so tests don't depend
+        on a live gateway.
+        """
+        from unittest.mock import patch
         from fastapi.testclient import TestClient
         from main import app
 
-        client = TestClient(app)
-        response = client.get("/health")
+        # Mock both TCP probes to return consistent values
+        with patch('routers.health_router._check_ibgateway_alive') as mock_exec, \
+             patch('routers.health_router.settings') as mock_settings:
 
-        assert response.status_code == 200
-        data = response.json()
+            # Execution port always returns (True, 4002)
+            mock_exec.return_value = (True, 4002)
 
-        # Verify the fields exist in the serialized response
-        assert "ibgateway_port" in data
-        assert "ibgateway_alive" in data
-        assert "ibgateway_data_port" in data, "ibgateway_data_port missing from /health response"
-        assert "ibgateway_data_alive" in data, "ibgateway_data_alive missing from /health response"
+            # Configure split-port setting
+            mock_settings.IBKR_MARKET_DATA_PORT = split_config
 
-        # When split-port not configured, data fields should exist (may be None or match execution port)
-        assert data["ibgateway_port"] is not None or data["ibgateway_port"] is None
-        assert isinstance(data["ibgateway_alive"], bool)
-        # Data port fields should be present even if None
-        assert "ibgateway_data_port" in data
-        assert "ibgateway_data_alive" in data
+            client = TestClient(app)
+            response = client.get("/health")
+
+            assert response.status_code == 200
+            data = response.json()
+
+            # Verify all four fields exist and have correct types
+            assert "ibgateway_port" in data
+            assert "ibgateway_alive" in data
+            assert "ibgateway_data_port" in data
+            assert "ibgateway_data_alive" in data
+
+            # Execution fields should always be present
+            assert data["ibgateway_port"] == 4002
+            assert data["ibgateway_alive"] is True
+
+            # Data fields behavior depends on split-port config
+            assert data["ibgateway_data_port"] == expected_data_port
+            assert isinstance(data["ibgateway_data_alive"], bool)
+
+            # In non-split mode, data fields should mirror execution
+            if expected_same:
+                assert data["ibgateway_data_port"] == data["ibgateway_port"]
+                assert data["ibgateway_data_alive"] == data["ibgateway_alive"]
+            else:
+                # In split mode, data port should differ from execution port
+                assert data["ibgateway_data_port"] != data["ibgateway_port"]
 
 
 class TestIBKRDataConnectorReadonly:

@@ -177,16 +177,18 @@ def _check_ibgateway_alive() -> tuple[bool, int]:
     return alive, port
 
 
-def _check_ibgateway_data_port_alive() -> tuple[bool, Optional[int]]:
+def _check_ibgateway_data_port_alive(
+    fallback_alive: bool, fallback_port: int
+) -> tuple[bool, Optional[int]]:
     """Probe whether IB Gateway data port is accepting connections (when split-port mode is active).
 
-    Returns (alive, port). When IBKR_MARKET_DATA_PORT is not set, returns (False, None)
-    to indicate split-port mode is not active.
+    When IBKR_MARKET_DATA_PORT is not set, returns (fallback_alive, fallback_port) to mirror
+    the execution port status. When split-port IS configured, probes the data port separately.
     """
     data_port = getattr(settings, "IBKR_MARKET_DATA_PORT", None)
     if data_port is None:
-        # Split-port mode not active
-        return False, None
+        # Split-port mode not active; mirror execution port status
+        return fallback_alive, fallback_port
 
     port = int(data_port)
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -825,7 +827,9 @@ async def _health_inner() -> dict:
     _ensure_tv_mcp_background_refresher()
     tv_mcp_healthy, tv_mcp_details, tv_mcp_status = _check_tradingview_mcp_health()
     ibgateway_alive, ibgateway_port = _check_ibgateway_alive()
-    ibgateway_data_alive, ibgateway_data_port = _check_ibgateway_data_port_alive()
+    ibgateway_data_alive, ibgateway_data_port = _check_ibgateway_data_port_alive(
+        ibgateway_alive, ibgateway_port
+    )
 
     # Execution-connector honesty. `ibkr_execution_connected` comes from the
     # execution connector's *cached* `is_connected` boolean (execution/
