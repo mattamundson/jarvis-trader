@@ -173,7 +173,9 @@ class TestSplitIBKRPort:
         on a live gateway.
         """
         from unittest.mock import patch
+
         from fastapi.testclient import TestClient
+
         from main import app
 
         # Mock both TCP probes to return consistent values
