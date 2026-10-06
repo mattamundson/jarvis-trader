@@ -305,11 +305,11 @@ class GuardedIBWrapper:
     """
     Transparent proxy around ib_async.IB that blocks order-mutating operations
     when connected to a live port (4001, 7496).
-    
+
     Read-only operations (reqHistoricalDataAsync, qualifyContractsAsync, etc.)
-    pass through unchanged. Order operations (placeOrder, cancelOrder, 
+    pass through unchanged. Order operations (placeOrder, cancelOrder,
     reqGlobalCancel, exerciseOptions) raise RuntimeError when on a live port.
-    
+
     This prevents the smoke test endpoint and any other code that reaches the
     underlying data connector's IB object from bypassing the safety layer and
     placing orders on a live account through the market data connection.
@@ -318,10 +318,38 @@ class GuardedIBWrapper:
     # Order-mutating methods that must be blocked on live ports
     _ORDER_METHODS = frozenset({
         'placeOrder',
-        'cancelOrder', 
+        'cancelOrder',
         'reqGlobalCancel',
         'exerciseOptions',
     })
+
+    class _GuardedClientProxy:
+        """Proxy for ib_instance.client that blocks order methods on live ports."""
+
+        def __init__(self, client, port: int, is_live: bool):
+            object.__setattr__(self, '_client', client)
+            object.__setattr__(self, '_port', port)
+            object.__setattr__(self, '_is_live', is_live)
+
+        def __getattr__(self, name: str):
+            if name in GuardedIBWrapper._ORDER_METHODS and self._is_live:
+                raise RuntimeError(
+                    f"SAFETY BLOCK: client.{name}() is not allowed on the market data connector "
+                    f"when connected to live port {self._port}. Order operations must go "
+                    f"through the execution leg (IBGatewayManager) and safety layer, not "
+                    f"through the data connector."
+                )
+            return getattr(self._client, name)
+
+        def __setattr__(self, name: str, value):
+            if name in ('_client', '_port', '_is_live'):
+                object.__setattr__(self, name, value)
+            else:
+                setattr(self._client, name, value)
+
+        def __repr__(self) -> str:
+            status = "LIVE (order-blocked)" if self._is_live else "paper"
+            return f"<GuardedClientProxy port={self._port} ({status})>"
 
     def __init__(self, ib_instance, port: int):
         """
@@ -334,9 +362,24 @@ class GuardedIBWrapper:
         # Import LIVE_TRADING_PORTS to check if this is a live connection
         from execution.ib_gateway import LIVE_TRADING_PORTS
         object.__setattr__(self, '_is_live_port', port in LIVE_TRADING_PORTS)
+        object.__setattr__(self, '_guarded_client', None)
 
     def __getattr__(self, name: str):
         """Proxy attribute access to the wrapped IB instance, blocking order methods on live ports."""
+        if name == 'client':
+            # Return a guarded client proxy on live ports, raw client on paper ports
+            if self._guarded_client is None:
+                raw_client = getattr(self._wrapped_ib, 'client')
+                if self._is_live_port:
+                    object.__setattr__(
+                        self,
+                        '_guarded_client',
+                        self._GuardedClientProxy(raw_client, self._port, True)
+                    )
+                else:
+                    object.__setattr__(self, '_guarded_client', raw_client)
+            return self._guarded_client
+
         if name in self._ORDER_METHODS and self._is_live_port:
             raise RuntimeError(
                 f"SAFETY BLOCK: {name}() is not allowed on the market data connector "
@@ -349,7 +392,7 @@ class GuardedIBWrapper:
 
     def __setattr__(self, name: str, value):
         """Proxy attribute writes to the wrapped IB instance."""
-        if name in ('_wrapped_ib', '_port', '_is_live_port'):
+        if name in ('_wrapped_ib', '_port', '_is_live_port', '_guarded_client'):
             object.__setattr__(self, name, value)
         else:
             setattr(self._wrapped_ib, name, value)
@@ -425,18 +468,18 @@ class IBKRDataConnector:
             try:
                 await asyncio.wait_for(
                     self._ib.connectAsync(
-                        self._host, 
-                        self._port, 
+                        self._host,
+                        self._port,
                         clientId=self._client_id,
                         readonly=self._readonly,
                     ),
                     timeout=self._connect_timeout,
                 )
                 self._connected = True
-                
+
                 # Wrap the IB instance with GuardedIBWrapper to block order operations on live ports
                 self._ib = GuardedIBWrapper(self._ib, self._port)
-                
+
                 # Delayed-data stopgap for the IB paper-account market-data
                 # subscription gap (Error 10168/354: futures data not subscribed).
                 # reqMarketDataType(3) asks IB for DELAYED data when no live
@@ -1386,10 +1429,10 @@ class MarketDataManager:
         # Use separate market data port/host if configured, otherwise fall back to execution settings
         ibkr_host = getattr(self._config, "IBKR_MARKET_DATA_HOST", None) or self._config.IBKR_HOST
         ibkr_port = getattr(self._config, "IBKR_MARKET_DATA_PORT", None) or self._config.IBKR_PORT
-        
+
         # Import LIVE_TRADING_PORTS to check if readonly should be forced
         from execution.ib_gateway import LIVE_TRADING_PORTS
-        
+
         self.ibkr = IBKRDataConnector(
             host=ibkr_host,
             port=ibkr_port,
@@ -1443,10 +1486,10 @@ class MarketDataManager:
             # Use separate market data port/host if configured
             ibkr_host = getattr(self._config, "IBKR_MARKET_DATA_HOST", None) or self._config.IBKR_HOST
             ibkr_port = getattr(self._config, "IBKR_MARKET_DATA_PORT", None) or self._config.IBKR_PORT
-            
+
             # Import LIVE_TRADING_PORTS to check if readonly should be forced
             from execution.ib_gateway import LIVE_TRADING_PORTS
-            
+
             self.ibkr = IBKRDataConnector(
                 host=ibkr_host,
                 port=ibkr_port,

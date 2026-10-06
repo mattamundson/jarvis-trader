@@ -447,10 +447,10 @@ class TradingConfig(BaseSettings):
     IBKR_PORT: int = Field(4002, description="4001=live, 4002=paper")
     IBKR_CLIENT_ID: int = Field(1, description="Client ID for IB Gateway connection")
     IBKR_PAPER_MODE: bool = Field(True, description="Always start in paper mode")
-    
+
     # Optional separate market data connection (allows read-only data from live port 4001)
     IBKR_MARKET_DATA_HOST: Optional[str] = Field(
-        None, 
+        None,
         description="Optional separate host for market data only (defaults to IBKR_HOST)"
     )
     IBKR_MARKET_DATA_PORT: Optional[int] = Field(

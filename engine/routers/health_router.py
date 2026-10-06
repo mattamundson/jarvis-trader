@@ -179,7 +179,7 @@ def _check_ibgateway_alive() -> tuple[bool, int]:
 
 def _check_ibgateway_data_port_alive() -> tuple[bool, Optional[int]]:
     """Probe whether IB Gateway data port is accepting connections (when split-port mode is active).
-    
+
     Returns (alive, port). When IBKR_MARKET_DATA_PORT is not set, returns (False, None)
     to indicate split-port mode is not active.
     """
@@ -187,7 +187,7 @@ def _check_ibgateway_data_port_alive() -> tuple[bool, Optional[int]]:
     if data_port is None:
         # Split-port mode not active
         return False, None
-    
+
     port = int(data_port)
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(0.5)

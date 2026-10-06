@@ -417,7 +417,7 @@ async def smoke_bracket(
             503,
             detail="IBKRDataConnector not connected — is IB Gateway running?",
         )
-    
+
     # SAFETY: Refuse to run if the data connection is on a live port
     if ibkr_data._port in LIVE_TRADING_PORTS:
         raise HTTPException(
