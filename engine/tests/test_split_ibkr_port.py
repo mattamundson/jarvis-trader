@@ -9,13 +9,14 @@ Verifies:
 - No orders can be placed through the market data connection when on a live port
 """
 
-import pytest
-from unittest.mock import Mock, patch, AsyncMock
 from dataclasses import dataclass
+from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
 
 from config import TradingConfig
-from startup_checks import _check_ibkr_port
 from data.market_data import resolve_data_client_id
+from startup_checks import _check_ibkr_port
 
 
 @dataclass
@@ -96,7 +97,7 @@ class TestSplitIBKRPort:
     @pytest.mark.asyncio
     async def test_market_data_uses_split_port(self):
         """MarketDataManager should use split port when configured."""
-        from data.market_data import MarketDataManager, IBKRDataConnector
+        from data.market_data import IBKRDataConnector, MarketDataManager
 
         config = MockConfig(
             IBKR_PORT=4002,
@@ -124,7 +125,7 @@ class TestSplitIBKRPort:
     @pytest.mark.asyncio
     async def test_market_data_uses_tws_live_port(self):
         """MarketDataManager should force readonly for TWS live port 7496."""
-        from data.market_data import MarketDataManager, IBKRDataConnector
+        from data.market_data import IBKRDataConnector, MarketDataManager
 
         config = MockConfig(
             IBKR_PORT=4002,
@@ -272,7 +273,9 @@ class TestSmokeEndpointSafety:
     async def test_smoke_endpoint_refuses_live_port(self):
         """Smoke endpoint should refuse to run when data port is on 4001."""
         from unittest.mock import patch
+
         from fastapi import HTTPException
+
         import main
 
         # Mock data_manager with ibkr on live port
@@ -297,7 +300,8 @@ class TestSmokeEndpointSafety:
     @pytest.mark.asyncio
     async def test_smoke_endpoint_allows_paper_port(self):
         """Smoke endpoint should allow paper port 4002."""
-        from unittest.mock import patch, AsyncMock
+        from unittest.mock import AsyncMock, patch
+
         import main
 
         # Mock data_manager with ibkr on paper port
@@ -385,8 +389,9 @@ class TestGuardedIBWrapperWiring:
     @pytest.mark.asyncio
     async def test_guarded_wrapper_applied_on_live_port(self):
         """IBKRDataConnector on port 4001 should wrap _ib with GuardedIBWrapper."""
-        from data.market_data import IBKRDataConnector, GuardedIBWrapper
         from unittest.mock import AsyncMock, Mock
+
+        from data.market_data import GuardedIBWrapper, IBKRDataConnector
 
         with patch('ib_async.IB') as mock_ib_class:
             mock_ib = Mock()
@@ -413,8 +418,9 @@ class TestGuardedIBWrapperWiring:
     @pytest.mark.asyncio
     async def test_guarded_wrapper_not_applied_on_paper_port(self):
         """IBKRDataConnector on port 4002 should wrap _ib but allow operations."""
-        from data.market_data import IBKRDataConnector, GuardedIBWrapper
         from unittest.mock import AsyncMock, Mock
+
+        from data.market_data import GuardedIBWrapper, IBKRDataConnector
 
         with patch('ib_async.IB') as mock_ib_class:
             mock_ib = Mock()

@@ -369,7 +369,7 @@ class GuardedIBWrapper:
         if name == 'client':
             # Return a guarded client proxy on live ports, raw client on paper ports
             if self._guarded_client is None:
-                raw_client = getattr(self._wrapped_ib, 'client')
+                raw_client = self._wrapped_ib.client
                 if self._is_live_port:
                     object.__setattr__(
                         self,

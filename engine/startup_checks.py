@@ -87,7 +87,7 @@ def _check_ibkr_port(config) -> CheckResult:
     FAIL if execution port is 4001 (live trading).
     PASS if execution port is 4002 (paper trading).
     WARN if execution port is something else.
-    
+
     When IBKR_MARKET_DATA_PORT is set to 4001 for read-only market data
     while IBKR_PORT remains 4002, that is allowed.
     """
@@ -108,7 +108,7 @@ def _check_ibkr_port(config) -> CheckResult:
             return CheckResult(
                 name="IBKR Port",
                 status="pass",
-                message=f"IBKR_PORT is 4002 (paper execution), IBKR_MARKET_DATA_PORT is 4001 (read-only market data from live Gateway)",
+                message="IBKR_PORT is 4002 (paper execution), IBKR_MARKET_DATA_PORT is 4001 (read-only market data from live Gateway)",
             )
         return CheckResult(
             name="IBKR Port",
