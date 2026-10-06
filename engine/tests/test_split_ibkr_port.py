@@ -207,3 +207,119 @@ class TestIBKRDataConnectorReadonly:
         assert not hasattr(connector, 'placeOrder')
         assert not hasattr(connector, 'submit_order')
         assert not hasattr(connector, 'cancel_order')
+
+    @pytest.mark.asyncio
+    async def test_guarded_ib_blocks_place_order_on_live_port(self):
+        """GuardedIBWrapper should block placeOrder when on a live port."""
+        from data.market_data import GuardedIBWrapper
+        
+        mock_ib = Mock()
+        mock_ib.placeOrder = Mock()
+        
+        # Live port (4001) should block
+        guarded = GuardedIBWrapper(mock_ib, 4001)
+        with pytest.raises(RuntimeError, match="SAFETY BLOCK.*placeOrder.*not allowed.*live port 4001"):
+            guarded.placeOrder(Mock(), Mock())
+        
+        # Paper port (4002) should allow through
+        guarded_paper = GuardedIBWrapper(mock_ib, 4002)
+        guarded_paper.placeOrder(Mock(), Mock())
+        mock_ib.placeOrder.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_guarded_ib_blocks_cancel_order_on_live_port(self):
+        """GuardedIBWrapper should block cancelOrder when on a live port."""
+        from data.market_data import GuardedIBWrapper
+        
+        mock_ib = Mock()
+        mock_ib.cancelOrder = Mock()
+        
+        # Live port (4001) should block
+        guarded = GuardedIBWrapper(mock_ib, 4001)
+        with pytest.raises(RuntimeError, match="SAFETY BLOCK.*cancelOrder.*not allowed.*live port 4001"):
+            guarded.cancelOrder(Mock())
+        
+        # TWS live port (7496) should also block
+        guarded_tws = GuardedIBWrapper(mock_ib, 7496)
+        with pytest.raises(RuntimeError, match="SAFETY BLOCK.*cancelOrder.*not allowed.*live port 7496"):
+            guarded_tws.cancelOrder(Mock())
+
+    @pytest.mark.asyncio
+    async def test_guarded_ib_allows_readonly_operations(self):
+        """GuardedIBWrapper should allow read-only operations on any port."""
+        from data.market_data import GuardedIBWrapper
+        
+        mock_ib = Mock()
+        mock_ib.qualifyContractsAsync = AsyncMock(return_value=[Mock()])
+        mock_ib.reqHistoricalDataAsync = AsyncMock(return_value=[])
+        mock_ib.isConnected = Mock(return_value=True)
+        
+        # Live port should allow read-only operations
+        guarded = GuardedIBWrapper(mock_ib, 4001)
+        await guarded.qualifyContractsAsync(Mock())
+        await guarded.reqHistoricalDataAsync(Mock())
+        assert guarded.isConnected()
+        
+        mock_ib.qualifyContractsAsync.assert_called_once()
+        mock_ib.reqHistoricalDataAsync.assert_called_once()
+        mock_ib.isConnected.assert_called_once()
+
+
+class TestSmokeEndpointSafety:
+    """Test safety blocks on the /safety/smoke/bracket endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_smoke_endpoint_refuses_live_port(self):
+        """Smoke endpoint should refuse to run when data port is on 4001."""
+        from unittest.mock import patch
+        from fastapi import HTTPException
+        import main
+        
+        # Mock data_manager with ibkr on live port
+        mock_ibkr = Mock()
+        mock_ibkr.is_connected = True
+        mock_ibkr._port = 4001
+        
+        mock_data_manager = Mock()
+        mock_data_manager.ibkr = mock_ibkr
+        
+        with patch.object(main, 'data_manager', mock_data_manager):
+            from routers.safety_router import smoke_bracket
+            
+            with pytest.raises(HTTPException) as exc_info:
+                await smoke_bracket()
+            
+            assert exc_info.value.status_code == 400
+            assert "SAFETY BLOCK" in exc_info.value.detail
+            assert "4001" in exc_info.value.detail
+            assert "live port" in exc_info.value.detail
+
+    @pytest.mark.asyncio  
+    async def test_smoke_endpoint_allows_paper_port(self):
+        """Smoke endpoint should allow paper port 4002."""
+        from unittest.mock import patch, AsyncMock
+        import main
+        
+        # Mock data_manager with ibkr on paper port
+        mock_ib = Mock()
+        mock_ib.qualifyContractsAsync = AsyncMock(return_value=[Mock(conId=12345)])
+        mock_ib.placeOrder = Mock(return_value=Mock(order=Mock(orderId=1)))
+        mock_ib.openTrades = Mock(return_value=[])
+        mock_ib.cancelOrder = Mock()
+        
+        mock_ibkr = Mock()
+        mock_ibkr.is_connected = True
+        mock_ibkr._port = 4002
+        mock_ibkr._ib = mock_ib
+        mock_ibkr._resolve_front_month = AsyncMock(return_value=Mock())
+        
+        mock_data_manager = Mock()
+        mock_data_manager.ibkr = mock_ibkr
+        
+        with patch.object(main, 'data_manager', mock_data_manager):
+            from routers.safety_router import smoke_bracket
+            
+            # Should not raise for paper port
+            result = await smoke_bracket()
+            assert isinstance(result, dict)
+

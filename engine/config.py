@@ -461,7 +461,7 @@ class TradingConfig(BaseSettings):
     )
     IBKR_MARKET_DATA_CLIENT_ID: Optional[int] = Field(
         None,
-        description="Optional separate client ID for market data leg (defaults to IBKR_CLIENT_ID + 100)"
+        description="Optional separate client ID for market data leg (defaults to IBKR_CLIENT_ID + 1)"
     )
     IBKR_CONNECT_TIMEOUT_SECONDS: float = Field(
         5.0,

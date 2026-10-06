@@ -301,6 +301,68 @@ def _log_connect_recovery(host: str, port: int) -> None:
         )
 
 
+class GuardedIBWrapper:
+    """
+    Transparent proxy around ib_async.IB that blocks order-mutating operations
+    when connected to a live port (4001, 7496).
+    
+    Read-only operations (reqHistoricalDataAsync, qualifyContractsAsync, etc.)
+    pass through unchanged. Order operations (placeOrder, cancelOrder, 
+    reqGlobalCancel, exerciseOptions) raise RuntimeError when on a live port.
+    
+    This prevents the smoke test endpoint and any other code that reaches the
+    underlying data connector's IB object from bypassing the safety layer and
+    placing orders on a live account through the market data connection.
+    """
+
+    # Order-mutating methods that must be blocked on live ports
+    _ORDER_METHODS = frozenset({
+        'placeOrder',
+        'cancelOrder', 
+        'reqGlobalCancel',
+        'exerciseOptions',
+    })
+
+    def __init__(self, ib_instance, port: int):
+        """
+        Args:
+            ib_instance: The underlying ib_async.IB instance
+            port: The IB Gateway port this instance is connected to
+        """
+        object.__setattr__(self, '_wrapped_ib', ib_instance)
+        object.__setattr__(self, '_port', port)
+        # Import LIVE_TRADING_PORTS to check if this is a live connection
+        from execution.ib_gateway import LIVE_TRADING_PORTS
+        object.__setattr__(self, '_is_live_port', port in LIVE_TRADING_PORTS)
+
+    def __getattr__(self, name: str):
+        """Proxy attribute access to the wrapped IB instance, blocking order methods on live ports."""
+        if name in self._ORDER_METHODS and self._is_live_port:
+            raise RuntimeError(
+                f"SAFETY BLOCK: {name}() is not allowed on the market data connector "
+                f"when connected to live port {self._port}. Order operations must go "
+                f"through the execution leg (IBGatewayManager) and safety layer, not "
+                f"through the data connector. For smoke tests, ensure IBKR_MARKET_DATA_PORT "
+                f"is unset or set to paper port 4002."
+            )
+        return getattr(self._wrapped_ib, name)
+
+    def __setattr__(self, name: str, value):
+        """Proxy attribute writes to the wrapped IB instance."""
+        if name in ('_wrapped_ib', '_port', '_is_live_port'):
+            object.__setattr__(self, name, value)
+        else:
+            setattr(self._wrapped_ib, name, value)
+
+    def __delattr__(self, name: str):
+        """Proxy attribute deletion to the wrapped IB instance."""
+        delattr(self._wrapped_ib, name)
+
+    def __repr__(self) -> str:
+        port_status = "LIVE (order-blocked)" if self._is_live_port else "paper"
+        return f"<GuardedIBWrapper port={self._port} ({port_status})>"
+
+
 class IBKRDataConnector:
     """
     Connects to IB Gateway via ib_async.
@@ -371,6 +433,10 @@ class IBKRDataConnector:
                     timeout=self._connect_timeout,
                 )
                 self._connected = True
+                
+                # Wrap the IB instance with GuardedIBWrapper to block order operations on live ports
+                self._ib = GuardedIBWrapper(self._ib, self._port)
+                
                 # Delayed-data stopgap for the IB paper-account market-data
                 # subscription gap (Error 10168/354: futures data not subscribed).
                 # reqMarketDataType(3) asks IB for DELAYED data when no live
