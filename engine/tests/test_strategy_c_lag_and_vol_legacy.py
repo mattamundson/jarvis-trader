@@ -166,6 +166,7 @@ def test_premarket_delivery_failure_exits_4(tmp_path, monkeypatch):
     files["BASELINE_FILE"].write_text(_json.dumps(BASE))
     for n, p in files.items():
         monkeypatch.setattr(mon, n, p)
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)  # CI sets it; test delivery path
     monkeypatch.setattr(mon, "post_discord", lambda embed: False)
     monkeypatch.setattr(sys, "argv", ["signal_monitor.py", "--mode", "premarket"])
     assert mon.main() == 4
@@ -223,6 +224,7 @@ def test_failed_delivery_does_not_advance_fingerprint(tmp_path, monkeypatch):
         ("HISTORY_FILE", hist_file),
     ):
         monkeypatch.setattr(mon, name, p)
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)  # CI sets it; test delivery path
     monkeypatch.setattr(mon, "post_discord", lambda embed: False)
     monkeypatch.setattr(sys, "argv", ["signal_monitor.py", "--mode", "check"])
     assert mon.main() == 4
@@ -266,3 +268,13 @@ def test_crash_exits_5_not_warning(monkeypatch):
 
     monkeypatch.setattr(mon, "main", boom)
     assert mon.run() == 5
+
+
+def test_future_dated_signal_is_critical():
+    r = _ev(_sig(week_of=mon.expected_signal_friday() + timedelta(days=7)))
+    assert any("future" in m for m in r["critical"])
+
+
+def test_out_of_range_weight_is_critical():
+    r = _ev(_sig(holdings={"XLK": 1.3, "SHY": -0.3}))
+    assert any("out of range" in m for m in r["critical"])

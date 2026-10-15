@@ -198,6 +198,10 @@ def evaluate(sig: dict, baseline: dict, history: list[dict], mode: str) -> dict[
             out["critical"].append(
                 f"Signal is for {eff} — expected {lf}. Friday generation did not run ({lag_days}d behind)."
             )
+        elif lag_days < 0:
+            out["critical"].append(
+                f"Signal is for {eff} — in the future vs expected {lf}. Clock or date bug."
+            )
         elif mode == "premarket" and lag_days > 0:
             out["warning"].append(f"Signal effective {eff}, last Friday {lf}.")
     except Exception:
@@ -213,7 +217,10 @@ def evaluate(sig: dict, baseline: dict, history: list[dict], mode: str) -> dict[
     # Holdings sanity
     h = f.get("holdings") or {}
     if h:
-        tot = sum(h.values())
+        bad = {k: v for k, v in h.items() if not isinstance(v, (int, float)) or not 0.0 <= v <= 1.0}
+        if bad:
+            out["critical"].append(f"Allocation weights out of range [0, 1]: {bad}")
+        tot = sum(v for v in h.values() if isinstance(v, (int, float)))
         if not 0.98 <= tot <= 1.02:
             out["critical"].append(f"Holdings sum to {tot:.3f} (expected 1.0)")
 
