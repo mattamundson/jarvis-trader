@@ -2369,6 +2369,7 @@ async def lifespan(app: FastAPI):
     try:
         from experiments.mes_session_recorder import record_session as _mes_record
         from experiments.mes_session_outcome import fill_outcomes as _mes_fill_outcomes
+        from experiments.es_read_engine import lock_read as _es_lock_read
 
         async def run_mes_session_recorder() -> None:
             try:
@@ -2382,6 +2383,16 @@ async def lifespan(app: FastAPI):
                 )
             except Exception as exc:
                 logger.error("[MESRecorder] morning pass failed: %s", exc, exc_info=True)
+            try:
+                read = await _es_lock_read(data_manager=data_manager)
+                logger.info(
+                    "[ESRead] inserted=%s side=%s warnings=%s",
+                    read.get("inserted"),
+                    read.get("plan", {}).get("side"),
+                    read.get("warnings"),
+                )
+            except Exception as exc:
+                logger.error("[ESRead] lock failed: %s", exc, exc_info=True)
 
         async def run_mes_session_outcome() -> None:
             try:

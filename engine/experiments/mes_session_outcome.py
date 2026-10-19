@@ -31,6 +31,8 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+from experiments.es_read_engine import READ_SYMBOL, score_reads
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_DB_PATH = str(Path(__file__).resolve().parents[1] / "data" / "jarvis_trader.db")
@@ -72,6 +74,19 @@ def _compute_delta(side: Optional[str], open_price: Optional[float], close: Opti
     return None
 
 
+async def _score_es_read(result: "OutcomeResult", for_date, db_path, data_manager, bars_fn) -> None:
+    """Score the ES read row for the day. Its 5-minute scoring lives in es_read_engine."""
+    try:
+        summary = await score_reads(
+            for_date=for_date, db_path=db_path, data_manager=data_manager, bars_fn=bars_fn
+        )
+        result.updated_rows += summary.get("updated_rows", 0)
+        result.skipped_no_data += summary.get("skipped_no_data", 0)
+        result.errors.extend(f"es_read:{e}" for e in summary.get("errors", []))
+    except Exception as exc:  # pragma: no cover - scorer does not raise
+        result.errors.append(f"es_read_failed:{type(exc).__name__}")
+
+
 # ── Public entry point ────────────────────────────────────────────────────────
 
 
@@ -101,6 +116,7 @@ async def fill_outcomes(
     db_path: str = DEFAULT_DB_PATH,
     data_manager: Any = None,
     bars_fn: Any = None,
+    score_es_read: bool = True,
 ) -> OutcomeResult:
     """Fill outcome columns for hypothesis rows missing them.
 
@@ -121,15 +137,20 @@ async def fill_outcomes(
         if for_date is not None:
             rows = conn.execute(
                 "SELECT id, date, symbol, entry_hypothesis_side, open_price, "
-                "outcome_recorded_at FROM mes_session_hypothesis WHERE date = ?",
-                (for_date.isoformat(),),
+                "outcome_recorded_at FROM mes_session_hypothesis "
+                "WHERE date = ? AND symbol != ?",
+                (for_date.isoformat(), READ_SYMBOL),
             ).fetchall()
         else:
             rows = conn.execute(
                 "SELECT id, date, symbol, entry_hypothesis_side, open_price, "
                 "outcome_recorded_at FROM mes_session_hypothesis "
-                "WHERE outcome_recorded_at IS NULL"
+                "WHERE outcome_recorded_at IS NULL AND symbol != ?",
+                (READ_SYMBOL,),
             ).fetchall()
+
+    if score_es_read:
+        await _score_es_read(result, for_date, db_path, data_manager, bars_fn)
 
     if not rows:
         logger.info("[MESOutcome] no rows need outcome fills")
