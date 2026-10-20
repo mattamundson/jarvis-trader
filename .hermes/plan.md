@@ -31,5 +31,7 @@ Prepare an isolated, reviewable fix that selects IBKR's active continuous future
 - Full non-slow engine suite: `9519 passed, 28 skipped, 184 deselected, 1 xfailed, 5 failed` in 773.42 seconds.
 - All five failures were reproduced unchanged from a clean `origin/master` archive: one Kronos fixture-data failure and four stale `_FakeIB.connectAsync` signature failures in `test_ib_market_data_type.py` caused by the existing `readonly` argument.
 - Independent Codex review: `No discrete correctness, safety, or maintainability defects were identified in the current changes.`
-- Live validation remains blocked: Gateway was restored only to its Paper Trading login screen; no credential or verification code was handled, and port 4001 is not yet authenticated.
+- Live read-only branch validation passed after the operator-authenticated Gateway restored port 4001: the resolver selected `MGCZ6` (expiry `20261229`) and returned 316 hourly bars through `2026-10-20 10:00:00-04:00`; the newest bar had volume `10126`.
+- Fresh sanitized account attestation still fails closed: one managed account, configured-account match `false`, paper-prefix classification `false`, identifiers redacted.
+- The unmerged serving engine remains intentionally unchanged. Its safety bundle still returns `1` and reports MGC `18.3h` stale versus the `1.5h` tolerance, demonstrating the production repair has not been deployed.
 - Delivery boundary remains PR-only. Do not deploy or merge from this worktree.
