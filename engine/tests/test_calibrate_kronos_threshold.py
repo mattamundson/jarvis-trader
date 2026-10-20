@@ -172,7 +172,8 @@ class TestPerInstrumentIsolation:
     def test_distinct_thresholds(self, tmp_path: Path) -> None:
         db = tmp_path / "test.db"
         n = 200  # enough bars for a valid calibration (MIN_BARS_REQUIRED=20, horizon=5)
-        timestamps = _make_ts_sequence(n, start="2025-10-01T00:00:00")
+        start = datetime.now(tz=timezone.utc) - timedelta(hours=n)
+        timestamps = _make_ts_sequence(n, start=start.replace(tzinfo=None).isoformat())
 
         # LOW_VOL: prices drift slowly 100 → 110
         low_vol_closes = [100.0 + i * 0.05 for i in range(n)]

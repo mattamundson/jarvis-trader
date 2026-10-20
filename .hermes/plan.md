@@ -1,22 +1,30 @@
-# Plan — Public Read-Only Market Brief Site
+# Plan — Repair Baseline Fast-Test Failures
 
 ## Finish line
 
-Create the first safe 24/7-public tranche for Market Brief: a public-safe page and public JSON route that can be deployed to Vercel/Cloudflare without exposing trading controls.
+Restore the five `origin/master` fast-suite failures that block PR #967 without changing production trading behavior, broker routing, risk controls, symbol gates, or kill-switch logic.
 
 ## Scope
 
-- Add `/market-brief-public` as a read-only public page.
-- Add `/api/public-market-brief/latest` as a sanitized JSON route.
-- Exempt only these public paths from Basic Auth middleware.
-- Keep `/mission-control`, `/api/market-brief`, `/api/engine/*`, `/api/master/*`, trading routes and all control surfaces protected.
-- No broker, order routing, risk config, kill-switch, `.env`, or DO_NOT_TRADE changes.
+1. Update the IB market-data test double to accept and record the production connector's existing `readonly` keyword without changing connector behavior.
+2. Make the Kronos calibration fixture's timestamps relative to the test run so its synthetic bars remain inside the configured lookback window.
+3. Keep all edits test-only.
+4. Deliver through a separate focused PR; do not merge or deploy.
 
-## Acceptance criteria
+## Verification
 
-1. Public JSON route returns `ANALYSIS_ONLY`, `orders_enabled=false`, `risk_config_touched=false`.
-2. Public JSON route excludes `sourcePath` and internal local filesystem paths.
-3. Public page renders the base-rate block and provisional/no-edge conditional disclosure.
-4. Middleware unit coverage proves public paths bypass auth while trading/control paths do not.
-5. Typecheck, build, and targeted route tests pass.
-6. Deploy guidance remains Vercel/Cloudflare-ready, but no paid/cloud resource is created without explicit approval.
+- Reproduce the five failures before editing.
+- Run both affected test modules after editing.
+- Run targeted Ruff and `git diff --check`.
+- Run the complete fast/non-slow test suite and compare the result with the previous five-failure baseline.
+- Push and open a focused PR with exact verification evidence.
+- Do not merge either this PR or safety-review PR #967 without explicit approval.
+
+## Evidence
+
+- RED: reproduced exactly five failures from `origin/master` (one expired Kronos fixture and four stale IB test-double signatures).
+- GREEN: both affected modules passed, `22 passed`.
+- Targeted Ruff, full engine Ruff, and `git diff --check`: passed.
+- Scope guard: `TEST_ONLY_SCOPE_PASS files=3`; only this plan and two test modules differ from `origin/master`.
+- Independent Codex review was attempted but unavailable because its Windows sandbox failed with `helper_sandbox_lock_failed`; no review pass is claimed.
+- Full non-slow suite: `9522 passed, 29 skipped, 184 deselected, 1 xfailed` in 1164.25 seconds; exit `0`.
