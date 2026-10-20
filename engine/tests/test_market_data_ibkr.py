@@ -79,6 +79,7 @@ async def test_resolve_front_month_skips_expired_contracts():
     conn = IBKRDataConnector()
     mock_ib = MagicMock()
     # Order shuffled to prove the filter (not just sorting) does the work.
+    mock_ib.qualifyContractsAsync = AsyncMock(return_value=[])
     mock_ib.reqContractDetailsAsync = AsyncMock(return_value=[expired_april, live_june, live_aug])
     conn._ib = mock_ib
 
@@ -86,6 +87,46 @@ async def test_resolve_front_month_skips_expired_contracts():
         out = await conn._resolve_front_month("MGC", "COMEX")
 
     assert out.localSymbol == "MGCM6", f"expected MGCM6, got {out.localSymbol}"
+
+
+@pytest.mark.asyncio
+async def test_resolve_front_month_prefers_ib_active_contract_over_nearest_expiry():
+    """IB's continuous contract defines the active month by liquidity/roll state.
+
+    The nearest non-expired serial month can remain technically live after volume
+    has rolled forward. Selecting it froze MGC at flat, zero-volume bars while the
+    actively traded December contract continued updating.
+    """
+    inactive_october = _detail("20261028", "MGCV6")
+    active_december = _detail("20261229", "MGCZ6")
+    active_december.contract.symbol = "MGC"
+    active_december.contract.exchange = "COMEX"
+    active_december.contract.currency = "USD"
+    active_december.contract.multiplier = "10"
+    active_december.contract.conId = 202612
+
+    continuous = MagicMock()
+    continuous.symbol = "MGC"
+    continuous.lastTradeDateOrContractMonth = "20261229"
+    continuous.exchange = "COMEX"
+    continuous.currency = "USD"
+    continuous.localSymbol = "MGCZ6"
+    continuous.multiplier = "10"
+
+    conn = IBKRDataConnector()
+    mock_ib = MagicMock()
+    mock_ib.qualifyContractsAsync = AsyncMock(
+        side_effect=[[continuous], [active_december.contract]]
+    )
+    mock_ib.reqContractDetailsAsync = AsyncMock(
+        return_value=[inactive_october, active_december]
+    )
+    conn._ib = mock_ib
+
+    with patch("data.market_data.date", new=_FakeDate(date(2026, 10, 20))):
+        out = await conn._resolve_front_month("MGC", "COMEX")
+
+    assert out.localSymbol == "MGCZ6"
 
 
 @pytest.mark.asyncio
@@ -98,6 +139,7 @@ async def test_resolve_front_month_falls_back_when_all_expired():
 
     conn = IBKRDataConnector()
     mock_ib = MagicMock()
+    mock_ib.qualifyContractsAsync = AsyncMock(return_value=[])
     mock_ib.reqContractDetailsAsync = AsyncMock(return_value=[old1, old2])
     conn._ib = mock_ib
 
