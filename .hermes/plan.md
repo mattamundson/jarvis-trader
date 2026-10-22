@@ -1,30 +1,37 @@
-# Plan — Repair Baseline Fast-Test Failures
+# Plan — [safety-review] MGC Active-Contract Freshness Repair
 
 ## Finish line
 
-Restore the five `origin/master` fast-suite failures that block PR #967 without changing production trading behavior, broker routing, risk controls, symbol gates, or kill-switch logic.
+Prepare an isolated, reviewable fix that selects IBKR's active continuous futures contract for read-only historical data instead of the nearest non-expired serial contract, with regression coverage and no execution, risk, symbol-gate, kill-switch, or live-order changes.
 
 ## Scope
 
-1. Update the IB market-data test double to accept and record the production connector's existing `readonly` keyword without changing connector behavior.
-2. Make the Kronos calibration fixture's timestamps relative to the test run so its synthetic bars remain inside the configured lookback window.
-3. Keep all edits test-only.
-4. Deliver through a separate focused PR; do not merge or deploy.
+- Work only in `safety-review/ib4001-mgc-front-month-20261020` based on `origin/master`.
+- Preserve `127.0.0.1:4001` as the only operational Gateway endpoint; do not alter execution routing.
+- Add a failing regression test proving MGC prefers IBKR's active continuous contract over a nearer but inactive serial expiry.
+- Implement continuous-contract resolution using the repository's existing `export_ibkr_history.py` pattern, with the current expiry-list resolver retained as a fail-safe fallback.
+- Run targeted tests, full affected-file tests, Ruff, and independent review.
+- Do not deploy or merge. Open a `[safety-review]` PR only if verification passes.
 
-## Verification
+## Finish-line evidence
 
-- Reproduce the five failures before editing.
-- Run both affected test modules after editing.
-- Run targeted Ruff and `git diff --check`.
-- Run the complete fast/non-slow test suite and compare the result with the previous five-failure baseline.
-- Push and open a focused PR with exact verification evidence.
-- Do not merge either this PR or safety-review PR #967 without explicit approval.
+1. RED test fails against the current nearest-expiry resolver for the expected reason.
+2. GREEN test passes after the minimal resolver change.
+3. Existing `test_market_data_ibkr.py` coverage passes.
+4. Ruff passes on changed Python files.
+5. Full non-slow engine suite is attempted; any unrelated baseline failures are reported exactly.
+6. Independent reviewer reports no blocking logic or security issue.
+7. PR is explicitly labeled `[safety-review]` and states live Gateway validation is still blocked until interactive IBKR 2FA/login restores local port 4001.
 
-## Evidence
+## Verification record — 2026-10-20
 
-- RED: reproduced exactly five failures from `origin/master` (one expired Kronos fixture and four stale IB test-double signatures).
-- GREEN: both affected modules passed, `22 passed`.
-- Targeted Ruff, full engine Ruff, and `git diff --check`: passed.
-- Scope guard: `TEST_ONLY_SCOPE_PASS files=3`; only this plan and two test modules differ from `origin/master`.
-- Independent Codex review was attempted but unavailable because its Windows sandbox failed with `helper_sandbox_lock_failed`; no review pass is claimed.
-- Full non-slow suite: `9522 passed, 29 skipped, 184 deselected, 1 xfailed` in 1164.25 seconds; exit `0`.
+- RED: the new MGC regression selected `MGCV6` instead of the expected active `MGCZ6` before the implementation.
+- GREEN: the focused regression and all of `tests/test_market_data_ibkr.py` passed after the resolver change.
+- Static gates: changed-file Ruff, full engine Ruff, and `git diff --check` passed.
+- Full non-slow engine suite: `9519 passed, 28 skipped, 184 deselected, 1 xfailed, 5 failed` in 773.42 seconds.
+- All five failures were reproduced unchanged from a clean `origin/master` archive: one Kronos fixture-data failure and four stale `_FakeIB.connectAsync` signature failures in `test_ib_market_data_type.py` caused by the existing `readonly` argument.
+- Independent Codex review: `No discrete correctness, safety, or maintainability defects were identified in the current changes.`
+- Live read-only branch validation passed after the operator-authenticated Gateway restored port 4001: the resolver selected `MGCZ6` (expiry `20261229`) and returned 316 hourly bars through `2026-10-20 10:00:00-04:00`; the newest bar had volume `10126`.
+- Fresh sanitized account attestation still fails closed: one managed account, configured-account match `false`, paper-prefix classification `false`, identifiers redacted.
+- The unmerged serving engine remains intentionally unchanged. Its safety bundle still returns `1` and reports MGC `18.3h` stale versus the `1.5h` tolerance, demonstrating the production repair has not been deployed.
+- Delivery boundary remains PR-only. Do not deploy or merge from this worktree.
