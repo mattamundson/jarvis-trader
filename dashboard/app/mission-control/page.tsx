@@ -12,6 +12,15 @@ import { TradingStatusReconciliation } from "@/components/TradingStatusReconcili
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { SpxIntradayAnalysisCard } from "@/components/SpxIntradayAnalysisCard";
 import { MarketBriefCard } from "@/components/MarketBriefCard";
+import { PaperTradeAuditCard } from "@/components/PaperTradeAuditCard";
+import { TOSLiveQuotesCard } from "@/components/TOSLiveQuotesCard";
+import { TOSIndicatorCard } from "@/components/TOSIndicatorCard";
+import { GatewayWatchdogCard } from "@/components/GatewayWatchdogCard";
+import { TradeExecutionCard } from "@/components/TradeExecutionCard";
+import { DrawdownProjectionCard } from "@/components/DrawdownProjectionCard";
+import { OptionsChainCard } from "@/components/OptionsChainCard";
+import { PnLAttributionCard } from "@/components/PnLAttributionCard";
+import { TradeRecommendationsCard } from "@/components/TradeRecommendationsCard";
 
 /**
  * MISSION CONTROL — single command-center view fusing trading state
@@ -45,6 +54,11 @@ export default function MissionControlPage() {
           <RiskSafetyPanel />
         </WidgetErrorBoundary>
 
+        {/* Panel 1a — Drawdown projection: how many losing trades until halt. */}
+        <WidgetErrorBoundary name="Drawdown Projection">
+          <DrawdownProjectionCard />
+        </WidgetErrorBoundary>
+
         {/* Panel 1b — Trading-status split-brain reconciliation (full-width,
             equally prominent: an unnoticed config disagreement here is how
             a symbol trades when it shouldn't, or fails to when it should). */}
@@ -69,6 +83,25 @@ export default function MissionControlPage() {
             analysis-only; it never routes orders or mutates risk state. */}
         <WidgetErrorBoundary name="SPX Intraday Decision">
           <SpxIntradayAnalysisCard />
+        </WidgetErrorBoundary>
+
+        {/* Panel 1f — Paper trade audit. Read-only summary of paper trading
+            activity: P&L, trade count, MES status. Refreshes every 30s. */}
+        <WidgetErrorBoundary name="Paper Trade Audit">
+          <PaperTradeAuditCard />
+        </WidgetErrorBoundary>
+
+        {/* Panel 1g — Gateway health watchdog. One-glance confidence:
+            port 4002 alive, engine connected, market data fresh. */}
+        <WidgetErrorBoundary name="Gateway Watchdog">
+          <GatewayWatchdogCard />
+        </WidgetErrorBoundary>
+
+        {/* Panel 1h — Trade Execution. PAPER-only order entry for MES/SPY/QQQ.
+            This is the ONLY card on Mission Control that mutates state
+            (submits paper orders). Kill-switch gated. */}
+        <WidgetErrorBoundary name="Trade Execution">
+          <TradeExecutionCard />
         </WidgetErrorBoundary>
 
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
@@ -97,6 +130,44 @@ export default function MissionControlPage() {
         <WidgetErrorBoundary name="Environment Fleet">
           <EnvironmentFleetPanel />
         </WidgetErrorBoundary>
+
+        {/* Panel 7 — Live quotes (SPY/QQQ/VIX from the engine's market-data
+            waterfall, TOS RTD at Tier 0) + the newest pipeline recommendation.
+            Read-only, analysis-only: neither card routes or sizes anything. */}
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+          <WidgetErrorBoundary name="TOS Live Quotes">
+            <TOSLiveQuotesCard />
+          </WidgetErrorBoundary>
+
+          <WidgetErrorBoundary name="Trade Recommendations">
+            <TradeRecommendationsCard />
+          </WidgetErrorBoundary>
+        </div>
+
+        {/* Panel 8 — Derived indicator set mirroring the TOS /ES chart layout:
+            ATR(14), Keltner Channels (20, 3.5), 5/15/30-min support &
+            resistance, and the day-range compression gauge. Computed in-process
+            from the live RTD price stream (tagged `derived`), not read from
+            ThinkScript studies. Read-only. */}
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+          <WidgetErrorBoundary name="TOS Indicators">
+            <TOSIndicatorCard />
+          </WidgetErrorBoundary>
+        </div>
+
+        {/* Panel 9 — Options chain (SPY/QQQ): near-the-money strikes with
+            last/bid/ask/IV. Read-only analysis surface. */}
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+          <WidgetErrorBoundary name="Options Chain">
+            <OptionsChainCard />
+          </WidgetErrorBoundary>
+
+          {/* Panel 10 — P&L attribution: where the headline number came from,
+              and how much of it is from symbols that can no longer trade. */}
+          <WidgetErrorBoundary name="P&L Attribution">
+            <PnLAttributionCard />
+          </WidgetErrorBoundary>
+        </div>
       </main>
     </div>
   );

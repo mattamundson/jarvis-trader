@@ -149,6 +149,14 @@ class HealthResponse(BaseModel):
     ibgateway_port: Optional[int] = Field(
         None, description="The IB port probed for ibgateway_alive (4002 paper / 4001 live)"
     )
+    ibgateway_data_alive: Optional[bool] = Field(
+        None,
+        description="Whether IB Gateway is accepting TCP connections on the configured market-data port (IBKR_MARKET_DATA_PORT). When split-port is not configured, mirrors ibgateway_alive.",
+    )
+    ibgateway_data_port: Optional[int] = Field(
+        None,
+        description="The IB market-data port probed for ibgateway_data_alive. When split-port is not configured, mirrors ibgateway_port.",
+    )
     ibkr_broker_probe_ok: Optional[bool] = Field(
         True,
         description="Whether the IBKR health-check RPC probes (latency/net_liq/open_orders) all responded. False = socket up but RPCs failing (degraded broker); distinct from ibkr_*_connected which is socket-level only.",
@@ -158,6 +166,22 @@ class HealthResponse(BaseModel):
         description="Which broker probe(s) failed (e.g. 'latency:TimeoutError'), populated only when ibkr_broker_probe_ok=false",
     )
     schwab_connected: bool = Field(False, description="Whether Schwab is connected")
+    tos_rtd_connected: bool = Field(
+        False,
+        description=(
+            "Whether the thinkorswim desktop RTD feed (Tier 0 market-data source) "
+            "has an active RTD session. False when TOS is not running or the adapter "
+            "failed to start — quotes then fall through to IBKR/Polygon."
+        ),
+    )
+    tos_rtd_details: Optional[dict] = Field(
+        None,
+        description=(
+            "thinkorswim RTD session detail (source, server_started, heartbeat_ok, "
+            "heartbeat_age_s, observed_topics, priced_topics, last_error). "
+            "Populated only when the adapter is injected."
+        ),
+    )
     uptime_seconds: float = Field(0, description="Server uptime in seconds")
     paper_trading: Optional[PaperTradingStatus] = Field(None, description="Paper trading status")
     cache: Optional[CacheStatus] = Field(None, description="Cache status")

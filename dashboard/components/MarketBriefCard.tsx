@@ -44,6 +44,11 @@ function dominantScenario(data: MarketBriefSnapshot): keyof MarketBriefSnapshot[
   return entries[0]?.[0] ?? "rotation";
 }
 
+function sourceLabel(source: string | undefined): string {
+  if (source === "trailing_unconditional_base_rate") return "BASE RATE";
+  return "MACHINE SCORE";
+}
+
 function Stat({ label, value, className = "" }: { label: string; value: string; className?: string }) {
   return (
     <div className="rounded-lg border border-border bg-background/40 p-2">
@@ -104,6 +109,9 @@ export function MarketBriefCard() {
   const spy = data.symbols.SPY;
   const qqq = data.symbols.QQQ;
   const vix = data.symbols["^VIX"];
+  const probabilitySource = data.scores.probability_source;
+  const conditional = data.scores.conditional_diagnostic;
+  const walkforward = probabilitySource?.walkforward;
 
   return (
     <Card className="border-accent/25 bg-card/95 shadow-lg" data-testid="market-brief-card">
@@ -124,6 +132,9 @@ export function MarketBriefCard() {
             <Badge variant={qualityVariant(data.sourceQuality)} className="font-mono text-[10px]">
               {data.sourceQuality.toUpperCase()}
             </Badge>
+            <Badge variant="static" className="font-mono text-[10px]">
+              {sourceLabel(probabilitySource?.primary)}
+            </Badge>
             <Badge variant={scenarioVariant(dominant)} className="font-mono text-[10px]">
               {dominant.toUpperCase()} {data.scores.probabilities[dominant].toFixed(1)}%
             </Badge>
@@ -140,11 +151,36 @@ export function MarketBriefCard() {
       </CardHeader>
 
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-3 gap-2">
-          <Stat label="Continuation" value={`${data.scores.probabilities.continuation.toFixed(1)}%`} className="text-bear" />
-          <Stat label="Rotation" value={`${data.scores.probabilities.rotation.toFixed(1)}%`} className="text-warn" />
-          <Stat label="Failure" value={`${data.scores.probabilities.failure.toFixed(1)}%`} className="text-bull" />
+        <div className="rounded-lg border border-border bg-background/30 p-3 text-xs text-muted-foreground">
+          <div className="font-semibold uppercase tracking-widest text-foreground">
+            Published block: trailing base rate
+          </div>
+          <p className="mt-1">
+            State conditioning is diagnostic only until it proves incremental Brier skill.
+            {walkforward ? ` Walk-forward n=${walkforward.n ?? "—"}, Δ=${fmt(walkforward.paired_diff_base_minus_model, 4)}, CI ${walkforward.paired_ci95?.join(" to ") ?? "—"}.` : ""}
+          </p>
         </div>
+
+        <div className="grid grid-cols-3 gap-2">
+          <Stat label="Base continuation" value={`${data.scores.probabilities.continuation.toFixed(1)}%`} className="text-bear" />
+          <Stat label="Base rotation" value={`${data.scores.probabilities.rotation.toFixed(1)}%`} className="text-warn" />
+          <Stat label="Base failure" value={`${data.scores.probabilities.failure.toFixed(1)}%`} className="text-bull" />
+        </div>
+
+        {conditional && (
+          <div className="rounded-lg border border-dashed border-warn/40 bg-warn/5 p-3 text-xs text-muted-foreground">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-semibold uppercase tracking-widest text-warn">Conditional diagnostic — provisional</span>
+              <Badge variant="warn" className="font-mono text-[10px]">NO MEASURED EDGE</Badge>
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
+              <Stat label="State" value={conditional.state ?? "—"} />
+              <Stat label="State n" value={conditional.n == null ? "—" : String(conditional.n)} />
+              <Stat label="State cont." value={conditional.probabilities ? `${conditional.probabilities.continuation.toFixed(1)}%` : "—"} className="text-bear" />
+              <Stat label="Publish as edge" value={conditional.publish_as_edge ? "YES" : "NO"} className={conditional.publish_as_edge ? "text-bull" : "text-warn"} />
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
           <Stat label="SPY gap" value={pct(spy?.gap_pct, 2)} className={(spy?.gap_pct ?? 0) < 0 ? "text-bear" : "text-bull"} />

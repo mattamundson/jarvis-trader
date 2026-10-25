@@ -33,7 +33,24 @@ function marketBriefFixture() {
       status: "computed",
       macro_event_count: 8,
       inputs: { trend_score: 0.6, vol_score: 1, macro_score: 1 },
-      probabilities: { continuation: 79.5, rotation: 20.5, failure: 0 },
+      probabilities: { continuation: 52.3, rotation: 25.5, failure: 22.2 },
+      probability_source: {
+        primary: "trailing_unconditional_base_rate",
+        conditional_status: "provisional_no_measured_edge",
+        walkforward: {
+          n: 1197,
+          paired_diff_base_minus_model: 0.002146,
+          paired_ci95: [-0.002225, 0.006517],
+          model_beats_base: false,
+        },
+      },
+      conditional_diagnostic: {
+        state: "ath_close_lowvol_accel_gt2",
+        n: 24,
+        status: "provisional_no_measured_edge",
+        publish_as_edge: false,
+        probabilities: { continuation: 55.6, rotation: 25.9, failure: 18.5, sum: 100.0 },
+      },
       notes: ["Scenario engine: continuation only upgrades with cross-asset acceptance; one-off touch does not imply regime change."],
     },
     symbols: {
@@ -62,7 +79,14 @@ test("mission-control renders market brief machine-score card as analysis-only",
   await expect(card).toBeVisible();
   await expect(card.getByText("Market Brief Machine Score")).toBeVisible();
   await expect(card.getByText("ANALYSIS ONLY")).toBeVisible();
-  await expect(card.getByText("CONTINUATION 79.5%")).toBeVisible();
+  await expect(card.getByText("BASE RATE", { exact: true })).toBeVisible();
+  await expect(card.getByText("Published block: trailing base rate")).toBeVisible();
+  await expect(card.getByText("CONTINUATION 52.3%")).toBeVisible();
+  await expect(card.getByText("Base continuation")).toBeVisible();
+  await expect(card.getByText("Conditional diagnostic — provisional")).toBeVisible();
+  await expect(card.getByText("NO MEASURED EDGE")).toBeVisible();
+  await expect(card.getByText("Publish as edge")).toBeVisible();
+  await expect(card.getByText("NO", { exact: true })).toBeVisible();
   await expect(card.getByText("SPY gap")).toBeVisible();
   await expect(card.getByText("-0.60%").first()).toBeVisible();
   await expect(card.getByText("VIX Δ")).toBeVisible();

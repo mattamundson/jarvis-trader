@@ -1,0 +1,277 @@
+{
+  "date": "2026-09-23",
+  "session_bias": {
+    "session_type": "uncertain",
+    "directional_bias": "neutral",
+    "conviction": 0.5,
+    "ib_bias": "not_mentioned",
+    "data_quality": "fresh",
+    "message_count": 5
+  },
+  "sentiment_score": null,
+  "sentiment_label": null,
+  "top_signals": [
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7849.0,
+      "target2": 7876.0,
+      "stop1": 7804.0,
+      "win_rate": 82.37,
+      "rr": 0.57,
+      "timestamp": "2026-09-23T02:50:10.247-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7806.25,
+      "target2": 7833.25,
+      "stop1": 7761.25,
+      "win_rate": 82.08,
+      "rr": 0.56,
+      "timestamp": "2026-09-23T10:00:09.402-05:00"
+    },
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 93.03,
+      "target2": 94.11,
+      "stop1": 91.23,
+      "win_rate": 81.82,
+      "rr": 0.62,
+      "timestamp": "2026-09-23T10:55:01.495-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7784.75,
+      "target2": 7811.75,
+      "stop1": 7739.75,
+      "win_rate": 81.79,
+      "rr": 0.56,
+      "timestamp": "2026-09-23T13:50:03.92-05:00"
+    },
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 92.4,
+      "target2": 93.48,
+      "stop1": 90.6,
+      "win_rate": 81.71,
+      "rr": 0.62,
+      "timestamp": "2026-09-23T09:50:00.671-05:00"
+    }
+  ],
+  "corey_quote": "At all-time highs, the first pullback is not a correction \u2014 it is the market deciding whether continuation has real participation behind it.",
+  "commentary_health": [
+    {
+      "date": "2026-09-24",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 5
+    },
+    {
+      "date": "2026-09-23",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 5
+    },
+    {
+      "date": "2026-09-22",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.7,
+      "message_count": 4
+    },
+    {
+      "date": "2026-09-21",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.7,
+      "message_count": 5
+    },
+    {
+      "date": "2026-09-20",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    },
+    {
+      "date": "2026-09-19",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    },
+    {
+      "date": "2026-09-18",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    },
+    {
+      "date": "2026-09-17",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    },
+    {
+      "date": "2026-09-16",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    }
+  ],
+  "calibration_integrity": {
+    "total_outcomes": 0,
+    "rows_excluded_corrupt": 0,
+    "rows_excluded_duplicate": 0,
+    "alert": false,
+    "window_days": 30
+  },
+  "llm_provider_health": {
+    "engine_reachable": true,
+    "active_provider": null,
+    "primary_provider": "kimi",
+    "primary_healthy": true,
+    "providers_available": 5,
+    "google_fallback_count": 0,
+    "vertex_failover_count": 0,
+    "llm_path_healthy": true,
+    "alert": false
+  },
+  "task_health": {
+    "present": true,
+    "stale": false,
+    "age_hours": 0.7,
+    "scanned": 118,
+    "failing_enabled": 15,
+    "failing_disabled": 3,
+    "failing_tasks": [
+      {
+        "name": "Hermes-Default-Gateway-Keepalive",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Hermes-Production-Readiness",
+        "result": "0x1"
+      },
+      {
+        "name": "Hermes-PS-Estate-Watchdog",
+        "result": "0x1"
+      },
+      {
+        "name": "Hermes-Snapshot-Weekly",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-CoreySignalPropagation",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-DiskWatch",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-FinanceSync",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-IBGateway-AtLogon",
+        "result": "0x3"
+      },
+      {
+        "name": "Jarvis-RepoRemoteCheck",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-ScanCredentials",
+        "result": "0x40010004"
+      },
+      {
+        "name": "Jarvis-ScanHistorySecrets",
+        "result": "0x40010004"
+      },
+      {
+        "name": "Jarvis-Sentinel",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-VaultBackup",
+        "result": "0x3"
+      },
+      {
+        "name": "Jarvis-VaultGbrainSync",
+        "result": "0x2"
+      },
+      {
+        "name": "Jarvis-VerdictRefresh-Weekly",
+        "result": "0x1"
+      }
+    ],
+    "alert": true
+  },
+  "gate_verdict_freshness": {
+    "active_symbols": [
+      "MES",
+      "MGC"
+    ],
+    "max_age_days": 7.0,
+    "symbols": {
+      "MES": {
+        "age_days": 0.9,
+        "newest": "2026-09-23T15:35:06.311936+00:00",
+        "files": 8,
+        "latest_verdict": "PASS",
+        "active": true
+      },
+      "MGC": {
+        "age_days": 0.6,
+        "newest": "2026-09-24T00:27:50.766010+00:00",
+        "files": 2,
+        "latest_verdict": "PASS",
+        "active": true
+      },
+      "MNQ": {
+        "age_days": 5.3,
+        "newest": "2026-09-19T06:00:03.352143+00:00",
+        "files": 1,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "QQQ": {
+        "age_days": 2.0,
+        "newest": "2026-09-22T13:38:31.060050+00:00",
+        "files": 1,
+        "latest_verdict": "PASS",
+        "active": false
+      },
+      "SPY": {
+        "age_days": 21.5,
+        "newest": "2026-09-03T01:19:37.088631+00:00",
+        "files": 1,
+        "latest_verdict": "FAIL",
+        "active": false
+      }
+    },
+    "stale_active": [],
+    "missing_active": [],
+    "alert": false
+  }
+}

@@ -4,7 +4,7 @@ JARVIS TRADER — Databento cross-check adapter
 Standalone, offline cross-check against CME's own GLBX.MDP3 feed for the
 futures symbols JARVIS trades. Ships dark: with no DATABENTO_API_KEY set,
 every entry point returns a clean "skipped" status and touches no data.
-See docs/decisions/market-data-vendor-roadmap-2026-07-28.md for the context.
+See docs/databento-integration-plan.md for the context.
 
 Intentionally NOT wired into MarketDataManager's live waterfall
 (data/market_data.py). Unlike IBKR/Polygon/CSV cache, an unverified new
@@ -120,7 +120,7 @@ def reconcile_vs_cache(
         return {
             "status": "skipped",
             "reason": "DATABENTO_API_KEY not set -- cross-check is dark "
-            "(see docs/decisions/market-data-vendor-roadmap-2026-07-28.md)",
+            "(see docs/databento-integration-plan.md)",
         }
 
     try:

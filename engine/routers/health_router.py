@@ -15,6 +15,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from starlette.requests import Request
@@ -150,7 +151,7 @@ async def _health_cached() -> dict:
 
 
 def _check_ibgateway_alive() -> tuple[bool, int]:
-    """Probe whether IB Gateway is accepting TCP connections on the IB port.
+    """Probe whether IB Gateway is accepting TCP connections on the execution port.
 
     Uses 127.0.0.1 explicitly (never 'localhost' — it resolves to ::1 first on
     Windows and the Gateway binds IPv4). 0.5s timeout, cached 30s. Returns
@@ -173,6 +174,31 @@ def _check_ibgateway_alive() -> tuple[bool, int]:
         sock.close()
 
     _ibgw_health_cache.update(checked_at=now, alive=alive, port=port)
+    return alive, port
+
+
+def _check_ibgateway_data_port_alive(
+    fallback_alive: bool, fallback_port: int
+) -> tuple[bool, Optional[int]]:
+    """Probe whether IB Gateway data port is accepting connections (when split-port mode is active).
+
+    When IBKR_MARKET_DATA_PORT is not set, returns (fallback_alive, fallback_port) to mirror
+    the execution port status. When split-port IS configured, probes the data port separately.
+    """
+    data_port = getattr(settings, "IBKR_MARKET_DATA_PORT", None)
+    if data_port is None:
+        # Split-port mode not active; mirror execution port status
+        return fallback_alive, fallback_port
+
+    port = int(data_port)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(0.5)
+    try:
+        alive = sock.connect_ex(("127.0.0.1", port)) == 0
+    except Exception:
+        alive = False
+    finally:
+        sock.close()
     return alive, port
 
 
@@ -801,6 +827,9 @@ async def _health_inner() -> dict:
     _ensure_tv_mcp_background_refresher()
     tv_mcp_healthy, tv_mcp_details, tv_mcp_status = _check_tradingview_mcp_health()
     ibgateway_alive, ibgateway_port = _check_ibgateway_alive()
+    ibgateway_data_alive, ibgateway_data_port = _check_ibgateway_data_port_alive(
+        ibgateway_alive, ibgateway_port
+    )
 
     # Execution-connector honesty. `ibkr_execution_connected` comes from the
     # execution connector's *cached* `is_connected` boolean (execution/
@@ -965,7 +994,18 @@ async def _health_inner() -> dict:
         "ibkr_degraded_reason": ib_health.get("degraded_reason"),
         "ibgateway_alive": ibgateway_alive,
         "ibgateway_port": ibgateway_port,
+        "ibgateway_data_port": ibgateway_data_port,
+        "ibgateway_data_alive": ibgateway_data_alive,
         "schwab_connected": bool(schwab_connector and schwab_connector.is_connected),
+        # Tier 0 market-data source — thinkorswim desktop RTD
+        # (engine/data/tos_rtd_adapter.py, injected via main.py).
+        # `is_connected` is a plain bool property on the connector; the full
+        # status dict is attached below as `tos_rtd_details` when available.
+        "tos_rtd_connected": bool(
+            data_manager is not None
+            and getattr(data_manager, "tos_rtd", None) is not None
+            and data_manager.tos_rtd.is_connected
+        ),
         "uptime_seconds": (now - _start_time).total_seconds() if _start_time else 0.0,
         "llm_available": True,
         "llm_path_healthy": llm_path_healthy,
@@ -985,6 +1025,14 @@ async def _health_inner() -> dict:
         response["llm_path_details"] = llm_path_details
     if tv_mcp_details:
         response["tradingview_mcp_details"] = tv_mcp_details
+    # Tier 0 (thinkorswim RTD) detail block. Best-effort: status() is cheap and
+    # non-blocking, but a probe failure must never break /health itself.
+    _tos_conn = getattr(data_manager, "tos_rtd", None) if data_manager is not None else None
+    if _tos_conn is not None:
+        try:
+            response["tos_rtd_details"] = _tos_conn.status()
+        except Exception as _tos_err:  # noqa: BLE001 - health must never raise
+            response["tos_rtd_details"] = {"error": str(_tos_err)}
     return response
 
 
