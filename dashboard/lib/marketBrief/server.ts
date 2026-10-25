@@ -1,5 +1,6 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import { loadLivePublicMarketBrief } from "./live";
 import { degradedMarketBrief, extractMachinePayload, summarizeMachinePayload } from "./summary";
 import type { MarketBriefSnapshot } from "./types";
 
@@ -30,6 +31,26 @@ export async function loadLatestMarketBrief(nowMs = Date.now()): Promise<MarketB
     return summarizeMachinePayload(payload, { sourcePath: file, sourceMtimeMs: meta.mtimeMs, nowMs });
   } catch (error) {
     return degradedMarketBrief(error instanceof Error ? error.message : "Unknown market brief load error");
+  }
+}
+
+export async function loadLatestPublicMarketBrief(nowMs = Date.now()): Promise<MarketBriefSnapshot> {
+  if (process.env.MARKET_BRIEF_PUBLIC_SOURCE === "local") {
+    return loadLatestMarketBrief(nowMs);
+  }
+  try {
+    return await loadLivePublicMarketBrief(nowMs);
+  } catch (error) {
+    const liveError = error instanceof Error ? error.message : "Unknown live public market brief error";
+    const local = await loadLatestMarketBrief(nowMs);
+    return {
+      ...local,
+      sourceQuality: local.sourceQuality === "fresh" ? "degraded" : local.sourceQuality,
+      warnings: [
+        `Live public market brief generator failed: ${liveError}`,
+        ...local.warnings,
+      ],
+    };
   }
 }
 

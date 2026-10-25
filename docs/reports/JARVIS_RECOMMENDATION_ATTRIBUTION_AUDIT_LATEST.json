@@ -1,0 +1,622 @@
+{
+  "generated_at": "2026-09-12T04:43:24.563847+00:00",
+  "scope": "read_only_recommendation_attribution_audit",
+  "root": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader",
+  "db_path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\engine\\data\\jarvis_trader.db",
+  "table_counts": {
+    "pipeline_runs": 18249,
+    "decisions": 18189,
+    "pending_trade_approvals": 373,
+    "pipeline_approval_queue": 896,
+    "paper_trades": 120
+  },
+  "summary": {
+    "paper_rows": 120,
+    "pending_trade_approvals": 373,
+    "pipeline_approval_queue_rows": 896,
+    "pending_approval_paper_trade_id_links": 1,
+    "strategy_params_approval_id_links": 61,
+    "unique_linked_paper_trades": 62,
+    "unlinked_paper_trades": 58,
+    "queue_order_id_matches_to_paper": 0,
+    "linked_rth_paper_trades": 20
+  },
+  "stats": {
+    "all_paper": {
+      "closed": 91,
+      "pnl": 3181.32,
+      "wins": 28,
+      "losses": 62,
+      "win_rate": 0.3077,
+      "profit_factor": 1.4211,
+      "avg_trade": 34.96,
+      "median_trade": -3.53,
+      "best": 3173.0,
+      "worst": -1284.0,
+      "max_closed_trade_drawdown": -2533.19
+    },
+    "pending_approval_linked": {
+      "closed": 1,
+      "pnl": 100.0,
+      "wins": 1,
+      "losses": 0,
+      "win_rate": 1.0,
+      "profit_factor": Infinity,
+      "avg_trade": 100.0,
+      "median_trade": 100.0,
+      "best": 100.0,
+      "worst": 100.0,
+      "max_closed_trade_drawdown": 0.0
+    },
+    "strategy_param_linked": {
+      "closed": 41,
+      "pnl": 4658.66,
+      "wins": 13,
+      "losses": 27,
+      "win_rate": 0.3171,
+      "profit_factor": 2.3415,
+      "avg_trade": 113.63,
+      "median_trade": -70.88,
+      "best": 3173.0,
+      "worst": -1284.0,
+      "max_closed_trade_drawdown": -1981.7
+    },
+    "all_unique_linked": {
+      "closed": 42,
+      "pnl": 4758.66,
+      "wins": 14,
+      "losses": 27,
+      "win_rate": 0.3333,
+      "profit_factor": 2.3703,
+      "avg_trade": 113.3,
+      "median_trade": -58.27,
+      "best": 3173.0,
+      "worst": -1284.0,
+      "max_closed_trade_drawdown": -1981.7
+    },
+    "unlinked": {
+      "closed": 49,
+      "pnl": -1577.34,
+      "wins": 14,
+      "losses": 35,
+      "win_rate": 0.2857,
+      "profit_factor": 0.6136,
+      "avg_trade": -32.19,
+      "median_trade": -2.5,
+      "best": 659.75,
+      "worst": -1245.25,
+      "max_closed_trade_drawdown": -2349.78
+    },
+    "rth_linked": {
+      "closed": 18,
+      "pnl": 1885.33,
+      "wins": 8,
+      "losses": 9,
+      "win_rate": 0.4444,
+      "profit_factor": 5.9318,
+      "avg_trade": 104.74,
+      "median_trade": 0.0,
+      "best": 880.0,
+      "worst": -102.1,
+      "max_closed_trade_drawdown": -187.9
+    },
+    "queue_order_id_matched": {
+      "closed": 0,
+      "pnl": 0,
+      "wins": 0,
+      "losses": 0,
+      "win_rate": null,
+      "profit_factor": null,
+      "avg_trade": null,
+      "median_trade": null,
+      "best": null,
+      "worst": null,
+      "max_closed_trade_drawdown": 0.0
+    }
+  },
+  "status_counts": {
+    "pending_trade_approvals": [
+      {
+        "status": "rejected",
+        "rows": 372
+      },
+      {
+        "status": "approved",
+        "rows": 1
+      }
+    ],
+    "pipeline_approval_queue": [
+      {
+        "status": "expired",
+        "rows": 509
+      },
+      {
+        "status": "approved",
+        "rows": 387
+      }
+    ]
+  },
+  "queue_by_symbol_status": [
+    {
+      "symbol": "MES",
+      "status": "approved",
+      "rows": 356,
+      "avg_confidence": 0.7780898876404494
+    },
+    {
+      "symbol": "MES",
+      "status": "expired",
+      "rows": 333,
+      "avg_confidence": 0.7651051051051051
+    },
+    {
+      "symbol": "MGC",
+      "status": "approved",
+      "rows": 31,
+      "avg_confidence": 0.7580645161290323
+    },
+    {
+      "symbol": "MGC",
+      "status": "expired",
+      "rows": 176,
+      "avg_confidence": 0.7791477272727273
+    }
+  ],
+  "queue_confidence_buckets": [
+    {
+      "bucket": "0.40-0.59",
+      "rows": 8,
+      "approved": 3,
+      "expired": 5,
+      "rejected": 0
+    },
+    {
+      "bucket": "0.60-0.79",
+      "rows": 401,
+      "approved": 134,
+      "expired": 267,
+      "rejected": 0
+    },
+    {
+      "bucket": "0.80-1.00",
+      "rows": 487,
+      "approved": 250,
+      "expired": 237,
+      "rejected": 0
+    }
+  ],
+  "pipeline_actions_by_symbol": [
+    {
+      "symbol": "AAPL",
+      "final_action": "buy",
+      "rows": 116,
+      "avg_confidence": null,
+      "first_run": "2026-06-15T17:37:11",
+      "last_run": "2026-08-04T01:04:42"
+    },
+    {
+      "symbol": "AAPL",
+      "final_action": "hold",
+      "rows": 2186,
+      "avg_confidence": null,
+      "first_run": "2026-04-06T14:01:02",
+      "last_run": "2026-09-11T20:03:11"
+    },
+    {
+      "symbol": "AAPL",
+      "final_action": "sell",
+      "rows": 289,
+      "avg_confidence": null,
+      "first_run": "2026-05-08T17:29:32",
+      "last_run": "2026-08-18T16:25:10"
+    },
+    {
+      "symbol": "MCL",
+      "final_action": "buy",
+      "rows": 60,
+      "avg_confidence": null,
+      "first_run": "2026-04-07T09:24:25",
+      "last_run": "2026-04-23T02:21:45"
+    },
+    {
+      "symbol": "MCL",
+      "final_action": "hold",
+      "rows": 1033,
+      "avg_confidence": null,
+      "first_run": "2026-04-05T00:52:19",
+      "last_run": "2026-05-08T17:00:00"
+    },
+    {
+      "symbol": "MCL",
+      "final_action": "sell",
+      "rows": 2,
+      "avg_confidence": null,
+      "first_run": "2026-04-22T02:19:57",
+      "last_run": "2026-04-22T16:57:16"
+    },
+    {
+      "symbol": "MES",
+      "final_action": "buy",
+      "rows": 103,
+      "avg_confidence": null,
+      "first_run": "2026-05-22T14:55:55",
+      "last_run": "2026-08-18T16:10:42"
+    },
+    {
+      "symbol": "MES",
+      "final_action": "hold",
+      "rows": 3439,
+      "avg_confidence": null,
+      "first_run": "2026-04-05T07:50:29",
+      "last_run": "2026-09-11T20:03:10"
+    },
+    {
+      "symbol": "MES",
+      "final_action": "sell",
+      "rows": 398,
+      "avg_confidence": null,
+      "first_run": "2026-04-10T16:26:24",
+      "last_run": "2026-08-18T18:31:51"
+    },
+    {
+      "symbol": "MES_VA30",
+      "final_action": "hold",
+      "rows": 9,
+      "avg_confidence": null,
+      "first_run": "2026-07-16T13:33:15",
+      "last_run": "2026-07-31T13:37:09"
+    },
+    {
+      "symbol": "MGC",
+      "final_action": "buy",
+      "rows": 266,
+      "avg_confidence": null,
+      "first_run": "2026-05-08T10:18:17",
+      "last_run": "2026-08-03T19:57:15"
+    },
+    {
+      "symbol": "MGC",
+      "final_action": "hold",
+      "rows": 2376,
+      "avg_confidence": null,
+      "first_run": "2026-05-07T13:38:14",
+      "last_run": "2026-09-11T20:03:11"
+    },
+    {
+      "symbol": "MGC",
+      "final_action": "sell",
+      "rows": 111,
+      "avg_confidence": null,
+      "first_run": "2026-05-08T18:09:00",
+      "last_run": "2026-08-12T15:15:11"
+    },
+    {
+      "symbol": "MNQ",
+      "final_action": "hold",
+      "rows": 1089,
+      "avg_confidence": null,
+      "first_run": "2026-04-05T00:52:19",
+      "last_run": "2026-05-08T17:00:00"
+    },
+    {
+      "symbol": "QQQ",
+      "final_action": "buy",
+      "rows": 126,
+      "avg_confidence": null,
+      "first_run": "2026-05-22T14:57:35",
+      "last_run": "2026-08-11T19:15:45"
+    },
+    {
+      "symbol": "QQQ",
+      "final_action": "hold",
+      "rows": 2310,
+      "avg_confidence": null,
+      "first_run": "2026-04-06T14:01:08",
+      "last_run": "2026-09-11T20:03:11"
+    },
+    {
+      "symbol": "QQQ",
+      "final_action": "sell",
+      "rows": 200,
+      "avg_confidence": null,
+      "first_run": "2026-04-10T17:02:36",
+      "last_run": "2026-08-18T16:30:00"
+    },
+    {
+      "symbol": "SPY",
+      "final_action": "buy",
+      "rows": 66,
+      "avg_confidence": null,
+      "first_run": "2026-06-15T19:02:17",
+      "last_run": "2026-08-06T02:02:09"
+    },
+    {
+      "symbol": "SPY",
+      "final_action": "hold",
+      "rows": 2507,
+      "avg_confidence": null,
+      "first_run": "2026-04-06T14:01:13",
+      "last_run": "2026-09-11T20:03:11"
+    },
+    {
+      "symbol": "SPY",
+      "final_action": "sell",
+      "rows": 133,
+      "avg_confidence": null,
+      "first_run": "2026-05-08T19:01:50",
+      "last_run": "2026-08-03T19:31:04"
+    },
+    {
+      "symbol": "TSLA",
+      "final_action": "buy",
+      "rows": 63,
+      "avg_confidence": null,
+      "first_run": "2026-06-15T23:04:28",
+      "last_run": "2026-08-04T01:04:46"
+    },
+    {
+      "symbol": "TSLA",
+      "final_action": "hold",
+      "rows": 1303,
+      "avg_confidence": null,
+      "first_run": "2026-06-15T20:21:30",
+      "last_run": "2026-09-11T20:03:11"
+    },
+    {
+      "symbol": "TSLA",
+      "final_action": "sell",
+      "rows": 64,
+      "avg_confidence": null,
+      "first_run": "2026-06-18T14:08:27",
+      "last_run": "2026-08-18T16:24:55"
+    }
+  ],
+  "recent_linked_trades": [
+    {
+      "trade_id": "35d9093e-cbee-4131-a9c6-13fb44f96811",
+      "symbol": "MGC",
+      "side": "buy",
+      "entry_time": "2026-07-31T06:29:16.516612+00:00",
+      "exit_time": "2026-07-31T08:22:09.069549+00:00",
+      "pnl": -84.91200000000299,
+      "status": "closed",
+      "strategy_id": "LONG_GAP_FILL",
+      "quote_source": "paper_simulator",
+      "strategy_approval_id": "43408419-076e-4f46-b214-2e9c17e76764"
+    },
+    {
+      "trade_id": "f1a53246-f4bf-4afe-aea5-11092ae9118d",
+      "symbol": "MGC",
+      "side": "buy",
+      "entry_time": "2026-07-31T10:50:02.179928+00:00",
+      "exit_time": "2026-07-31T13:17:03.258622+00:00",
+      "pnl": -84.76599999999871,
+      "status": "closed",
+      "strategy_id": "LONG_GAP_FILL",
+      "quote_source": "paper_simulator",
+      "strategy_approval_id": "ea1266e1-53d5-4cf9-91ec-84954e0f0aa4"
+    },
+    {
+      "trade_id": "d3fac269-08ea-436a-9a57-6dbfda939e30",
+      "symbol": "MGC",
+      "side": "buy",
+      "entry_time": "2026-07-31T13:52:03.186250+00:00",
+      "exit_time": "2026-07-31T14:11:34.627997+00:00",
+      "pnl": -79.11700000000019,
+      "status": "closed",
+      "strategy_id": "LONG_GAP_FILL",
+      "quote_source": "paper_simulator",
+      "strategy_approval_id": "5083c77c-2848-4cdf-938c-994e211feff0"
+    },
+    {
+      "trade_id": "76eba8a2-0e07-4ca3-bd37-7654b1c3b141",
+      "symbol": "MES",
+      "side": "buy",
+      "entry_time": "2026-07-31T14:52:11.473217+00:00",
+      "exit_time": "2026-07-31T20:45:00.393827+00:00",
+      "pnl": 277.25,
+      "status": "closed",
+      "strategy_id": "LONG_MOMENTUM",
+      "quote_source": "paper_simulator",
+      "strategy_approval_id": "b041b500-a0f0-434a-a4cb-d3bd37bc0da7"
+    },
+    {
+      "trade_id": "73665367-1552-439c-9d7c-85533282e940",
+      "symbol": "MGC",
+      "side": "buy",
+      "entry_time": "2026-07-31T14:52:21.119624+00:00",
+      "exit_time": "2026-07-31T20:45:00.367351+00:00",
+      "pnl": 77.50000000000091,
+      "status": "closed",
+      "strategy_id": "LONG_GAP_FILL",
+      "quote_source": "paper_simulator",
+      "strategy_approval_id": "da49c20f-785d-4aac-b50f-0374e322aa8e"
+    },
+    {
+      "trade_id": "2ddd5554-b7ef-4c40-a784-ac00dcb2f545",
+      "symbol": "MGC",
+      "side": "buy",
+      "entry_time": "2026-08-03T01:42:09.096735+00:00",
+      "exit_time": "2026-08-03T01:44:03",
+      "pnl": -85.07100000000173,
+      "status": "closed",
+      "strategy_id": "LONG_GAP_FILL",
+      "quote_source": "paper_simulator",
+      "strategy_approval_id": "41dacaaf-953e-4faf-9a5a-7adbaa95e39f"
+    },
+    {
+      "trade_id": "93584ad5-f5a6-4f3c-be0f-fc385c9868e9",
+      "symbol": "MGC",
+      "side": "buy",
+      "entry_time": "2026-08-03T01:56:48.922349+00:00",
+      "exit_time": "2026-08-03T02:06:49",
+      "pnl": -85.07100000000173,
+      "status": "closed",
+      "strategy_id": "LONG_GAP_FILL",
+      "quote_source": "paper_simulator",
+      "strategy_approval_id": "4fb00c17-6eb3-42fc-9270-92b79cbf1e4e"
+    },
+    {
+      "trade_id": "f62eacd3-6fa8-4635-af7f-f2d2a668f38c",
+      "symbol": "MGC",
+      "side": "buy",
+      "entry_time": "2026-08-03T02:08:06.695614+00:00",
+      "exit_time": "2026-08-03T02:11:48",
+      "pnl": -85.07100000000173,
+      "status": "closed",
+      "strategy_id": "LONG_GAP_FILL",
+      "quote_source": "paper_simulator",
+      "strategy_approval_id": "279c5730-de3b-4f22-ae4a-c167d0269443"
+    },
+    {
+      "trade_id": "8a286d9d-a3ef-47a7-ab0e-45ef87efd6e3",
+      "symbol": "MGC",
+      "side": "buy",
+      "entry_time": "2026-08-03T02:42:38.933422+00:00",
+      "exit_time": "2026-08-03T02:46:48",
+      "pnl": -79.10200000000168,
+      "status": "closed",
+      "strategy_id": "LONG_GAP_FILL",
+      "quote_source": "paper_simulator",
+      "strategy_approval_id": "5849ce2a-751f-4826-a212-340da448ed82"
+    },
+    {
+      "trade_id": "6dedc690-3d8d-431d-ad96-332b2684e82b",
+      "symbol": "MGC",
+      "side": "buy",
+      "entry_time": "2026-08-03T02:51:24.992457+00:00",
+      "exit_time": "2026-08-03T02:56:48",
+      "pnl": -79.10200000000168,
+      "status": "closed",
+      "strategy_id": "LONG_GAP_FILL",
+      "quote_source": "paper_simulator",
+      "strategy_approval_id": "0b350cb3-842b-4c29-88f2-b3c4c730a489"
+    },
+    {
+      "trade_id": "debf2a4c-f099-4fb1-aace-f597f11f5e25",
+      "symbol": "MGC",
+      "side": "buy",
+      "entry_time": "2026-08-03T03:12:50.907492+00:00",
+      "exit_time": "2026-08-03T03:16:48",
+      "pnl": -79.10200000000168,
+      "status": "closed",
+      "strategy_id": "LONG_GAP_FILL",
+      "quote_source": "paper_simulator",
+      "strategy_approval_id": "9cb0f1d1-3ee2-493a-aab2-00eafe0c4182"
+    },
+    {
+      "trade_id": "43394ed2-34c2-43e0-843f-22a631500147",
+      "symbol": "MGC",
+      "side": "buy",
+      "entry_time": "2026-08-03T08:56:20.148898+00:00",
+      "exit_time": "2026-08-03T10:13:00.923863+00:00",
+      "pnl": -58.27099999999882,
+      "status": "closed",
+      "strategy_id": "LONG_GAP_FILL",
+      "quote_source": "paper_simulator",
+      "strategy_approval_id": "20fad592-e527-4259-b623-601f2a3872fe"
+    },
+    {
+      "trade_id": "3e143a8a-c977-4acb-8e5b-51033afa388c",
+      "symbol": "MES",
+      "side": "buy",
+      "entry_time": "2026-08-03T16:07:48.461717+00:00",
+      "exit_time": "2026-08-03T20:45:02.459669+00:00",
+      "pnl": 209.5,
+      "status": "closed",
+      "strategy_id": "LONG_MOMENTUM",
+      "quote_source": "legacy_unbackfilled",
+      "strategy_approval_id": "79256598-3c83-4c5f-b412-3368af8ffd82"
+    },
+    {
+      "trade_id": "9060f589-aaac-45b1-8fd1-5651ca9bbe53",
+      "symbol": "AAPL",
+      "side": "buy",
+      "entry_time": "2026-08-03T16:08:17.579271+00:00",
+      "exit_time": "2026-08-18T20:45:03.151069+00:00",
+      "pnl": 2.439992675781241,
+      "status": "closed",
+      "strategy_id": "LONG_MOMENTUM",
+      "quote_source": "legacy_unbackfilled",
+      "strategy_approval_id": "3349d2f7-e11d-40f8-bc23-82b18e12511f"
+    },
+    {
+      "trade_id": "437d5360-515e-4597-b75b-c0dfd1b1e5d4",
+      "symbol": "TSLA",
+      "side": "buy",
+      "entry_time": "2026-08-03T16:08:18.768118+00:00",
+      "exit_time": "2026-08-17T05:05:41.314040+00:00",
+      "pnl": -7.737799999999993,
+      "status": "closed",
+      "strategy_id": "LONG_MOMENTUM",
+      "quote_source": "legacy_unbackfilled",
+      "strategy_approval_id": "90468137-dc8d-4096-915f-83684d2a4f38"
+    },
+    {
+      "trade_id": "120cb2f8-2d9e-47d8-b56d-279e356bdfdb",
+      "symbol": "QQQ",
+      "side": "buy",
+      "entry_time": "2026-08-03T18:05:41.454232+00:00",
+      "exit_time": "2026-08-17T05:05:40.962905+00:00",
+      "pnl": -8.489399999999932,
+      "status": "closed",
+      "strategy_id": "LONG_MOMENTUM",
+      "quote_source": "legacy_unbackfilled",
+      "strategy_approval_id": "a6c38a9b-28b3-40e8-ae0c-fbe95a7a4dfb"
+    },
+    {
+      "trade_id": "da9ba79a-eadc-48c6-b468-f60c8a7dab4d",
+      "symbol": "MGC",
+      "side": "buy",
+      "entry_time": "2026-08-03T19:57:18.665068+00:00",
+      "exit_time": "2026-08-03T20:45:02.433987+00:00",
+      "pnl": -16.5,
+      "status": "closed",
+      "strategy_id": "LONG_GAP_FILL",
+      "quote_source": "legacy_unbackfilled",
+      "strategy_approval_id": "612ed996-8a57-4480-a6d2-57681b8092e5"
+    },
+    {
+      "trade_id": "7a51f8a4-4763-4207-97b5-ce05c5416d49",
+      "symbol": "SPY",
+      "side": "buy",
+      "entry_time": "2026-08-03T19:57:29.141431+00:00",
+      "exit_time": "2026-08-18T20:45:03.116453+00:00",
+      "pnl": 13.16998291015625,
+      "status": "closed",
+      "strategy_id": "LONG_MOMENTUM",
+      "quote_source": "legacy_unbackfilled",
+      "strategy_approval_id": "31788092-6d7f-40f6-86a5-bc39d865c110"
+    },
+    {
+      "trade_id": "3083f899-a8a2-42db-ac35-8155e43617c7",
+      "symbol": "MES",
+      "side": "buy",
+      "entry_time": "2026-08-05T15:56:49.009789+00:00",
+      "exit_time": "2026-08-05T16:18:39.389185+00:00",
+      "pnl": -80.82650000000194,
+      "status": "closed",
+      "strategy_id": "LONG_MOMENTUM",
+      "quote_source": "legacy_unbackfilled",
+      "strategy_approval_id": "d6873f08-4819-4d59-9605-7334e3014724"
+    },
+    {
+      "trade_id": "9d8db8fa-18a2-4dda-b0fe-d60b81ff49a9",
+      "symbol": "MES",
+      "side": "buy",
+      "entry_time": "2026-08-05T16:57:59.410811+00:00",
+      "exit_time": "2026-08-05T20:13:11.707315+00:00",
+      "pnl": -80.82650000000194,
+      "status": "closed",
+      "strategy_id": "LONG_MOMENTUM",
+      "quote_source": "legacy_unbackfilled",
+      "strategy_approval_id": "d092f5fe-e3a2-495f-88a6-be770da63b12"
+    }
+  ],
+  "verdict": {
+    "recommendation_attribution_proven": true,
+    "queue_order_id_attribution_proven": false,
+    "primary_caveat": "pipeline_approval_queue.order_id still does not match paper_trades.trade_id/idempotency_key",
+    "edge_verdict": "positive all-time linked ledger, but not enough to prove current recommendation edge without durable pipeline/queue linkage and baseline comparison"
+  }
+}

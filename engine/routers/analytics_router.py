@@ -6,6 +6,7 @@ Endpoints:
   GET /analytics/signal-quality — analyze_signal_quality() with optional filters
 """
 
+import json
 import logging
 import os
 import time
@@ -528,6 +529,195 @@ async def get_performance_compare(request: Request) -> dict:
         raise
     except Exception as exc:
         logger.error(f"[Analytics] compare_to_backtest failed: {exc}")
+        raise HTTPException(500, f"Analytics error: {exc}") from exc
+
+
+# ---------------------------------------------------------------------------
+# Operator handoff / why-no-trade diagnostics
+# ---------------------------------------------------------------------------
+
+def _latest_table_row(db: DatabaseManager, table: str, timestamp_col: str) -> dict | None:
+    """Return the latest row from a trusted internal table name.
+
+    Table and column values are deliberately not user-provided; this helper is
+    only used by the read-only operator handoff diagnostic below.
+    """
+    return db.fetch_one(
+        f"SELECT *, rowid AS _rowid FROM {table} "
+        f"ORDER BY {timestamp_col} DESC, rowid DESC LIMIT 1"
+    )
+
+
+def _safe_json_obj(raw: object) -> dict:
+    if not raw:
+        return {}
+    if isinstance(raw, dict):
+        return raw
+    try:
+        parsed = json.loads(str(raw))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _directional_decision_reasons(db: DatabaseManager, limit: int = 25) -> list[dict]:
+    """Classify recent directional decisions into observable skip reasons.
+
+    This mirrors scanner execution gates without mutating state.  It exists so
+    the operator can see the first broken handoff when pipeline runs are fresh
+    but paper trades are stale.
+    """
+    try:
+        from agents.pipeline import VALIDATION_ONLY_STRATEGIES
+        from backtest.signals import DO_NOT_TRADE_SYMBOLS
+    except Exception:
+        VALIDATION_ONLY_STRATEGIES = frozenset({"SHORT_GAP_FILL"})
+        DO_NOT_TRADE_SYMBOLS = frozenset()
+
+    rows = db.fetch_all(
+        """
+        SELECT id, timestamp, symbol, action, confidence, signal_data_json,
+               full_pipeline_json
+        FROM decisions
+        WHERE action IN ('buy', 'sell', 'BUY', 'SELL')
+        ORDER BY timestamp DESC, id DESC
+        LIMIT ?
+        """,
+        (limit,),
+    )
+    classified: list[dict] = []
+    for row in rows:
+        full = _safe_json_obj(row.get("full_pipeline_json"))
+        signal_data = _safe_json_obj(row.get("signal_data_json"))
+        technical = (full.get("analyst_reports") or {}).get("technical") or {}
+        indicators = technical.get("indicators") or {}
+        trade_decision = full.get("trade_decision") or {}
+        symbol = str(row.get("symbol") or "").upper()
+        stark_signal = str(indicators.get("stark_signal") or "").upper()
+        requires_human = bool(full.get("requires_human", False))
+        reasons: list[str] = []
+        if symbol in DO_NOT_TRADE_SYMBOLS:
+            reasons.append("do_not_trade_symbol")
+        if stark_signal and stark_signal in VALIDATION_ONLY_STRATEGIES:
+            reasons.append("validation_only_strategy")
+        if not requires_human:
+            reasons.append("autonomous_no_pending_approval_row_by_design")
+        if not (trade_decision.get("entry_price") or trade_decision.get("limit_price")):
+            reasons.append("missing_entry_price")
+        if not (trade_decision.get("stop_price") or trade_decision.get("stop_loss")):
+            reasons.append("missing_stop_price")
+        provenance = signal_data.get("data_provenance") or {}
+        classified.append(
+            {
+                "id": row.get("id"),
+                "timestamp": row.get("timestamp"),
+                "symbol": symbol,
+                "action": str(row.get("action") or "").lower(),
+                "confidence": row.get("confidence"),
+                "stark_signal": stark_signal or None,
+                "requires_human": requires_human,
+                "entry_price": trade_decision.get("entry_price")
+                or trade_decision.get("limit_price"),
+                "stop_price": trade_decision.get("stop_price")
+                or trade_decision.get("stop_loss"),
+                "data_provenance": provenance,
+                "skip_reasons": reasons,
+            }
+        )
+    return classified
+
+
+def _build_operator_handoff_status(db: DatabaseManager) -> dict:
+    """Build a read-only answer to: pipeline is running, so why no trade?"""
+    latest_pipeline = _latest_table_row(db, "pipeline_runs", "created_at")
+    latest_approval = _latest_table_row(db, "pipeline_approval_queue", "created_at")
+    latest_pending = _latest_table_row(db, "pending_trade_approvals", "created_at")
+    latest_paper = _latest_table_row(db, "paper_trades", "entry_time")
+    latest_fill = _latest_table_row(db, "ibkr_fills", "fill_time")
+
+    counts = {
+        "pipeline_runs": (db.fetch_one("SELECT COUNT(*) AS n FROM pipeline_runs") or {}).get("n", 0),
+        "pipeline_approval_queue": (
+            db.fetch_one("SELECT COUNT(*) AS n FROM pipeline_approval_queue") or {}
+        ).get("n", 0),
+        "pending_trade_approvals": (
+            db.fetch_one("SELECT COUNT(*) AS n FROM pending_trade_approvals") or {}
+        ).get("n", 0),
+        "paper_trades": (db.fetch_one("SELECT COUNT(*) AS n FROM paper_trades") or {}).get("n", 0),
+        "ibkr_fills": (db.fetch_one("SELECT COUNT(*) AS n FROM ibkr_fills") or {}).get("n", 0),
+    }
+
+    directional = _directional_decision_reasons(db)
+    validation_only = sum(1 for row in directional if "validation_only_strategy" in row["skip_reasons"])
+    blocked_symbols = sum(1 for row in directional if "do_not_trade_symbol" in row["skip_reasons"])
+    no_approval_rows = sum(
+        1 for row in directional if "autonomous_no_pending_approval_row_by_design" in row["skip_reasons"]
+    )
+
+    blockers: list[str] = []
+    if validation_only:
+        blockers.append(
+            f"{validation_only}/{len(directional)} recent directional decisions use validation-only strategies"
+        )
+    if blocked_symbols:
+        blockers.append(
+            f"{blocked_symbols}/{len(directional)} recent directional decisions are for DO_NOT_TRADE symbols"
+        )
+    if no_approval_rows:
+        blockers.append(
+            "scanner/autonomous paper mode intentionally skips pending approval rows when REQUIRE_HUMAN_APPROVAL=false"
+        )
+    if latest_paper and latest_pipeline and str(latest_paper.get("entry_time")) < str(
+        latest_pipeline.get("created_at")
+    ):
+        blockers.append("paper trade ledger is older than the latest pipeline run")
+    if latest_approval and latest_pipeline and str(latest_approval.get("created_at")) < str(
+        latest_pipeline.get("created_at")
+    ):
+        blockers.append("approval queue is older than the latest pipeline run")
+
+    status = "blocked" if blockers else "clear"
+    return {
+        "status": status,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "summary": (
+            "Pipeline is producing decisions, but trade handoff is blocked/stale."
+            if status == "blocked"
+            else "No handoff blocker detected in the latest DB rows."
+        ),
+        "counts": counts,
+        "latest": {
+            "pipeline_run": latest_pipeline,
+            "pipeline_approval_queue": latest_approval,
+            "pending_trade_approval": latest_pending,
+            "paper_trade": latest_paper,
+            "ibkr_fill": latest_fill,
+        },
+        "blockers": blockers,
+        "recent_directional_decisions": directional,
+        "next_action": (
+            "Keep live trading off; either validate the strategy family before auto-paper logging, "
+            "or explicitly choose a paper-only tradeable-symbol/autonomous path via safety review."
+        ),
+        "safety_note": "Read-only diagnostic; no broker, risk, or kill-switch state is modified.",
+    }
+
+
+@router.get(
+    "/operator-handoff",
+    response_model=None,
+    description="Read-only why-no-trade diagnostic for pipeline → approvals → paper-trade handoff.",
+)
+@limiter.limit("60/minute")
+async def get_operator_handoff(request: Request) -> dict:
+    """Explain why fresh pipeline decisions are not turning into fresh trades."""
+    try:
+        db = _get_db()
+        return _build_operator_handoff_status(db)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("[Analytics] operator handoff diagnostic failed: %s", exc)
         raise HTTPException(500, f"Analytics error: {exc}") from exc
 
 

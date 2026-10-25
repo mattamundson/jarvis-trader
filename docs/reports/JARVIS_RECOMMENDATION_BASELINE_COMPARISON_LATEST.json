@@ -1,0 +1,146 @@
+{
+  "generated_at": "2026-09-12T08:49:50.403936+00:00",
+  "scope": "read_only_recommendation_baseline_comparison",
+  "source": "C:\\Users\\mattm\\ThinkorSwim\\wt-dashboard-dev-recursive-top3-20260912\\docs\\reports\\JARVIS_RECOMMENDATION_ATTRIBUTION_AUDIT_LATEST.json",
+  "summary": {
+    "linked_trades": 62,
+    "queue_order_id_matches_to_paper": 0,
+    "baseline_warning": "positive linked ledger is not certified edge until queue-order lineage and forward baseline comparison are proven"
+  },
+  "cohorts": [
+    {
+      "cohort": "all_paper",
+      "closed": 91,
+      "pnl": 3181.32,
+      "wins": 28,
+      "losses": 62,
+      "win_rate": 0.3077,
+      "profit_factor": 1.4211,
+      "avg_trade": 34.96,
+      "median_trade": -3.53,
+      "best": 3173.0,
+      "worst": -1284.0,
+      "max_closed_trade_drawdown": -2533.19,
+      "pnl_per_trade": 34.9596,
+      "win_rate_wilson_95": {
+        "low": 0.2223,
+        "high": 0.4087
+      }
+    },
+    {
+      "cohort": "all_unique_linked",
+      "closed": 42,
+      "pnl": 4758.66,
+      "wins": 14,
+      "losses": 27,
+      "win_rate": 0.3333,
+      "profit_factor": 2.3703,
+      "avg_trade": 113.3,
+      "median_trade": -58.27,
+      "best": 3173.0,
+      "worst": -1284.0,
+      "max_closed_trade_drawdown": -1981.7,
+      "pnl_per_trade": 113.3014,
+      "win_rate_wilson_95": {
+        "low": 0.2101,
+        "high": 0.4845
+      }
+    },
+    {
+      "cohort": "unlinked",
+      "closed": 49,
+      "pnl": -1577.34,
+      "wins": 14,
+      "losses": 35,
+      "win_rate": 0.2857,
+      "profit_factor": 0.6136,
+      "avg_trade": -32.19,
+      "median_trade": -2.5,
+      "best": 659.75,
+      "worst": -1245.25,
+      "max_closed_trade_drawdown": -2349.78,
+      "pnl_per_trade": -32.1906,
+      "win_rate_wilson_95": {
+        "low": 0.1785,
+        "high": 0.4241
+      }
+    },
+    {
+      "cohort": "rth_linked",
+      "closed": 18,
+      "pnl": 1885.33,
+      "wins": 8,
+      "losses": 9,
+      "win_rate": 0.4444,
+      "profit_factor": 5.9318,
+      "avg_trade": 104.74,
+      "median_trade": 0.0,
+      "best": 880.0,
+      "worst": -102.1,
+      "max_closed_trade_drawdown": -187.9,
+      "pnl_per_trade": 104.7406,
+      "win_rate_wilson_95": {
+        "low": 0.2456,
+        "high": 0.6628
+      }
+    },
+    {
+      "cohort": "queue_order_id_matched",
+      "closed": 0,
+      "pnl": 0,
+      "wins": 0,
+      "losses": 0,
+      "win_rate": null,
+      "profit_factor": null,
+      "avg_trade": null,
+      "median_trade": null,
+      "best": null,
+      "worst": null,
+      "max_closed_trade_drawdown": 0.0,
+      "pnl_per_trade": null,
+      "win_rate_wilson_95": {
+        "low": null,
+        "high": null
+      }
+    }
+  ],
+  "comparisons": {
+    "linked_vs_all_paper": {
+      "pnl_delta": 1577.34,
+      "avg_trade_delta": 78.34,
+      "win_rate_delta": 0.0256,
+      "profit_factor_delta": 0.9492
+    },
+    "linked_vs_unlinked": {
+      "pnl_delta": 6336.0,
+      "avg_trade_delta": 145.49,
+      "win_rate_delta": 0.0476,
+      "profit_factor_delta": 1.7567
+    },
+    "rth_linked_vs_all_paper": {
+      "pnl_delta": -1295.99,
+      "avg_trade_delta": 69.78,
+      "win_rate_delta": 0.1367,
+      "profit_factor_delta": 4.5107
+    },
+    "queue_order_matched_vs_all_paper": {
+      "pnl_delta": -3181.32,
+      "avg_trade_delta": -34.96,
+      "win_rate_delta": -0.3077,
+      "profit_factor_delta": -1.4211
+    }
+  },
+  "verdict": {
+    "linked_outperformed_unlinked_pnl": true,
+    "linked_outperformed_all_paper_avg_trade": true,
+    "queue_order_lineage_proven": false,
+    "edge_certified": false
+  },
+  "safety": {
+    "read_only": true,
+    "live_trading_changed": false,
+    "risk_config_changed": false,
+    "kill_switch_changed": false,
+    "broker_execution_changed": false
+  }
+}

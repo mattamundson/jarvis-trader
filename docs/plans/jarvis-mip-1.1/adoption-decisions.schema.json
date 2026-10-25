@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "JARVIS MIP Adoption Decisions",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "plan_id", "reviewed_plan_commit", "decision_state", "pag_0", "isg_0", "decisions"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "plan_id": {"const": "JARVIS-MIP-1.1"},
+    "reviewed_plan_commit": {"type": ["string", "null"], "pattern": "^[0-9a-f]{40}$"},
+    "decision_state": {"enum": ["PENDING", "ACCEPTED", "REJECTED"]},
+    "pag_0": {"enum": ["CLOSED", "OPEN"]},
+    "isg_0": {"enum": ["CLOSED", "OPEN"]},
+    "decisions": {
+      "type": "array", "minItems": 14, "maxItems": 14,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "title", "disposition", "accountable_human", "decided_at", "rationale"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^AD-(0[1-9]|1[0-4])$"},
+          "title": {"type": "string", "minLength": 1},
+          "disposition": {"enum": ["PENDING", "ACCEPT", "AMEND", "REJECT"]},
+          "accountable_human": {"type": ["string", "null"]},
+          "decided_at": {"type": ["string", "null"], "format": "date-time"},
+          "rationale": {"type": ["string", "null"]}
+        }
+      }
+    }
+  }
+}
