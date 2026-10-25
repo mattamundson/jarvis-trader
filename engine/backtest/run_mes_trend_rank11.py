@@ -597,11 +597,49 @@ def _compute_gate_v2(
 
 
 # ---------------------------------------------------------------------------
+# Verdict writing
+# ---------------------------------------------------------------------------
+
+
+def _write_verdict_doc(
+    verdict_doc: dict,
+    output_path: Path | str | None = None,
+    dry_run: bool = False,
+) -> Path | None:
+    """Write a verdict document and return the path written.
+
+    Default behavior preserves the historical runner contract: write the
+    canonical gate-v2 store artifact. In dry-run mode, the canonical verdict
+    store is never touched; callers may optionally provide an output path for a
+    non-mutating probe artifact.
+    """
+    canonical = engine_root / "data" / "gate_v2_verdicts" / "MES_trend_rank11.json"
+    if dry_run and output_path is None:
+        print("\n[MES-R11] Dry run: canonical verdict store not written.")
+        return None
+
+    verdict_file = Path(output_path) if output_path is not None else canonical
+    verdict_file.parent.mkdir(parents=True, exist_ok=True)
+    verdict_file.write_text(json.dumps(verdict_doc, indent=2, default=str), encoding="utf-8")
+
+    if dry_run:
+        print(f"\n[MES-R11] Dry-run verdict written -> {verdict_file}")
+    else:
+        print(f"\n[MES-R11] Verdict written -> {verdict_file}")
+    return verdict_file
+
+
+# ---------------------------------------------------------------------------
 # Main WFO loop
 # ---------------------------------------------------------------------------
 
 
-def run_wfo(sota_hardening: bool = False) -> dict:
+def run_wfo(
+    sota_hardening: bool = False,
+    *,
+    dry_run: bool = False,
+    output_path: Path | str | None = None,
+) -> dict:
     if sota_hardening:
         print("[MES-R11] SOTA EXECUTION-REALISM HARDENING ENABLED (gap stops, pessimistic "
               "tie-break, vol-scaled slippage, POV impact, margin cap).")
@@ -804,10 +842,6 @@ def run_wfo(sota_hardening: bool = False) -> dict:
     # -----------------------------------------------------------------------
     # Write verdict JSON (gate_v2_policy.VerdictSnapshot-compatible schema)
     # -----------------------------------------------------------------------
-    verdicts_dir = engine_root / "data" / "gate_v2_verdicts"
-    verdicts_dir.mkdir(parents=True, exist_ok=True)
-    verdict_file = verdicts_dir / "MES_trend_rank11.json"
-
     verdict_doc = {
         "symbol": SYMBOL,
         "family": "trend",
@@ -927,8 +961,7 @@ def run_wfo(sota_hardening: bool = False) -> dict:
     if _defl is not None:
         verdict_doc.setdefault("gate_v2_metrics", {})["deflation"] = _defl
         verdict_doc["deflation"] = _defl
-    verdict_file.write_text(json.dumps(verdict_doc, indent=2, default=str))
-    print(f"\n[MES-R11] Verdict written -> {verdict_file}")
+    _write_verdict_doc(verdict_doc, output_path=output_path, dry_run=dry_run)
 
     return verdict_doc
 
@@ -949,9 +982,25 @@ def main():
         "tie-break, vol-scaled slippage, POV impact, margin cap). Default: off "
         "(baseline behavior, byte-identical to pre-hardening runs).",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Run the full verdict refresh without writing the canonical gate-v2 store. "
+        "Use --output to persist the generated verdict to a non-canonical path.",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Optional non-canonical JSON output path for --dry-run probes.",
+    )
     args = parser.parse_args()
 
-    verdict = run_wfo(sota_hardening=args.sota)
+    verdict = run_wfo(
+        sota_hardening=args.sota,
+        dry_run=args.dry_run,
+        output_path=args.output,
+    )
 
     if not verdict:
         print("[MES-R11] No verdict produced — check data/logs above.")
