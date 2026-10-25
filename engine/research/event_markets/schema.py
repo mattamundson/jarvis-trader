@@ -7,10 +7,10 @@ network, broker, order router, runtime config, or trading surface.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
 import hashlib
 import json
+from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
 from typing import Any, Mapping
 
 _ALLOWED_VENUES = {"polymarket", "kalshi"}

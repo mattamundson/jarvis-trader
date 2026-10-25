@@ -1,5 +1,14 @@
 """Verify the sandbox venv has every package the guide expects."""
-import ib_async, pandas, numpy, scipy, matplotlib, yfinance, yaml, requests, dotenv, schedule
+import dotenv
+import ib_async
+import matplotlib
+import numpy
+import pandas
+import requests
+import schedule
+import scipy
+import yaml
+import yfinance
 
 print("ALL IMPORTS OK")
 print("ib_async    ", ib_async.__version__)

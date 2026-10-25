@@ -397,7 +397,8 @@ async def reset_daily_pnl() -> dict[str, Any]:
     description=(
         "HB-1 paper smoke test — fires 1-contract MES bracket directly through the "
         "engine's live IBGatewayManager connection, verifies IB-side parentId linkage, "
-        "then cancels all 3 orders. Requires IB paper gateway connected (port 4002)."
+        "then cancels all 3 orders. Requires IB paper gateway connected (port 4002). "
+        "SAFETY: Refuses to run if IBKR_MARKET_DATA_PORT is set to a live port (4001/7496)."
     ),
 )
 async def smoke_bracket(
@@ -408,12 +409,24 @@ async def smoke_bracket(
 ) -> dict:
     """Fire a 1-contract bracket smoke test via the engine's live IBKRDataConnector._ib."""
     import main as _main
+    from execution.ib_gateway import LIVE_TRADING_PORTS
 
     ibkr_data = getattr(getattr(_main, "data_manager", None), "ibkr", None)
     if ibkr_data is None or not ibkr_data.is_connected:
         raise HTTPException(
             503,
-            detail="IBKRDataConnector not connected — is IB Gateway on port 4002?",
+            detail="IBKRDataConnector not connected — is IB Gateway running?",
+        )
+
+    # SAFETY: Refuse to run if the data connection is on a live port
+    if ibkr_data._port in LIVE_TRADING_PORTS:
+        raise HTTPException(
+            400,
+            detail=(
+                f"SAFETY BLOCK: Smoke test cannot run when IBKR_MARKET_DATA_PORT={ibkr_data._port} "
+                f"(live port). This test places real orders through the data connector's IB object. "
+                f"Unset IBKR_MARKET_DATA_PORT or set it to paper port 4002 to run smoke tests."
+            ),
         )
 
     _ib = getattr(ibkr_data, "_ib", None)

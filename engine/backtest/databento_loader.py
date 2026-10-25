@@ -228,6 +228,155 @@ def fetch_with_depth(
 
 
 # ---------------------------------------------------------------------------
+# OPRA — equity / index option chains (added 2026-09-23)
+# ---------------------------------------------------------------------------
+#
+# WHY THIS EXISTS: every options conclusion in this repo is priced on a
+# Black-Scholes *synthetic* chain with IV proxied from realized vol —
+# `backtest/run_spy_qqq_options_vertical.py` documents this explicitly
+# ("NO historical IV surface exists in the repo"). Because the variance risk
+# premium makes implied vol run ABOVE realized vol, that proxy tends to
+# underprice long-premium structures, so those results are likely optimistic.
+# This fetcher is the real-chain replacement.
+#
+# UNVERIFIED: the OPRA dataset code ("OPRA.PILLAR") and the "{ROOT}.OPT" parent
+# symbology below are written from documented API shape and have NOT been
+# exercised against a live key. Confirm against Databento's actual response the
+# first time DATABENTO_API_KEY is set — same standing caveat as the CME side.
+
+OPRA_DATASET = "OPRA.PILLAR"
+
+# The JARVIS options universe: equity/index underlyings with option chains.
+# Index options (SPX/VIX) are covered by the OPRA dataset as well.
+OPTIONS_WATCHLIST: tuple[str, ...] = ("SPY", "QQQ", "AAPL", "TSLA", "SPX", "VIX")
+
+
+def _opt_cache_path(underlying: str, start: str, end: str, schema: str) -> Path:
+    safe = f"{underlying}_OPT_{start}_{end}_{schema}".replace("/", "-").replace(":", "-")
+    return CACHE_DIR / f"{safe}.csv"
+
+
+def fetch_option_definitions(
+    underlying: str, start: str, end: str, use_cache: bool = True
+) -> pd.DataFrame:
+    """Contract metadata for every option on `underlying` in the window.
+
+    Needed because OPRA bar records carry only `instrument_id`; strike, expiry
+    and call/put live in the `definition` schema. Join the two on instrument_id.
+    Returns empty DataFrame with a printed reason when dark or unavailable.
+    """
+    up = underlying.upper()
+    cache = _opt_cache_path(up, start, end, "definition")
+    if use_cache and cache.exists():
+        print(f"[DatabentoLoader] Using cached {cache.name}")
+        return pd.read_csv(cache)
+
+    key = _api_key()
+    if not key or key == "your_databento_key_here":
+        print("[DatabentoLoader] DATABENTO_API_KEY not set — cannot fetch option definitions.")
+        return pd.DataFrame()
+    if not _db_available():
+        print("[DatabentoLoader] databento package not installed.")
+        return pd.DataFrame()
+
+    try:
+        import databento as db
+
+        client = db.Historical(key)
+        data = client.timeseries.get_range(
+            dataset=OPRA_DATASET,
+            schema="definition",
+            symbols=[f"{up}.OPT"],
+            stype_in="parent",
+            start=start,
+            end=end,
+        )
+        df = data.to_df()
+        if df is None or df.empty:
+            print(f"[DatabentoLoader] no option definitions returned for {up}")
+            return pd.DataFrame()
+        df.columns = [c.lower() for c in df.columns]
+        keep = [c for c in ("instrument_id", "raw_symbol", "expiration",
+                            "strike_price", "instrument_class", "underlying") if c in df.columns]
+        df = df[keep].copy()
+        if use_cache:
+            df.to_csv(cache, index=False)
+            print(f"[DatabentoLoader] Cached -> {cache.name}")
+        return df
+    except Exception as exc:
+        print(f"[DatabentoLoader] option definition fetch failed: {exc}")
+        return pd.DataFrame()
+
+
+def fetch_option_chains(
+    underlying: str, start: str, end: str, schema: str = "ohlcv-1d", use_cache: bool = True
+) -> pd.DataFrame:
+    """Real option chains for `underlying` — bars joined to contract metadata.
+
+    Returns timestamp/instrument_id/raw_symbol/expiration/strike_price/
+    instrument_class/open/high/low/close/volume, or an empty DataFrame with a
+    printed reason. This is the input the options runners currently fabricate
+    with Black-Scholes.
+    """
+    up = underlying.upper()
+    if up not in OPTIONS_WATCHLIST:
+        print(f"[DatabentoLoader] {up} is not in OPTIONS_WATCHLIST {OPTIONS_WATCHLIST}")
+    cache = _opt_cache_path(up, start, end, schema)
+    if use_cache and cache.exists():
+        print(f"[DatabentoLoader] Using cached {cache.name}")
+        return pd.read_csv(cache)
+
+    key = _api_key()
+    if not key or key == "your_databento_key_here":
+        print("[DatabentoLoader] DATABENTO_API_KEY not set — cannot fetch option chains.")
+        print("  Add to engine/.env: DATABENTO_API_KEY=...  (https://databento.com)")
+        return pd.DataFrame()
+    if not _db_available():
+        print("[DatabentoLoader] databento package not installed: pip install databento")
+        return pd.DataFrame()
+
+    try:
+        import databento as db
+
+        client = db.Historical(key)
+        print(f"[DatabentoLoader] Fetching OPRA {up} {schema} {start} -> {end}...")
+        data = client.timeseries.get_range(
+            dataset=OPRA_DATASET,
+            schema=schema,
+            symbols=[f"{up}.OPT"],
+            stype_in="parent",
+            start=start,
+            end=end,
+        )
+        bars = data.to_df()
+        if bars is None or bars.empty:
+            print(f"[DatabentoLoader] no OPRA bars returned for {up}")
+            return pd.DataFrame()
+        if bars.index.name and bars.index.name.lower() in ("ts_event", "ts", "timestamp"):
+            bars = bars.reset_index()
+        bars.columns = [c.lower() for c in bars.columns]
+        if "ts_event" in bars.columns:
+            bars["timestamp"] = pd.to_datetime(bars["ts_event"], utc=True)
+
+        defs = fetch_option_definitions(up, start, end, use_cache=use_cache)
+        if not defs.empty and "instrument_id" in bars.columns:
+            bars = bars.merge(defs, on="instrument_id", how="left")
+
+        out_cols = ["timestamp", "instrument_id", "raw_symbol", "expiration", "strike_price",
+                    "instrument_class", "open", "high", "low", "close", "volume"]
+        bars = bars[[c for c in out_cols if c in bars.columns]].copy()
+
+        if use_cache and len(bars):
+            bars.to_csv(cache, index=False)
+            print(f"[DatabentoLoader] Cached -> {cache.name}")
+        print(f"[DatabentoLoader] OPRA: {len(bars)} rows for {up} ({schema})")
+        return bars
+    except Exception as exc:
+        print(f"[DatabentoLoader] OPRA chain fetch failed: {exc}")
+        return pd.DataFrame()
+
+
+# ---------------------------------------------------------------------------
 # Cache helpers (same dir + contract as the Polygon loader)
 # ---------------------------------------------------------------------------
 

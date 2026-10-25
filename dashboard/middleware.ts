@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { decideDashboardAuth, readDashboardAuthEnv } from "@/lib/dashboardAuth";
+import { isPublicReadOnlyPath, isWebSocketPath, isWebSocketUpgrade } from "@/lib/publicRoutes";
 
 /**
  * HTTP Basic Auth for the JARVIS trading dashboard.
@@ -12,13 +14,19 @@ import { NextRequest, NextResponse } from "next/server";
  *   DASHBOARD_AUTH_USER  — username
  *   DASHBOARD_AUTH_PASS  — password
  *
- * Behavior:
- *   - Both vars set  -> enforced. Missing/wrong creds get 401 + WWW-Authenticate
- *                       (browser shows the native credential prompt).
- *   - Either unset   -> ALLOW all. This keeps local dev and CI previews working
- *                       without a shared secret; production deployment must set
- *                       both. Logs a warning on first request so the gap is
- *                       visible in server logs.
+ * Behavior (see lib/dashboardAuth.ts for the policy and its unit tests):
+ *   - Both vars set   -> enforced. Missing/wrong creds get 401 + WWW-Authenticate
+ *                        (browser shows the native credential prompt).
+ *   - Neither set, on a hosted deployment -> FAIL CLOSED (503). This is the
+ *                        important case: a Vercel deploy without DASHBOARD_AUTH_*
+ *                        previously served the whole dashboard and the
+ *                        /api/engine/* proxy (which injects the engine API key
+ *                        server-side) to the public internet. Refusing traffic is
+ *                        the safe failure mode.
+ *   - Neither set, plain localhost -> allowed, so local dev and CI need no shared
+ *                        secret. Logs a warning so the gap stays visible.
+ *   - DASHBOARD_AUTH_DISABLED=1 -> allowed even on a hosted deployment, for a
+ *                        deliberate public demo. Never set this in production.
  *
  * Security notes:
  *   - Uses a constant-time comparison (crypto.timingSafeEqual) to avoid
@@ -53,12 +61,38 @@ function unauthorized(): NextResponse {
 }
 
 export function middleware(req: NextRequest) {
+  if (isPublicReadOnlyPath(req.nextUrl.pathname)) {
+    return NextResponse.next();
+  }
+
+  // WebSocket handshakes cannot carry an Authorization header, so a genuine upgrade must be
+  // allowed through. An ordinary GET under /ws/ is NOT an upgrade and falls through to the
+  // auth checks below — otherwise the whole /ws/ prefix is an unauthenticated hole.
+  if (isWebSocketPath(req.nextUrl.pathname) && isWebSocketUpgrade(req.headers.get("upgrade"))) {
+    return NextResponse.next();
+  }
+
   const user = process.env.DASHBOARD_AUTH_USER;
   const pass = process.env.DASHBOARD_AUTH_PASS;
 
-  // No credentials configured — allow (dev/CI). Log once-ish so the gap is
-  // visible in server output instead of silent.
-  if (!user || !pass) {
+  const decision = decideDashboardAuth(readDashboardAuthEnv());
+
+  if (decision === "deny") {
+    if (!warnedUnauthenticated) {
+      warnedUnauthenticated = true;
+      console.error(
+        "[auth] DASHBOARD_AUTH_USER/DASHBOARD_AUTH_PASS not set on a hosted deployment — refusing to serve private routes. " +
+          "Set both, or set DASHBOARD_AUTH_DISABLED=1 deliberately for a public demo.",
+      );
+    }
+    return new NextResponse(
+      "Dashboard authentication is not configured on this deployment. " +
+        "Set DASHBOARD_AUTH_USER and DASHBOARD_AUTH_PASS.",
+      { status: 503, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+
+  if (decision === "allow") {
     if (!warnedUnauthenticated) {
       warnedUnauthenticated = true;
       console.warn(
@@ -67,6 +101,10 @@ export function middleware(req: NextRequest) {
     }
     return NextResponse.next();
   }
+
+  // decision === "enforce" implies both are configured; this narrows the types and
+  // fails closed if that invariant is ever broken.
+  if (!user || !pass) return unauthorized();
 
   const auth = req.headers.get("authorization") ?? "";
   const [scheme, encoded] = auth.split(" ");
@@ -96,10 +134,14 @@ export const config = {
   // are fine to gate too — the browser resends credentials after the 401,
   // and it prevents unauthenticated probing of build assets).
   //
-  // /ws/:path* is EXCLUDED: WebSocket upgrades from browsers cannot carry the
-  // Authorization header, so gating them here would break every live stream.
-  // The engine authenticates WS itself (/ws/pipeline requires ?api_key=, which
-  // the Next.js rewrite injects server-side; /ws/events is a public event
-  // stream). See lib/pipeline_ws.ts security note (2026-08-17).
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|ws/).*)"],
+  // /ws/:path* is NO LONGER excluded from the matcher.
+  //
+  // Excluding the whole `ws/` prefix meant any ORDINARY GET under /ws/ bypassed Basic Auth
+  // and was proxied to the engine tunnel — which disclosed the tunnel hostname to anonymous
+  // callers and exposed its unauthenticated surface. WebSocket traffic genuinely cannot
+  // carry an Authorization header, so the decision now lives in the request instead of the
+  // path: a real `Upgrade: websocket` handshake passes, and everything else under /ws/ must
+  // authenticate like any other route. See lib/publicRoutes.ts (isWebSocketPath /
+  // isWebSocketUpgrade) and the lib/pipeline_ws.ts security note.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };

@@ -330,13 +330,18 @@ def _build_contract(
 # ---------------------------------------------------------------------------
 
 
-def fetch_chain(
+async def fetch_chain_async(
     symbol: str,
     expiry_dates: Optional[list[str]] = None,
     risk_free_rate: float = 0.05,
     data_manager=None,
 ) -> Optional["OptionsChain"]:
     """Fetch a live options chain via MarketDataManager / Polygon.
+
+    Async by design — the data_manager's ib_async socket lives on the running
+    event loop, so its methods must be awaited here rather than driven with
+    ``loop.run_until_complete`` (which raises "This event loop is already
+    running" under FastAPI and silently left the coroutine unawaited).
 
     Args:
         symbol:         Ticker symbol (e.g. "SPY", "QQQ").
@@ -350,15 +355,12 @@ def fetch_chain(
     Returns:
         OptionsChain with Greeks attached, or None on error.
     """
-    import asyncio
-
     try:
         underlying_price: Optional[float] = None
 
         if data_manager is not None:
             try:
-                loop = asyncio.get_event_loop()
-                price_data = loop.run_until_complete(data_manager.get_current_price(symbol))
+                price_data = await data_manager.get_current_price(symbol)
                 underlying_price = float(price_data.get("last_price", 0) or 0) or None
             except Exception as exc:
                 logger.warning("[chain_fetcher] data_manager price fetch failed: %s", exc)
@@ -371,10 +373,7 @@ def fetch_chain(
 
         if data_manager is not None:
             try:
-                loop = asyncio.get_event_loop()
-                available_expiries = loop.run_until_complete(
-                    data_manager.get_options_expirations(symbol)
-                )
+                available_expiries = await data_manager.get_options_expirations(symbol)
             except Exception as exc:
                 logger.warning("[chain_fetcher] data_manager expiry fetch failed: %s", exc)
 
@@ -400,7 +399,7 @@ def fetch_chain(
         calls: list[OptionsContract] = []
         puts: list[OptionsContract] = []
 
-        ivr = get_iv_rank(symbol, days=252, data_manager=data_manager)
+        ivr = await get_iv_rank_async(symbol, days=252, data_manager=data_manager)
 
         options_chain = OptionsChain(
             symbol=symbol,
@@ -425,6 +424,46 @@ def fetch_chain(
     except Exception as exc:
         logger.exception("[chain_fetcher] fetch_chain failed for %s: %s", symbol, exc)
         return None
+
+
+def _run_sync(coro):
+    """Drive a coroutine from synchronous code.
+
+    Refuses to run when an event loop is already active in this thread: the
+    underlying ib_async socket belongs to that loop, so a nested ``asyncio.run``
+    both raises and (worse) previously left the coroutine unawaited, producing
+    a silent neutral/empty result. Async callers must await the ``*_async``
+    variant instead.
+    """
+    import asyncio
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+
+    coro.close()  # avoid "coroutine was never awaited" warning
+    raise RuntimeError(
+        "chain_fetcher: sync entry point called from inside a running event loop. "
+        "Await the corresponding *_async function (e.g. fetch_chain_async) instead."
+    )
+
+
+def fetch_chain(
+    symbol: str,
+    expiry_dates: Optional[list[str]] = None,
+    risk_free_rate: float = 0.05,
+    data_manager=None,
+) -> Optional["OptionsChain"]:
+    """Sync wrapper around :func:`fetch_chain_async` for non-async callers."""
+    return _run_sync(
+        fetch_chain_async(
+            symbol,
+            expiry_dates=expiry_dates,
+            risk_free_rate=risk_free_rate,
+            data_manager=data_manager,
+        )
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -493,13 +532,18 @@ def find_strike_by_delta(
 # ---------------------------------------------------------------------------
 
 
-def get_iv_rank(symbol: str, days: int = 252, data_manager=None) -> float:
+async def get_iv_rank_async(symbol: str, days: int = 252, data_manager=None) -> float:
     """Calculate IV Rank for a symbol using historical price data.
 
     Fetches ``days`` trading days of historical close prices via data_manager
     (falls back to BacktestDataLoader), derives a proxy daily IV from
     close-to-close returns (historical volatility), and computes IVR against
     the resulting 1-year range.
+
+    Async by design: ib_async's IB() socket is bound to the running event loop,
+    so ``data_manager.get_bars()`` must be awaited from that same loop. Calling
+    this via the sync ``get_iv_rank`` wrapper from inside a running loop raises
+    rather than silently returning a neutral 50.0.
 
     Args:
         symbol:       Ticker symbol.
@@ -509,7 +553,6 @@ def get_iv_rank(symbol: str, days: int = 252, data_manager=None) -> float:
     Returns:
         IV Rank in [0, 100].  Returns 50.0 (neutral) on data failure.
     """
-    import asyncio
     from datetime import timedelta
 
     try:
@@ -517,13 +560,10 @@ def get_iv_rank(symbol: str, days: int = 252, data_manager=None) -> float:
 
         if data_manager is not None:
             try:
-                loop = asyncio.get_event_loop()
-                df = loop.run_until_complete(
-                    data_manager.get_bars(
-                        symbol=symbol,
-                        lookback_days=days + 30,
-                        timeframe="1d",
-                    )
+                df = await data_manager.get_bars(
+                    symbol=symbol,
+                    lookback_days=days + 30,
+                    timeframe="1d",
                 )
                 if df is not None and len(df) >= 20 and "close" in df.columns:
                     closes = df["close"].dropna()
@@ -576,12 +616,22 @@ def get_iv_rank(symbol: str, days: int = 252, data_manager=None) -> float:
         return 50.0
 
 
+def get_iv_rank(symbol: str, days: int = 252, data_manager=None) -> float:
+    """Sync wrapper around :func:`get_iv_rank_async` for non-async callers.
+
+    Raises RuntimeError when called from inside a running event loop, because
+    the underlying ib_async socket cannot be driven from a second loop. Async
+    callers (FastAPI routes) must await ``get_iv_rank_async`` directly.
+    """
+    return _run_sync(get_iv_rank_async(symbol, days=days, data_manager=data_manager))
+
+
 # ---------------------------------------------------------------------------
 # Multi-expiry fetch
 # ---------------------------------------------------------------------------
 
 
-def fetch_nearest_expiries(
+async def fetch_nearest_expiries_async(
     symbol: str,
     count: int = 3,
     risk_free_rate: float = 0.05,
@@ -589,6 +639,9 @@ def fetch_nearest_expiries(
     **kwargs,
 ) -> list["OptionsChain"]:
     """Fetch chains for the nearest ``count`` expiries for a symbol.
+
+    Async by design — see :func:`fetch_chain_async`. Use the sync
+    ``fetch_nearest_expiries`` wrapper only outside a running event loop.
 
     Args:
         symbol:         Ticker symbol.
@@ -600,14 +653,11 @@ def fetch_nearest_expiries(
         List of OptionsChain instances (may be shorter than count
         if fewer expiries are available).
     """
-    import asyncio
-
     try:
         available: list[str] = []
         if data_manager is not None:
             try:
-                loop = asyncio.get_event_loop()
-                available = loop.run_until_complete(data_manager.get_options_expirations(symbol))
+                available = await data_manager.get_options_expirations(symbol)
             except Exception as exc:
                 logger.warning("[chain_fetcher] data_manager expiry fetch failed: %s", exc)
 
@@ -622,8 +672,29 @@ def fetch_nearest_expiries(
 
     chains: list[OptionsChain] = []
     for expiry_str in available:
-        chain = fetch_chain(symbol, [expiry_str], risk_free_rate, data_manager=data_manager)
+        chain = await fetch_chain_async(
+            symbol, [expiry_str], risk_free_rate, data_manager=data_manager
+        )
         if chain:
             chains.append(chain)
 
     return chains
+
+
+def fetch_nearest_expiries(
+    symbol: str,
+    count: int = 3,
+    risk_free_rate: float = 0.05,
+    data_manager=None,
+    **kwargs,
+) -> list["OptionsChain"]:
+    """Sync wrapper around :func:`fetch_nearest_expiries_async`."""
+    return _run_sync(
+        fetch_nearest_expiries_async(
+            symbol,
+            count=count,
+            risk_free_rate=risk_free_rate,
+            data_manager=data_manager,
+            **kwargs,
+        )
+    )

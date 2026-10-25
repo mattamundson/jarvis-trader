@@ -10,25 +10,33 @@ concurrency:
 jobs:
   pre-deploy-check:
     name: Pre-Deploy Verification
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
+
+      # See .github/actions/free-disk-space/action.yml for why this runs before
+      # setup-python restores the pip cache. The pre-deploy job installs the same
+      # disk-heavy engine/requirements-core.txt stack as CI; without this cleanup,
+      # the ~3.5GB pip cache restore plus torch/RL wheels repeatedly exhausts the
+      # ubuntu-latest runner during dependency install.
+      - name: Free disk space (unused Android SDK + .NET toolchains)
+        uses: ./.github/actions/free-disk-space
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: '3.12'
           cache: 'pip'
           cache-dependency-path: 'engine/requirements-core.txt'
 
       - name: Set up Node 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7.0.0
         with:
           node-version: '22'
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6.1.0
         with:
           version: 10.33.2  # pinned: "latest" drifted to pnpm 11 which hard-fails on ignored builds
 
@@ -49,14 +57,25 @@ jobs:
           # ruff format --check intentionally not enforced (see ci.yml note).
           cd ..
 
-          echo "=== Running Type Checking (non-blocking debt) ==="
-          mypy engine/ --ignore-missing-imports --config-file engine/pyproject.toml \
-            --explicit-package-bases --namespace-packages || echo "::warning::mypy debt — tighten in follow-up"
+          echo "=== Running Type Checking (advisory mypy debt) ==="
+          # Full-tree mypy is intentionally advisory until issue #942 burns down the
+          # inherited baseline. Run from engine/ to match engine/pyproject.toml's
+          # package-base assumptions, keep the debt visible in logs, and avoid
+          # GitHub warning annotations for an expected non-blocking signal.
+          (
+            cd engine
+            mypy . --ignore-missing-imports --config-file pyproject.toml \
+              --explicit-package-bases --namespace-packages
+          ) || echo "::notice::Full-tree mypy remains advisory; see issue #942 for debt burn-down."
 
           echo "=== Running Tests (fast then slow — parity with ci.yml engine-test) ==="
-          pytest engine/tests/ -m "not slow" \
+          # Restate the pyproject marker exclusions: a CLI -m overrides pyproject's
+          # addopts -m, so a bare "not slow" would re-collect manual and
+          # integration_ib tests -- the latter submits REAL paper orders when IB
+          # Gateway is reachable. Keep parity with ci.yml's engine-test markers.
+          pytest engine/tests/ -m "not slow and not manual and not integration_ib" \
             -v --tb=short --cov=engine --cov-report=term-missing --cov-report=xml
-          pytest engine/tests/ -m slow \
+          pytest engine/tests/ -m "slow and not manual and not integration_ib" \
             -v --tb=short --cov=engine --cov-append --cov-report=term-missing --cov-report=xml \
             || { ec=$?; if [[ $ec -eq 5 ]]; then echo "No slow tests collected; skipping slow pass"; exit 0; fi; exit "$ec"; }
 
@@ -65,7 +84,7 @@ jobs:
 
       - name: Upload coverage artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: coverage-report
           path: coverage.xml

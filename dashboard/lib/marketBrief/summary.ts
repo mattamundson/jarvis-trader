@@ -1,5 +1,7 @@
 import type {
+  MarketBriefConditionalDiagnostic,
   MarketBriefLevel,
+  MarketBriefProbabilitySource,
   MarketBriefScores,
   MarketBriefSnapshot,
   MarketBriefSymbolSnapshot,
@@ -22,6 +24,45 @@ function probability(value: unknown): number {
   return Math.max(0, Math.min(100, Number(n.toFixed(1))));
 }
 
+function normalizeProbabilitySource(raw: unknown): MarketBriefProbabilitySource | undefined {
+  const obj = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : null;
+  if (!obj) return undefined;
+  const wf = obj.walkforward && typeof obj.walkforward === "object" ? obj.walkforward as Record<string, unknown> : null;
+  return {
+    primary: stringOrNull(obj.primary) ?? undefined,
+    conditional_status: stringOrNull(obj.conditional_status) ?? undefined,
+    rationale: stringOrNull(obj.rationale) ?? undefined,
+    walkforward: wf ? {
+      n: finiteNumber(wf.n) ?? undefined,
+      mean_brier_model: finiteNumber(wf.mean_brier_model) ?? undefined,
+      mean_brier_base: finiteNumber(wf.mean_brier_base) ?? undefined,
+      paired_diff_base_minus_model: finiteNumber(wf.paired_diff_base_minus_model) ?? undefined,
+      paired_ci95: Array.isArray(wf.paired_ci95) ? wf.paired_ci95.map(prob => finiteNumber(prob) ?? 0) : undefined,
+      paired_t: finiteNumber(wf.paired_t) ?? undefined,
+      model_beats_base: typeof wf.model_beats_base === "boolean" ? wf.model_beats_base : undefined,
+      verdict: stringOrNull(wf.verdict) ?? undefined,
+    } : undefined,
+  };
+}
+
+function normalizeConditionalDiagnostic(raw: unknown): MarketBriefConditionalDiagnostic | undefined {
+  const obj = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : null;
+  if (!obj) return undefined;
+  const probsRaw = obj.probabilities && typeof obj.probabilities === "object" ? obj.probabilities as Record<string, unknown> : {};
+  return {
+    state: stringOrNull(obj.state) ?? undefined,
+    n: finiteNumber(obj.n) ?? undefined,
+    status: stringOrNull(obj.status) ?? undefined,
+    publish_as_edge: typeof obj.publish_as_edge === "boolean" ? obj.publish_as_edge : undefined,
+    probabilities: {
+      continuation: probability(probsRaw.continuation),
+      rotation: probability(probsRaw.rotation),
+      failure: probability(probsRaw.failure),
+      sum: probability(probsRaw.sum),
+    },
+  };
+}
+
 function normalizeScores(raw: unknown): MarketBriefScores {
   const obj = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   const probsRaw = obj.probabilities && typeof obj.probabilities === "object" ? obj.probabilities as Record<string, unknown> : {};
@@ -40,6 +81,8 @@ function normalizeScores(raw: unknown): MarketBriefScores {
       macro_score: finiteNumber((obj.inputs as Record<string, unknown>).macro_score) ?? undefined,
     } : undefined,
     probabilities,
+    probability_source: normalizeProbabilitySource(obj.probability_source),
+    conditional_diagnostic: normalizeConditionalDiagnostic(obj.conditional_diagnostic),
     macro_events: Array.isArray(obj.macro_events) ? obj.macro_events.filter((v): v is string => typeof v === "string") : [],
     notes: Array.isArray(obj.notes) ? obj.notes.filter((v): v is string => typeof v === "string") : [],
   };

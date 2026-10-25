@@ -1,6 +1,9 @@
 import pytest
-
-from engine.research.event_markets.schema import EventMarketReplayRecord, infer_resolution_value, replay_hash
+from engine.research.event_markets.schema import (
+    EventMarketReplayRecord,
+    infer_resolution_value,
+    replay_hash,
+)
 
 
 def _raw(**overrides):

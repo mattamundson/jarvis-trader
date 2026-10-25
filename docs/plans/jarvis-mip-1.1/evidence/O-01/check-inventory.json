@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0",
+  "work_package": "O-01",
+  "status": "IN_PROGRESS",
+  "checks": [
+    {"id":"PLAN-STRUCTURE","command":"python scripts/validate_jarvis_mip.py --profile structural","rung":"E0","classification":"REQUIRED","result":"PASS"},
+    {"id":"PLAN-UNIT","command":"python -m unittest discover -s tests/plan -p 'test_*.py' -v","rung":"E1","classification":"REQUIRED","result":"PASS"},
+    {"id":"ENGINE-LINT","command":"cd engine && .venv/bin/ruff check . --config ruff.toml","rung":"E0","classification":"REQUIRED_NOT_RUN_THIS_EVIDENCE","result":"UNOBSERVED"},
+    {"id":"ENGINE-TEST","command":"cd engine && .venv/bin/python -m pytest tests/ -m 'not slow'","rung":"E1_E2_MIXED","classification":"REQUIRED_NOT_RUN_THIS_EVIDENCE","result":"UNOBSERVED"},
+    {"id":"DASHBOARD-TYPE","command":"cd dashboard && ./node_modules/.bin/tsc --noEmit","rung":"E0","classification":"REQUIRED_NOT_RUN_THIS_EVIDENCE","result":"UNOBSERVED"},
+    {"id":"DASHBOARD-BUILD","command":"cd dashboard && pnpm run build","rung":"E0","classification":"REQUIRED_NOT_RUN_THIS_EVIDENCE","result":"UNOBSERVED"}
+  ],
+  "limitations":["PASS entries cover planning artifacts only.","UNOBSERVED is not PASS, FAIL, or SKIP."]
+}

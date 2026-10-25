@@ -150,7 +150,10 @@ test("mission-control surfaces stale snapshot warnings prominently", async ({ pa
       json: {
         available: true,
         source: "phase0_runtime_truth_snapshot",
-        generated_at: "2026-09-01T00:00:00Z",
+        // Computed relative to now: `relativeTime()` renders this as "2d ago", and
+        // a hardcoded date drifts out of that bucket as real time passes.
+        // Must stay consistent with age_seconds: 172800 (exactly 2 days).
+        generated_at: new Date(Date.now() - 172_800_000).toISOString(),
         age_seconds: 172800,
         freshness: "stale",
         repository: {

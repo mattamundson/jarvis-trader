@@ -1,5 +1,6 @@
 from ib_async import IB  # ib_async is the maintained successor to ib_insync — same API
 
+
 def main():
     ib = IB()
     try:

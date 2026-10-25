@@ -51,7 +51,6 @@ def _write_block(indent: str, payload_var: str) -> str:
 def _df_bound_at_write_site(src: str) -> bool:
     """Is `df` bound in the function that performs the verdict write?"""
     tree = ast.parse(src)
-    body_all = src
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             seg = ast.get_source_segment(src, node) or ""

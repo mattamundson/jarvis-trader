@@ -3,6 +3,7 @@
 import { ArrowLeft, FlaskConical, ScrollText } from "lucide-react";
 import Link from "next/link";
 import { SpxIntradayAnalysisCard } from "@/components/SpxIntradayAnalysisCard";
+import { ExploratoryBanner } from "@/components/ExploratoryBanner";
 import { useSpxIntradayAnalysis } from "@/hooks/useSpxIntradayAnalysis";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -48,6 +49,7 @@ export default function SpxAnalysisPage() {
       </header>
 
       <main className="mx-auto max-w-[1600px] px-6 py-6 space-y-6">
+        <ExploratoryBanner what="SPX intraday scenario probabilities are model diagnostics derived from a read-only snapshot" />
         <SpxIntradayAnalysisCard />
 
         <Card>

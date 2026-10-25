@@ -1,6 +1,7 @@
 import yaml
 from ib_async import IB  # ib_async is the maintained successor to ib_insync
 
+
 def main():
     with open("config/broker_ibkr.yaml", "r") as f:
         cfg = yaml.safe_load(f)

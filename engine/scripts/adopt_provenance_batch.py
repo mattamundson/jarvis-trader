@@ -67,7 +67,7 @@ def data_file_in_scope(src: str, write_line: str) -> bool:
 
 
 def main() -> int:
-    changed, skipped, unsafe = [], [], []
+    changed, unsafe = [], []
     originals: dict[str, str] = {}
     for f in sorted(glob.glob(str(ENGINE / "backtest" / "run_*.py"))):
         p = Path(f)

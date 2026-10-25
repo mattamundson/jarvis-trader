@@ -3,6 +3,7 @@ Symbols mirror Amo's live trading focus: ES (=MES family), GC (=MGC family),
 plus SPY/QQQ for equity-side reference. Daily bars, 2y history.
 """
 from pathlib import Path
+
 import yfinance as yf
 
 OUT = Path(__file__).resolve().parent / "data"
