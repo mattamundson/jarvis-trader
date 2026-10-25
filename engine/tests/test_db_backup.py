@@ -144,8 +144,9 @@ def test_cleanup_respects_retention_window(test_db_path, temp_db_dir):
     assert result["deleted_count"] >= 0  # May or may not delete depending on timing
 
 
-def test_get_status(test_db_path, temp_db_dir):
+def test_get_status(test_db_path, temp_db_dir, monkeypatch):
     """Test get_status() returns correct backup statistics."""
+    monkeypatch.delenv("DB_BACKUP_RETENTION_DAYS", raising=False)
     backup_dir = str(Path(temp_db_dir) / "backups")
     backup = DatabaseBackup(db_path=test_db_path, backup_dir=backup_dir)
 
@@ -158,7 +159,7 @@ def test_get_status(test_db_path, temp_db_dir):
     assert status["last_backup_size"] > 0
     assert status["backup_count"] == 1
     assert status["backup_dir"] == backup_dir
-    assert status["retention_days"] == 30
+    assert status["retention_days"] == 7
     assert len(status["available_backups"]) == 1
 
     backup_info = status["available_backups"][0]
@@ -204,3 +205,37 @@ async def test_backup_thread_safety():
 
         assert result["success"] is True
         assert result["backup_file"] is not None
+
+
+# -- Retention default / DB_BACKUP_RETENTION_DAYS override --------------------
+
+
+def test_default_retention_is_seven_days(temp_db_dir, monkeypatch):
+    """Without an explicit value or env override, keep 7 days (~3 GB at 0.45 GB/copy)."""
+    monkeypatch.delenv("DB_BACKUP_RETENTION_DAYS", raising=False)
+    backup = DatabaseBackup(db_path=str(Path(temp_db_dir) / "t.db"), backup_dir=temp_db_dir)
+    assert backup._retention_days == 7
+
+
+def test_retention_env_override(temp_db_dir, monkeypatch):
+    """DB_BACKUP_RETENTION_DAYS overrides the default when no explicit value is passed."""
+    monkeypatch.setenv("DB_BACKUP_RETENTION_DAYS", "14")
+    backup = DatabaseBackup(db_path=str(Path(temp_db_dir) / "t.db"), backup_dir=temp_db_dir)
+    assert backup._retention_days == 14
+
+
+def test_explicit_retention_beats_env(temp_db_dir, monkeypatch):
+    """An explicit retention_days argument wins over the env var."""
+    monkeypatch.setenv("DB_BACKUP_RETENTION_DAYS", "14")
+    backup = DatabaseBackup(
+        db_path=str(Path(temp_db_dir) / "t.db"), backup_dir=temp_db_dir, retention_days=30
+    )
+    assert backup._retention_days == 30
+
+
+@pytest.mark.parametrize("bad", ["", "abc", "0", "-3", "2.5"])
+def test_invalid_retention_env_falls_back_to_default(temp_db_dir, monkeypatch, bad):
+    """A malformed or non-positive env value never disables pruning or crashes; it uses 7."""
+    monkeypatch.setenv("DB_BACKUP_RETENTION_DAYS", bad)
+    backup = DatabaseBackup(db_path=str(Path(temp_db_dir) / "t.db"), backup_dir=temp_db_dir)
+    assert backup._retention_days == 7

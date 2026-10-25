@@ -9,6 +9,7 @@ retention policy and async execution.
 from __future__ import annotations
 
 import logging
+import os
 import sqlite3
 import threading
 from datetime import datetime
@@ -17,9 +18,33 @@ from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
-# Retention policy constants
-DEFAULT_RETENTION_DAYS = 30
+# Retention policy constants. Each copy is a full snapshot (~0.45 GB as of
+# 2026-10), so 30 days held ~13.5 GB on C: and helped fill the disk on
+# 2026-10-25. Override with DB_BACKUP_RETENTION_DAYS.
+DEFAULT_RETENTION_DAYS = 7
+RETENTION_ENV_VAR = "DB_BACKUP_RETENTION_DAYS"
 DEFAULT_BACKUP_DIR = "data/backups"
+
+
+def _resolve_retention_days() -> int:
+    """Return DB_BACKUP_RETENTION_DAYS if it is a positive integer, else the default.
+
+    A malformed or non-positive value must never disable pruning, so it falls
+    back to DEFAULT_RETENTION_DAYS with a warning instead of raising.
+    """
+    raw = os.getenv(RETENTION_ENV_VAR)
+    if raw is None:
+        return DEFAULT_RETENTION_DAYS
+    try:
+        days = int(raw.strip())
+    except ValueError:
+        days = 0
+    if days < 1:
+        logger.warning(
+            f"Invalid {RETENTION_ENV_VAR}={raw!r}; using default {DEFAULT_RETENTION_DAYS}d"
+        )
+        return DEFAULT_RETENTION_DAYS
+    return days
 
 
 class DatabaseBackup:
@@ -32,16 +57,19 @@ class DatabaseBackup:
         Path to the database file to back up.
     backup_dir : str
         Directory where backups are stored. Defaults to ``data/backups``.
-    retention_days : int
-        Number of days to keep backups. Defaults to 30.
+    retention_days : int, optional
+        Number of days to keep backups. Defaults to ``DB_BACKUP_RETENTION_DAYS``
+        if set to a positive integer, else 7.
     """
 
     def __init__(
         self,
         db_path: str = "data/jarvis_trader.db",
         backup_dir: str = DEFAULT_BACKUP_DIR,
-        retention_days: int = DEFAULT_RETENTION_DAYS,
+        retention_days: Optional[int] = None,
     ) -> None:
+        if retention_days is None:
+            retention_days = _resolve_retention_days()
         engine_root = Path(__file__).parent.parent
         self._db_path = Path(db_path) if Path(db_path).is_absolute() else engine_root / db_path
         self._backup_dir = (
