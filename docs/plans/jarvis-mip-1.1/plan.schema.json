@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jarvis.local/schemas/jarvis-mip-1.1.json",
+  "title": "JARVIS Master Implementation Plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "plan_id",
+    "plan_status",
+    "formal_implementation_status",
+    "planning_adoption_gate",
+    "implementation_start_gate",
+    "generated",
+    "repository_baseline",
+    "programs",
+    "epics",
+    "phases",
+    "gates",
+    "work_packages"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.1" },
+    "plan_id": { "const": "JARVIS-MIP-1.1" },
+    "plan_status": { "enum": ["ADOPTION_CANDIDATE", "ADOPTED", "SUPERSEDED"] },
+    "formal_implementation_status": { "enum": ["NOT_STARTED", "ACTIVE", "COMPLETE"] },
+    "planning_adoption_gate": { "$ref": "#/$defs/gateStatus" },
+    "implementation_start_gate": { "$ref": "#/$defs/gateStatus" },
+    "generated": { "type": "string", "format": "date" },
+    "repository_baseline": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "programs": {
+      "type": "array",
+      "minItems": 16,
+      "maxItems": 16,
+      "items": { "$ref": "#/$defs/program" }
+    },
+    "epics": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/epic" }
+    },
+    "phases": {
+      "type": "array",
+      "minItems": 13,
+      "maxItems": 13,
+      "items": { "$ref": "#/$defs/phase" }
+    },
+    "gates": {
+      "type": "array",
+      "minItems": 14,
+      "maxItems": 14,
+      "items": { "$ref": "#/$defs/gate" }
+    },
+    "work_packages": {
+      "type": "array",
+      "minItems": 103,
+      "maxItems": 103,
+      "items": { "$ref": "#/$defs/workPackage" }
+    }
+  },
+  "$defs": {
+    "gateStatus": { "enum": ["CLOSED", "OPEN", "PASSED"] },
+    "program": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-P]$" },
+        "name": { "type": "string", "minLength": 1 }
+      }
+    },
+    "epic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "program", "title", "work_packages"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-P]-E[1-9][0-9]*$" },
+        "program": { "type": "string", "pattern": "^[A-P]$" },
+        "title": { "type": "string", "minLength": 1 },
+        "work_packages": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/wpId" }
+        }
+      }
+    },
+    "phase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "exit_gate"],
+      "properties": {
+        "id": { "type": "integer", "minimum": 0, "maximum": 12 },
+        "name": { "type": "string", "minLength": 1 },
+        "exit_gate": { "type": "string", "pattern": "^(ISG-0|M(?:[1-9]|1[0-2]))$" }
+      }
+    },
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "status", "authority", "required_work_packages", "evidence_manifest"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^(PAG-0|ISG-0|M(?:[1-9]|1[0-2]))$" },
+        "status": { "$ref": "#/$defs/gateStatus" },
+        "authority": { "type": "string", "minLength": 1 },
+        "required_work_packages": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/wpId" }
+        },
+        "evidence_manifest": { "type": ["string", "null"] }
+      }
+    },
+    "wpId": { "type": "string", "pattern": "^[A-P]-[0-9]{2}$" },
+    "evidenceRequirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "minimum_rung",
+        "required_reviews",
+        "required_observations",
+        "numeric_cross_check",
+        "pit_verification"
+      ],
+      "properties": {
+        "minimum_rung": { "type": "string", "pattern": "^E[0-5]$" },
+        "required_reviews": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
+        "required_observations": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
+        "numeric_cross_check": { "type": "boolean" },
+        "pit_verification": { "type": "boolean" }
+      }
+    },
+    "workPackage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "program",
+        "epic",
+        "phase",
+        "milestone",
+        "title",
+        "status",
+        "dependencies",
+        "safety_class",
+        "codex_level",
+        "charter_required",
+        "objective",
+        "acceptance_summary",
+        "evidence_requirements",
+        "charter_path",
+        "evidence_manifest_path"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/wpId" },
+        "program": { "type": "string", "pattern": "^[A-P]$" },
+        "epic": { "type": "string", "pattern": "^[A-P]-E[1-9][0-9]*$" },
+        "phase": { "type": "integer", "minimum": 0, "maximum": 12 },
+        "milestone": { "type": "string", "pattern": "^(ISG-0|M(?:[1-9]|1[0-2]))$" },
+        "title": { "type": "string", "minLength": 1 },
+        "status": {
+          "enum": ["NOT_STARTED", "READY", "IN_PROGRESS", "BLOCKED", "VALIDATION", "DONE", "SUPERSEDED"]
+        },
+        "dependencies": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/wpId" } },
+        "safety_class": { "type": "string", "pattern": "^S[0-4]$" },
+        "codex_level": { "type": "string", "pattern": "^A[0-2]$" },
+        "charter_required": { "const": true },
+        "objective": { "type": "string", "minLength": 1 },
+        "acceptance_summary": { "type": "string", "minLength": 1 },
+        "evidence_requirements": { "$ref": "#/$defs/evidenceRequirements" },
+        "charter_path": { "type": ["string", "null"] },
+        "draft_charter_path": { "type": ["string", "null"] },
+        "evidence_manifest_path": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

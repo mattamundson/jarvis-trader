@@ -1,36 +1,37 @@
-# Plan — Options Decision Board / Volatility Regime Phase 1
+# Plan — [safety-review] MGC Active-Contract Freshness Repair
 
 ## Finish line
 
-Create a read-only, analysis-only options decision-board backend tranche that improves JARVIS market-analysis quality without touching live trading, risk config, kill-switches, `.env`, order routing, or DO_NOT_TRADE policy.
+Prepare an isolated, reviewable fix that selects IBKR's active continuous futures contract for read-only historical data instead of the nearest non-expired serial contract, with regression coverage and no execution, risk, symbol-gate, kill-switch, or live-order changes.
 
-## Scope constraints
+## Scope
 
-- No live trading/risk/kill-switch/config changes.
-- No operational commands for MCL or MNQ.
-- Analysis-only outputs must label source quality and reject reasons.
-- Tests must verify numeric probability and payoff math.
+- Work only in `safety-review/ib4001-mgc-front-month-20261020` based on `origin/master`.
+- Preserve `127.0.0.1:4001` as the only operational Gateway endpoint; do not alter execution routing.
+- Add a failing regression test proving MGC prefers IBKR's active continuous contract over a nearer but inactive serial expiry.
+- Implement continuous-contract resolution using the repository's existing `export_ibkr_history.py` pattern, with the current expiry-list resolver retained as a fail-safe fallback.
+- Run targeted tests, full affected-file tests, Ruff, and independent review.
+- Do not deploy or merge. Open a `[safety-review]` PR only if verification passes.
 
-## Tranche 1 deliverables
+## Finish-line evidence
 
-1. Repair/confirm the existing SPY/QQQ implied options snapshot probability ladder:
-   - include `p_touch` and `p_fail` per ladder row;
-   - enforce `p_touch >= p_close` where applicable;
-   - keep no-extrapolation behavior.
-2. Add a pure `analysis/options_opportunity_board.py` module that consumes the existing delayed CBOE snapshot shape and produces ranked, defined-risk candidates:
-   - bull call debit spread;
-   - bear put debit spread;
-   - put credit spread;
-   - call credit spread;
-   - no naked/unlimited-risk structures;
-   - max loss, max gain/credit, breakeven, POP proxy, EV proxy, EV/max_loss, liquidity score, reject reasons.
-3. Add `GET /options-signals/opportunity-board` as a read-only endpoint built from `latest.json`.
-4. Add unit/router tests covering payoff math, liquidity filters, reject reasons, and endpoint behavior.
-5. Verify with targeted pytest. If dashboard files are touched in a later tranche, verify with `tsc`, build, and Playwright.
+1. RED test fails against the current nearest-expiry resolver for the expected reason.
+2. GREEN test passes after the minimal resolver change.
+3. Existing `test_market_data_ibkr.py` coverage passes.
+4. Ruff passes on changed Python files.
+5. Full non-slow engine suite is attempted; any unrelated baseline failures are reported exactly.
+6. Independent reviewer reports no blocking logic or security issue.
+7. PR is explicitly labeled `[safety-review]` and states live Gateway validation is still blocked until interactive IBKR 2FA/login restores local port 4001.
 
-## Follow-on tranches
+## Verification record — 2026-10-20
 
-- Tranche 2: dashboard opportunity-board card near Mission Control / signals, using `fetchEngine` only.
-- Tranche 3: battle-card report generator combining SPY/QQQ/VIX regime + touch/close/fail probabilities + candidate structures.
-- Tranche 4: chain snapshot ledger for calibration of implied move vs realized move and structure outcomes.
-- Tranche 5: journal/error taxonomy integration.
+- RED: the new MGC regression selected `MGCV6` instead of the expected active `MGCZ6` before the implementation.
+- GREEN: the focused regression and all of `tests/test_market_data_ibkr.py` passed after the resolver change.
+- Static gates: changed-file Ruff, full engine Ruff, and `git diff --check` passed.
+- Full non-slow engine suite: `9519 passed, 28 skipped, 184 deselected, 1 xfailed, 5 failed` in 773.42 seconds.
+- All five failures were reproduced unchanged from a clean `origin/master` archive: one Kronos fixture-data failure and four stale `_FakeIB.connectAsync` signature failures in `test_ib_market_data_type.py` caused by the existing `readonly` argument.
+- Independent Codex review: `No discrete correctness, safety, or maintainability defects were identified in the current changes.`
+- Live read-only branch validation passed after the operator-authenticated Gateway restored port 4001: the resolver selected `MGCZ6` (expiry `20261229`) and returned 316 hourly bars through `2026-10-20 10:00:00-04:00`; the newest bar had volume `10126`.
+- Fresh sanitized account attestation still fails closed: one managed account, configured-account match `false`, paper-prefix classification `false`, identifiers redacted.
+- The unmerged serving engine remains intentionally unchanged. Its safety bundle still returns `1` and reports MGC `18.3h` stale versus the `1.5h` tolerance, demonstrating the production repair has not been deployed.
+- Delivery boundary remains PR-only. Do not deploy or merge from this worktree.

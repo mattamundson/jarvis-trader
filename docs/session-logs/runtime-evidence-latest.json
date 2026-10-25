@@ -1,0 +1,67 @@
+{
+  "pm2": [
+    {
+      "name": "jarvis-dashboard",
+      "status": "online",
+      "pid": 138296,
+      "restarts": 0
+    },
+    {
+      "name": "jarvis-engine",
+      "status": "online",
+      "pid": 185152,
+      "restarts": 6
+    }
+  ],
+  "snapshot_candidates": [
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\phase0_runtime_truth_snapshot.json",
+      "exists": true,
+      "size": 4736
+    },
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\.hermes\\artifacts\\phase0_runtime_truth_snapshot.json",
+      "exists": false,
+      "size": null
+    }
+  ],
+  "dashboard_auth_present": {
+    "user": true,
+    "pass": true,
+    "user_len": 6,
+    "pass_len": 32
+  },
+  "local": {
+    "engine_health": {
+      "status": 200,
+      "body": "{\"status\":\"ok\",\"version\":\"1.1.0\",\"timestamp\":\"2026-09-03T05:13:28.301292+00:00\",\"live_trading\":false,\"kill_switch_active\":true,\"paper_mode\":true,\"database\":\"connected\",\"ibkr_connected\":true,\"ibkr_execution_connected\":true,\"execution_connected_verified\":false,\"ib_execution_stale\":true,\"ibkr_data_connected\":false,\"ibgateway_alive\":false,\"ibgateway_port\":4002,\"ibkr_broker_probe_ok\":true,\"ibkr_degrade"
+    },
+    "dash_noauth": {
+      "status": 401,
+      "body": "Authentication required"
+    },
+    "dash_auth": {
+      "status": 200,
+      "body": "<!DOCTYPE html><!--7ErJ3jOrGc_4jpAjNwbWW--><html lang=\"en\" class=\"__variable_f367f3 __variable_898c26\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><link rel=\"stylesheet\" href=\"/_next/static/css/8616b09427585abd.css\" data-precedence=\"next\"/><link rel=\"stylesheet\" href=\"/_next/static/css/99ab7f633edf9cfe.css\" data-precedence=\"next\"/><link rel=\"pr"
+    },
+    "dash_proxy_engine": {
+      "status": 200,
+      "body": "{\"status\":\"ok\",\"version\":\"1.1.0\",\"timestamp\":\"2026-09-03T05:13:28.301292+00:00\",\"live_trading\":false,\"kill_switch_active\":true,\"paper_mode\":true,\"database\":\"connected\",\"ibkr_connected\":true,\"ibkr_execution_connected\":true,\"execution_connected_verified\":false,\"ib_execution_stale\":true,\"ibkr_data_connected\":false,\"ibgateway_alive\":false,\"ibgateway_port\":4002,\"ibkr_broker_probe_ok\":true,\"ibkr_degrade"
+    },
+    "runtime_snapshot": {
+      "status": 200,
+      "body": "{\"available\":true,\"source\":\"phase0_runtime_truth_snapshot\",\"generated_at\":\"2026-09-03T05:12:07.000Z\",\"age_seconds\":81,\"freshness\":\"fresh\",\"repository\":{\"branch\":null,\"head_short\":null,\"dirty_count\":null},\"ports\":{\"engine_8010_open\":true,\"dashboard_3010_open\":true,\"ib_paper_4002_open\":false,\"ib_live_4001_open\":false},\"engine\":{\"reachable\":true,\"status\":\"ok\",\"live_trading\":false,\"paper_trading\":null"
+    }
+  },
+  "tailnet": {
+    "ip": "100.68.247.106",
+    "root": {
+      "status": 200,
+      "body": "<!DOCTYPE html><!--7ErJ3jOrGc_4jpAjNwbWW--><html lang=\"en\" class=\"__variable_f367f3 __variable_898c26\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><link rel=\"stylesheet\" href=\"/_next/static/css/8616b09427585abd.css\" data-precedence=\"next\"/><link rel=\"stylesheet\" href=\"/_next/static/css/99ab7f633edf9cfe.css\" data-precedence=\"next\"/><link rel=\"pr"
+    },
+    "proxy_engine": {
+      "status": 200,
+      "body": "{\"status\":\"ok\",\"version\":\"1.1.0\",\"timestamp\":\"2026-09-03T05:13:28.301292+00:00\",\"live_trading\":false,\"kill_switch_active\":true,\"paper_mode\":true,\"database\":\"connected\",\"ibkr_connected\":true,\"ibkr_execution_connected\":true,\"execution_connected_verified\":false,\"ib_execution_stale\":true,\"ibkr_data_connected\":false,\"ibgateway_alive\":false,\"ibgateway_port\":4002,\"ibkr_broker_probe_ok\":true,\"ibkr_degrade"
+    }
+  }
+}

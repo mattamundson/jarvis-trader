@@ -1,0 +1,53 @@
+{
+  "schema_version": "jarvis-readiness-scorecard.v1",
+  "generated_at": "2026-09-12T04:43:23.113597+00:00",
+  "source_reports": {
+    "readiness": "docs/reports/JARVIS_DASHBOARD_RECOMMENDATION_AUDIT_LATEST.json",
+    "attribution": "docs/reports/JARVIS_RECOMMENDATION_ATTRIBUTION_AUDIT_LATEST.json",
+    "baseline": "docs/reports/JARVIS_RECOMMENDATION_BASELINE_COMPARISON_LATEST.json"
+  },
+  "mode": "READ_ONLY_ANALYSIS",
+  "safety": {
+    "live_trading_changed": false,
+    "risk_config_changed": false,
+    "kill_switch_changed": false,
+    "broker_execution_changed": false,
+    "env_changed": false
+  },
+  "badges": {
+    "operator_analysis_ready": true,
+    "monitoring_ready": false,
+    "execution_ready": false,
+    "recommendation_attribution_proven": true,
+    "queue_order_lineage_proven": false,
+    "edge_certified": false
+  },
+  "metrics": {
+    "dashboard_ok": true,
+    "engine_ok": true,
+    "current_actionable_shown": null,
+    "current_actionable_raw": null,
+    "pending_approvals": null,
+    "unique_linked_paper_trades": 62,
+    "linked_rth_paper_trades": 20,
+    "queue_order_id_matches_to_paper": 0,
+    "linked_closed_pnl": 4758.66,
+    "linked_profit_factor": 2.3703,
+    "rth_linked_closed_pnl": 1885.33,
+    "rth_linked_profit_factor": 5.9318,
+    "linked_vs_unlinked_pnl_delta": 6336.0,
+    "linked_vs_all_paper_avg_trade_delta": 78.34
+  },
+  "blockers": [
+    "kill_switch_active=true",
+    "live_trading=false",
+    "master-api :8030 closed; master/trade-record widgets may be degraded",
+    "MES_1h active/auth mismatch: status=ACTIVE verdict=FAIL"
+  ],
+  "display_notes": [
+    "Analysis-ready does not mean execution-ready.",
+    "Queue order-id lineage remains unproven until order_id joins paper_trades.trade_id/idempotency_key.",
+    "No live trading, risk, kill-switch, broker execution, or symbol gate changes are represented by this scorecard.",
+    "Baseline comparison is favorable for linked trades, but edge_certified=false until lineage and forward baseline are proven."
+  ]
+}

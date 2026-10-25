@@ -6,6 +6,30 @@ export interface MarketBriefProbabilities {
   failure: number;
 }
 
+export interface MarketBriefProbabilitySource {
+  primary?: string;
+  conditional_status?: string;
+  rationale?: string;
+  walkforward?: {
+    n?: number;
+    mean_brier_model?: number;
+    mean_brier_base?: number;
+    paired_diff_base_minus_model?: number;
+    paired_ci95?: [number, number] | number[];
+    paired_t?: number;
+    model_beats_base?: boolean;
+    verdict?: string;
+  };
+}
+
+export interface MarketBriefConditionalDiagnostic {
+  state?: string;
+  n?: number;
+  status?: string;
+  publish_as_edge?: boolean;
+  probabilities?: MarketBriefProbabilities & { sum?: number };
+}
+
 export interface MarketBriefScores {
   status: "computed" | "low_confidence" | "degraded" | string;
   macro_event_count?: number;
@@ -15,6 +39,8 @@ export interface MarketBriefScores {
     macro_score?: number;
   };
   probabilities: MarketBriefProbabilities;
+  probability_source?: MarketBriefProbabilitySource;
+  conditional_diagnostic?: MarketBriefConditionalDiagnostic;
   macro_events?: string[];
   notes?: string[];
 }

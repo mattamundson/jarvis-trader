@@ -27,13 +27,13 @@ jobs:
     # Skip draft PRs (covered for free by the local pr-local-ci loop); still runs on
     # push to protected branches and on ready-for-review PRs.
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -80,13 +80,13 @@ jobs:
   engine-draft-check:
     name: Engine Draft Check (ruff + compile)
     if: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft == true }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -110,10 +110,10 @@ jobs:
   engine-typecheck:
     name: Engine Type Check (mypy)
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
 
       # See .github/actions/free-disk-space/action.yml for why this runs here
       # (engine/requirements-core.txt's torch/gymnasium/stable-baselines3 install
@@ -122,7 +122,7 @@ jobs:
         uses: ./.github/actions/free-disk-space
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -155,20 +155,20 @@ jobs:
   engine-test-fast:
     name: Engine Tests (pytest, fast)
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Headroom for the (rare) second attempt of the flake retry below.
     timeout-minutes: 28
     env:
       COVERAGE_FILE: ${{ github.workspace }}/.coverage.fast
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
 
       # See .github/actions/free-disk-space/action.yml for why this runs here.
       - name: Free disk space (unused Android SDK + .NET toolchains)
         uses: ./.github/actions/free-disk-space
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -201,7 +201,7 @@ jobs:
           ec=0
           for i in $(seq 1 "$attempts"); do
             echo "::group::pytest fast (attempt $i/$attempts)"
-            pytest engine/tests/ -m "not slow and not manual" \
+            pytest engine/tests/ -m "not slow and not manual and not integration_ib" \
               -v --tb=short --cov=engine --cov-report=term-missing
             ec=$?
             echo "::endgroup::"
@@ -214,7 +214,7 @@ jobs:
 
       - name: Upload coverage data
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: coverage-data-fast
           path: .coverage.fast
@@ -224,19 +224,19 @@ jobs:
   engine-test-slow:
     name: Engine Tests (pytest, slow)
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
       COVERAGE_FILE: ${{ github.workspace }}/.coverage.slow
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
 
       # See .github/actions/free-disk-space/action.yml for why this runs here.
       - name: Free disk space (unused Android SDK + .NET toolchains)
         uses: ./.github/actions/free-disk-space
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -248,15 +248,19 @@ jobs:
 
       - name: Run pytest (-m "slow and not manual")
         run: |
-          # `not manual` restated: a CLI -m overrides pyproject's `-m "not manual"`
-          # default, and the IB-Gateway e2e tests must never be collected in CI.
-          pytest engine/tests/ -m "slow and not manual" \
+          # `not manual` and `not integration_ib` restated: a CLI -m replaces
+          # pyproject's addopts `-m "not manual and not integration_ib"` default,
+          # so a partial marker expression re-collects the IB-Gateway tests that
+          # submit REAL paper orders when Gateway is reachable. Keep both
+          # exclusions literal here; conftest's collection guard is the backstop,
+          # not a substitute for stating them.
+          pytest engine/tests/ -m "slow and not manual and not integration_ib" \
             -v --tb=short --cov=engine --cov-report=term-missing \
             || { ec=$?; if [[ $ec -eq 5 ]]; then echo "No slow tests collected; skipping slow slice"; exit 0; fi; exit "$ec"; }
 
       - name: Upload coverage data
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: coverage-data-slow
           path: .coverage.slow
@@ -266,19 +270,19 @@ jobs:
 
   engine-coverage-merge:
     name: Engine Tests (coverage merge)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     needs: [engine-test-fast, engine-test-slow]
     if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && needs.engine-test-fast.result == 'success' && needs.engine-test-slow.result == 'success' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
 
       # See .github/actions/free-disk-space/action.yml for why this runs here.
       - name: Free disk space (unused Android SDK + .NET toolchains)
         uses: ./.github/actions/free-disk-space
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -288,14 +292,14 @@ jobs:
         run: pip install -q -r engine/requirements-core.txt
 
       - name: Download fast coverage data
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8.0.1
         with:
           name: coverage-data-fast
           path: cov-fast
 
       - name: Download slow coverage data
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8.0.1
         with:
           name: coverage-data-slow
           path: cov-slow
@@ -321,7 +325,7 @@ jobs:
 
       - name: Upload coverage artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: coverage-report
           path: coverage.xml
@@ -340,10 +344,10 @@ jobs:
   dashboard-build:
     name: Dashboard Build (Next.js)
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
       - name: Check for case-only duplicate filenames (Vercel's build FS is case-sensitive)
         run: |
           dupes=$(git ls-files | sort -f | uniq -Di)
@@ -354,12 +358,12 @@ jobs:
           fi
 
       - name: Set up Node 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7.0.0
         with:
           node-version: '22'
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6.1.0
         with:
           version: 10.33.2  # pinned: "latest" drifted to pnpm 11 which hard-fails on ignored builds
 
@@ -453,13 +457,13 @@ jobs:
     # runs py_compile + ruff on changed *.py only, once daily, and needs this
     # machine awake -- it has never checked a TypeScript file. This job is cheap
     # (~2 min, no browser, no build) so it runs on drafts too.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
 
       - name: Set up Node 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7.0.0
         with:
           node-version: '22'
 
@@ -472,7 +476,7 @@ jobs:
         working-directory: dashboard
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6.1.0
         with:
           version: 10.33.2  # pinned to match dashboard-build
 
@@ -493,10 +497,10 @@ jobs:
   security-scan:
     name: Security Scan
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
 
       - name: Check for .env files
         run: |
@@ -525,6 +529,42 @@ jobs:
             exit 1
           fi
           echo "No secret-shaped filenames found."
+
+      - name: Check for unresolved merge conflict markers
+        run: |
+          set -euo pipefail
+          # PR #921: 275 files were committed with unresolved merge conflict markers
+          # (^<{7} branch-name style). Grep shells out of these across the tree so
+          # this can never recur. The bracket notation avoids parser ambiguity with
+          # literal <<<<<<< in the YAML string.
+          HITS=$(grep -rE '^[<]{7} ' --include='*.py' --include='*.ts' --include='*.tsx' \
+            --include='*.js' --include='*.json' --include='*.yaml' --include='*.yml' \
+            --include='*.md' --include='*.txt' --include='*.css' --include='*.html' \
+            --exclude-dir=node_modules --exclude-dir=.venv --exclude-dir=.next \
+            engine/ dashboard/ 2>/dev/null || true)
+          if [[ -n "${HITS}" ]]; then
+            echo "${HITS}"
+            echo "ERROR: Unresolved merge conflict markers found in the repo tree."
+            echo "Run 'grep -rnE \"^[<]{7} \" engine/ dashboard/' to locate them."
+            exit 1
+          fi
+          echo "No unresolved merge conflict markers found."
+
+      # The filename check above is trivially bypassed by renaming: a credential export called
+      # `value-export-root.archived` passes it while its plaintext bytes stay committed (that
+      # happened in archive/security-filename-quarantine/2026-09-24/). This step inspects
+      # CONTENT, so the file name is irrelevant. It prints key names and locations only, and is
+      # deliberately scoped to avoid documentation/example false positives.
+      - name: Check for credential exports by content (filename-agnostic)
+        run: |
+          set -euo pipefail
+          if command -v python3 >/dev/null 2>&1; then PY=python3
+          elif command -v python >/dev/null 2>&1; then PY=python
+          else
+            echo "ERROR: no python interpreter available for the credential-export content scan."
+            exit 1
+          fi
+          "$PY" scripts/check_credential_exports.py
 
       - name: Check for hardcoded secrets
         run: |
@@ -557,7 +597,7 @@ jobs:
       - dashboard-build
       - dashboard-quality
       - security-scan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # always() so it reports even when a needed job fails -- but still skip on draft PRs.
     if: ${{ always() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false) }}
     steps:

@@ -44,7 +44,17 @@ async def get_actionable_board(limit: int = Query(25, ge=1, le=50)) -> dict[str,
         logger.warning("[Actionable] approvals read failed: %s", exc)
         return {"items": [], "count": 0, "available": False, "note": f"Approvals read failed: {exc}"}
 
-    symbols = sorted({(r.get("symbol") or "").upper() for r in rows if r.get("symbol")})
+    # Only fetch prices for rows that can survive actionable-board filtering.
+    # Rejected/error/hold rows are diagnostic history, not live candidates; asking
+    # the live price router about those symbols can stall the operator card even
+    # though the final board would be empty. Keep the route fail-open and fast.
+    actionable_rows = [
+        r
+        for r in rows
+        if str(r.get("final_decision") or "").lower() in {"buy", "sell", "long", "short"}
+        and str(r.get("status") or "").lower() not in {"rejected", "error"}
+    ]
+    symbols = sorted({(r.get("symbol") or "").upper() for r in actionable_rows if r.get("symbol")})
     prices: dict[str, dict] = {}
     if symbols:
         try:

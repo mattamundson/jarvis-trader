@@ -1,14 +1,22 @@
-"""
-JARVIS TRADER — Databento cross-check adapter tests
+"""JARVIS TRADER — Databento cross-check adapter tests
 ====================================================
-Covers data/databento_adapter.py. The `databento` package is NOT installed
-in this venv by design (it's an optional, lazy-imported dependency — see
-requirements.txt) — several tests below exercise that real absence rather
-than mocking it, since it's the actual "dark by default" state described
-in docs/decisions/market-data-vendor-roadmap-2026-07-28.md.
+Covers data/databento_adapter.py. The `databento` package is an optional,
+lazy-imported dependency — the "dark by default" state described in
+docs/decisions/market-data-vendor-roadmap-2026-07-28.md.
+
+`TestMissingPackage` exercises the import-failure path by *simulating*
+absence (`sys.modules['databento'] = None` makes `import databento` raise
+ImportError) instead of depending on the package being genuinely
+uninstalled. Depending on real absence made these tests environment-coupled:
+they passed only while the package was missing and broke the moment it was
+installed for the real pilot, which would have failed the pilot's own
+"existing tests still pass" gate.
 """
 
 from __future__ import annotations
+
+import sys
+from datetime import datetime, timezone
 
 import pandas as pd
 import pytest
@@ -53,17 +61,23 @@ class TestSymbolMap:
 
 
 class TestMissingPackage:
-    """`databento` genuinely isn't installed yet (optional dep) — this
-    exercises the real import-failure path, not a mock."""
+    """`databento` is an optional dep, so the import-failure path must work in
+    BOTH environments. Absence is simulated, never assumed."""
 
-    def test_fetch_raises_clear_runtime_error(self):
+    @pytest.fixture
+    def without_databento(self, monkeypatch):
+        # Setting a sys.modules entry to None makes `import <name>` raise
+        # ImportError — the documented way to simulate a missing module
+        # without uninstalling it.
+        monkeypatch.setitem(sys.modules, "databento", None)
+
+    def test_fetch_raises_clear_runtime_error(self, without_databento):
         adapter = dba.DatabentoAdapter(api_key="db-fake-key")
-        from datetime import datetime, timezone
 
         with pytest.raises(RuntimeError, match="databento.*package is not installed"):
             adapter.fetch_minute_bars("MES", datetime.now(timezone.utc), datetime.now(timezone.utc))
 
-    def test_reconcile_reports_error_status_not_exception(self, monkeypatch):
+    def test_reconcile_reports_error_status_not_exception(self, monkeypatch, without_databento):
         monkeypatch.setattr(dba, "DATABENTO_API_KEY", "db-fake-key")
         fake_cache = pd.DataFrame({
             "timestamp": pd.to_datetime(["2026-07-27T14:30:00Z"]),

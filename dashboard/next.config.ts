@@ -20,6 +20,7 @@ const nextConfig: NextConfig = {
     ).replace(/\/$/, "");
 
     // /ws/pipeline requires api_key auth (engine/routers/pipeline_ws_router.py).
+    // /ws/events is the shared engine event stream — same auth model.
     // Inject the server-only ENGINE_API_KEY here so a same-origin client never
     // has to carry it — mirrors the header injection in
     // app/api/engine/[...path]/route.ts. Must precede the general /ws/:path*
@@ -30,6 +31,10 @@ const nextConfig: NextConfig = {
           {
             source: "/ws/pipeline",
             destination: `${engineUrl}/ws/pipeline?api_key=${encodeURIComponent(engineApiKey)}`,
+          },
+          {
+            source: "/ws/events",
+            destination: `${engineUrl}/ws/events?api_key=${encodeURIComponent(engineApiKey)}`,
           },
         ]
       : [];

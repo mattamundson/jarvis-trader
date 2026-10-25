@@ -24,8 +24,14 @@ from typing import Any, Optional
 # Real-time / streaming tiers. A value from any of these CAN be live (subject to
 # the freshness gate below). Mirrors the `source` strings emitted by
 # MarketDataManager.get_current_price / get_tick_price waterfalls.
+#
+# `rtd_tos` is the thinkorswim desktop RTD feed (see data/tos_rtd_adapter.py) —
+# a broker-direct push feed, so it belongs with the live tiers. It still has to
+# clear the freshness gate: RTD is change-driven, so an unchanged cached value
+# carries an `as_of` and is downgraded once it ages out.
+SOURCE_TOS_RTD = "rtd_tos"
 LIVE_SOURCES = frozenset(
-    {"ibkr", "schwab", "tradingview", "polygon_stream", "redis_fabric"}
+    {"ibkr", "schwab", "tradingview", "polygon_stream", "redis_fabric", SOURCE_TOS_RTD}
 )
 
 # Explicitly cached / delayed / absent tiers — never "live" regardless of age.

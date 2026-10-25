@@ -67,3 +67,35 @@ def test_build_default_llm_client_passes_anthropic_key_from_env(monkeypatch):
     cp.build_default_llm_client()
 
     assert captured["api_key"] == "sentinel-key"
+
+
+def test_build_default_llm_client_resolves_when_run_as_engine_package():
+    """Package-qualified callers (``python -m engine.discord.cli`` from the repo root,
+    as Jarvis-DiscordAutoImport runs it) must still get a client.
+
+    Regression: engine/ is not on sys.path in that invocation, so the bare
+    ``from llm.client import ...`` raised ModuleNotFoundError, the factory returned
+    None, and every scheduled Corey extraction fell back to the direct Anthropic
+    POST (dead credit) -> data_quality='none' since 2026-10-02.
+    """
+    import subprocess
+    import sys
+
+    repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    probe = (
+        "from engine.discord.commentary_processor import build_default_llm_client; "
+        "c = build_default_llm_client(); "
+        "print(type(c).__name__)"
+    )
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+    result = subprocess.run(
+        [sys.executable, "-c", probe],
+        cwd=repo_root,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().splitlines()[-1] == "JarvisLLMClient", result.stderr

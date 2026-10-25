@@ -45,9 +45,12 @@ class OptionsMarketModule(MarketModule):
         ib_gateway: "IBGatewayManager",
         underlyings: Optional[list[str]] = None,
         contracts_per_trade: int = 1,
+        data_manager=None,
     ):
         self._ib = ib_gateway
-        self._scanner = OptionsScanner(underlyings=underlyings)
+        self._scanner = OptionsScanner(
+            underlyings=underlyings, data_manager=data_manager
+        )
         self._strategy = OptionsStrategyPipeline(contracts_per_trade=contracts_per_trade)
         self._roller = OptionsAutoRoller()
         self._risk = OptionsRiskManager()
@@ -94,7 +97,7 @@ class OptionsMarketModule(MarketModule):
                 logger.debug(f"Options: checking position {pos.symbol}")
 
             # 2. Scan for new opportunities (paper mode — signals generated but not auto-executed)
-            scan_results = self._scanner.scan()
+            scan_results = await self._scanner.scan_async()
             specs = self._strategy.generate(scan_results)
 
             for spec in specs:

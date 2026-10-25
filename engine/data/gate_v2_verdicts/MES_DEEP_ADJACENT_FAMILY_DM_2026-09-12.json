@@ -1,4 +1,6 @@
 {
+  "symbol": "MES",
+  "family": "trend",
   "created_at": "2026-09-12T05:24:09.814639+00:00",
   "scope": "research-only; no live engine/risk/kill-switch/broker/paper_config changes",
   "cache": "backtest/cache/MES_2019-05-05_2026-08-26_1h.csv",
