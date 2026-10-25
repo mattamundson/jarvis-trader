@@ -241,6 +241,13 @@ any pending brief whose outcome now exists.
 2. If no listener → the IB Gateway logged out. Restart it:
    `C:\Users\mattm\scripts\start-ibc-paper.bat`
 3. **Approve the 2FA push on your phone.** IBC exits if it times out.
+4. From the repository root, run the credential-free recovery keeper:
+   `& ".\scripts\gateway-keeper-paper.bat"`
+5. Do not accept port-open or HTTP 200 alone. Success requires the keeper to
+   print PASS for `ibgateway_alive`, `execution_connected_verified`,
+   `ib_execution_stale`, `ibkr_data_connected`, and `live_trading` (which must
+   remain `False`). The helper reads the API key from the gitignored
+   `engine/.env` and never prints it.
 
 ### "TOS Live Quotes is empty"
 1. Is TOS running? `tasklist | grep thinkorswim`
@@ -304,7 +311,7 @@ open localhost dashboard.
 | Run pipeline | `curl -X POST .../pipeline/run/background -d '{"symbol":"MES","is_futures":true}'` |
 | Position watchdog | `engine/.venv/Scripts/python.exe engine/scripts/independent_position_watchdog.py --verbose` |
 | Market scan | `curl -X POST .../pipeline/scheduler/manual-scan` |
-| Restart gateway | `C:\Users\mattm\scripts\start-ibc-paper.bat` |
+| Restart gateway | `C:\Users\mattm\scripts\start-ibc-paper.bat`, approve 2FA, then `& ".\scripts\gateway-keeper-paper.bat"` from the repo root |
 | Dashboard (local) | `http://127.0.0.1:3010/mission-control` |
 
 **Ports:** 8010 engine · 3010 dashboard · 4002 IB paper · 4001 IB live

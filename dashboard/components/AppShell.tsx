@@ -17,12 +17,18 @@ function isPublicReadOnlyPath(pathname: string | null): boolean {
   return pathname === "/market-brief-public" || pathname?.startsWith("/market-brief-public/") === true;
 }
 
+function isMissionControlPath(pathname: string | null): boolean {
+  return pathname === "/mission-control" || pathname?.startsWith("/mission-control/") === true;
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
   if (isPublicReadOnlyPath(pathname)) {
     return <main className="min-h-screen bg-background">{children}</main>;
   }
+
+  const missionControlFocus = isMissionControlPath(pathname);
 
   return (
     <ToastProvider>
@@ -36,7 +42,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <IBDataDegradedBanner />
         <LLMProviderBadge />
         <div className="flex min-h-screen">
-          <Sidebar />
+          {!missionControlFocus && <Sidebar />}
           <main className="flex-1 min-w-0 overflow-x-hidden">
             {children}
           </main>
