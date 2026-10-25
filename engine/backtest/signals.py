@@ -180,6 +180,17 @@ def _force_no_trade(result):
     return result
 
 
+def _is_mes_gate_v2_verdict_exempt(symbol: str) -> bool:
+    """Return True for the narrow MES exemption from the gate-v2 verdict check.
+
+    Amo's standing directive (2026-06-26) keeps MES active as the primary paper
+    vehicle even when its latest gate-v2 verdict is FAIL/INSUFFICIENT_SAMPLE.
+    Mirrors the carve-out in `gate_v2_policy.is_strategy_authorized()` and only
+    bypasses the verdict layer; DO_NOT_TRADE_SYMBOLS still wins first.
+    """
+    return symbol.upper() == "MES"
+
+
 def generate_instrument_signals(df, symbol: str, **kwargs):
     """Route to trend, composite, or standard signal generation based on instrument.
 
@@ -254,6 +265,11 @@ def generate_instrument_signals(df, symbol: str, **kwargs):
         # Lazy import so the policy module's dependencies aren't loaded
         # for callers that never enable enforcement.
         from backtest.gate_v2_policy import is_ungate_eligible
+
+        # MES is exempt from this verdict check only, in parity with
+        # gate_v2_policy.is_strategy_authorized(). DO_NOT_TRADE already ran above.
+        if _is_mes_gate_v2_verdict_exempt(symbol):
+            return result
 
         # PRB-02: TREND_INSTRUMENTS may only be authorized by a verdict for
         # the SAME family they actually trade (trend / trend_*) — an
