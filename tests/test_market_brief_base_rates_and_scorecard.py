@@ -44,6 +44,25 @@ class BaseRatesTests(unittest.TestCase):
         if st.n:
             self.assertAlmostEqual(st.p_continuation + st.p_rotation + st.p_failure, 100.0, places=1)
 
+    def test_class_rates_sum_to_exactly_100(self):
+        """Regression: independent 1dp rounding produced 99.9 totals."""
+        # 30/18/10 of n=58 rounds independently to 51.7 + 31.0 + 17.2 = 99.9
+        c, r, f = br._class_rates({"continuation": 30, "rotation": 18, "failure": 10}, 58)
+        self.assertEqual(round(c + r + f, 10), 100.0)
+        self.assertEqual((c, r, f), (51.7, 31.0, 17.3))
+
+    def test_class_rates_sums_exactly_100_across_many_n(self):
+        for n in range(1, 200):
+            for a in range(n + 1):
+                for b in range(n - a + 1):
+                    counts = {"continuation": a, "rotation": b, "failure": n - a - b}
+                    c, r, f = br._class_rates(counts, n)
+                    self.assertEqual(round(c + r + f, 10), 100.0, f"n={n} counts={counts}")
+
+    def test_class_rates_handles_zero_n(self):
+        self.assertEqual(br._class_rates({"continuation": 0, "rotation": 0, "failure": 0}, 0),
+                         (0.0, 0.0, 0.0))
+
 
 class ScorecardTests(unittest.TestCase):
     def test_validate_brief_requires_sum_100(self):
@@ -76,6 +95,231 @@ class ScorecardTests(unittest.TestCase):
         self.assertEqual(sc.label_partition(101, 90, 100, 95), br.label_partition(101, 90, 100, 95))
         self.assertEqual(sc.label_partition(99, 94, 100, 95), br.label_partition(99, 94, 100, 95))
         self.assertEqual(sc.label_partition(99, 95, 100, 95), br.label_partition(99, 95, 100, 95))
+
+
+class DailyPreregistrationTests(unittest.TestCase):
+    def _payload(self, date="2026-06-15"):
+        return {
+            "today": {"date": date, "close": 7829.25, "low": 7713.75, "state": "ath_close_lowvol_accel_gt2"},
+            "probabilities": {"continuation": 55.6, "rotation": 25.9, "failure": 18.5, "sum": 100.0},
+            "matched_state": "ath_close_lowvol_accel_gt2",
+        }
+
+    def test_records_then_is_idempotent(self):
+        with tempfile.TemporaryDirectory() as td:
+            led = pathlib.Path(td) / "ledger.jsonl"
+            status, entry = br.record_daily(self._payload(), led)
+            self.assertEqual(status, "recorded")
+            self.assertEqual(entry["date"], "2026-06-15")
+            self.assertEqual(entry["safety"]["mode"], "ANALYSIS_ONLY")
+            self.assertFalse(entry["safety"]["orders_enabled"])
+            self.assertEqual(len(led.read_text(encoding="utf-8").splitlines()), 1)
+            # second run on the same session must not duplicate the row
+            status2, _ = br.record_daily(self._payload(), led)
+            self.assertEqual(status2, "exists")
+            self.assertEqual(len(led.read_text(encoding="utf-8").splitlines()), 1)
+
+    def test_force_rewrites_a_second_row(self):
+        with tempfile.TemporaryDirectory() as td:
+            led = pathlib.Path(td) / "ledger.jsonl"
+            br.record_daily(self._payload(), led)
+            status, _ = br.record_daily(self._payload(), led, force=True)
+            self.assertEqual(status, "recorded")
+            self.assertEqual(len(led.read_text(encoding="utf-8").splitlines()), 2)
+
+    def test_different_session_dates_coexist(self):
+        with tempfile.TemporaryDirectory() as td:
+            led = pathlib.Path(td) / "ledger.jsonl"
+            br.record_daily(self._payload("2026-09-18"), led)
+            status, _ = br.record_daily(self._payload("2026-09-21"), led)
+            self.assertEqual(status, "recorded")
+            self.assertEqual(len(led.read_text(encoding="utf-8").splitlines()), 2)
+
+    def test_skips_when_payload_lacks_date(self):
+        with tempfile.TemporaryDirectory() as td:
+            led = pathlib.Path(td) / "ledger.jsonl"
+            status, _info = br.record_daily({"today": {}, "probabilities": {}}, led)
+            self.assertEqual(status, "skipped")
+            self.assertFalse(led.exists())
+
+    def test_session_complete_refuses_an_in_progress_session(self):
+        # Monday 2026-09-21 20:40 CT == 2026-09-22 01:40 UTC. The bar dated 2026-09-22 is
+        # still forming, because Tuesday's session opened Monday 17:00 CT.
+        now = br.dt.datetime(2026, 9, 22, 1, 40, tzinfo=br.dt.timezone.utc)
+        self.assertFalse(br.session_complete("2026-09-22", now=now))
+
+    def test_session_complete_accepts_a_settled_session(self):
+        # Tuesday 2026-09-22 16:30 CT == 21:30 UTC; the session settled at 15:00 CT.
+        now = br.dt.datetime(2026, 9, 22, 21, 30, tzinfo=br.dt.timezone.utc)
+        self.assertTrue(br.session_complete("2026-09-22", now=now))
+
+    def test_session_complete_boundary_is_settlement_not_midnight(self):
+        # 2026-09-22 is CDT (offset -5): settlement 15:15 CT == 20:15 UTC.
+        now = br.dt.datetime(2026, 9, 22, 20, 10, tzinfo=br.dt.timezone.utc)   # 15:10 CT
+        self.assertFalse(br.session_complete("2026-09-22", now=now))
+        now = br.dt.datetime(2026, 9, 22, 20, 20, tzinfo=br.dt.timezone.utc)   # 15:20 CT
+        self.assertTrue(br.session_complete("2026-09-22", now=now))
+
+    def test_session_complete_handles_both_dst_regimes(self):
+        # CST (offset -6): 15:15 CT == 21:15 UTC.
+        now = br.dt.datetime(2026, 1, 15, 21, 10, tzinfo=br.dt.timezone.utc)
+        self.assertFalse(br.session_complete("2026-01-15", now=now))
+        now = br.dt.datetime(2026, 1, 15, 21, 20, tzinfo=br.dt.timezone.utc)
+        self.assertTrue(br.session_complete("2026-01-15", now=now))
+
+    def test_us_central_offset_across_dst_boundaries(self):
+        self.assertEqual(br._us_central_utc_offset_hours(br.dt.date(2026, 1, 15)), -6)
+        self.assertEqual(br._us_central_utc_offset_hours(br.dt.date(2026, 7, 15)), -5)
+        # DST starts 2026-03-08, ends 2026-11-01
+        self.assertEqual(br._us_central_utc_offset_hours(br.dt.date(2026, 3, 7)), -6)
+        self.assertEqual(br._us_central_utc_offset_hours(br.dt.date(2026, 3, 8)), -5)
+        self.assertEqual(br._us_central_utc_offset_hours(br.dt.date(2026, 10, 31)), -5)
+        self.assertEqual(br._us_central_utc_offset_hours(br.dt.date(2026, 11, 1)), -6)
+
+    def test_session_complete_rejects_malformed_date(self):
+        self.assertFalse(br.session_complete("not-a-date"))
+        self.assertFalse(br.session_complete(None))
+
+    def test_record_daily_refuses_a_partial_session(self):
+        with tempfile.TemporaryDirectory() as td:
+            led = pathlib.Path(td) / "ledger.jsonl"
+            status, info = br.record_daily(self._payload(date="2999-01-01"), led)
+            self.assertEqual(status, "incomplete_session")
+            self.assertIn("settled", info["reason"])
+            self.assertFalse(led.exists())
+
+    def test_record_daily_force_overrides_the_completeness_guard(self):
+        with tempfile.TemporaryDirectory() as td:
+            led = pathlib.Path(td) / "ledger.jsonl"
+            status, _info = br.record_daily(self._payload(date="2999-01-01"), led, force=True)
+            self.assertEqual(status, "recorded")
+            self.assertTrue(led.exists())
+
+    def test_tolerates_malformed_ledger_lines(self):
+        with tempfile.TemporaryDirectory() as td:
+            led = pathlib.Path(td) / "ledger.jsonl"
+            led.write_text("{not json}\n", encoding="utf-8")
+            status, _ = br.record_daily(self._payload(), led)
+            self.assertEqual(status, "recorded")
+
+    def test_recorded_row_is_scoreable_by_the_scorecard(self):
+        """The pre-registered row must satisfy the scorer's contract."""
+        with tempfile.TemporaryDirectory() as td:
+            led = pathlib.Path(td) / "ledger.jsonl"
+            br.record_daily(self._payload(), led)
+            rows = sc.read_ledger(led)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(sc.validate_brief(rows[0]), [])
+
+    def test_published_probability_block_uses_unconditional_base_rate(self):
+        """The walk-forward verdict demoted state conditioning; publish __all__, not matched state."""
+        bars = []
+        price = 100.0
+        for i in range(90):
+            # A deterministic mix: most historical days are not ATH closes, while the
+            # last signal day is an ATH + low-vol + acceleration state. This creates a
+            # matched-state diagnostic but the published block must still equal __all__.
+            if i < 84:
+                price += 1.0 if i % 3 else -0.8
+            else:
+                price += 4.0
+            bars.append(br.Bar(f"2026-01-{i + 1:03d}", price - 0.5, price + 1.0, price - 2.0, price))
+        vix = [br.Bar(b.date, 15.0, 15.5, 14.5, 15.0) for b in bars]
+        orig_fetch = br.fetch_daily
+        br.fetch_daily = lambda symbol, lookback=br.DEFAULT_LOOKBACK: vix if symbol == "^VIX" else bars
+        try:
+            payload = br.analyze()
+        finally:
+            br.fetch_daily = orig_fetch
+
+        self.assertEqual(payload["published_state"], "__all__")
+        self.assertEqual(payload["probability_source"]["primary"], "trailing_unconditional_base_rate")
+        self.assertFalse(payload["probability_source"]["walkforward"]["model_beats_base"])
+        self.assertFalse(payload["conditional_diagnostic"]["publish_as_edge"])
+        self.assertEqual(payload["conditional_diagnostic"]["status"], "provisional_no_measured_edge")
+        base = payload["states"]["__all__"]
+        self.assertEqual(payload["probabilities"]["continuation"], base["p_continuation"])
+        self.assertEqual(payload["probabilities"]["rotation"], base["p_rotation"])
+        self.assertEqual(payload["probabilities"]["failure"], base["p_failure"])
+        self.assertEqual(payload["probabilities"]["sum"], 100.0)
+        self.assertEqual(payload["conditional_diagnostic"]["probabilities"]["sum"], 100.0)
+
+
+class SettlementIntegrityTests(unittest.TestCase):
+    """The scorer labels each brief's realised outcome from the NEXT bar. An in-progress bar
+    reports a partial close/low, so labelling from it can produce a wrong outcome."""
+
+    def _with_bars(self, bars):
+        orig = sc.fetch_daily
+        sc.fetch_daily = lambda sym, lb: bars
+        return orig
+
+    def _entry(self, date):
+        return {"date": date, "symbol": "ES=F", "continuation": 60.0, "rotation": 25.0,
+                "failure": 15.0, "signal_close": 100.0, "signal_low": 99.0}
+
+    def test_far_future_outcome_is_pending_not_scored(self):
+        bars = [sc.Bar("2999-01-01", 100, 101, 99, 100),
+                sc.Bar("2999-01-02", 105, 106, 98, 104)]
+        orig = self._with_bars(bars)
+        try:
+            res = sc.score([self._entry("2999-01-01")])
+        finally:
+            sc.fetch_daily = orig
+        self.assertEqual(res["aggregate"]["n_scored"], 0)
+        self.assertEqual(res["aggregate"]["n_pending"], 1)
+        self.assertIn("settled", res["pending"][0]["reason"])
+        self.assertEqual(res["scored"], [])
+
+    def test_settled_outcome_is_scored(self):
+        bars = [sc.Bar("2026-01-02", 100, 101, 99, 100),
+                sc.Bar("2026-01-05", 104, 105, 99, 104)]
+        orig = self._with_bars(bars)
+        try:
+            res = sc.score([self._entry("2026-01-02")])
+        finally:
+            sc.fetch_daily = orig
+        self.assertEqual(res["aggregate"]["n_scored"], 1)
+        self.assertEqual(res["aggregate"]["n_pending"], 0)
+        self.assertIn(res["scored"][0]["realized"], sc.CLASSES)
+
+    def test_no_next_bar_at_all_is_still_pending(self):
+        bars = [sc.Bar("2026-01-02", 100, 101, 99, 100)]
+        orig = self._with_bars(bars)
+        try:
+            res = sc.score([self._entry("2026-01-02")])
+        finally:
+            sc.fetch_daily = orig
+        self.assertEqual(res["aggregate"]["n_pending"], 1)
+        self.assertIn("no realized next session", res["pending"][0]["reason"])
+
+    def test_scorer_and_base_rates_agree_on_settlement(self):
+        """The settlement rule is duplicated in both scripts; drift must fail the suite."""
+        grid = []
+        for m in (1, 2, 3, 4, 7, 10, 11, 12):
+            for day in (1, 7, 8, 14, 15, 21, 28):
+                try:
+                    grid.append(br.dt.date(2026, m, day))
+                except ValueError:
+                    pass
+        for d in grid:
+            self.assertEqual(br._us_central_utc_offset_hours(d),
+                             sc._us_central_utc_offset_hours(d),
+                             f"offset disagreement on {d}")
+            for h in range(0, 24, 3):
+                now = br.dt.datetime(d.year, d.month, d.day, h, 0, tzinfo=br.dt.timezone.utc)
+                a = br.session_complete(d.isoformat(), now=now)
+                b = sc.session_complete(d.isoformat(), now=now)
+                self.assertEqual(a, b, f"disagreement at {d} {h:02d}:00Z: br={a} sc={b}")
+
+    def test_limitations_disclose_the_settlement_guard(self):
+        bars = [sc.Bar("2026-01-02", 100, 101, 99, 100)]
+        orig = self._with_bars(bars)
+        try:
+            res = sc.score([])
+        finally:
+            sc.fetch_daily = orig
+        self.assertTrue(any("settled" in x for x in res["limitations"]))
 
 
 if __name__ == "__main__":

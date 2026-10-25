@@ -1,4 +1,6 @@
 {
+  "symbol": "MES",
+  "family": "trend",
   "active_cache": {
     "blank_field_count": 1720,
     "byte_size": 3859723,
@@ -393,6 +395,5 @@
     "best_point_estimate": "60/200/2.0",
     "reason": "Cache provenance supports reproducibility only; PR #814 DM/DSR/PBO evidence did not statistically certify superiority.",
     "runtime_promotion_eligible": false
-  },
-  "symbol": "MES"
+  }
 }

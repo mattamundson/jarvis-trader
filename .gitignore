@@ -33,6 +33,17 @@ secret*.json
 .gcp/
 .gcloud/
 
+# Credential/value exports and quarantine copies (added 2026-09-25)
+# Renaming a secret-shaped export to dodge a filename denylist is evasion, not remediation.
+# These paths must never be tracked; see scripts/check_credential_exports.py for the
+# content-based check that enforces this by inspecting bytes rather than filenames.
+archive/security-filename-quarantine/**/*.archived
+archive/security-filename-quarantine/**/*.csv
+*[Ss]ecret[-_ ]?[Vv]alue*.csv
+*[Cc]redential[-_ ]?[Ee]xport*.csv
+*value-export*.archived
+*value-export*.csv
+
 # Python
 __pycache__/
 *.py[cod]
@@ -388,3 +399,11 @@ docs/ci-reports/
 
 # A-01 runtime truth artifact (machine-local, redacted but operational)
 /phase0_runtime_truth_snapshot.json
+
+# Per-run calibration reports (scripts/market_brief_base_rates.py,
+# scripts/market_brief_scorecard.py). Previously tracked, so every run added another
+# tracked file; the drivers are tracked and their timestamped outputs are not. Only the
+# *_LATEST.* snapshots stay tracked. Point --out-dir at a scratch dir to avoid writing
+# into the repo at all.
+docs/reports/MARKET_BRIEF_BASE_RATES_[0-9]*.md
+docs/reports/MARKET_BRIEF_SCORECARD_[0-9]*.md

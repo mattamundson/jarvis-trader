@@ -1,0 +1,89 @@
+{
+  "schema_version": "1.0",
+  "strategy_id": "mes_sma_trend_vix_pctile",
+  "name": "MES SMA Trend + VIX Percentile Tier Block",
+  "source": {
+    "type": "x-bookmark-scan",
+    "repo_or_note": "MES_trend_vix_rank1 bookmark scan family; adaptive tier block is an in-tree refinement of the fixed vix_min/vix_max gate",
+    "url": "https://github.com/mattamundson/jarvis-trader/blob/master/docs/research/bookmark-edge-scan-2026-07-02.md",
+    "imported_via": "bookmark-edge-scan → rank1 family selection → alt-gate proposal → WFO campaign"
+  },
+  "hypothesis": "An adaptive VIX-percentile-tier block (selectively excluding Crisis and/or HighVol regimes by walk-forward selection) matches or beats the fixed vix_min/vix_max gate on p_edge and profit factor with fewer over-fit degrees of freedom (4 tier-block combos vs 9 fixed-parameter cells), while preserving the SMA-trend entry/exit core.",
+  "asset_class": "future",
+  "symbols": ["MES"],
+  "timeframe": "1h",
+  "data_sources": [
+    {
+      "feed": "databento",
+      "adjusted": false,
+      "timezone": "America/Chicago",
+      "range_start": "2019-05-05",
+      "range_end": "2026-08-26"
+    }
+  ],
+  "feature_set": [
+    "sma_fast_60",
+    "sma_slow_200",
+    "atr_trail_2x",
+    "vix_percentile_252d_rank",
+    "vix_regime_tier"
+  ],
+  "rules": {
+    "entry": "Long when price > SMA-200 and SMA-60 > SMA-200 and VIX-percentile-tier is not in the walk-forward-selected blocked set; short-side disabled (long-only MES).",
+    "exit": "Trailing stop at 2× ATR from entry extreme; exit also on SMA cross below (fast below slow).",
+    "position_sizing": "Fixed fractional, 1 contract MES; no dynamic sizing in this record.",
+    "risk_limits": "Max 1 contract; daily loss halt inherits JARVIS engine risk layer; strategy kill-criterion: 3 consecutive OOS windows with zero trades or any single OOS window with PF < 0.5.",
+    "fees_and_slippage_model": "Commission + slippage modeled at optimistic/realistic/pessimistic/catastrophic tiers via runner constants in engine/backtest/run_mes_trend_vix_pctile_rank1.py (COST_SWEEP_TIERS: optimistic c=0.31/s=1.0, realistic c=0.62/s=2.0, pessimistic c=1.24/s=3.0, catastrophic c=2.48/s=4.0). Catastrophic tier survives with PF 1.51. Runner's realistic tier DIVERGES from engine/config.py defaults (commission 0.62 vs 1.42; slippage 2.0 vs 1.0; no separate spread term). See docs/research/execution-model-cost-tier-link-mes_sma_trend_vix_pctile-2026-09-26.md and gate_v2_metrics.cost_tier_results in verdict snapshot."
+  },
+  "windows": {
+    "train": { "start": "2019-05-05", "end": "2026-08-26" },
+    "test": null,
+    "walk_forward": {
+      "start": "2019-11",
+      "end": "2026-08",
+      "config": "4 tier-block combos (unblocked, +Crisis, +Crisis+HighVol, +HighVol); fixed SMA/ATR params (fast=60, slow=200, atr_trail=2.0) held at rank11 champion values; only tier-block selection varies across windows"
+    }
+  },
+  "metrics": {
+    "max_drawdown": 0.008902,
+    "profit_factor": 1.6478,
+    "trade_count": 122,
+    "exposure": "Long-only MES 1h; active in ~54 of 82 OOS windows (65.9%); median 1 trade/window reflects low signal frequency",
+    "fees_slippage_assumption": "Four-tier cost model from runner COST_SWEEP_TIERS (engine/backtest/run_mes_trend_vix_pctile_rank1.py): optimistic c=0.31/s=1.0 PF 1.706, realistic c=0.62/s=2.0 PF 1.648, pessimistic c=1.24/s=3.0 PF 1.602, catastrophic c=2.48/s=4.0 PF 1.508. All pass. Runner's realistic tier DIVERGES from engine/config.py defaults (c 0.62 vs 1.42, s 2.0 vs 1.0, no spread term). See execution-model-cost-tier-link-...-2026-09-26.md.",
+    "regime_split": "OOS PF by tier-block combo: unblocked 1.648 (122 trades), +Crisis block 1.494 (112), +Crisis+HighVol block 1.479 (89), +HighVol block 1.666 (99). Edge persists across all blocks; HighVol-only block is the strongest.",
+    "parameter_sensitivity": "Fixed SMA/ATR params (fast=60, slow=200, atr_trail=2.0) held at rank11 champion values; only the tier-block selection varies across 4 combos. Fixed-param PF range 1.479–1.666, mean 1.572. WFO consistency MODERATE.",
+    "monte_carlo": "mc_95th_dd = 0.89% (0.008902); DSR = 0.9688; deflation DSR_grid 0.9688, DSR_campaign 0.1937 (24 distinct artifacts counted; lower bound — unlogged experiments can only increase deflation)"
+  },
+  "gate_verdict": {
+    "gate": "gate_v2",
+    "verdict": "PASS",
+    "core_verdict": "FAIL",
+    "alt_verdict": "PASS",
+    "reasons": [
+      "Alt-verdict PASS: adaptive VIX-tier block achieves p_edge 0.593 and realistic-PF 1.648 with only 4 tier-block combos, beating the fixed-gate baseline p_edge 0.75 on over-fit efficiency (fewer DOF for comparable edge)",
+      "Core verdict FAIL: the fixed core gate (without alt-path allowance) does not pass; this is expected and is why the alt-path exists — the strategy is promoted via the alt-verdict pathway only",
+      "Cost model survives catastrophic tier (PF 1.508 > 1.0), satisfying execution-realism gate",
+      "Monte Carlo 95th-percentile drawdown 0.89% is well within risk envelope",
+      "Execution-model link documented in docs/research/execution-model-cost-tier-link-mes_sma_trend_vix_pctile-2026-09-26.md (PR #950): four cost tiers linked to runner constants in engine/backtest/run_mes_trend_vix_pctile_rank1.py; realistic tier DIVERGES from engine/config.py defaults (c 0.62 vs 1.42, s 2.0 vs 1.0, no separate spread); documentation leg of critique item 3 addressed, execution-realism leg (paper/live fill consistency) remains open pending a fill-comparison study"
+    ],
+    "as_of": "2026-09-18",
+    "evidence_path": "docs/research/mes-vix-pctile-rank1-verdict-snapshot-2026-09-18.json"
+  },
+  "promotion_state": "walk-forward",
+  "known_failure_modes": [
+    "Low signal frequency: median 1 trade per OOS window means the strategy can go many months without trading; expect long flat periods and do not conflate inactivity with safety",
+    "Core verdict FAIL: the fixed-parameter core gate fails; this strategy is only promotable via the alt-verdict pathway with explicit human approval of the adaptive-tier rationale",
+    "WFO consistency MODERATE: out-of-sample performance varies materially across windows (several windows show OOS PF = 0), so a single favorable recent window must not be read as trend reversal",
+    "Single instrument (MES only): no cross-asset confirmation; regime break in ES/MES correlation or contract-roll behavior could invalidate the edge without warning in this record",
+    "DSR campaign lower bound (0.1937) is far below the grid DSR (0.9688): unlogged experiments almost certainly increase deflation; treat the high grid DSR with caution until the experiment ledger is complete"
+  ],
+  "evidence_paths": [
+    "docs/research/mes-vix-pctile-rank1-verdict-snapshot-2026-09-18.json",
+    "docs/research/backtest-critique-mes_sma_trend_vix_pctile-2026-09-24.json",
+    "docs/research/backtest-critique-mes_sma_trend_vix_pctile-2026-09-24.md",
+    "docs/research/cost-tier-pf-uncertainty-proxy-mes_sma_trend_vix_pctile-2026-09-25.md",
+    "docs/research/execution-model-cost-tier-link-mes_sma_trend_vix_pctile-2026-09-26.md"
+  ],
+  "owner": "strategy-research",
+  "updated": "2026-09-26"
+}

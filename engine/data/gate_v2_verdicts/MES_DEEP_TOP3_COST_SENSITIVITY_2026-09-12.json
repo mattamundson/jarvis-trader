@@ -1,4 +1,6 @@
 {
+  "symbol": "MES",
+  "family": "trend",
   "cache": "MES_2019-05-05_2026-08-26_1h.csv",
   "cache_sha256": "e26631c012b128284e61526dad78e7d39a3c180634dad7398a7dd8cc225f83fe",
   "combos": [

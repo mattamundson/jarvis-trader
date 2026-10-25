@@ -1,0 +1,49 @@
+{
+  "schema_version": "1.0",
+  "work_package": "A-01",
+  "status": "IN_PROGRESS",
+  "commit": "b2455710bf0abd83db0c933e1b5e082d07bed4e0",
+  "generated_at": "2026-09-12T06:54:00Z",
+  "method": "static machine-derived inventory; no runtime/broker observation",
+  "counts": {
+    "engine_python_files": 1726,
+    "engine_router_files": 84,
+    "execution_python_files": 17,
+    "risk_python_files": 23,
+    "dashboard_pages": 54,
+    "github_workflows": 7
+  },
+  "execution_modules": [
+    "engine/execution/__init__.py",
+    "engine/execution/ib_gateway.py",
+    "engine/execution/ib_gateway_connector.py",
+    "engine/execution/ib_order_manager.py",
+    "engine/execution/ibkr_executor.py",
+    "engine/execution/ibkr_reconciler.py",
+    "engine/execution/oms_v2.py",
+    "engine/execution/order_gateway_factory.py",
+    "engine/execution/order_router.py",
+    "engine/execution/paper_trade_logger.py",
+    "engine/execution/polymarket_connector.py",
+    "engine/execution/portfolio_allocator.py",
+    "engine/execution/position_reconciler.py",
+    "engine/execution/robinhood_connector.py",
+    "engine/execution/schwab_connector.py",
+    "engine/execution/submission_dedup.py",
+    "engine/execution/test_submission_dedup.py"
+  ],
+  "workflow_files": [
+    ".github/workflows/ci.yml",
+    ".github/workflows/claude-pr-review.yml",
+    ".github/workflows/deploy-check.yml",
+    ".github/workflows/es-research-platform.yml",
+    ".github/workflows/p0-verify.yml",
+    ".github/workflows/plan-validation.yml",
+    ".github/workflows/safety-invariant-check.yml"
+  ],
+  "authoritative_limitations": [
+    "Does not prove which paths are active at runtime.",
+    "Does not observe IBKR or current process state.",
+    "Dynamic imports and external services require follow-up observation."
+  ]
+}

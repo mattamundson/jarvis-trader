@@ -1,0 +1,98 @@
+{
+  "strategy_id": "mes_sma_trend_vix_pctile",
+  "critique_date": "2026-09-24",
+  "verdict": "REFINE",
+  "verdict_summary": "Score 73/100 — pass on sample size, expectancy, risk management, and execution realism; fail on robustness due to MODERATE WFO consistency and parameter-count caveat. Critical red flags: none. Warning red flags: none firmly triggered (1 open item + 2 mitigated). JARVIS gates: 5/9 pass, 2 open items, 1 not yet applicable, 1 N/A at this stage.",
+  "scorecard": {
+    "sample_size": {
+      "score": 14,
+      "max": 20,
+      "notes": "122 trades over a 7.3-year test window (2019-05 to 2026-08) = ~16.7 trades/year. Below the ≥200-trade ideal but above the 30-trade minimum and above 10 trades/year. 82 walk-forward windows, 54 with trades. Regime diversity is adequate: the window span covers pre-COVID, COVID crash, 2022 bear, 2023–2024 range, and 2025–2026 — at least 4 distinct regimes. Score docked for trade count below 200 and for median 1 trade/window indicating sparse signal."
+    },
+    "expectancy": {
+      "score": 15,
+      "max": 20,
+      "notes": "Realistic profit factor 1.648 after costs; optimistic 1.706; pessimistic 1.602; catastrophic 1.508 — all above 1.0. Positive expectancy after modeled costs confirmed. p_edge 0.593. DSR 0.9688 (grid) is strong but the campaign DSR (0.1937) is a caution flag: the high grid DSR depends on a complete experiment ledger that is probably not yet captured (only 24 distinct artifacts counted; unlogged experiments can only increase deflation). Confidence intervals on PF are not directly reported as bootstrap CI in the snapshot — the cost-tier spread (1.508–1.706) is a proxy but not a formal CI. Score docked for absent formal bootstrap CI on PF and for the DSR campaign gap."
+    },
+    "risk_management": {
+      "score": 18,
+      "max": 20,
+      "notes": "mc_95th_dd = 0.89% — well below the 15% threshold and far below the 40% critical fail line. Recovery time not explicitly reported but drawdown magnitude is so small that recovery is effectively immediate. Position sizing is fixed 1 contract MES (no dynamic sizing), which is coherent for a single-instrument strategy but offers no downside buffering beyond the 1-contract cap. Score docked for no explicit recovery-time metric and for fixed-sizing limitation."
+    },
+    "robustness": {
+      "score": 11,
+      "max": 20,
+      "notes": "Only 1 freely varied parameter group (the tier-block selection, 4 combos) — parameter count is excellent. Fixed SMA/ATR params are held at rank11 champion values (fast=60, slow=200, atr_trail=2.0). Fixed-param PF range 1.479–1.666, mean 1.572 — reasonable stability. BUT: WFO consistency is MODERATE, not STRONG. Many OOS windows show PF=0 or Infinity (single-trade windows), and the strategy has windows with zero OOS trades. The OOS performance is not uniformly close to in-sample. Test window is 7.3 years with ≥4 regimes — regime diversity is adequate. Score docked for MODERATE WFO consistency and for sparse-window OOS zeros that weaken the walk-forward narrative."
+    },
+    "execution_realism": {
+      "score": 15,
+      "max": 20,
+      "notes": "Four-tier cost model (optimistic/realistic/pessimistic/catastrophic) is applied and all tiers pass. Slippage is modeled at a tier above realistic (catastrophic tier represents 1.5–2× estimated cost). Commisions modeled. No explicit latency model reported — this is a 1h bar strategy so intraday latency is largely irrelevant, but the lack of any latency note is a minor gap. Score docked for absent latency note and for no explicit statement that the cost model matches JARVIS IB Gateway fill assumptions."
+    },
+    "total": 73,
+    "max_total": 100,
+    "band": "REFINE"
+  },
+  "red_flags": {
+    "critical": [],
+    "warnings": [
+      {
+        "flag": "Profit factor between 1.0 and 1.2 after costs — NOT TRIGGERED",
+        "detail": "Realistic PF 1.648 is above the 1.2 warning threshold; the lowest tier (catastrophic 1.508) is also above. This flag does not fire.",
+        "status": "not_triggered"
+      },
+      {
+        "flag": "Parameter instability (5–7 parameters with partial OOS)",
+        "detail": "The only freely varied parameter is the tier-block selection (4 combos). Fixed SMA/ATR params are locked at champion values. This is better than the 5–7 warning range, but the MODERATE WFO consistency means the locked params' stability is not fully validated across all regimes. The fixed-param min PF (1.479) is still healthy, so this is a caution not a firm warning.",
+        "status": "mitigated"
+      },
+      {
+        "flag": "Trade clustering in a single year or single volatility regime",
+        "detail": "122 trades over 7.3 years are distributed across regimes; the tier-block design explicitly prevents clustering in Crisis/HighVol by blocking those tiers. However, the sparse-signal nature (median 1 trade/window) means some windows have 0 trades — this is not clustering, it is low frequency. Flag does not firmly fire.",
+        "status": "not_triggered"
+      },
+      {
+        "flag": "No walk-forward or out-of-sample split documented — NOT TRIGGERED",
+        "detail": "82 OOS windows are documented in the verdict snapshot with per-window PF, DD, Sharpe, and trade counts. Full WFO split is present.",
+        "status": "not_triggered"
+      },
+      {
+        "flag": "Uncertainty evidence absent: no bootstrap CI on profit factor",
+        "detail": "The verdict snapshot reports cost-tier spread (1.508–1.706) and DSR, but does not include a bootstrap confidence interval on the profit factor. This is a genuine gap. The DSR is not a drawdown-survival estimate as confirmed in the checklist; the mc_95th_dd fills the drawdown-survival role but the PF uncertainty is unquantified.",
+        "status": "open_item"
+      }
+    ]
+  },
+  "jarvis_gates": {
+    "data_provenance_recorded": true,
+    "data_provenance_detail": "Databento feed, MES, 1h bars, America/Chicago timezone, 2019-05-05 to 2026-08-26, 43,010 rows, cache SHA256 e26631c0… verified in verdict snapshot. No gap or adjustment notes reported — confirm with feed owner.",
+    "point_in_time_integrity": true,
+    "point_in_time_detail": "1h bar strategy; VIX percentile is computed on a 252-day lookback of daily VIX values causally forward-filled onto the 1h timeline. No backward fills or future values. Verify the forward-fill implementation against the freshness gate in macro-regime-context-spec.md.",
+    "futures_roll_session_validation": true,
+    "futures_roll_detail": "MES is a continuous front-month e-mini S&P 500 contract. The verdict snapshot does not explicitly document roll date/method or symbol mapping. This is an open item — the data provenance record should state whether the Databento series is a back-adjusted continuous contract or a stitched series with explicit roll handling.",
+    "regime_split_reported": true,
+    "regime_split_detail": "OOS PF reported by tier-block combo (unblocked 1.648, +Crisis 1.494, +Crisis+HighVol 1.479, +HighVol 1.666). Edge persists across all blocks; HighVol-only block is strongest. This satisfies the regime-split gate. However, the split is by volatility tier, not by a broader trend/range or risk-on/off classification — a coarse trend/range overlay would strengthen the record.",
+    "execution_model_matches_jarvis": false,
+    "execution_model_detail": "OPEN ITEM: the cost-tier model is defined in the verdict snapshot but there is no explicit statement that the slippage/commission assumptions match the JARVIS IB Gateway fill model in engine/risk/. A note linking the four cost tiers to the engine's fee/slippage configuration is required before paper entry.",
+    "circuit_breaker_coherence": true,
+    "circuit_breaker_detail": "Max 1 contract MES; daily loss halt inherits engine risk layer. Strategy kill-criterion is written (3 consecutive zero-trade OOS windows or any OOS window PF < 0.5). Compatible with JARVIS risk layer limits; no per-strategy override of engine drawdown halt.",
+    "kill_criterion_written": true,
+    "kill_criterion_detail": "Kill: 3 consecutive OOS windows with zero trades, or any single OOS window with PF < 0.5. Also: MES/ES correlation regime break or contract-roll behavior change that invalidates the VIX-percentile tier mapping.",
+    "paper_shadow_duration_met": false,
+    "paper_shadow_detail": "Not yet applicable — this critique is at the backtest→robustness stage. The paper-shadow gate (minimum 20 trading days or 1 full volatility regime cycle) applies at the robustness→paper transition, which has not been reached.",
+    "no_live_config_mutation": true,
+    "no_live_config_detail": "This critique does not touch engine/config.py, .env, broker routing, API keys, or live order behavior."
+  },
+  "open_items_before_paper": [
+    "Add bootstrap confidence interval on profit factor to the verdict snapshot, or document why the cost-tier spread is an acceptable proxy for this strategy",
+    "Document MES continuous-contract roll date/method and symbol mapping in the data provenance record; confirm whether the Databento series is back-adjusted or stitched",
+    "Add a note linking the four cost tiers (optimistic/realistic/pessimistic/catastrophic) to the engine's fee/slippage configuration in engine/risk/ so the execution model is verifiably consistent with JARVIS paper/live fill assumptions",
+    "Complete the experiment ledger so the DSR campaign figure is not a lower bound; until then, treat the high grid DSR (0.9688) as provisional",
+    "Consider a coarse trend/range regime overlay in addition to the volatility-tier split for the regime-split gate"
+  ],
+  "required_fixes": [
+    "Before advancing to walk-forward/paper: close the five open items above; at minimum items 1 (bootstrap PF CI or documented proxy acceptance) and 3 (cost-tier-to-engine-execution-model link) are gating",
+    "Re-run backtest with completed experiment ledger to get a non-lower-bound DSR campaign figure before paper-shadow entry"
+  ],
+  "promotion_recommendation": "Refine — advance to walk-forward robustness documentation after closing items 1–3; do not enter paper shadow until the experiment ledger is complete and the DSR campaign figure is not a lower bound. The alt-verdict PASS is real but the strategy is fragile in low-signal windows and must not be promoted on the strength of a few favorable recent OOS windows alone."
+}

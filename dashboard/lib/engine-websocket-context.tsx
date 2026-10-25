@@ -30,9 +30,9 @@ function resolveEngineHttpUrl(url?: string): string {
   if (url) return url;
   if (process.env.NEXT_PUBLIC_ENGINE_URL) return process.env.NEXT_PUBLIC_ENGINE_URL;
   if (typeof window !== "undefined") {
-    // Fallback only: the Next.js /ws rewrite proxies WebSocket upgrades in
-    // `next dev` but NOT in production (`next start`), so NEXT_PUBLIC_ENGINE_URL
-    // must be set at build time for WS to work in prod. Verified 2026-06-11.
+    // Route WS through the same-origin Next.js proxy so the /ws/events rewrite
+    // in next.config.ts injects the ENGINE_API_KEY server-side. Direct engine
+    // connections cannot carry the key in a browser WebSocket constructor.
     return window.location.origin;
   }
   // 127.0.0.1, not localhost: Windows resolves localhost to ::1 first and the

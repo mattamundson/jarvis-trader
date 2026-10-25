@@ -1,0 +1,43 @@
+{
+  "utc": "2026-09-23T22:48:33.564119+00:00",
+  "stages": {
+    "preflight": {
+      "stage": "preflight",
+      "utc": "2026-09-23T22:48:34.301439+00:00",
+      "live_trading_enabled": "False",
+      "live_trading_safe": true,
+      "api_key_present": false,
+      "databento_package": true,
+      "disk_free_gb": 11.46,
+      "baseline_caches": {
+        "MES": {
+          "cache_files": 44,
+          "total_rows": 865955,
+          "widest": "MES_2024-09-22_2026-05-29_5m_cont.csv"
+        },
+        "MNQ": {
+          "cache_files": 30,
+          "total_rows": 244230,
+          "widest": "MNQ_2025-04-09_2026-06-12_5m_cont.csv"
+        },
+        "MCL": {
+          "cache_files": 18,
+          "total_rows": 189651,
+          "widest": "MCL_2025-01-29_2026-06-12_5m_cont.csv"
+        },
+        "MGC": {
+          "cache_files": 18,
+          "total_rows": 374539,
+          "widest": "MGC_2024-05-01_2026-05-29_5m_cont.csv"
+        },
+        "M2K": {
+          "cache_files": 9,
+          "total_rows": 73626,
+          "widest": "M2K_2025-07-29_2026-06-29_5m.csv"
+        }
+      },
+      "databento_tests": "============================= 25 passed in 1.85s ==============================",
+      "databento_tests_ok": true
+    }
+  }
+}

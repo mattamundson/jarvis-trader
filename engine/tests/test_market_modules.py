@@ -235,7 +235,9 @@ class TestOptionsMarketModule:
     @pytest.mark.asyncio
     async def test_options_run_strategy_cycle(self, options_module):
         """Test options strategy cycle."""
-        with patch.object(options_module._scanner, "scan", return_value=[]):
+        with patch.object(
+            options_module._scanner, "scan_async", new_callable=AsyncMock, return_value=[]
+        ):
             signals = await options_module.run_strategy_cycle()
             assert isinstance(signals, list)
 

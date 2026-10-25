@@ -1,4 +1,6 @@
 {
+  "symbol": "MES",
+  "family": "trend",
   "created_at": "2026-09-12T05:37:15.960251+00:00",
   "scope": "research-only exact-date/daily-aggregate DM; no runtime config changes",
   "method": "aggregate trade pnl by exit_date calendar day, inner join dates, DM power=1 on daily pnl score; negative DM_HLN favors A, positive favors B",

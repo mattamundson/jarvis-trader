@@ -13,7 +13,24 @@ const fixtureMarkdown = `# Machine-scored morning market brief preview
     "status": "computed",
     "macro_event_count": 3,
     "inputs": { "trend_score": 0.6, "vol_score": 1, "macro_score": 0.8 },
-    "probabilities": { "continuation": 79.5, "rotation": 20.5, "failure": 0 },
+    "probabilities": { "continuation": 52.3, "rotation": 25.5, "failure": 22.2 },
+    "probability_source": {
+      "primary": "trailing_unconditional_base_rate",
+      "conditional_status": "provisional_no_measured_edge",
+      "walkforward": {
+        "n": 1197,
+        "paired_diff_base_minus_model": 0.002146,
+        "paired_ci95": [-0.002225, 0.006517],
+        "model_beats_base": false
+      }
+    },
+    "conditional_diagnostic": {
+      "state": "ath_close_lowvol_accel_gt2",
+      "n": 24,
+      "status": "provisional_no_measured_edge",
+      "publish_as_edge": false,
+      "probabilities": { "continuation": 55.6, "rotation": 25.9, "failure": 18.5, "sum": 100.0 }
+    },
     "notes": ["Scenario engine note"]
   },
   "symbols": {
@@ -44,9 +61,15 @@ test("summarizeMachinePayload preserves analysis-only contract and key probabili
   assert.equal(summary.orders_enabled, false);
   assert.equal(summary.risk_config_touched, false);
   assert.equal(summary.sourceQuality, "fresh");
-  assert.equal(summary.scores.probabilities.continuation, 79.5);
-  assert.equal(summary.scores.probabilities.rotation, 20.5);
-  assert.equal(summary.scores.probabilities.failure, 0);
+  assert.equal(summary.scores.probabilities.continuation, 52.3);
+  assert.equal(summary.scores.probabilities.rotation, 25.5);
+  assert.equal(summary.scores.probabilities.failure, 22.2);
+  assert.equal(summary.scores.probability_source?.primary, "trailing_unconditional_base_rate");
+  assert.equal(summary.scores.probability_source?.walkforward?.model_beats_base, false);
+  assert.deepEqual(summary.scores.probability_source?.walkforward?.paired_ci95, [-0.002225, 0.006517]);
+  assert.equal(summary.scores.conditional_diagnostic?.status, "provisional_no_measured_edge");
+  assert.equal(summary.scores.conditional_diagnostic?.publish_as_edge, false);
+  assert.equal(summary.scores.conditional_diagnostic?.probabilities?.continuation, 55.6);
   assert.equal(summary.symbols.SPY.gap_pct, -0.6);
   assert.equal(summary.levels.find((level) => level.symbol === "ES=F")?.pivot, 7616.75);
 });

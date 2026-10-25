@@ -1,0 +1,2136 @@
+{
+  "generated_at": "2026-09-12T04:43:23.113597+00:00",
+  "scope": "read_only_dashboard_engine_db_audit",
+  "root": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader",
+  "runtime": {
+    "ports": {
+      "dashboard_3010": {
+        "port": 3010,
+        "open": true
+      },
+      "engine_8010": {
+        "port": 8010,
+        "open": true
+      },
+      "ibkr_paper_4002": {
+        "port": 4002,
+        "open": false
+      },
+      "tradingview_cdp_9222": {
+        "port": 9222,
+        "open": false
+      },
+      "master_api_8030": {
+        "port": 8030,
+        "open": false
+      }
+    },
+    "has_dashboard_auth": true,
+    "endpoints": {
+      "dashboard_root": {
+        "ok": true,
+        "status": 200,
+        "latency_ms": 1268.7,
+        "content_type": "text/html; charset=utf-8",
+        "json": null,
+        "text_head": "<!DOCTYPE html><!--prtRvvvCH627ionx5RS8H--><html lang=\"en\" class=\"__variable_f367f3 __variable_898c26\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><link rel=\"stylesheet\" href=\"/_next/sta"
+      },
+      "dashboard_mission_control": {
+        "ok": true,
+        "status": 200,
+        "latency_ms": 12.8,
+        "content_type": "text/html; charset=utf-8",
+        "json": null,
+        "text_head": "<!DOCTYPE html><!--prtRvvvCH627ionx5RS8H--><html lang=\"en\" class=\"__variable_f367f3 __variable_898c26\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><link rel=\"stylesheet\" href=\"/_next/sta"
+      },
+      "engine_health_proxy": {
+        "ok": true,
+        "status": 200,
+        "latency_ms": 2274.6,
+        "content_type": "application/json",
+        "json": {
+          "status": "ok",
+          "version": "1.1.0",
+          "timestamp": "2026-09-12T04:43:02.135549+00:00",
+          "live_trading": false,
+          "kill_switch_active": true,
+          "paper_mode": true,
+          "database": "connected",
+          "ibkr_connected": true,
+          "ibkr_execution_connected": true,
+          "execution_connected_verified": false,
+          "ib_execution_stale": true,
+          "ibkr_data_connected": false,
+          "ibgateway_alive": false,
+          "ibgateway_port": 4002,
+          "ibkr_broker_probe_ok": true,
+          "ibkr_degraded_reason": null,
+          "schwab_connected": false,
+          "uptime_seconds": 63675.710253,
+          "paper_trading": null,
+          "cache": null,
+          "llm_available": true,
+          "llm_path_healthy": true,
+          "vertex_failover_count": 0,
+          "google_fallback_count": 0,
+          "llm_path_details": null,
+          "llm_providers": {
+            "active_provider": null,
+            "primary_provider": "anthropic",
+            "providers_configured": [
+              "anthropic",
+              "gemini",
+              "openai",
+              "kimi"
+            ],
+            "providers_available": 4,
+            "primary_healthy": true,
+            "single_leg_warning": false
+          },
+          "pending_approvals": {
+            "count": 0,
+            "oldest_age_min": null
+          },
+          "futures_sentiment": {
+            "quality": "stale",
+            "age_days": 11,
+            "latest_timestamp": "2026-08-31T08:36:06.664-05:00",
+            "threshold_days": 2,
+            "extraction_quality": "ok",
+            "extraction_lag_days": -9,
+            "latest_bias_date": "2026-09-09"
+          },
+          "tradingview_mcp_healthy": false,
+          "tradingview_mcp_details": "port 9222 not listening \u2014 TV Desktop is not running",
+          "tv_mcp_status": "not_running",
+          "brier_30d_rolling": null,
+          "batch_jobs_health": {
+            "jobs_by_status": {},
+            "unconsumed_results": 0
+          },
+          "market_data_fresh": true,
+          "market_data_stale_symbols": []
+        },
+        "text_head": null
+      },
+      "runtime_snapshot": {
+        "ok": true,
+        "status": 200,
+        "latency_ms": 38.5,
+        "content_type": "application/json",
+        "json": {
+          "available": true,
+          "source": "phase0_runtime_truth_snapshot",
+          "generated_at": "2026-09-12T04:42:42.000Z",
+          "age_seconds": 22,
+          "freshness": "fresh",
+          "repository": {
+            "branch": "fix/dce-nightly-runner-20260910",
+            "head_short": "2a9b05c57473",
+            "dirty_count": 102
+          },
+          "contract": {
+            "artifact": "JARVIS_A01_RUNTIME_TRUTH_SNAPSHOT",
+            "schema_version": 1,
+            "required_sections_present": true,
+            "missing_sections": []
+          },
+          "ports": {
+            "engine_8010_open": true,
+            "dashboard_3010_open": true,
+            "ib_paper_4002_open": false,
+            "ib_live_4001_open": false
+          },
+          "engine": {
+            "reachable": false,
+            "status": null,
+            "live_trading": null,
+            "paper_trading": null,
+            "kill_switch_active": null,
+            "ibkr_connected": null
+          },
+          "backup": {
+            "reachable": true,
+            "healthy": null,
+            "backup_count": 6,
+            "last_backup_age_hours": null
+          },
+          "eligibility": {
+            "reachable": true,
+            "total": 5,
+            "tradeable": 0,
+            "enabled": 1,
+            "disagreements": 1,
+            "enabled_not_tradeable": [
+              "MES"
+            ],
+            "disagreeing_symbols": [
+              "MES"
+            ]
+          },
+          "findings": [
+            "Engine HTTP health probe was unreachable at capture time.",
+            "Dashboard port 3010 was open at capture time.",
+            "IB paper port 4002 was closed at capture time.",
+            "Eligibility had 1 config/runtime disagreement(s): MES.",
+            "Enabled but not tradeable symbols: MES."
+          ],
+          "errors": {
+            "load": null
+          },
+          "source_integrity": {
+            "overall": "pass",
+            "checks": [
+              {
+                "label": "Active checkout",
+                "repo_root": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader",
+                "status": "pass",
+                "finding_count": 0,
+                "required_path_failures": 0,
+                "git_metadata_failures": 0,
+                "workflow_action_failures": 0,
+                "findings": []
+              },
+              {
+                "label": "Canonical deploy",
+                "repo_root": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader",
+                "status": "pass",
+                "finding_count": 0,
+                "required_path_failures": 0,
+                "git_metadata_failures": 0,
+                "workflow_action_failures": 0,
+                "findings": []
+              }
+            ],
+            "pass_count": 2,
+            "fail_count": 0,
+            "unknown_count": 0,
+            "failing_labels": []
+          }
+        },
+        "text_head": null
+      },
+      "paper_status": {
+        "ok": true,
+        "status": 200,
+        "latency_ms": 145.6,
+        "content_type": "application/json",
+        "json": {
+          "MES_1h": {
+            "symbol": "MES",
+            "status": "ACTIVE",
+            "wfe": 0.3706,
+            "wfe_label": "PASS via core",
+            "gate": "v2",
+            "authorized": true,
+            "verdict": "FAIL",
+            "passed_via": null,
+            "family": "trend",
+            "rank": 11,
+            "created_at": "2026-09-11T15:32:18.268414+00:00",
+            "pf_ci_lower": 0.5296,
+            "mc_95th_dd_pct": 3.2315,
+            "dsr": 0.3706,
+            "cleared_date": "2026-09-11",
+            "config": "gate-v2 trend rank11"
+          },
+          "MGC_1d": {
+            "symbol": "MGC",
+            "status": "NO-TRADE",
+            "wfe": 0.0,
+            "wfe_label": "MGC paper_config.enabled=False (gate v2 FAIL or not yet validated \u2014 see paper_config.py)",
+            "gate": "v2",
+            "authorized": false,
+            "verdict": "PASS",
+            "passed_via": "core",
+            "family": "trend",
+            "rank": 4,
+            "created_at": "2026-09-11T06:33:35.549616+00:00",
+            "pf_ci_lower": 1.4674,
+            "mc_95th_dd_pct": 2.9479,
+            "dsr": 0.9918,
+            "reason": "MGC paper_config.enabled=False (gate v2 FAIL or not yet validated \u2014 see paper_config.py)"
+          },
+          "MCL_1h": {
+            "symbol": "MCL",
+            "status": "NO-VERDICT",
+            "wfe": 0.0,
+            "wfe_label": "no fresh verdict (<=14d)",
+            "gate": "v2",
+            "authorized": false,
+            "verdict": "NONE",
+            "passed_via": null,
+            "family": null,
+            "rank": null,
+            "created_at": null,
+            "pf_ci_lower": null,
+            "mc_95th_dd_pct": null,
+            "dsr": null,
+            "reason": "no fresh verdict (<=14d)"
+          },
+          "MNQ_1h": {
+            "symbol": "MNQ",
+            "status": "NO-VERDICT",
+            "wfe": 0.0,
+            "wfe_label": "no fresh verdict (<=14d)",
+            "gate": "v2",
+            "authorized": false,
+            "verdict": "NONE",
+            "passed_via": null,
+            "family": null,
+            "rank": null,
+            "created_at": null,
+            "pf_ci_lower": null,
+            "mc_95th_dd_pct": null,
+            "dsr": null,
+            "reason": "no fresh verdict (<=14d)"
+          }
+        },
+        "text_head": null
+      },
+      "pnl_truth": {
+        "ok": true,
+        "status": 200,
+        "latency_ms": 91.5,
+        "content_type": "application/json",
+        "json": {
+          "status": "TRUSTED",
+          "realized_pnl": 3181.316075585919,
+          "closed_trades": 91,
+          "excluded_trades": 7,
+          "reasons": [],
+          "sources_present": [
+            "ledger"
+          ],
+          "trusted": true
+        },
+        "text_head": null
+      },
+      "safety_status": {
+        "ok": true,
+        "status": 200,
+        "latency_ms": 374.7,
+        "content_type": "application/json",
+        "json": {
+          "kill_switch_active": true,
+          "kill_switch_reason": "daily_loss_limit",
+          "daily_pnl": 0.0,
+          "daily_limit": -263.6263215117184,
+          "daily_pnl_pct": 0.0,
+          "daily_limit_pct": -0.02,
+          "daily_limit_breached": false,
+          "drawdown_pct": 0.16190527292255394,
+          "drawdown_limit_pct": -0.2,
+          "drawdown_breached": false,
+          "portfolio_equity": 13181.3161,
+          "starting_balance": 13181.3161,
+          "pnl_source": "sqlite",
+          "current_balance": 13181.3161,
+          "orders_last_minute": 0,
+          "consecutive_losses": 0,
+          "equity_peak": 13181.3161,
+          "daily_realized_pnl": 0.0,
+          "orders_per_minute_limit": 10,
+          "last_kill_switch_ts": "2026-08-18T20:45:57.857382+00:00",
+          "last_kill_switch_reason_value": "daily_loss_limit",
+          "time_since_kill_switch_sec": 2102227.137063
+        },
+        "text_head": null
+      },
+      "portfolio": {
+        "ok": true,
+        "status": 200,
+        "latency_ms": 31.9,
+        "content_type": "application/json",
+        "json": {
+          "total_equity": 13181.316075585919,
+          "cash_balance": 13181.316075585919,
+          "cash": 13181.316075585919,
+          "unrealized_pnl": 0.0,
+          "realized_pnl": 0.0,
+          "daily_pnl": 0,
+          "margin_used": 0.0,
+          "margin_available": 13181.316075585919,
+          "positions": []
+        },
+        "text_head": null
+      },
+      "pending_approvals": {
+        "ok": true,
+        "status": 200,
+        "latency_ms": 47.0,
+        "content_type": "application/json",
+        "json": {
+          "pending": [],
+          "count": 0
+        },
+        "text_head": null
+      },
+      "actionable": {
+        "ok": true,
+        "status": 200,
+        "latency_ms": 10945.7,
+        "content_type": "application/json",
+        "json": {
+          "items": [],
+          "count": 0,
+          "available": true,
+          "raw_count": 25,
+          "shown": 0
+        },
+        "text_head": null
+      },
+      "drawdown_stats": {
+        "ok": true,
+        "status": 200,
+        "latency_ms": 98.7,
+        "content_type": "application/json",
+        "json": {
+          "current_drawdown_pct": 16.1905,
+          "max_drawdown_pct": 16.1905,
+          "peak_equity": 15727.7163,
+          "current_equity": 13181.3161
+        },
+        "text_head": null
+      },
+      "broker_status": {
+        "ok": true,
+        "status": 200,
+        "latency_ms": 32.3,
+        "content_type": "application/json",
+        "json": {
+          "ibkr": {
+            "connected": false,
+            "port": 4002,
+            "mode": "paper"
+          },
+          "schwab": {
+            "connected": false,
+            "state": "DISCONNECTED"
+          },
+          "order_router": {
+            "futures_broker": "unavailable",
+            "equity_broker": "unavailable"
+          }
+        },
+        "text_head": null
+      },
+      "engine_health_direct": {
+        "ok": true,
+        "status": 200,
+        "latency_ms": 1284.0,
+        "content_type": "application/json",
+        "json": {
+          "status": "ok",
+          "version": "1.1.0",
+          "timestamp": "2026-09-12T04:43:16.115029+00:00",
+          "live_trading": false,
+          "kill_switch_active": true,
+          "paper_mode": true,
+          "database": "connected",
+          "ibkr_connected": true,
+          "ibkr_execution_connected": true,
+          "execution_connected_verified": false,
+          "ib_execution_stale": true,
+          "ibkr_data_connected": false,
+          "ibgateway_alive": false,
+          "ibgateway_port": 4002,
+          "ibkr_broker_probe_ok": true,
+          "ibkr_degraded_reason": null,
+          "schwab_connected": false,
+          "uptime_seconds": 63689.689733,
+          "paper_trading": null,
+          "cache": null,
+          "llm_available": true,
+          "llm_path_healthy": true,
+          "vertex_failover_count": 0,
+          "google_fallback_count": 0,
+          "llm_path_details": null,
+          "llm_providers": {
+            "active_provider": null,
+            "primary_provider": "anthropic",
+            "providers_configured": [
+              "anthropic",
+              "gemini",
+              "openai",
+              "kimi"
+            ],
+            "providers_available": 4,
+            "primary_healthy": true,
+            "single_leg_warning": false
+          },
+          "pending_approvals": {
+            "count": 0,
+            "oldest_age_min": null
+          },
+          "futures_sentiment": {
+            "quality": "stale",
+            "age_days": 11,
+            "latest_timestamp": "2026-08-31T08:36:06.664-05:00",
+            "threshold_days": 2,
+            "extraction_quality": "ok",
+            "extraction_lag_days": -9,
+            "latest_bias_date": "2026-09-09"
+          },
+          "tradingview_mcp_healthy": false,
+          "tradingview_mcp_details": "port 9222 not listening \u2014 TV Desktop is not running",
+          "tv_mcp_status": "not_running",
+          "brier_30d_rolling": null,
+          "batch_jobs_health": {
+            "jobs_by_status": {},
+            "unconsumed_results": 0
+          },
+          "market_data_fresh": true,
+          "market_data_stale_symbols": []
+        },
+        "text_head": null
+      }
+    }
+  },
+  "database": {
+    "db_path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\engine\\data\\jarvis_trader.db",
+    "exists": true,
+    "tables": [
+      "agent_memory",
+      "alert_log",
+      "canary_strategies",
+      "capital_allocation",
+      "corey_session_bias",
+      "daily_pnl",
+      "daily_pnl_corrupt_archive",
+      "decisions",
+      "discord_analyses",
+      "discord_bookmarks",
+      "discord_bot_signals",
+      "discord_commentary_fts",
+      "discord_commentary_fts_config",
+      "discord_commentary_fts_content",
+      "discord_commentary_fts_data",
+      "discord_commentary_fts_docsize",
+      "discord_commentary_fts_idx",
+      "discord_corey_alerts",
+      "discord_corey_commentary",
+      "discord_daily_sentiment",
+      "discord_ib_reports",
+      "feature_flags",
+      "fomc_history",
+      "gateway_state",
+      "health_snapshots",
+      "ibkr_fills",
+      "journal_notes",
+      "learning_events",
+      "market_data_bars",
+      "market_data_bars_quarantine",
+      "mes_session_hypothesis",
+      "morning_forecast_journal",
+      "paper_trades",
+      "paper_trades_quarantine",
+      "pending_trade_approvals",
+      "per_account_kill_state",
+      "pipeline_approval_queue",
+      "pipeline_llm_costs",
+      "pipeline_runs",
+      "pnl_snapshots",
+      "positions",
+      "research_agent_costs",
+      "schema_version",
+      "sessions",
+      "settings",
+      "sqlite_sequence",
+      "supervisor_decisions",
+      "system_state",
+      "thread_messages",
+      "threads",
+      "trade_journal",
+      "trade_post_mortem",
+      "trade_reviews",
+      "trading_patterns",
+      "wfe_snapshots"
+    ],
+    "table_counts": {
+      "decisions": 18189,
+      "paper_trades": 120,
+      "paper_trades_quarantine": 60,
+      "pending_trade_approvals": 373,
+      "pipeline_approval_queue": 896,
+      "pipeline_llm_costs": 411,
+      "pipeline_runs": 18249,
+      "supervisor_decisions": 0,
+      "trade_journal": 0,
+      "trade_post_mortem": 0,
+      "trade_reviews": 92,
+      "wfe_snapshots": 1745
+    },
+    "paper_total": {
+      "rows": 120,
+      "distinct_trade_ids": 120,
+      "closed_rows": 91,
+      "open_rows": 0,
+      "closed_pnl": 3181.32,
+      "wins": 28,
+      "losses": 62,
+      "first_entry": "2026-04-03T22:12:19.135111+00:00",
+      "last_entry": "2026-08-18T13:49:41.803391+00:00",
+      "last_exit": "2026-08-18T20:45:03.151069+00:00"
+    },
+    "paper_by_status": [
+      {
+        "status": "cancelled_contaminated",
+        "rows": 4,
+        "pnl_sum": 0.0
+      },
+      {
+        "status": "cancelled_duplicate",
+        "rows": 18,
+        "pnl_sum": 0.0
+      },
+      {
+        "status": "closed",
+        "rows": 91,
+        "pnl_sum": 3181.32
+      },
+      {
+        "status": "phantom",
+        "rows": 7,
+        "pnl_sum": -11064.74
+      }
+    ],
+    "paper_by_symbol": [
+      {
+        "symbol": "MGC",
+        "rows": 47,
+        "distinct_trades": 47,
+        "closed": 38,
+        "open": 0,
+        "closed_pnl": 3905.93,
+        "wins": 12,
+        "losses": 26,
+        "first_entry": "2026-05-08T10:18:18.029656+00:00",
+        "last_entry": "2026-08-12T14:17:06.367855+00:00",
+        "last_exit": "2026-08-12T20:45:04.669832+00:00"
+      },
+      {
+        "symbol": "MCL",
+        "rows": 1,
+        "distinct_trades": 1,
+        "closed": 1,
+        "open": 0,
+        "closed_pnl": 100.0,
+        "wins": 1,
+        "losses": 0,
+        "first_entry": "2026-04-03T22:12:19.135111+00:00",
+        "last_entry": "2026-04-03T22:12:19.135111+00:00",
+        "last_exit": "2026-04-03T22:12:52.619109+00:00"
+      },
+      {
+        "symbol": "SPY",
+        "rows": 4,
+        "distinct_trades": 4,
+        "closed": 4,
+        "open": 0,
+        "closed_pnl": 6.54,
+        "wins": 2,
+        "losses": 2,
+        "first_entry": "2026-06-26T19:13:41.245316+00:00",
+        "last_entry": "2026-08-03T19:57:29.141431+00:00",
+        "last_exit": "2026-08-18T20:45:03.116453+00:00"
+      },
+      {
+        "symbol": "AAPL",
+        "rows": 11,
+        "distinct_trades": 11,
+        "closed": 11,
+        "open": 0,
+        "closed_pnl": -16.99,
+        "wins": 2,
+        "losses": 9,
+        "first_entry": "2026-06-15T20:24:05.530098+00:00",
+        "last_entry": "2026-08-03T16:08:17.579271+00:00",
+        "last_exit": "2026-08-18T20:45:03.151069+00:00"
+      },
+      {
+        "symbol": "QQQ",
+        "rows": 7,
+        "distinct_trades": 7,
+        "closed": 7,
+        "open": 0,
+        "closed_pnl": -22.9,
+        "wins": 2,
+        "losses": 5,
+        "first_entry": "2026-06-18T15:22:40.247408+00:00",
+        "last_entry": "2026-08-03T18:05:41.454232+00:00",
+        "last_exit": "2026-08-17T05:05:40.962905+00:00"
+      },
+      {
+        "symbol": "TSLA",
+        "rows": 7,
+        "distinct_trades": 7,
+        "closed": 7,
+        "open": 0,
+        "closed_pnl": -38.73,
+        "wins": 0,
+        "losses": 7,
+        "first_entry": "2026-06-15T23:04:29.737464+00:00",
+        "last_entry": "2026-08-03T16:08:18.768118+00:00",
+        "last_exit": "2026-08-17T05:05:41.314040+00:00"
+      },
+      {
+        "symbol": "MES",
+        "rows": 43,
+        "distinct_trades": 43,
+        "closed": 23,
+        "open": 0,
+        "closed_pnl": -752.53,
+        "wins": 9,
+        "losses": 13,
+        "first_entry": "2026-05-08T17:26:03.870851+00:00",
+        "last_entry": "2026-08-18T13:49:41.803391+00:00",
+        "last_exit": "2026-08-18T20:45:02.901158+00:00"
+      }
+    ],
+    "paper_distribution": {
+      "closed": 91,
+      "wins": 28,
+      "losses": 62,
+      "breakeven": 1,
+      "win_rate": 0.3077,
+      "gross_profit": 10736.5,
+      "gross_loss": -7555.18,
+      "profit_factor": 1.4211,
+      "avg_win": 383.45,
+      "avg_loss": -121.86,
+      "best": 3173.0,
+      "worst": -1284.0
+    },
+    "intraday_paper_test": {
+      "rth_entries": 62,
+      "non_rth_entries": 58,
+      "first_rth": {
+        "trade_id": "2537898b-6748-45c2-9daa-0d09d993495e",
+        "symbol": "MES",
+        "entry_time": "2026-05-08T17:26:03.870851+00:00",
+        "exit_time": "2026-05-08T17:39:25.600887+00:00",
+        "pnl": 0.0,
+        "status": "closed",
+        "strategy_id": null,
+        "quote_source": "legacy_unbackfilled",
+        "entry_ct": "2026-05-08T12:26:03.870851-05:00"
+      },
+      "last_rth": {
+        "trade_id": "2057bc5e-8142-4109-99e4-8502221cd78e",
+        "symbol": "MES",
+        "entry_time": "2026-08-18T13:49:41.803391+00:00",
+        "exit_time": "2026-08-18T20:45:02.901158+00:00",
+        "pnl": -1245.25,
+        "status": "closed",
+        "strategy_id": "config:c3ef16ed",
+        "quote_source": "legacy_unbackfilled",
+        "entry_ct": "2026-08-18T08:49:41.803391-05:00"
+      },
+      "by_symbol": {
+        "MES": {
+          "rows": 22,
+          "closed": 13,
+          "closed_pnl": -802.71,
+          "first": "2026-05-08T12:26:03.870851-05:00",
+          "last": "2026-08-18T08:49:41.803391-05:00"
+        },
+        "MGC": {
+          "rows": 14,
+          "closed": 13,
+          "closed_pnl": -109.21,
+          "first": "2026-06-11T09:06:36.163189-05:00",
+          "last": "2026-08-12T09:17:06.367855-05:00"
+        },
+        "TSLA": {
+          "rows": 6,
+          "closed": 6,
+          "closed_pnl": -33.73,
+          "first": "2026-06-18T09:08:30.220647-05:00",
+          "last": "2026-08-03T11:08:18.768118-05:00"
+        },
+        "QQQ": {
+          "rows": 7,
+          "closed": 7,
+          "closed_pnl": -22.9,
+          "first": "2026-06-18T10:22:40.247408-05:00",
+          "last": "2026-08-03T13:05:41.454232-05:00"
+        },
+        "AAPL": {
+          "rows": 9,
+          "closed": 9,
+          "closed_pnl": -15.92,
+          "first": "2026-06-18T10:23:37.227520-05:00",
+          "last": "2026-08-03T11:08:17.579271-05:00"
+        },
+        "SPY": {
+          "rows": 4,
+          "closed": 4,
+          "closed_pnl": 6.54,
+          "first": "2026-06-26T14:13:41.245316-05:00",
+          "last": "2026-08-03T14:57:29.141431-05:00"
+        }
+      },
+      "recent_examples": [
+        {
+          "trade_id": "73665367-1552-439c-9d7c-85533282e940",
+          "symbol": "MGC",
+          "entry_time": "2026-07-31T14:52:21.119624+00:00",
+          "exit_time": "2026-07-31T20:45:00.367351+00:00",
+          "pnl": 77.50000000000091,
+          "status": "closed",
+          "strategy_id": "LONG_GAP_FILL",
+          "quote_source": "paper_simulator",
+          "entry_ct": "2026-07-31T09:52:21.119624-05:00"
+        },
+        {
+          "trade_id": "3e143a8a-c977-4acb-8e5b-51033afa388c",
+          "symbol": "MES",
+          "entry_time": "2026-08-03T16:07:48.461717+00:00",
+          "exit_time": "2026-08-03T20:45:02.459669+00:00",
+          "pnl": 209.5,
+          "status": "closed",
+          "strategy_id": "LONG_MOMENTUM",
+          "quote_source": "legacy_unbackfilled",
+          "entry_ct": "2026-08-03T11:07:48.461717-05:00"
+        },
+        {
+          "trade_id": "9060f589-aaac-45b1-8fd1-5651ca9bbe53",
+          "symbol": "AAPL",
+          "entry_time": "2026-08-03T16:08:17.579271+00:00",
+          "exit_time": "2026-08-18T20:45:03.151069+00:00",
+          "pnl": 2.439992675781241,
+          "status": "closed",
+          "strategy_id": "LONG_MOMENTUM",
+          "quote_source": "legacy_unbackfilled",
+          "entry_ct": "2026-08-03T11:08:17.579271-05:00"
+        },
+        {
+          "trade_id": "437d5360-515e-4597-b75b-c0dfd1b1e5d4",
+          "symbol": "TSLA",
+          "entry_time": "2026-08-03T16:08:18.768118+00:00",
+          "exit_time": "2026-08-17T05:05:41.314040+00:00",
+          "pnl": -7.737799999999993,
+          "status": "closed",
+          "strategy_id": "LONG_MOMENTUM",
+          "quote_source": "legacy_unbackfilled",
+          "entry_ct": "2026-08-03T11:08:18.768118-05:00"
+        },
+        {
+          "trade_id": "120cb2f8-2d9e-47d8-b56d-279e356bdfdb",
+          "symbol": "QQQ",
+          "entry_time": "2026-08-03T18:05:41.454232+00:00",
+          "exit_time": "2026-08-17T05:05:40.962905+00:00",
+          "pnl": -8.489399999999932,
+          "status": "closed",
+          "strategy_id": "LONG_MOMENTUM",
+          "quote_source": "legacy_unbackfilled",
+          "entry_ct": "2026-08-03T13:05:41.454232-05:00"
+        },
+        {
+          "trade_id": "da9ba79a-eadc-48c6-b468-f60c8a7dab4d",
+          "symbol": "MGC",
+          "entry_time": "2026-08-03T19:57:18.665068+00:00",
+          "exit_time": "2026-08-03T20:45:02.433987+00:00",
+          "pnl": -16.5,
+          "status": "closed",
+          "strategy_id": "LONG_GAP_FILL",
+          "quote_source": "legacy_unbackfilled",
+          "entry_ct": "2026-08-03T14:57:18.665068-05:00"
+        },
+        {
+          "trade_id": "7a51f8a4-4763-4207-97b5-ce05c5416d49",
+          "symbol": "SPY",
+          "entry_time": "2026-08-03T19:57:29.141431+00:00",
+          "exit_time": "2026-08-18T20:45:03.116453+00:00",
+          "pnl": 13.16998291015625,
+          "status": "closed",
+          "strategy_id": "LONG_MOMENTUM",
+          "quote_source": "legacy_unbackfilled",
+          "entry_ct": "2026-08-03T14:57:29.141431-05:00"
+        },
+        {
+          "trade_id": "3083f899-a8a2-42db-ac35-8155e43617c7",
+          "symbol": "MES",
+          "entry_time": "2026-08-05T15:56:49.009789+00:00",
+          "exit_time": "2026-08-05T16:18:39.389185+00:00",
+          "pnl": -80.82650000000194,
+          "status": "closed",
+          "strategy_id": "LONG_MOMENTUM",
+          "quote_source": "legacy_unbackfilled",
+          "entry_ct": "2026-08-05T10:56:49.009789-05:00"
+        },
+        {
+          "trade_id": "9d8db8fa-18a2-4dda-b0fe-d60b81ff49a9",
+          "symbol": "MES",
+          "entry_time": "2026-08-05T16:57:59.410811+00:00",
+          "exit_time": "2026-08-05T20:13:11.707315+00:00",
+          "pnl": -80.82650000000194,
+          "status": "closed",
+          "strategy_id": "LONG_MOMENTUM",
+          "quote_source": "legacy_unbackfilled",
+          "entry_ct": "2026-08-05T11:57:59.410811-05:00"
+        },
+        {
+          "trade_id": "27777ed0-e48d-4b41-96df-0e603c89f5c7",
+          "symbol": "MES",
+          "entry_time": "2026-08-11T16:55:53.526735+00:00",
+          "exit_time": "2026-08-11T18:31:10.754821+00:00",
+          "pnl": -59.0565000000006,
+          "status": "closed",
+          "strategy_id": "LONG_MOMENTUM",
+          "quote_source": "legacy_unbackfilled",
+          "entry_ct": "2026-08-11T11:55:53.526735-05:00"
+        },
+        {
+          "trade_id": "31717f9a-3ff3-4673-b7b5-9ca8e389230f",
+          "symbol": "MGC",
+          "entry_time": "2026-08-12T14:17:06.367855+00:00",
+          "exit_time": "2026-08-12T20:45:04.669832+00:00",
+          "pnl": -4.0,
+          "status": "closed",
+          "strategy_id": "MGC_trend_rv_filter_rank1",
+          "quote_source": "legacy_unbackfilled",
+          "entry_ct": "2026-08-12T09:17:06.367855-05:00"
+        },
+        {
+          "trade_id": "2057bc5e-8142-4109-99e4-8502221cd78e",
+          "symbol": "MES",
+          "entry_time": "2026-08-18T13:49:41.803391+00:00",
+          "exit_time": "2026-08-18T20:45:02.901158+00:00",
+          "pnl": -1245.25,
+          "status": "closed",
+          "strategy_id": "config:c3ef16ed",
+          "quote_source": "legacy_unbackfilled",
+          "entry_ct": "2026-08-18T08:49:41.803391-05:00"
+        }
+      ]
+    },
+    "pipeline_total": {
+      "rows": 18249,
+      "first_run": "2026-04-05T00:52:19",
+      "last_run": "2026-09-11T20:03:11",
+      "completed": 18249,
+      "not_completed": 0
+    },
+    "pipeline_actions": [
+      {
+        "final_action": "hold",
+        "rows": 16252,
+        "first_run": "2026-04-05T00:52:19",
+        "last_run": "2026-09-11T20:03:11"
+      },
+      {
+        "final_action": "sell",
+        "rows": 1197,
+        "first_run": "2026-04-10T16:26:24",
+        "last_run": "2026-08-18T18:31:51"
+      },
+      {
+        "final_action": "buy",
+        "rows": 800,
+        "first_run": "2026-04-07T09:24:25",
+        "last_run": "2026-08-18T16:10:42"
+      }
+    ],
+    "pipeline_recent_non_hold": [
+      {
+        "id": 16122,
+        "created_at": "2026-08-18T18:31:51",
+        "run_id": "17e96cd7",
+        "symbol": "MES",
+        "source": "scanner",
+        "final_action": "sell",
+        "final_quantity": 2,
+        "requires_human": 0,
+        "status": "completed",
+        "confidence": null,
+        "summary": "MES | regime=trending trend=downtrend | action=SELL qty=2 | conviction=0% human=False",
+        "error_message": null
+      },
+      {
+        "id": 16106,
+        "created_at": "2026-08-18T17:26:04",
+        "run_id": "b8d27ec2",
+        "symbol": "MES",
+        "source": "scanner",
+        "final_action": "sell",
+        "final_quantity": 2,
+        "requires_human": 0,
+        "status": "completed",
+        "confidence": null,
+        "summary": "MES | regime=trending trend=downtrend | action=SELL qty=2 | conviction=0% human=False",
+        "error_message": null
+      },
+      {
+        "id": 16103,
+        "created_at": "2026-08-18T16:30:00",
+        "run_id": "4a6ee572",
+        "symbol": "QQQ",
+        "source": "watchlist",
+        "final_action": "sell",
+        "final_quantity": 4,
+        "requires_human": 0,
+        "status": "completed",
+        "confidence": null,
+        "summary": "QQQ | regime=trending trend=downtrend | action=SELL qty=4 | conviction=0% human=False",
+        "error_message": null
+      },
+      {
+        "id": 16101,
+        "created_at": "2026-08-18T16:25:31",
+        "run_id": "055965f6",
+        "symbol": "QQQ",
+        "source": "watchlist",
+        "final_action": "sell",
+        "final_quantity": 4,
+        "requires_human": 0,
+        "status": "completed",
+        "confidence": null,
+        "summary": "QQQ | regime=trending trend=downtrend | action=SELL qty=4 | conviction=0% human=False",
+        "error_message": null
+      },
+      {
+        "id": 16100,
+        "created_at": "2026-08-18T16:25:18",
+        "run_id": "d4469913",
+        "symbol": "QQQ",
+        "source": "scanner",
+        "final_action": "sell",
+        "final_quantity": 4,
+        "requires_human": 0,
+        "status": "completed",
+        "confidence": null,
+        "summary": "QQQ | regime=trending trend=downtrend | action=SELL qty=4 | conviction=0% human=False",
+        "error_message": null
+      },
+      {
+        "id": 16099,
+        "created_at": "2026-08-18T16:25:10",
+        "run_id": "c5455784",
+        "symbol": "AAPL",
+        "source": "scanner",
+        "final_action": "sell",
+        "final_quantity": 4,
+        "requires_human": 0,
+        "status": "completed",
+        "confidence": null,
+        "summary": "AAPL | regime=trending trend=uptrend | action=SELL qty=4 | conviction=0% human=False",
+        "error_message": null
+      },
+      {
+        "id": 16098,
+        "created_at": "2026-08-18T16:24:55",
+        "run_id": "ea97fe38",
+        "symbol": "TSLA",
+        "source": "scanner",
+        "final_action": "sell",
+        "final_quantity": 4,
+        "requires_human": 0,
+        "status": "completed",
+        "confidence": null,
+        "summary": "TSLA | regime=mean_reverting trend=ranging | action=SELL qty=4 | conviction=0% human=False",
+        "error_message": null
+      },
+      {
+        "id": 16097,
+        "created_at": "2026-08-18T16:24:28",
+        "run_id": "8fa2363a",
+        "symbol": "MES",
+        "source": "scanner",
+        "final_action": "sell",
+        "final_quantity": 2,
+        "requires_human": 0,
+        "status": "completed",
+        "confidence": null,
+        "summary": "MES | regime=trending trend=downtrend | action=SELL qty=2 | conviction=0% human=False",
+        "error_message": null
+      },
+      {
+        "id": 16091,
+        "created_at": "2026-08-18T16:10:42",
+        "run_id": "d3846521",
+        "symbol": "MES",
+        "source": "scanner",
+        "final_action": "buy",
+        "final_quantity": 2,
+        "requires_human": 0,
+        "status": "completed",
+        "confidence": null,
+        "summary": "MES | regime=trending trend=downtrend | action=BUY qty=2 | conviction=0% human=False",
+        "error_message": null
+      },
+      {
+        "id": 16088,
+        "created_at": "2026-08-18T14:00:00",
+        "run_id": "40dc8d17",
+        "symbol": "QQQ",
+        "source": "watchlist",
+        "final_action": "sell",
+        "final_quantity": 1,
+        "requires_human": 0,
+        "status": "completed",
+        "confidence": null,
+        "summary": "QQQ | regime=trending trend=downtrend | action=SELL qty=1 | conviction=0% human=False",
+        "error_message": null
+      },
+      {
+        "id": 16086,
+        "created_at": "2026-08-18T13:50:49",
+        "run_id": "be3f019c",
+        "symbol": "TSLA",
+        "source": "scanner",
+        "final_action": "sell",
+        "final_quantity": 1,
+        "requires_human": 0,
+        "status": "completed",
+        "confidence": null,
+        "summary": "TSLA | regime=trending trend=downtrend | action=SELL qty=1 | conviction=0% human=False",
+        "error_message": null
+      },
+      {
+        "id": 16084,
+        "created_at": "2026-08-18T13:50:35",
+        "run_id": "73df61c2",
+        "symbol": "QQQ",
+        "source": "scanner",
+        "final_action": "sell",
+        "final_quantity": 1,
+        "requires_human": 0,
+        "status": "completed",
+        "confidence": null,
+        "summary": "QQQ | regime=trending trend=downtrend | action=SELL qty=1 | conviction=0% human=False",
+        "error_message": null
+      },
+      {
+        "id": 16082,
+        "created_at": "2026-08-18T13:50:24",
+        "run_id": "4678d631",
+        "symbol": "MES",
+        "source": "scanner",
+        "final_action": "buy",
+        "final_quantity": 2,
+        "requires_human": 0,
+        "status": "completed",
+        "confidence": null,
+        "summary": "MES | regime=trending trend=downtrend | action=BUY qty=2 | conviction=0% human=False",
+        "error_message": null
+      },
+      {
+        "id": 15265,
+        "created_at": "2026-08-12T20:30:00",
+        "run_id": "63bba392",
+        "symbol": "MES",
+        "source": "watchlist",
+        "final_action": "sell",
+        "final_quantity": 1,
+        "requires_human": 0,
+        "status": "completed",
+        "confidence": null,
+        "summary": "MES | regime=trending trend=uptrend | action=SELL qty=1 | conviction=0% human=False",
+        "error_message": null
+      },
+      {
+        "id": 15264,
+        "created_at": "2026-08-12T20:00:00",
+        "run_id": "b49372c5",
+        "symbol": "MES",
+        "source": "watchlist",
+        "final_action": "sell",
+        "final_quantity": 1,
+        "requires_human": 0,
+        "status": "completed",
+        "confidence": null,
+        "summary": "MES | regime=trending trend=uptrend | action=SELL qty=1 | conviction=0% human=False",
+        "error_message": null
+      },
+      {
+        "id": 15263,
+        "created_at": "2026-08-12T19:49:10",
+        "run_id": "8a3a39b1",
+        "symbol": "MES",
+        "source": "scanner",
+        "final_action": "sell",
+        "final_quantity": 1,
+        "requires_human": 0,
+        "status": "completed",
+        "confidence": null,
+        "summary": "MES | regime=trending trend=uptrend | action=SELL qty=1 | conviction=0% human=False",
+        "error_message": null
+      },
+      {
+        "id": 15262,
+        "created_at": "2026-08-12T19:47:47",
+        "run_id": "ff777120",
+        "symbol": "MES",
+        "source": "watchlist",
+        "final_action": "sell",
+        "final_quantity": 1,
+        "requires_human": 0,
+        "status": "completed",
+        "confidence": null,
+        "summary": "MES | regime=trending trend=uptrend | action=SELL qty=1 | conviction=0% human=False",
+        "error_message": null
+      },
+      {
+        "id": 15256,
+        "created_at": "2026-08-12T19:30:00",
+        "run_id": "0aecebf6",
+        "symbol": "MES",
+        "source": "watchlist",
+        "final_action": "sell",
+        "final_quantity": 2,
+        "requires_human": 0,
+        "status": "completed",
+        "confidence": null,
+        "summary": "MES | regime=mean_reverting trend=neutral | action=SELL qty=2 | conviction=0% human=False",
+        "error_message": null
+      },
+      {
+        "id": 15255,
+        "created_at": "2026-08-12T19:00:00",
+        "run_id": "1079a6c6",
+        "symbol": "MES",
+        "source": "watchlist",
+        "final_action": "sell",
+        "final_quantity": 2,
+        "requires_human": 0,
+        "status": "completed",
+        "confidence": null,
+        "summary": "MES | regime=mean_reverting trend=neutral | action=SELL qty=2 | conviction=0% human=False",
+        "error_message": null
+      },
+      {
+        "id": 15252,
+        "created_at": "2026-08-12T18:56:49",
+        "run_id": "34c4de12",
+        "symbol": "TSLA",
+        "source": "scanner",
+        "final_action": "sell",
+        "final_quantity": 1,
+        "requires_human": 0,
+        "status": "completed",
+        "confidence": null,
+        "summary": "TSLA | regime=mean_reverting trend=ranging | action=SELL qty=1 | conviction=0% human=False",
+        "error_message": null
+      },
+      {
+        "id": 15249,
+        "created_at": "2026-08-12T18:56:49",
+        "run_id": "1c4434ad",
+        "symbol": "MES",
+        "source": "scanner",
+        "final_action": "sell",
+        "final_quantity": 2,
+        "requires_human": 0,
+        "status": "completed",
+        "confidence": null,
+        "summary": "MES | regime=mean_reverting trend=neutral | action=SELL qty=2 | conviction=0% human=False",
+        "error_message": null
+      },
+      {
+        "id": 15248,
+        "created_at": "2026-08-12T18:30:00",
+        "run_id": "735c5b83",
+        "symbol": "MES",
+        "source": "watchlist",
+        "final_action": "sell",
+        "final_quantity": 2,
+        "requires_human": 0,
+        "status": "completed",
+        "confidence": null,
+        "summary": "MES | regime=mean_reverting trend=neutral | action=SELL qty=2 | conviction=0% human=False",
+        "error_message": null
+      },
+      {
+        "id": 15247,
+        "created_at": "2026-08-12T18:00:00",
+        "run_id": "d34ef900",
+        "symbol": "MES",
+        "source": "watchlist",
+        "final_action": "sell",
+        "final_quantity": 2,
+        "requires_human": 0,
+        "status": "completed",
+        "confidence": null,
+        "summary": "MES | regime=mean_reverting trend=neutral | action=SELL qty=2 | conviction=0% human=False",
+        "error_message": null
+      },
+      {
+        "id": 15246,
+        "created_at": "2026-08-12T17:56:47",
+        "run_id": "35d07544",
+        "symbol": "TSLA",
+        "source": "scanner",
+        "final_action": "sell",
+        "final_quantity": 1,
+        "requires_human": 0,
+        "status": "completed",
+        "confidence": null,
+        "summary": "TSLA | regime=mean_reverting trend=ranging | action=SELL qty=1 | conviction=0% human=False",
+        "error_message": null
+      },
+      {
+        "id": 15243,
+        "created_at": "2026-08-12T17:54:26",
+        "run_id": "d493e9c6",
+        "symbol": "MES",
+        "source": "scanner",
+        "final_action": "sell",
+        "final_quantity": 2,
+        "requires_human": 0,
+        "status": "completed",
+        "confidence": null,
+        "summary": "MES | regime=mean_reverting trend=neutral | action=SELL qty=2 | conviction=0% human=False",
+        "error_message": null
+      }
+    ],
+    "pipeline_since_2026_09_10": [
+      {
+        "symbol": "AAPL",
+        "final_action": "hold",
+        "rows": 50,
+        "first_run": "2026-09-10T00:00:45",
+        "last_run": "2026-09-11T20:03:11"
+      },
+      {
+        "symbol": "MES",
+        "final_action": "hold",
+        "rows": 47,
+        "first_run": "2026-09-10T00:00:45",
+        "last_run": "2026-09-11T20:03:10"
+      },
+      {
+        "symbol": "MGC",
+        "final_action": "hold",
+        "rows": 47,
+        "first_run": "2026-09-10T00:00:45",
+        "last_run": "2026-09-11T20:03:11"
+      },
+      {
+        "symbol": "QQQ",
+        "final_action": "hold",
+        "rows": 50,
+        "first_run": "2026-09-10T00:00:45",
+        "last_run": "2026-09-11T20:03:11"
+      },
+      {
+        "symbol": "SPY",
+        "final_action": "hold",
+        "rows": 50,
+        "first_run": "2026-09-10T00:00:45",
+        "last_run": "2026-09-11T20:03:11"
+      },
+      {
+        "symbol": "TSLA",
+        "final_action": "hold",
+        "rows": 50,
+        "first_run": "2026-09-10T00:00:45",
+        "last_run": "2026-09-11T20:03:11"
+      }
+    ],
+    "pending_trade_approvals_status": [
+      {
+        "status": "rejected",
+        "rows": 372,
+        "first_created": "2026-04-07T09:24:25",
+        "last_created": "2026-08-11T16:03:24"
+      },
+      {
+        "status": "approved",
+        "rows": 1,
+        "first_created": "2026-04-03T22:12:06.780572+00:00",
+        "last_created": "2026-04-03T22:12:06.780572+00:00"
+      }
+    ],
+    "pending_trade_approvals_by_symbol": [
+      {
+        "symbol": "AAPL",
+        "status": "rejected",
+        "rows": 24,
+        "first_created": "2026-07-21T10:57:37",
+        "last_created": "2026-08-04T01:04:42"
+      },
+      {
+        "symbol": "MCL",
+        "status": "approved",
+        "rows": 1,
+        "first_created": "2026-04-03T22:12:06.780572+00:00",
+        "last_created": "2026-04-03T22:12:06.780572+00:00"
+      },
+      {
+        "symbol": "MCL",
+        "status": "rejected",
+        "rows": 37,
+        "first_created": "2026-04-07T09:24:25",
+        "last_created": "2026-04-23T02:21:45"
+      },
+      {
+        "symbol": "MES",
+        "status": "rejected",
+        "rows": 132,
+        "first_created": "2026-04-10T16:26:24",
+        "last_created": "2026-08-11T16:03:24"
+      },
+      {
+        "symbol": "MGC",
+        "status": "rejected",
+        "rows": 119,
+        "first_created": "2026-05-08T10:18:18",
+        "last_created": "2026-08-03T19:57:15"
+      },
+      {
+        "symbol": "QQQ",
+        "status": "rejected",
+        "rows": 24,
+        "first_created": "2026-06-16T15:39:05",
+        "last_created": "2026-08-05T16:57:55"
+      },
+      {
+        "symbol": "SPY",
+        "status": "rejected",
+        "rows": 17,
+        "first_created": "2026-06-16T07:39:13",
+        "last_created": "2026-08-06T02:02:09"
+      },
+      {
+        "symbol": "TSLA",
+        "status": "rejected",
+        "rows": 19,
+        "first_created": "2026-06-16T15:39:43",
+        "last_created": "2026-08-04T01:04:46"
+      }
+    ],
+    "pipeline_approval_queue_status": [
+      {
+        "status": "expired",
+        "rows": 509,
+        "first_created": "2026-06-11T05:04:12.184771+00:00",
+        "last_created": "2026-08-18T19:01:21.424586+00:00"
+      },
+      {
+        "status": "approved",
+        "rows": 387,
+        "first_created": "2026-06-27T05:47:58.583734+00:00",
+        "last_created": "2026-08-18T13:49:40.562121+00:00"
+      }
+    ],
+    "pipeline_approval_queue_recent": [
+      {
+        "id": 896,
+        "created_at": "2026-08-18T19:01:21.424586+00:00",
+        "symbol": "MES",
+        "direction": "SHORT",
+        "confidence": 0.68,
+        "status": "expired",
+        "expires_at": "2026-08-18T19:31:21.424586+00:00",
+        "reviewed_at": "2026-08-19T18:32:29.829361+00:00",
+        "order_id": null
+      },
+      {
+        "id": 895,
+        "created_at": "2026-08-18T18:31:21.396837+00:00",
+        "symbol": "MES",
+        "direction": "SHORT",
+        "confidence": 0.68,
+        "status": "expired",
+        "expires_at": "2026-08-18T19:01:21.396837+00:00",
+        "reviewed_at": "2026-08-19T18:32:29.829361+00:00",
+        "order_id": null
+      },
+      {
+        "id": 894,
+        "created_at": "2026-08-18T17:57:09.905645+00:00",
+        "symbol": "MES",
+        "direction": "SHORT",
+        "confidence": 0.68,
+        "status": "expired",
+        "expires_at": "2026-08-18T18:27:09.905645+00:00",
+        "reviewed_at": "2026-08-18T18:34:55.587964+00:00",
+        "order_id": null
+      },
+      {
+        "id": 893,
+        "created_at": "2026-08-18T17:25:28.116255+00:00",
+        "symbol": "MES",
+        "direction": "SHORT",
+        "confidence": 0.68,
+        "status": "expired",
+        "expires_at": "2026-08-18T17:55:28.116255+00:00",
+        "reviewed_at": "2026-08-18T18:34:55.587964+00:00",
+        "order_id": null
+      },
+      {
+        "id": 892,
+        "created_at": "2026-08-18T16:53:40.110252+00:00",
+        "symbol": "MES",
+        "direction": "SHORT",
+        "confidence": 0.68,
+        "status": "expired",
+        "expires_at": "2026-08-18T17:23:40.110252+00:00",
+        "reviewed_at": "2026-08-18T18:34:55.587964+00:00",
+        "order_id": null
+      },
+      {
+        "id": 891,
+        "created_at": "2026-08-18T16:23:39.915048+00:00",
+        "symbol": "MES",
+        "direction": "SHORT",
+        "confidence": 0.68,
+        "status": "expired",
+        "expires_at": "2026-08-18T16:53:39.915048+00:00",
+        "reviewed_at": "2026-08-18T18:34:55.587964+00:00",
+        "order_id": null
+      },
+      {
+        "id": 890,
+        "created_at": "2026-08-18T15:58:02.612125+00:00",
+        "symbol": "MES",
+        "direction": "LONG",
+        "confidence": 0.52,
+        "status": "expired",
+        "expires_at": "2026-08-18T16:28:02.612125+00:00",
+        "reviewed_at": "2026-08-18T18:34:55.587964+00:00",
+        "order_id": null
+      },
+      {
+        "id": 889,
+        "created_at": "2026-08-18T14:19:43.200067+00:00",
+        "symbol": "MES",
+        "direction": "LONG",
+        "confidence": 0.55,
+        "status": "expired",
+        "expires_at": "2026-08-18T14:49:43.200067+00:00",
+        "reviewed_at": "2026-08-18T18:34:55.587964+00:00",
+        "order_id": null
+      },
+      {
+        "id": 888,
+        "created_at": "2026-08-18T13:49:40.562121+00:00",
+        "symbol": "MES",
+        "direction": "LONG",
+        "confidence": 0.55,
+        "status": "approved",
+        "expires_at": "2026-08-18T14:19:40.562121+00:00",
+        "reviewed_at": "2026-08-18T13:49:41.816518+00:00",
+        "order_id": "3a8420a5-5f18-44c6-8b1e-d4c550c3dbfe"
+      },
+      {
+        "id": 887,
+        "created_at": "2026-07-21T17:54:44.901249+00:00",
+        "symbol": "MES",
+        "direction": "SHORT",
+        "confidence": 0.58,
+        "status": "expired",
+        "expires_at": "2026-07-21T18:24:44.901249+00:00",
+        "reviewed_at": "2026-07-24T10:04:41.792041+00:00",
+        "order_id": null
+      },
+      {
+        "id": 886,
+        "created_at": "2026-07-21T15:19:39.764339+00:00",
+        "symbol": "MES",
+        "direction": "LONG",
+        "confidence": 0.6,
+        "status": "expired",
+        "expires_at": "2026-07-21T15:49:39.764339+00:00",
+        "reviewed_at": "2026-07-24T10:04:41.792041+00:00",
+        "order_id": null
+      },
+      {
+        "id": 885,
+        "created_at": "2026-07-21T14:14:01.718485+00:00",
+        "symbol": "MES",
+        "direction": "LONG",
+        "confidence": 0.58,
+        "status": "expired",
+        "expires_at": "2026-07-21T14:44:01.718485+00:00",
+        "reviewed_at": "2026-07-24T10:04:41.792041+00:00",
+        "order_id": null
+      },
+      {
+        "id": 884,
+        "created_at": "2026-07-21T13:07:54.529649+00:00",
+        "symbol": "MES",
+        "direction": "LONG",
+        "confidence": 0.62,
+        "status": "expired",
+        "expires_at": "2026-07-21T13:37:54.529649+00:00",
+        "reviewed_at": "2026-07-24T10:04:41.792041+00:00",
+        "order_id": null
+      },
+      {
+        "id": 883,
+        "created_at": "2026-07-21T12:17:19.274503+00:00",
+        "symbol": "MES",
+        "direction": "SHORT",
+        "confidence": 0.62,
+        "status": "expired",
+        "expires_at": "2026-07-21T12:47:19.274503+00:00",
+        "reviewed_at": "2026-07-24T10:04:41.792041+00:00",
+        "order_id": null
+      },
+      {
+        "id": 882,
+        "created_at": "2026-07-21T11:02:03.950218+00:00",
+        "symbol": "MES",
+        "direction": "LONG",
+        "confidence": 0.55,
+        "status": "approved",
+        "expires_at": "2026-07-21T11:32:03.950218+00:00",
+        "reviewed_at": "2026-07-21T11:02:05.561726+00:00",
+        "order_id": "e07d61ff-7ef4-4560-8e00-64c2d9f2af9e"
+      },
+      {
+        "id": 881,
+        "created_at": "2026-07-21T02:39:57.165735+00:00",
+        "symbol": "MES",
+        "direction": "SHORT",
+        "confidence": 0.75,
+        "status": "expired",
+        "expires_at": "2026-07-21T03:09:57.165735+00:00",
+        "reviewed_at": "2026-07-24T10:04:41.792041+00:00",
+        "order_id": null
+      },
+      {
+        "id": 880,
+        "created_at": "2026-07-21T02:09:04.811992+00:00",
+        "symbol": "MES",
+        "direction": "SHORT",
+        "confidence": 0.85,
+        "status": "expired",
+        "expires_at": "2026-07-21T02:39:04.811992+00:00",
+        "reviewed_at": "2026-07-24T10:04:41.792041+00:00",
+        "order_id": null
+      },
+      {
+        "id": 879,
+        "created_at": "2026-07-21T00:06:26.539081+00:00",
+        "symbol": "MES",
+        "direction": "SHORT",
+        "confidence": 0.8,
+        "status": "expired",
+        "expires_at": "2026-07-21T00:36:26.539081+00:00",
+        "reviewed_at": "2026-07-24T10:04:41.792041+00:00",
+        "order_id": null
+      },
+      {
+        "id": 878,
+        "created_at": "2026-07-20T23:35:26.105494+00:00",
+        "symbol": "MES",
+        "direction": "SHORT",
+        "confidence": 0.8,
+        "status": "expired",
+        "expires_at": "2026-07-21T00:05:26.105494+00:00",
+        "reviewed_at": "2026-07-24T10:04:41.792041+00:00",
+        "order_id": null
+      },
+      {
+        "id": 877,
+        "created_at": "2026-07-20T23:05:25.891817+00:00",
+        "symbol": "MES",
+        "direction": "SHORT",
+        "confidence": 0.75,
+        "status": "expired",
+        "expires_at": "2026-07-20T23:35:25.891817+00:00",
+        "reviewed_at": "2026-07-24T10:04:41.792041+00:00",
+        "order_id": null
+      }
+    ],
+    "pipeline_approved_order_match": [
+      {
+        "symbol": "MES",
+        "approved_rows": 356,
+        "queue_order_ids": 356,
+        "matched_paper_trade_ids": 0,
+        "matched_closed_pnl": 0.0
+      },
+      {
+        "symbol": "MGC",
+        "approved_rows": 31,
+        "queue_order_ids": 31,
+        "matched_paper_trade_ids": 0,
+        "matched_closed_pnl": 0.0
+      }
+    ],
+    "decisions_actions": [
+      {
+        "symbol": "AAPL",
+        "action": "hold",
+        "rows": 2217,
+        "first_ts": "2026-04-03T14:00:53",
+        "last_ts": "2026-09-11T20:03:11",
+        "avg_conf": 0.0596
+      },
+      {
+        "symbol": "AAPL",
+        "action": "sell",
+        "rows": 289,
+        "first_ts": "2026-05-08T17:29:31",
+        "last_ts": "2026-08-18T16:25:10",
+        "avg_conf": 0.6821
+      },
+      {
+        "symbol": "AAPL",
+        "action": "buy",
+        "rows": 116,
+        "first_ts": "2026-06-15T17:37:11",
+        "last_ts": "2026-08-04T01:04:42",
+        "avg_conf": 0.7325
+      },
+      {
+        "symbol": "MCL",
+        "action": "hold",
+        "rows": 1043,
+        "first_ts": "2026-04-05T07:49:48",
+        "last_ts": "2026-05-21T22:08:11",
+        "avg_conf": 0.0458
+      },
+      {
+        "symbol": "MCL",
+        "action": "buy",
+        "rows": 58,
+        "first_ts": "2026-04-07T09:24:25",
+        "last_ts": "2026-04-23T02:21:45",
+        "avg_conf": 0.2162
+      },
+      {
+        "symbol": "MCL",
+        "action": "sell",
+        "rows": 6,
+        "first_ts": "2026-04-10T03:24:55",
+        "last_ts": "2026-04-22T16:57:16",
+        "avg_conf": 0.5667
+      },
+      {
+        "symbol": "MES",
+        "action": "hold",
+        "rows": 3319,
+        "first_ts": "2026-04-03T14:00:41",
+        "last_ts": "2026-09-11T20:03:10",
+        "avg_conf": 0.0425
+      },
+      {
+        "symbol": "MES",
+        "action": "sell",
+        "rows": 388,
+        "first_ts": "2026-04-10T16:26:24",
+        "last_ts": "2026-08-18T18:31:51",
+        "avg_conf": 0.6565
+      },
+      {
+        "symbol": "MES",
+        "action": "buy",
+        "rows": 99,
+        "first_ts": "2026-05-22T14:55:55",
+        "last_ts": "2026-08-18T16:10:47",
+        "avg_conf": 0.6683
+      },
+      {
+        "symbol": "MGC",
+        "action": "hold",
+        "rows": 2351,
+        "first_ts": "2026-05-08T08:21:40",
+        "last_ts": "2026-09-11T20:03:11",
+        "avg_conf": 0.0484
+      },
+      {
+        "symbol": "MGC",
+        "action": "buy",
+        "rows": 262,
+        "first_ts": "2026-05-08T10:18:17",
+        "last_ts": "2026-08-03T19:57:15",
+        "avg_conf": 0.7174
+      },
+      {
+        "symbol": "MGC",
+        "action": "sell",
+        "rows": 111,
+        "first_ts": "2026-05-08T18:09:00",
+        "last_ts": "2026-08-12T15:15:11",
+        "avg_conf": 0.6427
+      },
+      {
+        "symbol": "MNQ",
+        "action": "hold",
+        "rows": 1098,
+        "first_ts": "2026-04-03T14:00:02",
+        "last_ts": "2026-05-21T22:08:36",
+        "avg_conf": 0.0285
+      },
+      {
+        "symbol": "QQQ",
+        "action": "hold",
+        "rows": 2340,
+        "first_ts": "2026-04-03T14:00:57",
+        "last_ts": "2026-09-11T20:03:11",
+        "avg_conf": 0.05
+      },
+      {
+        "symbol": "QQQ",
+        "action": "sell",
+        "rows": 200,
+        "first_ts": "2026-04-10T17:02:36",
+        "last_ts": "2026-08-18T16:30:00",
+        "avg_conf": 0.682
+      },
+      {
+        "symbol": "QQQ",
+        "action": "buy",
+        "rows": 126,
+        "first_ts": "2026-05-22T14:57:35",
+        "last_ts": "2026-08-11T19:15:45",
+        "avg_conf": 0.7032
+      },
+      {
+        "symbol": "SPY",
+        "action": "hold",
+        "rows": 2536,
+        "first_ts": "2026-04-03T14:01:05",
+        "last_ts": "2026-09-11T20:03:11",
+        "avg_conf": 0.0461
+      },
+      {
+        "symbol": "SPY",
+        "action": "sell",
+        "rows": 134,
+        "first_ts": "2026-04-10T19:33:33",
+        "last_ts": "2026-08-03T19:31:04",
+        "avg_conf": 0.6543
+      },
+      {
+        "symbol": "SPY",
+        "action": "buy",
+        "rows": 66,
+        "first_ts": "2026-06-15T19:02:17",
+        "last_ts": "2026-08-06T02:02:09",
+        "avg_conf": 0.7056
+      },
+      {
+        "symbol": "TSLA",
+        "action": "hold",
+        "rows": 1303,
+        "first_ts": "2026-06-15T20:21:30",
+        "last_ts": "2026-09-11T20:03:11",
+        "avg_conf": 0.0699
+      },
+      {
+        "symbol": "TSLA",
+        "action": "sell",
+        "rows": 64,
+        "first_ts": "2026-06-18T14:08:27",
+        "last_ts": "2026-08-18T16:24:55",
+        "avg_conf": 0.6603
+      },
+      {
+        "symbol": "TSLA",
+        "action": "buy",
+        "rows": 63,
+        "first_ts": "2026-06-15T23:04:28",
+        "last_ts": "2026-08-04T01:04:46",
+        "avg_conf": 0.7413
+      }
+    ],
+    "decisions_recent_non_hold": [
+      {
+        "id": 16063,
+        "timestamp": "2026-08-18T18:31:51",
+        "symbol": "MES",
+        "action": "sell",
+        "confidence": 0.68,
+        "regime": "trending",
+        "reasoning_head": "Multiple converging bearish signals support a SHORT entry on MES. (1) TPO Algorithmic Signal is SHORT_GAP_FILL with GAP_IMBALANCE sub-structure \u2014 this is a hard directional bias toward downside gap fill, and per directiv"
+      },
+      {
+        "id": 16047,
+        "timestamp": "2026-08-18T17:26:04",
+        "symbol": "MES",
+        "action": "sell",
+        "confidence": 0.68,
+        "regime": "trending",
+        "reasoning_head": "Multiple converging bearish signals support a SHORT entry. (1) STARK-TPO Algorithmic Signal is SHORT_GAP_FILL with GAP_IMBALANCE sub-structure \u2014 this is the primary hard signal and indicates downside gap fill potential. "
+      },
+      {
+        "id": 16044,
+        "timestamp": "2026-08-18T16:30:00",
+        "symbol": "QQQ",
+        "action": "sell",
+        "confidence": 0.67,
+        "regime": null,
+        "reasoning_head": "Multiple converging bearish signals support a SHORT entry: (1) TPO Algorithmic Signal is SHORT_GAP_FILL with GAP_IMBALANCE sub-structure \u2014 the primary hard signal directing a short. (2) Breakout Specialist flags 'extende"
+      },
+      {
+        "id": 16042,
+        "timestamp": "2026-08-18T16:25:31",
+        "symbol": "QQQ",
+        "action": "sell",
+        "confidence": 0.67,
+        "regime": null,
+        "reasoning_head": "Multiple converging bearish signals support a SHORT entry: (1) TPO Algorithmic Signal is SHORT_GAP_FILL with GAP_IMBALANCE sub-structure \u2014 the primary hard signal directing a short. (2) Breakout Specialist flags 'extende"
+      },
+      {
+        "id": 16041,
+        "timestamp": "2026-08-18T16:25:18",
+        "symbol": "QQQ",
+        "action": "sell",
+        "confidence": 0.68,
+        "regime": "trending",
+        "reasoning_head": "TPO Algorithmic Signal is SHORT_GAP_FILL with GAP_IMBALANCE sub-structure, indicating a downside gap fill is the primary edge. The Breakout Specialist confirms an 'extended (bearish)' breakout status with a -0.4 signal w"
+      },
+      {
+        "id": 16040,
+        "timestamp": "2026-08-18T16:25:10",
+        "symbol": "AAPL",
+        "action": "sell",
+        "confidence": 0.65,
+        "regime": "trending",
+        "reasoning_head": "The STARK-TPO Algorithmic Signal is SHORT_VAH_REJECT with INSIDE_VALUE sub-structure, indicating price has rejected the Value Area High (VAH at 306.47) and is trading above value in extended territory. This is a classic "
+      },
+      {
+        "id": 16039,
+        "timestamp": "2026-08-18T16:24:55",
+        "symbol": "TSLA",
+        "action": "sell",
+        "confidence": 0.63,
+        "regime": "mean_reverting",
+        "reasoning_head": "TPO Algorithmic Signal is SHORT_GAP_FILL with GAP_IMBALANCE sub-structure, which is the primary directive. The regime is TRENDING, directing us to prioritize STARK-TPO alignment \u2014 and the TPO signal is clearly SHORT. Pri"
+      },
+      {
+        "id": 16038,
+        "timestamp": "2026-08-18T16:24:28",
+        "symbol": "MES",
+        "action": "sell",
+        "confidence": 0.68,
+        "regime": "trending",
+        "reasoning_head": "Multiple confluent bearish signals align for a SHORT entry on MES. (1) STARK-TPO Signal is SHORT_GAP_FILL with GAP_IMBALANCE sub-structure \u2014 the primary algorithmic directive is to sell into the gap fill. (2) Regime is T"
+      },
+      {
+        "id": 16032,
+        "timestamp": "2026-08-18T16:10:47",
+        "symbol": "MES",
+        "action": "buy",
+        "confidence": 0.52,
+        "regime": "trending",
+        "reasoning_head": "TPO Algorithmic Signal is LONG_MOMENTUM with BREAKOUT sub-structure, which is the hard constraint driver for this trade. Regime is TRENDING, routing directive prioritizes Breakout Specialist and STARK-TPO alignment. Desp"
+      },
+      {
+        "id": 16029,
+        "timestamp": "2026-08-18T14:00:00",
+        "symbol": "QQQ",
+        "action": "sell",
+        "confidence": 0.68,
+        "regime": null,
+        "reasoning_head": "Multiple bearish signals align for a SHORT entry on QQQ. (1) TPO Algorithmic Signal is SHORT_GAP_FILL with GAP_IMBALANCE sub-structure \u2014 a hard directional bias toward the downside gap fill. (2) Breakout Specialist flags"
+      },
+      {
+        "id": 16027,
+        "timestamp": "2026-08-18T13:50:49",
+        "symbol": "TSLA",
+        "action": "sell",
+        "confidence": 0.62,
+        "regime": "trending",
+        "reasoning_head": "TPO Algorithmic Signal is SHORT_GAP_FILL with GAP_IMBALANCE sub-structure, which is the primary directive. The current price (332.47) is sitting at the VAL (331.926) boundary, inside the value area \u2014 a neutral breakout s"
+      },
+      {
+        "id": 16025,
+        "timestamp": "2026-08-18T13:50:35",
+        "symbol": "QQQ",
+        "action": "sell",
+        "confidence": 0.68,
+        "regime": "trending",
+        "reasoning_head": "Multiple bearish signals align for a SHORT entry on QQQ. (1) TPO Algorithmic Signal is SHORT_GAP_FILL with GAP_IMBALANCE sub-structure \u2014 a hard directional bias toward the downside gap fill. (2) Breakout Specialist flags"
+      },
+      {
+        "id": 16023,
+        "timestamp": "2026-08-18T13:50:24",
+        "symbol": "MES",
+        "action": "buy",
+        "confidence": 0.55,
+        "regime": "trending",
+        "reasoning_head": "TPO Algorithmic Signal is LONG_MOMENTUM with BREAKOUT sub-structure \u2014 a hard directional signal under the Stark-TPO directive. Regime is TRENDING, which routes priority to Breakout Specialist and TPO alignment. The TREND"
+      },
+      {
+        "id": 15213,
+        "timestamp": "2026-08-12T20:30:00",
+        "symbol": "MES",
+        "action": "sell",
+        "confidence": 0.55,
+        "regime": null,
+        "reasoning_head": "The Stark-TPO hard constraint fires SHORT_GAP_FILL with GAP_IMBALANCE sub-structure \u2014 the algorithm has identified an unfilled gap/inefficiency below current price and computed a raw math edge to the short side, which pe"
+      },
+      {
+        "id": 15212,
+        "timestamp": "2026-08-12T20:00:00",
+        "symbol": "MES",
+        "action": "sell",
+        "confidence": 0.55,
+        "regime": null,
+        "reasoning_head": "The Stark-TPO hard constraint fires SHORT_GAP_FILL with GAP_IMBALANCE sub-structure \u2014 the algorithm has identified an unfilled gap/inefficiency below current price and computed a raw math edge to the short side, which pe"
+      },
+      {
+        "id": 15211,
+        "timestamp": "2026-08-12T19:49:10",
+        "symbol": "MES",
+        "action": "sell",
+        "confidence": 0.55,
+        "regime": "trending",
+        "reasoning_head": "The Stark-TPO hard constraint fires SHORT_GAP_FILL with GAP_IMBALANCE sub-structure \u2014 the algorithm has identified an unfilled gap/inefficiency below current price and computed a raw math edge to the short side, which pe"
+      },
+      {
+        "id": 15210,
+        "timestamp": "2026-08-12T19:47:47",
+        "symbol": "MES",
+        "action": "sell",
+        "confidence": 0.62,
+        "regime": null,
+        "reasoning_head": "The Stark-TPO algorithmic matrix has computed a SHORT_GAP_FILL edge with GAP_IMBALANCE sub-structure \u2014 this is the hard-constraint signal and must be weighted heavily. The regime router classifies the market as TRENDING,"
+      },
+      {
+        "id": 15204,
+        "timestamp": "2026-08-12T19:30:00",
+        "symbol": "MES",
+        "action": "sell",
+        "confidence": 0.58,
+        "regime": null,
+        "reasoning_head": "The Stark-TPO algorithmic signal is SHORT_GAP_FILL with GAP_IMBALANCE sub-structure \u2014 a non-HOLD directional signal that must be weighted heavily. This aligns cleanly with the RANGING regime router directive, which calls"
+      },
+      {
+        "id": 15203,
+        "timestamp": "2026-08-12T19:00:00",
+        "symbol": "MES",
+        "action": "sell",
+        "confidence": 0.58,
+        "regime": null,
+        "reasoning_head": "The Stark-TPO algorithmic signal is SHORT_GAP_FILL with GAP_IMBALANCE sub-structure \u2014 a non-HOLD directional signal that must be weighted heavily. This aligns cleanly with the RANGING regime router directive, which calls"
+      },
+      {
+        "id": 15200,
+        "timestamp": "2026-08-12T18:56:49",
+        "symbol": "TSLA",
+        "action": "sell",
+        "confidence": 0.62,
+        "regime": "mean_reverting",
+        "reasoning_head": "The Stark-TPO algorithm has computed a SHORT_GAP_FILL signal with GAP_IMBALANCE sub-structure \u2014 a hard algorithmic edge that must be weighted heavily. This aligns cleanly with the current RANGING regime (ATR Ratio 0.97),"
+      },
+      {
+        "id": 15197,
+        "timestamp": "2026-08-12T18:56:49",
+        "symbol": "MES",
+        "action": "sell",
+        "confidence": 0.58,
+        "regime": "mean_reverting",
+        "reasoning_head": "The Stark-TPO algorithmic signal is SHORT_GAP_FILL with GAP_IMBALANCE sub-structure \u2014 a non-HOLD directional signal that must be weighted heavily. This aligns cleanly with the RANGING regime router directive, which calls"
+      },
+      {
+        "id": 15196,
+        "timestamp": "2026-08-12T18:30:00",
+        "symbol": "MES",
+        "action": "sell",
+        "confidence": 0.58,
+        "regime": null,
+        "reasoning_head": "The Stark-TPO algorithmic signal is SHORT_GAP_FILL with GAP_IMBALANCE sub-structure \u2014 a non-HOLD directional signal that must be weighted heavily. This aligns cleanly with the RANGING regime router directive, which calls"
+      },
+      {
+        "id": 15195,
+        "timestamp": "2026-08-12T18:00:00",
+        "symbol": "MES",
+        "action": "sell",
+        "confidence": 0.58,
+        "regime": null,
+        "reasoning_head": "The Stark-TPO algorithmic signal is SHORT_GAP_FILL with GAP_IMBALANCE sub-structure \u2014 a non-HOLD directional signal that must be weighted heavily. This aligns cleanly with the RANGING regime router directive, which calls"
+      },
+      {
+        "id": 15194,
+        "timestamp": "2026-08-12T17:56:47",
+        "symbol": "TSLA",
+        "action": "sell",
+        "confidence": 0.62,
+        "regime": "mean_reverting",
+        "reasoning_head": "The Stark-TPO algorithm has computed a SHORT_GAP_FILL signal with GAP_IMBALANCE sub-structure \u2014 a hard algorithmic edge that must be weighted heavily. This aligns cleanly with the current RANGING regime (ATR Ratio 0.97),"
+      },
+      {
+        "id": 15191,
+        "timestamp": "2026-08-12T17:54:26",
+        "symbol": "MES",
+        "action": "sell",
+        "confidence": 0.58,
+        "regime": "mean_reverting",
+        "reasoning_head": "The Stark-TPO algorithmic signal is SHORT_GAP_FILL with GAP_IMBALANCE sub-structure \u2014 a non-HOLD directional signal that must be weighted heavily. This aligns cleanly with the RANGING regime router directive, which calls"
+      }
+    ],
+    "wfe_by_symbol": [
+      {
+        "symbol": "MCL",
+        "rows": 858,
+        "last_created": "2026-09-11T20:05:05.709714",
+        "last_week": "2026-09-07",
+        "sum_trades": 594,
+        "avg_win_rate": 0.0,
+        "avg_profit_factor": 0.0126,
+        "avg_sharpe": 0.0
+      },
+      {
+        "symbol": "MES",
+        "rows": 17,
+        "last_created": "2026-06-11T23:16:29.208216",
+        "last_week": "2026-06-08",
+        "sum_trades": 1,
+        "avg_win_rate": 0.0,
+        "avg_profit_factor": 0.0,
+        "avg_sharpe": 0.0
+      },
+      {
+        "symbol": "MGC",
+        "rows": 1,
+        "last_created": "2026-06-11T23:16:29.211215",
+        "last_week": "2026-06-08",
+        "sum_trades": 1,
+        "avg_win_rate": 1.0,
+        "avg_profit_factor": 3173.0,
+        "avg_sharpe": 0.0
+      },
+      {
+        "symbol": "MNQ",
+        "rows": 869,
+        "last_created": "2026-09-11T20:05:07.182168",
+        "last_week": "2026-09-07",
+        "sum_trades": 1,
+        "avg_win_rate": 0.0,
+        "avg_profit_factor": 0.57,
+        "avg_sharpe": null
+      }
+    ]
+  },
+  "verdict": {
+    "monitoring_ready": false,
+    "operator_analysis_ready": true,
+    "execution_ready": false,
+    "dashboard_ok": true,
+    "engine_ok": true,
+    "blockers": [
+      "kill_switch_active=true",
+      "live_trading=false",
+      "master-api :8030 closed; master/trade-record widgets may be degraded",
+      "MES_1h active/auth mismatch: status=ACTIVE verdict=FAIL"
+    ],
+    "current_recommendations": {
+      "actionable_count": 0,
+      "actionable_raw_count": 25,
+      "pending_count": 0
+    },
+    "historical_performance": {
+      "pipeline_runs": 18249,
+      "closed_paper_trades": 91,
+      "closed_pnl": 3181.32,
+      "profit_factor": 1.4211,
+      "win_rate": 0.3077,
+      "rth_paper_entries": 62,
+      "last_paper_entry": "2026-08-18T13:49:41.803391+00:00"
+    },
+    "edge_notes": [
+      "closed ledger PF=1.4211, win_rate=0.3077, pnl=3181.32",
+      "approved queue order_ids did not join to paper_trades; recommendation attribution is not proven",
+      "current recommendation board is empty: actionable=0, pending=0"
+    ]
+  }
+}
