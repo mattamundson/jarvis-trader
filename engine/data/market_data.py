@@ -596,18 +596,43 @@ class IBKRDataConnector:
         return c
 
     async def _resolve_front_month(self, symbol: str, exchange: str) -> Future:
-        """Resolve futures symbol to the nearest non-expired (front month) contract.
+        """Resolve a futures symbol to IBKR's active front-month contract.
 
-        IBKR's reqContractDetailsAsync returns *all* contracts including ones
-        whose `lastTradeDateOrContractMonth` is already in the past. Sorting
-        ascending and taking [0] therefore returns the most-recently-expired
-        contract (e.g. MGCJ6 after 2026-04-28), and any historical query
-        ending after that expiry returns "HMDS query returned no data".
-        Fix: drop expired contracts before picking the front month.
+        Prefer IBKR's continuous contract because its active month reflects the
+        exchange roll/liquidity state. The nearest non-expired serial contract
+        can remain technically live after volume has rolled forward, yielding
+        flat or stale bars. If continuous-contract qualification is unavailable,
+        retain the expiry-filtered serial-contract resolver as a fail-safe.
         """
-        from ib_async import Future
+        from ib_async import ContFuture, Future
 
         generic = Future(symbol, exchange=exchange, currency="USD")
+        try:
+            continuous = ContFuture(symbol=symbol, exchange=exchange, currency="USD")
+            qualified_continuous = await self._ib.qualifyContractsAsync(continuous)
+            if qualified_continuous and qualified_continuous[0] is not None:
+                active = qualified_continuous[0]
+                expiry = active.lastTradeDateOrContractMonth or ""
+                if expiry:
+                    concrete = Future(
+                        symbol=active.symbol or symbol,
+                        lastTradeDateOrContractMonth=expiry,
+                        exchange=active.exchange or exchange,
+                        currency=active.currency or "USD",
+                        localSymbol=active.localSymbol or "",
+                        multiplier=active.multiplier or "",
+                    )
+                    qualified_active = await self._ib.qualifyContractsAsync(concrete)
+                    if qualified_active and qualified_active[0] is not None:
+                        return qualified_active[0]
+        except Exception as e:
+            logger.warning(
+                "Could not resolve IBKR active continuous contract for %s: %s; "
+                "falling back to nearest non-expired contract",
+                symbol,
+                e,
+            )
+
         try:
             details = await self._ib.reqContractDetailsAsync(generic)
             if details:
