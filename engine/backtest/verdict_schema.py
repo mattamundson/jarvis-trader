@@ -27,6 +27,26 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+# Research evidence/provenance artifacts deliberately live beside verdicts in
+# data/gate_v2_verdicts/ so a reviewer can audit a promotion decision without
+# chasing side paths. They are NOT promotion verdicts: they carry no `rank` and
+# are not VerdictSchema-shaped, so every consumer that globs the verdicts
+# directory must skip them explicitly rather than warn on each one.
+#
+# This is the canonical home for the list. `backtest.gate_v2_policy` (the
+# runtime authorization path) and `tests/test_verdict_schema.py` (the CI schema
+# gate) both import it, so a newly added non-verdict JSON fails CI until it is
+# either moved out of the directory or deliberately classified here.
+NON_VERDICT_ARTIFACTS: frozenset[str] = frozenset(
+    {
+        "MES_DEEP_ADJACENT_FAMILY_DM_2026-09-12.json",
+        "MES_DEEP_CACHE_PROVENANCE_2026-09-12.json",
+        "MES_DEEP_DATE_ALIGNED_DM_2026-09-12.json",
+        "MES_DEEP_FAMILY_DEFLECTION_2026-09-12.json",
+        "MES_DEEP_TOP3_COST_SENSITIVITY_2026-09-12.json",
+    }
+)
+
 
 class GateV2Metrics(BaseModel):
     """Quantitative metrics produced by the gate v2 evaluation."""

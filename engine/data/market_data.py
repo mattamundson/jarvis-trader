@@ -188,9 +188,14 @@ def resolve_data_client_id(config) -> int:
     a live connection. The execution leg (``execution/ibkr_executor.py``) connects
     with ``IBKR_CLIENT_ID``, so the data connector MUST NOT reuse it — sharing the
     id made the data leg collide with the executor and fail to connect. Honor an
-    explicit ``IBKR_DATA_CLIENT_ID`` when set (non-zero), else offset the executor
-    id by +1, matching the smoke/scanner convention elsewhere in the engine.
+    explicit ``IBKR_DATA_CLIENT_ID`` when set (non-zero), or the new
+    ``IBKR_MARKET_DATA_CLIENT_ID`` (split port mode), else offset the executor
+    id by +1 (backward compatible default).
     """
+    # New split-port market data client ID (highest priority)
+    if hasattr(config, "IBKR_MARKET_DATA_CLIENT_ID") and config.IBKR_MARKET_DATA_CLIENT_ID:
+        return int(config.IBKR_MARKET_DATA_CLIENT_ID)
+    # Legacy explicit data client ID
     explicit = getattr(config, "IBKR_DATA_CLIENT_ID", 0) or 0
     try:
         explicit = int(explicit)
@@ -296,10 +301,115 @@ def _log_connect_recovery(host: str, port: int) -> None:
         )
 
 
+class GuardedIBWrapper:
+    """
+    Transparent proxy around ib_async.IB that blocks order-mutating operations
+    when connected to a live port (4001, 7496).
+
+    Read-only operations (reqHistoricalDataAsync, qualifyContractsAsync, etc.)
+    pass through unchanged. Order operations (placeOrder, cancelOrder,
+    reqGlobalCancel, exerciseOptions) raise RuntimeError when on a live port.
+
+    This prevents the smoke test endpoint and any other code that reaches the
+    underlying data connector's IB object from bypassing the safety layer and
+    placing orders on a live account through the market data connection.
+    """
+
+    # Order-mutating methods that must be blocked on live ports
+    _ORDER_METHODS = frozenset({
+        'placeOrder',
+        'cancelOrder',
+        'reqGlobalCancel',
+        'exerciseOptions',
+    })
+
+    class _GuardedClientProxy:
+        """Proxy for ib_instance.client that blocks order methods on live ports."""
+
+        def __init__(self, client, port: int, is_live: bool):
+            object.__setattr__(self, '_client', client)
+            object.__setattr__(self, '_port', port)
+            object.__setattr__(self, '_is_live', is_live)
+
+        def __getattr__(self, name: str):
+            if name in GuardedIBWrapper._ORDER_METHODS and self._is_live:
+                raise RuntimeError(
+                    f"SAFETY BLOCK: client.{name}() is not allowed on the market data connector "
+                    f"when connected to live port {self._port}. Order operations must go "
+                    f"through the execution leg (IBGatewayManager) and safety layer, not "
+                    f"through the data connector."
+                )
+            return getattr(self._client, name)
+
+        def __setattr__(self, name: str, value):
+            if name in ('_client', '_port', '_is_live'):
+                object.__setattr__(self, name, value)
+            else:
+                setattr(self._client, name, value)
+
+        def __repr__(self) -> str:
+            status = "LIVE (order-blocked)" if self._is_live else "paper"
+            return f"<GuardedClientProxy port={self._port} ({status})>"
+
+    def __init__(self, ib_instance, port: int):
+        """
+        Args:
+            ib_instance: The underlying ib_async.IB instance
+            port: The IB Gateway port this instance is connected to
+        """
+        object.__setattr__(self, '_wrapped_ib', ib_instance)
+        object.__setattr__(self, '_port', port)
+        # Import LIVE_TRADING_PORTS to check if this is a live connection
+        from execution.ib_gateway import LIVE_TRADING_PORTS
+        object.__setattr__(self, '_is_live_port', port in LIVE_TRADING_PORTS)
+        object.__setattr__(self, '_guarded_client', None)
+
+    def __getattr__(self, name: str):
+        """Proxy attribute access to the wrapped IB instance, blocking order methods on live ports."""
+        if name == 'client':
+            # Return a guarded client proxy on live ports, raw client on paper ports
+            if self._guarded_client is None:
+                raw_client = self._wrapped_ib.client
+                if self._is_live_port:
+                    object.__setattr__(
+                        self,
+                        '_guarded_client',
+                        self._GuardedClientProxy(raw_client, self._port, True)
+                    )
+                else:
+                    object.__setattr__(self, '_guarded_client', raw_client)
+            return self._guarded_client
+
+        if name in self._ORDER_METHODS and self._is_live_port:
+            raise RuntimeError(
+                f"SAFETY BLOCK: {name}() is not allowed on the market data connector "
+                f"when connected to live port {self._port}. Order operations must go "
+                f"through the execution leg (IBGatewayManager) and safety layer, not "
+                f"through the data connector. For smoke tests, ensure IBKR_MARKET_DATA_PORT "
+                f"is unset or set to paper port 4002."
+            )
+        return getattr(self._wrapped_ib, name)
+
+    def __setattr__(self, name: str, value):
+        """Proxy attribute writes to the wrapped IB instance."""
+        if name in ('_wrapped_ib', '_port', '_is_live_port', '_guarded_client'):
+            object.__setattr__(self, name, value)
+        else:
+            setattr(self._wrapped_ib, name, value)
+
+    def __delattr__(self, name: str):
+        """Proxy attribute deletion to the wrapped IB instance."""
+        delattr(self._wrapped_ib, name)
+
+    def __repr__(self) -> str:
+        port_status = "LIVE (order-blocked)" if self._is_live_port else "paper"
+        return f"<GuardedIBWrapper port={self._port} ({port_status})>"
+
+
 class IBKRDataConnector:
     """
     Connects to IB Gateway via ib_async.
-    Paper mode: port 4002. Live: port 4001.
+    Paper mode: port 4002. Live: port 4001 (read-only when readonly=True).
     Download IB Gateway: https://www.interactivebrokers.com/en/trading/ibgateway.php
     """
 
@@ -309,11 +419,13 @@ class IBKRDataConnector:
         port: int = 4002,
         client_id: int = 1,
         connect_timeout: float = 5.0,
+        readonly: bool = False,
     ):
         self._host = host
         self._port = port
         self._client_id = client_id
         self._connect_timeout = connect_timeout
+        self._readonly = readonly
         self._ib = None
         self._connected = False
         # Real-time bar subscriptions, replayed after a reconnect rebuilds the IB
@@ -355,10 +467,19 @@ class IBKRDataConnector:
             self._ib = IB()
             try:
                 await asyncio.wait_for(
-                    self._ib.connectAsync(self._host, self._port, clientId=self._client_id),
+                    self._ib.connectAsync(
+                        self._host,
+                        self._port,
+                        clientId=self._client_id,
+                        readonly=self._readonly,
+                    ),
                     timeout=self._connect_timeout,
                 )
                 self._connected = True
+
+                # Wrap the IB instance with GuardedIBWrapper to block order operations on live ports
+                self._ib = GuardedIBWrapper(self._ib, self._port)
+
                 # Delayed-data stopgap for the IB paper-account market-data
                 # subscription gap (Error 10168/354: futures data not subscribed).
                 # reqMarketDataType(3) asks IB for DELAYED data when no live
@@ -440,10 +561,14 @@ class IBKRDataConnector:
     def _make_contract(self, symbol: str, is_futures: bool):
         from ib_async import Future, Index, Stock
 
-        if symbol.upper() in ("VIX",):
-            return Index(symbol, "CBOE")
-        if is_futures or symbol.upper() in FUTURES_MAP:
-            exchange = FUTURES_EXCHANGE.get(symbol.upper(), "CME")
+        sym_upper = symbol.upper()
+        # Map Yahoo-format index symbols to IBKR Index contracts
+        if sym_upper in ("VIX", "^VIX"):
+            return Index("VIX", "CBOE")
+        if sym_upper in ("^GSPC",):
+            return Index("SPX", "CBOE")
+        if is_futures or sym_upper in FUTURES_MAP:
+            exchange = FUTURES_EXCHANGE.get(sym_upper, "CME")
             return Future(symbol, exchange=exchange, currency="USD")
         return Stock(symbol, "SMART", "USD")
 
@@ -471,18 +596,43 @@ class IBKRDataConnector:
         return c
 
     async def _resolve_front_month(self, symbol: str, exchange: str) -> Future:
-        """Resolve futures symbol to the nearest non-expired (front month) contract.
+        """Resolve a futures symbol to IBKR's active front-month contract.
 
-        IBKR's reqContractDetailsAsync returns *all* contracts including ones
-        whose `lastTradeDateOrContractMonth` is already in the past. Sorting
-        ascending and taking [0] therefore returns the most-recently-expired
-        contract (e.g. MGCJ6 after 2026-04-28), and any historical query
-        ending after that expiry returns "HMDS query returned no data".
-        Fix: drop expired contracts before picking the front month.
+        Prefer IBKR's continuous contract because its active month reflects the
+        exchange roll/liquidity state. The nearest non-expired serial contract
+        can remain technically live after volume has rolled forward, yielding
+        flat or stale bars. If continuous-contract qualification is unavailable,
+        retain the expiry-filtered serial-contract resolver as a fail-safe.
         """
-        from ib_async import Future
+        from ib_async import ContFuture, Future
 
         generic = Future(symbol, exchange=exchange, currency="USD")
+        try:
+            continuous = ContFuture(symbol=symbol, exchange=exchange, currency="USD")
+            qualified_continuous = await self._ib.qualifyContractsAsync(continuous)
+            if qualified_continuous and qualified_continuous[0] is not None:
+                active = qualified_continuous[0]
+                expiry = active.lastTradeDateOrContractMonth or ""
+                if expiry:
+                    concrete = Future(
+                        symbol=active.symbol or symbol,
+                        lastTradeDateOrContractMonth=expiry,
+                        exchange=active.exchange or exchange,
+                        currency=active.currency or "USD",
+                        localSymbol=active.localSymbol or "",
+                        multiplier=active.multiplier or "",
+                    )
+                    qualified_active = await self._ib.qualifyContractsAsync(concrete)
+                    if qualified_active and qualified_active[0] is not None:
+                        return qualified_active[0]
+        except Exception as e:
+            logger.warning(
+                "Could not resolve IBKR active continuous contract for %s: %s; "
+                "falling back to nearest non-expired contract",
+                symbol,
+                e,
+            )
+
         try:
             details = await self._ib.reqContractDetailsAsync(generic)
             if details:
@@ -1170,6 +1320,9 @@ class MarketDataManager:
         self._config = config
         self.ibkr: Optional[IBKRDataConnector] = None
         self.schwab: Optional["SchwabConnector"] = None
+        # Tier 0: thinkorswim desktop RTD (injected from main.py via inject_tos_rtd).
+        # Typed loosely to avoid a hard import of the adapter at module load.
+        self.tos_rtd = None
         self.polygon: Optional[PolygonDataConnector] = None
         self.polygon_streamer: Optional[PolygonStreamer] = None
         self.finnhub: Optional[FinnhubConnector] = None
@@ -1193,6 +1346,17 @@ class MarketDataManager:
         """Wire in a SchwabConnector at startup (called from main.py after Schwab connects)."""
         self.schwab = connector
         logger.info("MarketDataManager: SchwabConnector injected as Tier 2 data source")
+
+    def inject_tos_rtd(self, connector) -> None:
+        """Wire in a ``TOSRTDConnector`` (thinkorswim desktop RTD) as Tier 0.
+
+        Called from main.py. The connector owns its own COM worker thread, so
+        injecting it is cheap and non-blocking; it only serves prices once its
+        RTD session has started and is heartbeating. Read-only source — it is
+        never consulted by risk, kill-switch or execution code.
+        """
+        self.tos_rtd = connector
+        logger.info("MarketDataManager: TOSRTDConnector injected as Tier 0 data source")
 
     def _mark_symbol_fresh(self, symbol: str) -> None:
         """Record the wall-clock time we last served data for `symbol` (any tier).
@@ -1287,16 +1451,24 @@ class MarketDataManager:
 
     async def initialize(self):
         """Connect to all available data sources."""
+        # Use separate market data port/host if configured, otherwise fall back to execution settings
+        ibkr_host = getattr(self._config, "IBKR_MARKET_DATA_HOST", None) or self._config.IBKR_HOST
+        ibkr_port = getattr(self._config, "IBKR_MARKET_DATA_PORT", None) or self._config.IBKR_PORT
+
+        # Import LIVE_TRADING_PORTS to check if readonly should be forced
+        from execution.ib_gateway import LIVE_TRADING_PORTS
+
         self.ibkr = IBKRDataConnector(
-            host=self._config.IBKR_HOST,
-            port=self._config.IBKR_PORT,
+            host=ibkr_host,
+            port=ibkr_port,
             client_id=resolve_data_client_id(self._config),
             connect_timeout=max(30.0, getattr(self._config, "IBKR_CONNECT_TIMEOUT_SECONDS", 30.0)),
+            readonly=(ibkr_port in LIVE_TRADING_PORTS),  # Force readonly for any live port
         )
         ibkr_connected = await self.ibkr.connect()
         if not ibkr_connected:
             logger.warning(
-                "IBKR not connected — start IB Gateway (port 4002 paper, 4001 live). "
+                f"IBKR not connected (tried {ibkr_host}:{ibkr_port}) — start IB Gateway. "
                 "Data will fall back to Polygon."
             )
 
@@ -1336,13 +1508,21 @@ class MarketDataManager:
                     await self.ibkr.disconnect()
                 except Exception:
                     pass
+            # Use separate market data port/host if configured
+            ibkr_host = getattr(self._config, "IBKR_MARKET_DATA_HOST", None) or self._config.IBKR_HOST
+            ibkr_port = getattr(self._config, "IBKR_MARKET_DATA_PORT", None) or self._config.IBKR_PORT
+
+            # Import LIVE_TRADING_PORTS to check if readonly should be forced
+            from execution.ib_gateway import LIVE_TRADING_PORTS
+
             self.ibkr = IBKRDataConnector(
-                host=self._config.IBKR_HOST,
-                port=self._config.IBKR_PORT,
+                host=ibkr_host,
+                port=ibkr_port,
                 client_id=resolve_data_client_id(self._config),
                 connect_timeout=max(
                     getattr(self._config, "IBKR_CONNECT_TIMEOUT_SECONDS", 5.0), timeout
                 ),
+                readonly=(ibkr_port in LIVE_TRADING_PORTS),  # Force readonly for any live port
             )
             ok = await self.ibkr.connect()
             if ok:
@@ -1631,6 +1811,31 @@ class MarketDataManager:
         """
         is_futures = is_futures or symbol.upper() in FUTURES_MAP
 
+        # Tier 0: thinkorswim desktop RTD — broker-direct push feed, lowest
+        # latency when TOS is running. Only serves while its session is
+        # heartbeating; any failure falls through untouched. `as_of` is carried
+        # so the provenance envelope can honestly re-derive liveness.
+        tos_rtd = getattr(self, "tos_rtd", None)
+        if tos_rtd is not None and tos_rtd.is_connected:
+            try:
+                rtd = await tos_rtd.get_current_price(symbol)
+                if rtd and rtd.get("last_price"):
+                    self._last_price_source = "rtd_tos"
+                    logger.debug(
+                        f"TOS RTD Tier 0 price for {symbol}: {rtd['last_price']}"
+                    )
+                    return {
+                        "last_price": float(rtd["last_price"]),
+                        "prev_close": rtd.get("prev_close"),
+                        "change_pct": rtd.get("change_pct"),
+                        "bid": rtd.get("bid"),
+                        "ask": rtd.get("ask"),
+                        "as_of": rtd.get("as_of"),
+                        "source": "rtd_tos",
+                    }
+            except Exception as _rtd_err:  # noqa: BLE001 — tier must never break the flow
+                logger.debug(f"TOS RTD Tier 0 failed for {symbol}: {_rtd_err}")
+
         # Tier 1: IBKR
         if self.ibkr and self.ibkr.is_connected:
             result = await self.ibkr.get_snapshot_price(symbol, is_futures)
@@ -1739,6 +1944,29 @@ class MarketDataManager:
         TV, keeping per-position reads to sub-200ms when IBKR/Schwab are up.
         """
         is_futures = is_futures or symbol.upper() in FUTURES_MAP
+
+        # Tier 0: thinkorswim desktop RTD (see data/tos_rtd_adapter.py).
+        # A broker-direct push feed; only serves while the RTD session is
+        # heartbeating. Placed ahead of the Redis fabric tier because it is the
+        # vendor's own quote stream rather than a derived cache. Any failure
+        # falls through untouched — this tier can never break the tick path.
+        tos_rtd = getattr(self, "tos_rtd", None)
+        if tos_rtd is not None and tos_rtd.is_connected:
+            try:
+                rtd = await tos_rtd.get_current_price(symbol)
+                if rtd and rtd.get("last_price"):
+                    self._last_price_source = "rtd_tos"
+                    return {
+                        "last_price": float(rtd["last_price"]),
+                        "prev_close": rtd.get("prev_close"),
+                        "change_pct": rtd.get("change_pct"),
+                        "bid": rtd.get("bid"),
+                        "ask": rtd.get("ask"),
+                        "as_of": rtd.get("as_of"),
+                        "source": "rtd_tos",
+                    }
+            except Exception as _rtd_err:  # noqa: BLE001 — tier must never break the flow
+                logger.debug(f"[get_tick_price] TOS RTD Tier 0 failed for {symbol}: {_rtd_err}")
 
         # Tier 0: Redis Real-Time Fabric (Phase 2.1)
         #
@@ -1908,6 +2136,23 @@ class MarketDataManager:
         """
         now = datetime.now(timezone.utc).isoformat()
 
+        # Tier 0: thinkorswim desktop RTD (see data/tos_rtd_adapter.py).
+        # Verified live: TOS answers ("LAST","VIX") — note ("LAST","$VIX.X")
+        # returns 'N/A', so the bare symbol is the one to ask for.
+        tos_rtd = getattr(self, "tos_rtd", None)
+        if tos_rtd is not None and tos_rtd.is_connected:
+            try:
+                rtd = await tos_rtd.get_current_price("VIX")
+                if rtd and rtd.get("last_price"):
+                    return {
+                        "value": float(rtd["last_price"]),
+                        "source": "rtd_tos",
+                        "ts": now,
+                        "as_of": rtd.get("as_of"),
+                    }
+            except Exception as _rtd_err:  # noqa: BLE001 — tier must never break the flow
+                logger.debug(f"[get_vix] TOS RTD Tier 0 failed: {_rtd_err}")
+
         # Tier 1: IBKR real-time index quote
         if self.ibkr and self.ibkr.is_connected:
             try:
@@ -1991,13 +2236,38 @@ class MarketDataManager:
             try:
                 from ib_async import Stock
 
+                ib = self.ibkr._ib
+                if ib is None:
+                    raise RuntimeError("IBKR connector has no live IB() session")
+
                 contract = Stock(symbol, "SMART", "USD")
-                chains = await self._ibkr_ib.reqSecDefOptParamsAsync(
-                    "", "", contract.secType, contract.conId
+                # reqSecDefOptParams needs a conId for tight matching; qualify first
+                # (a bare Stock() carries conId=0 and can return nothing). Fall back
+                # to symbol-only matching if qualification yields no contract.
+                try:
+                    qualified = await ib.qualifyContractsAsync(contract)
+                    if qualified:
+                        contract = qualified[0]
+                except Exception as qexc:  # noqa: BLE001 — non-fatal, symbol match still works
+                    logger.debug("qualifyContractsAsync failed for %s: %s", symbol, qexc)
+
+                chains = await ib.reqSecDefOptParamsAsync(
+                    contract.symbol, "", contract.secType, contract.conId
                 )
                 if chains:
-                    expirations = sorted(chains[0].expirations)
+                    # Prefer the SMART/USD chain when several exchanges return data.
+                    smart = [c for c in chains if getattr(c, "exchange", "") == "SMART"]
+                    chosen = smart[0] if smart else chains[0]
+                    expirations = sorted(chosen.expirations)
                     return list(expirations)
+                logger.warning(
+                    "IBKR sec-def returned no option chains for %s "
+                    "(conId=%s qualified=%s) — entitlement not yet active at the "
+                    "Gateway, or market closed for this underlying.",
+                    symbol,
+                    contract.conId,
+                    bool(contract.conId),
+                )
             except Exception as e:
                 logger.warning(f"IBKR get_options_expirations failed for {symbol}: {e}")
 

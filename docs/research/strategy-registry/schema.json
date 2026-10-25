@@ -93,8 +93,13 @@
         "train": { "$ref": "#/$defs/window" },
         "test": { "$ref": "#/$defs/window" },
         "walk_forward": {
-          "allOf": [{ "$ref": "#/$defs/window" }],
-          "properties": { "config": { "type": "string" } }
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "start": { "type": "string", "format": "date" },
+            "end": { "type": "string", "format": "date" },
+            "config": { "type": "string" }
+          }
         }
       }
     },
