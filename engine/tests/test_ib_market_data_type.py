@@ -30,9 +30,15 @@ class _FakeIB:
 
     def __init__(self):
         self.market_data_type_calls: list[int] = []
+        self.connect_calls: list[dict[str, object]] = []
         self.disconnectedEvent = _FakeEvent()
 
-    async def connectAsync(self, host, port, clientId=None):  # noqa: N803 (IB API name)
+    async def connectAsync(  # noqa: N802 (IB API name)
+        self, host, port, clientId=None, readonly=False  # noqa: N803 (IB API name)
+    ):
+        self.connect_calls.append(
+            {"host": host, "port": port, "clientId": clientId, "readonly": readonly}
+        )
         return None
 
     def reqMarketDataType(self, n):  # noqa: N802 (IB API name)
@@ -58,6 +64,9 @@ class TestReqMarketDataTypeStopgap:
         conn = IBKRDataConnector(port=4002, client_id=99)
         ok = await conn.connect(retries=0)
         assert ok is True
+        assert conn._ib.connect_calls == [
+            {"host": "127.0.0.1", "port": 4002, "clientId": 99, "readonly": False}
+        ]
         assert conn._ib.market_data_type_calls == [3]
 
     @pytest.mark.asyncio

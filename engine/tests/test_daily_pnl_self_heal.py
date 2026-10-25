@@ -259,23 +259,26 @@ class TestGetDailyPnlSelfHealsOnRead:
 
     def test_get_daily_pnl_heals_missing_trade_without_scheduler(self, dbp):
         db, path = dbp
+        # Real 2026-07-23 ledger, re-dated relative to now: a hardcoded date
+        # aged out of get_daily_pnl's 90-day window on 2026-10-21 and broke CI.
+        day = (datetime.now(timezone.utc) - timedelta(days=10)).date().isoformat()
 
         # Real ledger: SPY/QQQ/MES closed same UTC date the EOD snapshot saw,
         # plus MGC closed later (session-flatten) that the snapshot never saw.
         _insert_closed_trade(
-            path, trade_id="spy1", symbol="SPY", exit_time="2026-07-23T13:07:43.634125+00:00",
+            path, trade_id="spy1", symbol="SPY", exit_time=f"{day}T13:07:43.634125+00:00",
             pnl=-5.626,
         )
         _insert_closed_trade(
-            path, trade_id="qqq1", symbol="QQQ", exit_time="2026-07-23T15:11:09.673167+00:00",
+            path, trade_id="qqq1", symbol="QQQ", exit_time=f"{day}T15:11:09.673167+00:00",
             pnl=-7.5794,
         )
         _insert_closed_trade(
-            path, trade_id="mes1", symbol="MES", exit_time="2026-07-23T15:11:46",
+            path, trade_id="mes1", symbol="MES", exit_time=f"{day}T15:11:46",
             pnl=-195.50,
         )
         _insert_closed_trade(
-            path, trade_id="mgc1", symbol="MGC", exit_time="2026-07-23T20:45:00.563999+00:00",
+            path, trade_id="mgc1", symbol="MGC", exit_time=f"{day}T20:45:00.563999+00:00",
             pnl=18.50,
         )
         # Stale row exactly as the EOD 20:05 UTC snapshot wrote it — 3 trades,
@@ -283,7 +286,7 @@ class TestGetDailyPnlSelfHealsOnRead:
         # get_daily_pnl() itself must detect and heal this on read.
         _insert_daily_pnl(
             path,
-            date="2026-07-23",
+            date=day,
             starting=INITIAL,
             ending=INITIAL - 208.7054,
             realized=-208.7054,
@@ -291,8 +294,8 @@ class TestGetDailyPnlSelfHealsOnRead:
         )
 
         rows = {r["date"]: r for r in db.get_daily_pnl(days=90)}
-        assert "2026-07-23" in rows
-        row = rows["2026-07-23"]
+        assert day in rows
+        row = rows[day]
         assert row["total_trades"] == 4
         assert row["realized_pnl"] == pytest.approx(-190.2054)
         assert row["ending_balance"] == pytest.approx(INITIAL - 190.2054)

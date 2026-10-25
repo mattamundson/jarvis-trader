@@ -27,7 +27,7 @@ jobs:
     # Skip draft PRs (covered for free by the local pr-local-ci loop); still runs on
     # push to protected branches and on ready-for-review PRs.
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7.0.1
@@ -80,7 +80,7 @@ jobs:
   engine-draft-check:
     name: Engine Draft Check (ruff + compile)
     if: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft == true }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7.0.1
@@ -110,7 +110,7 @@ jobs:
   engine-typecheck:
     name: Engine Type Check (mypy)
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v7.0.1
@@ -155,7 +155,7 @@ jobs:
   engine-test-fast:
     name: Engine Tests (pytest, fast)
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Headroom for the (rare) second attempt of the flake retry below.
     timeout-minutes: 28
     env:
@@ -224,7 +224,7 @@ jobs:
   engine-test-slow:
     name: Engine Tests (pytest, slow)
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
       COVERAGE_FILE: ${{ github.workspace }}/.coverage.slow
@@ -270,7 +270,7 @@ jobs:
 
   engine-coverage-merge:
     name: Engine Tests (coverage merge)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     needs: [engine-test-fast, engine-test-slow]
     if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && needs.engine-test-fast.result == 'success' && needs.engine-test-slow.result == 'success' }}
@@ -344,7 +344,7 @@ jobs:
   dashboard-build:
     name: Dashboard Build (Next.js)
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7.0.1
@@ -457,7 +457,7 @@ jobs:
     # runs py_compile + ruff on changed *.py only, once daily, and needs this
     # machine awake -- it has never checked a TypeScript file. This job is cheap
     # (~2 min, no browser, no build) so it runs on drafts too.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7.0.1
@@ -497,7 +497,7 @@ jobs:
   security-scan:
     name: Security Scan
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7.0.1
@@ -597,7 +597,7 @@ jobs:
       - dashboard-build
       - dashboard-quality
       - security-scan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # always() so it reports even when a needed job fails -- but still skip on draft PRs.
     if: ${{ always() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false) }}
     steps:
