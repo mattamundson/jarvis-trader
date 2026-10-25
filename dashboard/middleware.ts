@@ -75,7 +75,13 @@ export function middleware(req: NextRequest) {
   const user = process.env.DASHBOARD_AUTH_USER;
   const pass = process.env.DASHBOARD_AUTH_PASS;
 
-  const decision = decideDashboardAuth(readDashboardAuthEnv());
+  const decision = decideDashboardAuth(readDashboardAuthEnv(), {
+    method: req.method,
+    host: req.headers.get("host"),
+    forwarded: req.headers.get("forwarded"),
+    xForwardedFor: req.headers.get("x-forwarded-for"),
+    xRealIp: req.headers.get("x-real-ip"),
+  });
 
   if (decision === "deny") {
     if (!warnedUnauthenticated) {

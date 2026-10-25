@@ -13,6 +13,30 @@ test("hosted deployment without credentials -> FAIL CLOSED", () => {
   assert.equal(decideDashboardAuth({ vercel: "1" }), "deny");
 });
 
+test("hosted public ingress with forwarding headers -> FAIL CLOSED", () => {
+  assert.equal(
+    decideDashboardAuth(
+      { vercel: "1" },
+      { method: "POST", host: "127.0.0.1:3010", xForwardedFor: "203.0.113.10" },
+    ),
+    "deny",
+  );
+  assert.equal(
+    decideDashboardAuth({ vercel: "1" }, { method: "POST", host: "localhost:3010", forwarded: "for=203.0.113.10" }),
+    "deny",
+  );
+});
+
+test("hosted loopback writes without public forwarding headers -> allowed", () => {
+  assert.equal(decideDashboardAuth({ vercel: "1" }, { method: "POST", host: "127.0.0.1:3010" }), "allow");
+  assert.equal(decideDashboardAuth({ vercel: "1" }, { method: "POST", host: "[::1]:3010" }), "allow");
+  assert.equal(decideDashboardAuth({ vercel: "1" }, { method: "PATCH", host: "localhost:3010" }), "allow");
+});
+
+test("hosted loopback read without credentials still fails closed", () => {
+  assert.equal(decideDashboardAuth({ vercel: "1" }, { method: "GET", host: "127.0.0.1:3010" }), "deny");
+});
+
 test("hosted deployment with only one credential -> FAIL CLOSED", () => {
   assert.equal(decideDashboardAuth({ user: "amo", vercel: "1" }), "deny");
   assert.equal(decideDashboardAuth({ pass: "s3cret", vercel: "1" }), "deny");

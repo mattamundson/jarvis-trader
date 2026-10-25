@@ -32,12 +32,62 @@ export interface DashboardAuthEnv {
   vercel?: string | null;
 }
 
-export function decideDashboardAuth(env: DashboardAuthEnv): DashboardAuthDecision {
+export interface DashboardAuthRequest {
+  method?: string | null;
+  host?: string | null;
+  forwarded?: string | null;
+  xForwardedFor?: string | null;
+  xRealIp?: string | null;
+}
+
+const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+function stripPort(host: string): string {
+  const value = host.trim().toLowerCase();
+  if (value.startsWith("[")) return value.slice(1, value.indexOf("]"));
+  const colon = value.indexOf(":");
+  return colon === -1 ? value : value.slice(0, colon);
+}
+
+function isLoopbackHost(host: string | null | undefined): boolean {
+  if (!host) return false;
+  const normalized = stripPort(host);
+  return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1";
+}
+
+function isLoopbackAddress(address: string | null | undefined): boolean {
+  if (!address) return false;
+  const first = address.split(",")[0]?.trim().toLowerCase();
+  return first === "127.0.0.1" || first === "::1" || first === "[::1]" || first === "localhost";
+}
+
+function hasPublicForwardingEvidence(req: DashboardAuthRequest): boolean {
+  return Boolean(
+    req.forwarded ||
+      (req.xForwardedFor && !isLoopbackAddress(req.xForwardedFor)) ||
+      (req.xRealIp && !isLoopbackAddress(req.xRealIp)),
+  );
+}
+
+function isLoopbackWrite(req?: DashboardAuthRequest): boolean {
+  if (!req) return false;
+  const method = (req.method ?? "").toUpperCase();
+  if (!WRITE_METHODS.has(method)) return false;
+  if (hasPublicForwardingEvidence(req)) return false;
+  return isLoopbackHost(req.host) || isLoopbackAddress(req.xForwardedFor) || isLoopbackAddress(req.xRealIp);
+}
+
+export function decideDashboardAuth(env: DashboardAuthEnv, req?: DashboardAuthRequest): DashboardAuthDecision {
   // Configured credentials always win, even if the disable flag is also set.
   if (env.user && env.pass) return "enforce";
 
   // Explicit, deliberate opt-out.
   if (env.disabled === "1") return "allow";
+
+  // Local automation may POST to the PM2/Next dashboard loopback endpoint even
+  // when hosted-env sentinels are present in the process. Keep that allowance
+  // narrow: mutating method + loopback evidence + no public forwarding headers.
+  if (isLoopbackWrite(req)) return "allow";
 
   // Hosted deployment without credentials: refuse rather than expose.
   if (env.vercel === "1") return "deny";
