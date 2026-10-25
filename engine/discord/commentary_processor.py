@@ -21,6 +21,7 @@ import json
 import logging
 import os
 import sqlite3
+import sys
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Optional
@@ -59,6 +60,15 @@ def build_default_llm_client(db_path: Optional[str] = None) -> Optional[object]:
     the existing direct-POST path.
     """
     try:
+        # Package-qualified callers (`python -m engine.discord.cli` from the repo
+        # root, as Jarvis-DiscordAutoImport runs it) don't have engine/ on
+        # sys.path, so the bare `llm` import below fails. Use the bare name rather
+        # than `engine.llm.client`: client.py has lazy bare imports (utils.*,
+        # notifications.*) that need engine/ on sys.path too.
+        engine_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if engine_dir not in sys.path:
+            sys.path.insert(0, engine_dir)
+
         # Local import: avoid a heavy import at module load and any import cycle.
         from llm.client import JarvisLLMClient  # noqa: PLC0415
 
