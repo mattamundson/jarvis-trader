@@ -37,7 +37,7 @@ on:
 jobs:
   platform-checks:
     name: Platform format, lint, types, tests, and CLI smoke tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: es-research-platform
@@ -86,7 +86,7 @@ jobs:
 
   engine-research-checks:
     name: Focused engine research checks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: engine
