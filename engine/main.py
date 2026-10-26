@@ -794,9 +794,23 @@ async def lifespan(app: FastAPI):
     # the live get_tick_price waterfall instead of static mock quotes. Without
     # this, unlisted symbols (e.g. MGC) filled at the 100.5 sentinel and poisoned
     # paper_trades. (2026-06-22 paper-fill integrity fix.)
-    if ib_paper_connector is not None:
+    if ib_paper_connector is not None and hasattr(
+        ib_paper_connector, "attach_market_data"
+    ):
         ib_paper_connector.attach_market_data(data_manager)
         logger.info("✅ Paper connector: real-price source wired (get_tick_price)")
+    elif ib_paper_connector is not None:
+        # The real IBGatewayManager (order path when IB_PAPER_BROKER_ENABLED=1)
+        # has no attach_market_data: its paper fills come from actual IB paper
+        # execution at real prices, so no mock-price waterfall is needed.
+        # UNGUARDED, this call crashes every boot with
+        # AttributeError: 'IBGatewayManager' object has no attribute
+        # 'attach_market_data' (observed 2026-10-26: PM2 crash loop, engine
+        # down ~9 min; see mission-control PAPER_DAY_CERT_2026-10-25.md).
+        logger.info(
+            "ℹ️ Paper connector: real IB paper gateway attached - no "
+            "attach_market_data needed (fills at actual IB paper prices)"
+        )
     # Re-inject with data_manager now available so /orders/status can fall back to
     # data_manager.ibkr for IBKR connected-state when safety_layer has no gateway attached.
     inject_orders_deps(order_router, safety_layer=safety_layer, data_manager=data_manager)
