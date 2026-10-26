@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { applyEngineAuthHeaders } from "@/lib/engineProxyHeaders";
+import { scoreboardRejectsMethod } from "@/lib/operatorMode";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -109,27 +110,46 @@ type RouteContext = {
   params: Promise<{ path: string[] }>;
 };
 
+function rejectScoreboardMutation(method: string): NextResponse | null {
+  if (!scoreboardRejectsMethod(method)) return null;
+  return NextResponse.json(
+    {
+      error: "scoreboard_readonly",
+      message: "Operator dashboard is read-only. This call was not sent to the engine.",
+    },
+    { status: 403 },
+  );
+}
+
 export async function GET(request: NextRequest, context: RouteContext) {
   const { path } = await context.params;
   return proxy(request, path);
 }
 
 export async function POST(request: NextRequest, context: RouteContext) {
+  const rejected = rejectScoreboardMutation(request.method);
+  if (rejected) return rejected;
   const { path } = await context.params;
   return proxy(request, path);
 }
 
 export async function PUT(request: NextRequest, context: RouteContext) {
+  const rejected = rejectScoreboardMutation(request.method);
+  if (rejected) return rejected;
   const { path } = await context.params;
   return proxy(request, path);
 }
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
+  const rejected = rejectScoreboardMutation(request.method);
+  if (rejected) return rejected;
   const { path } = await context.params;
   return proxy(request, path);
 }
 
 export async function DELETE(request: NextRequest, context: RouteContext) {
+  const rejected = rejectScoreboardMutation(request.method);
+  if (rejected) return rejected;
   const { path } = await context.params;
   return proxy(request, path);
 }

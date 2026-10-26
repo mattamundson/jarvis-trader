@@ -56,3 +56,14 @@ Preserve canonical deploy-only artifacts and audit PM2 binding so the next step 
 - Verification: tsc PASS; Node contract PASS; builder smoke PASS; production build PASS; fresh Playwright `/jarvis` + API PASS.
 - Residual: local lane is complete to safe boundary; push/PR external publication and any execution/risk/kill-switch changes remain gated.
 
+## 2026-10-25 11:05 CDT — Dashboard Basic Auth restored (Hermes default profile, lane-claimed)
+
+- Lane: `resource:dashboard-env-local` claimed via lane-lock.py (owner hermes-default-20261025-auth-restore), released on close.
+- Change: `dashboard/.env.local` — renamed `DASHBOARD_AUTH_USER_DISABLED` → `DASHBOARD_AUTH_USER` and `DASHBOARD_AUTH_PASS_DISABLED` → `DASHBOARD_AUTH_PASS`. Values preserved, no rotation. Config-only; zero code changes.
+- Restart: `pm2 restart jarvis-dashboard` (new PID 56600).
+- Verification: unauth `GET /dashboard` → 401 + `WWW-Authenticate: Basic realm="JARVIS Trading Dashboard"`; authed `GET /dashboard` → 200; unauth `GET /api/engine/health` → 401 (engine API proxy gated); engine invariants intact (paper_mode=true, live_trading=false, kill_switch_active=false); Vercel prod `jarvis-trader-plum.vercel.app/dashboard` unauth → 401 (creds set on Vercel too — protected).
+- Pre-change backup: `%LOCALAPPDATA%\hermes\cache\scratch\envlocal.bak-20261025T160203Z` (scratch prunes after 24h idle).
+- Rollback: rename the two keys back to `*_DISABLED` + `pm2 restart jarvis-dashboard`.
+- Side effect: local automation that POSTs to :3010 without creds now gets 401 (the loopback-write allowance is dead code once creds are set). Any such script needs a Basic-Auth header.
+- No engine/risk/kill-switch/broker/symbol-gate changes. No code committed.
+

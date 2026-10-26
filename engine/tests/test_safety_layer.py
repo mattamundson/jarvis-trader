@@ -1525,6 +1525,59 @@ class TestSubmitPaperOrder:
         assert mock_gw.place_paper_order.call_count == 2
 
     @pytest.mark.asyncio
+    async def test_real_gateway_without_take_profit_still_routes(self, mock_settings):
+        """IBGatewayManager has no take_profit param. The entry must still be sent."""
+        safety = self._live_safety(mock_settings)
+        calls: list[dict] = []
+
+        class _RealGateway:
+            def is_connected(self) -> bool:
+                return True
+
+            async def place_paper_order(
+                self,
+                symbol: str,
+                action: str,
+                quantity: int,
+                order_type: str = "MKT",
+                limit_price: float | None = None,
+                aux_price: float | None = None,
+                parent_order_id: int | None = None,
+                order_ref: str | None = None,
+            ) -> int:
+                calls.append(
+                    {
+                        "symbol": symbol,
+                        "action": action,
+                        "quantity": quantity,
+                        "order_type": order_type,
+                        "limit_price": limit_price,
+                        "aux_price": aux_price,
+                        "parent_order_id": parent_order_id,
+                        "order_ref": order_ref,
+                    }
+                )
+                return 77
+
+        safety._ib_gateway = _RealGateway()
+        result = await safety.submit_paper_order(
+            "MES",
+            "BUY",
+            1,
+            5800.0,
+            stop_price=5780.0,
+            take_profit=5900.0,
+        )
+        assert result["approved"] is True
+        assert result["routed_to_ib"] is True
+        assert result["order_id"] == "77"
+        assert calls[0]["order_type"] == "MKT"
+        assert calls[0]["aux_price"] == 5780.0
+        assert "take_profit" not in calls[0]
+        assert calls[1]["order_type"] == "STP"
+        assert calls[1]["parent_order_id"] == 77
+
+    @pytest.mark.asyncio
     async def test_gateway_exception_approved_not_routed(self, mock_settings):
         """IB Gateway raises → approved=True (safety passed), routed_to_ib=False."""
         safety = self._live_safety(mock_settings)

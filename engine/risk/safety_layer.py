@@ -11,6 +11,7 @@ Design principle from TradeTrap paper:
 """
 
 import asyncio
+import inspect
 import logging
 import time
 from collections.abc import Callable, Coroutine
@@ -151,6 +152,23 @@ def _futures_margin_required(symbol: str, quantity: int) -> float | None:
     if margin_per is None:
         return None
     return margin_per * abs(quantity)
+
+
+def _kwargs_accepted_by(fn: Callable[..., Any], kwargs: dict[str, Any]) -> dict[str, Any]:
+    """Drop kwargs the concrete callable does not accept.
+
+    The simulator ``place_paper_order`` takes ``take_profit``. The real
+    ``IBGatewayManager`` does not. Passing it raised TypeError on the first
+    real-paper auto-approve (2026-10-26) and the order never reached IB.
+    Callables that accept ``**kwargs`` keep the full set.
+    """
+    try:
+        params = inspect.signature(fn).parameters
+    except (TypeError, ValueError):
+        return kwargs
+    if any(param.kind is inspect.Parameter.VAR_KEYWORD for param in params.values()):
+        return kwargs
+    return {key: value for key, value in kwargs.items() if key in params}
 
 
 @dataclass
@@ -1876,15 +1894,19 @@ class SafetyLayer:
             }
 
         try:
-            order_id = await self._ib_gateway.place_paper_order(
-                symbol=symbol,
-                action=action_upper,
-                quantity=final_quantity,
-                order_type=order_type.upper(),
-                limit_price=limit_price,
-                aux_price=stop_price,
-                take_profit=take_profit,
+            order_kwargs = _kwargs_accepted_by(
+                self._ib_gateway.place_paper_order,
+                {
+                    "symbol": symbol,
+                    "action": action_upper,
+                    "quantity": final_quantity,
+                    "order_type": order_type.upper(),
+                    "limit_price": limit_price,
+                    "aux_price": stop_price,
+                    "take_profit": take_profit,
+                },
             )
+            order_id = await self._ib_gateway.place_paper_order(**order_kwargs)
 
             # HB-1: Broker-side Stop Orders atomically linked
             if order_id is not None and stop_price is not None:
