@@ -13,18 +13,13 @@ Two services make up the product: the **engine** (FastAPI, Python 3.12, port 801
 
 - The Python venv lives at `engine/.venv` (Linux path `engine/.venv/bin/...`, not the
   Windows `engine/.venv/Scripts/...` paths referenced throughout `CLAUDE.md`/docs).
-- The startup update script provisions deps from `engine/requirements-core.txt` (NOT
-  `engine/requirements.txt`). `requirements.txt` pins `questdb==1.2.1`, which has no
-  Python 3.12 wheel and breaks the full install; `requirements-core.txt` is the
-  CI-canonical set that resolves and includes the test deps (`hypothesis`, `respx`,
-  `pypdf`). Heavy/optional libs (`ta-lib`, `vectorbt`, `nautilus_trader`, `langchain`,
-  `openbb`) are intentionally excluded — engine modules guard those imports.
-- `engine/.env` and `dashboard/.env.local` are gitignored and already created in the VM
-  with a local dev `API_KEY` (the two values match so the dashboard can reach the engine).
-  If `engine/.env` is missing, the engine exits at startup with "Missing Required
-  Environment Variables". Recreate it with at least `API_KEY=<any value>` plus
-  `MAX_DRAWDOWN_PCT=0.20` (the paper-phase override; `test_drawdown_recurrence_prevention`
-  asserts the runtime value is `0.20`, while `config.py`'s code default is `0.10`).
+- Deps come from `engine/requirements-core.txt` (not `engine/requirements.txt`) plus
+  the CI ruff pin `ruff==0.8.0`. Dashboard install is pnpm `10.33.2` with
+  `pnpm install --frozen-lockfile`. See the root `AGENTS.md` for why.
+- `engine/.env` and `dashboard/.env.local` are gitignored. A missing `engine/.env` is
+  created with only `API_KEY=jarvis-dev-key-change-me`, and `dashboard/.env.local` gets
+  the matching `ENGINE_API_KEY`. Never overwrite an existing `engine/.env`, and do not
+  add safety overrides to the placeholder (pytest reads that file).
 - `ANTHROPIC_API_KEY` is unset, so the LLM agent pipeline (`/pipeline/run`) cannot produce
   decisions — every pipeline call fails the LLM provider chain. Everything else (safety
   layer, health, portfolio, backtest tooling, dashboard) works without it. Add the key to
@@ -42,8 +37,10 @@ Two services make up the product: the **engine** (FastAPI, Python 3.12, port 801
 ### Lint / test / build
 
 - Engine lint: from `engine/`, `.venv/bin/ruff check . --config ruff.toml`.
-- Engine tests: from `engine/`, `.venv/bin/python -m pytest tests/ -m "not slow"`
-  (~2 min, 7000+ tests). `manual`/`integration_ib` tests auto-skip without IB Gateway.
+- Engine tests: from `engine/`, `env -u PYTHONPATH .venv/bin/python -m pytest tests/`.
+  Do not pass `-m`. A CLI `-m` replaces the `pyproject.toml` exclusion of `manual` and
+  `integration_ib`, and those tests submit real paper orders when IB Gateway is up.
+  See the root `AGENTS.md`.
 - Dashboard typecheck: from `dashboard/`, `./node_modules/.bin/tsc --noEmit` (this is the
   type/lint gate — `pnpm lint` / `next lint` is unconfigured and prompts interactively).
 - Dashboard build: from `dashboard/`, `pnpm run build`. Gotcha: running a production build
