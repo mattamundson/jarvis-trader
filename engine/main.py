@@ -1873,6 +1873,7 @@ async def lifespan(app: FastAPI):
             trading_pipeline=trading_pipeline,
             safety_layer=safety_layer,
             db_path=str(db_manager._db_path),
+            data_manager=data_manager,
         )
         _tick_interval = int(os.environ.get("AUTONOMOUS_TICK_SECONDS", "300"))
         asyncio.create_task(run_autonomous_loop())

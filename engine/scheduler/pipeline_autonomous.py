@@ -298,6 +298,25 @@ async def _maybe_auto_approve_paper(candidate_id: int) -> bool:
     return True
 
 
+def _ib_data_connected(status: dict) -> bool:
+    """
+    True when the IB market-data leg is up.
+
+    safety_layer.get_status() carries no IB data keys, so reading them alone
+    reported "disconnected" on every tick regardless of the real feed. The
+    injected data_manager's IBKR connector is the same source market_data
+    stamps into provenance (ibkr_data_connected); the status keys remain only
+    as a fallback when no data_manager was injected.
+    """
+    ibkr = getattr(_data_manager, "ibkr", None) if _data_manager is not None else None
+    if ibkr is not None:
+        try:
+            return bool(ibkr.is_connected)
+        except Exception:
+            return False
+    return bool(status.get("ibkr_connected") or status.get("data_ib_connected"))
+
+
 def _preflight_check() -> tuple[bool, str]:
     """
     Synchronous safety pre-flight using injected safety_layer.
@@ -328,9 +347,8 @@ def _preflight_check() -> tuple[bool, str]:
     if status.get("kill_switch_active"):
         return False, "kill switch active"
 
-    # IB data connection check — refuse if data feed is down
-    ib_data_ok = status.get("ibkr_connected") or status.get("data_ib_connected")
-    if not ib_data_ok:
+    # IB data connection check — warn (not refuse) if data feed is down
+    if not _ib_data_connected(status):
         # Non-fatal warn but allow: data_manager has Polygon fallback.
         # Log a warning but do not refuse (matches existing scanner behavior).
         logger.warning(
