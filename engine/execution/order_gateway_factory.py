@@ -73,3 +73,21 @@ def build_order_gateway(
     from execution.ib_gateway_connector import IBGatewayConnector
 
     return IBGatewayConnector(settings, safety_layer, portfolio_tracker=portfolio_tracker)
+
+
+def wire_paper_price_source(gateway: Any, data_manager: Any) -> bool:
+    """Wire the real-price source into the simulator, if this gateway takes one.
+
+    Only the ``IBGatewayConnector`` simulator needs a price source (it books
+    simulated fills at ``get_tick_price``). The real ``IBGatewayManager`` gets
+    fills from IB and has no ``attach_market_data``; calling it unconditionally
+    crashed the lifespan the first time ``IB_PAPER_BROKER_ENABLED=1`` was booted
+    (2026-10-26). Returns True when the source was wired.
+    """
+    if gateway is None:
+        return False
+    attach = getattr(gateway, "attach_market_data", None)
+    if not callable(attach):
+        return False
+    attach(data_manager)
+    return True

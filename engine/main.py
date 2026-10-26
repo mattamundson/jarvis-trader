@@ -794,8 +794,9 @@ async def lifespan(app: FastAPI):
     # the live get_tick_price waterfall instead of static mock quotes. Without
     # this, unlisted symbols (e.g. MGC) filled at the 100.5 sentinel and poisoned
     # paper_trades. (2026-06-22 paper-fill integrity fix.)
-    if ib_paper_connector is not None:
-        ib_paper_connector.attach_market_data(data_manager)
+    from execution.order_gateway_factory import wire_paper_price_source
+
+    if wire_paper_price_source(ib_paper_connector, data_manager):
         logger.info("✅ Paper connector: real-price source wired (get_tick_price)")
     # Re-inject with data_manager now available so /orders/status can fall back to
     # data_manager.ibkr for IBKR connected-state when safety_layer has no gateway attached.
@@ -1872,6 +1873,7 @@ async def lifespan(app: FastAPI):
             trading_pipeline=trading_pipeline,
             safety_layer=safety_layer,
             db_path=str(db_manager._db_path),
+            data_manager=data_manager,
         )
         _tick_interval = int(os.environ.get("AUTONOMOUS_TICK_SECONDS", "300"))
         asyncio.create_task(run_autonomous_loop())
