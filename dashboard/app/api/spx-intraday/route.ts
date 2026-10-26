@@ -80,7 +80,7 @@ function degradedSnapshot(message: string): SpxIntradaySnapshot {
 export async function GET(request: NextRequest) {
   try {
     const origin = request.nextUrl.origin;
-    const inputs = await fetchSpxIntradayInputs(origin);
+    const inputs = await fetchSpxIntradayInputs(origin, request.headers.get("authorization"));
     const metrics = buildSpxIntradayMetrics(inputs.bars, inputs.prices);
     const quality = sourceQuality(metrics.currentPrice, inputs.bars);
     const probabilityBands = quality === "degraded" ? null : buildProbabilityBands(metrics, inputs.bars);

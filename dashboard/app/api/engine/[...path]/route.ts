@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { applyEngineAuthHeaders } from "@/lib/engineProxyHeaders";
+import { scoreboardRejectsMethod } from "@/lib/operatorMode";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -26,7 +27,21 @@ function getTunnelBasicAuth(): string | undefined {
   return process.env.ENGINE_TUNNEL_BASIC_AUTH;
 }
 
+function rejectScoreboardMutation(method: string): NextResponse | null {
+  if (!scoreboardRejectsMethod(method)) return null;
+  return NextResponse.json(
+    {
+      error: "scoreboard_readonly",
+      message: "Operator dashboard is read-only. This call was not sent to the engine.",
+    },
+    { status: 403 },
+  );
+}
+
 async function proxy(request: NextRequest, path: string[]): Promise<NextResponse> {
+  const rejected = rejectScoreboardMutation(request.method);
+  if (rejected) return rejected;
+
   const target = new URL(`${getEngineBaseUrl()}/${path.join("/")}`);
   target.search = request.nextUrl.search;
 

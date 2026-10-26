@@ -71,6 +71,7 @@ export function OptionsChainCard() {
   const [underlying, setUnderlying] = useState<number | null>(null);
   const [rows, setRows] = useState<OptionRow[]>([]);
   const [offline, setOffline] = useState(false);
+  const [loadedSymbol, setLoadedSymbol] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -78,18 +79,21 @@ export function OptionsChainCard() {
       try {
         const chain = await fetchEngine<ChainResponse>(`/options/chain/${symbol}`);
         if (cancelled) return;
-        const { underlying, rows } = normalize(chain);
-        setUnderlying(underlying);
-        setRows(rows);
+        const normalized = normalize(chain);
+        setUnderlying(normalized.underlying);
+        setRows(normalized.rows);
         setOffline(false);
+        setLoadedSymbol(symbol);
       } catch (e) {
         if (cancelled) return;
         const msg = e instanceof Error ? e.message : "fetch failed";
         if (/(^|\D)(404|503)(\D|$)/.test(msg)) setOffline(true);
       }
     }
-    load();
-    const interval = setInterval(load, POLL_INTERVAL.SLOW);
+    void load();
+    const interval = setInterval(() => {
+      void load();
+    }, POLL_INTERVAL.SLOW);
     return () => { cancelled = true; clearInterval(interval); };
   }, [symbol]);
 
@@ -151,10 +155,16 @@ export function OptionsChainCard() {
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 ? (
+            {loadedSymbol !== symbol ? (
               <tr>
                 <td colSpan={6} className="text-center text-muted-foreground py-3">
                   Loading chain…
+                </td>
+              </tr>
+            ) : rows.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="text-center text-muted-foreground py-3">
+                  No contracts
                 </td>
               </tr>
             ) : (

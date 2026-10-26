@@ -33,6 +33,13 @@ test("spx data layer never touches approval, order, or safety endpoints", () => 
   }
   assert.match(src, /\/api\/engine\/prices\/snapshot/);
   assert.match(src, /\/api\/engine\/analyze\/bars\//);
+  assert.match(src, /Authorization: authorization/);
+});
+
+test("spx route forwards the incoming Authorization header to its own engine calls", () => {
+  const route = read("app/api/spx-intraday/route.ts");
+  assert.match(route, /request\.headers\.get\("authorization"\)/);
+  assert.match(route, /fetchSpxIntradayInputs\(origin, request\.headers\.get\("authorization"\)\)/);
 });
 
 test("analysis page and card stay order-free and carry the ANALYSIS ONLY label", () => {

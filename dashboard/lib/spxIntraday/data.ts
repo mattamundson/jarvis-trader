@@ -67,9 +67,18 @@ function normalizeBars(raw: unknown): IntradayBar[] {
     .sort((a, b) => a.time - b.time);
 }
 
-async function fetchJson<T>(url: string, warnings: string[]): Promise<T | null> {
+function authHeaders(authorization: string | null | undefined): HeadersInit | undefined {
+  if (!authorization) return undefined;
+  return { Authorization: authorization };
+}
+
+async function fetchJson<T>(
+  url: string,
+  warnings: string[],
+  headers?: HeadersInit,
+): Promise<T | null> {
   try {
-    const res = await fetch(url, { cache: "no-store" });
+    const res = await fetch(url, { cache: "no-store", headers });
     if (!res.ok) {
       warnings.push(`${url} returned HTTP ${res.status}`);
       return null;
@@ -96,23 +105,41 @@ function scaleBars(bars: IntradayBar[], scale: number): IntradayBar[] {
   }));
 }
 
-async function fetchBars(origin: string, symbol: string, futures: boolean, warnings: string[]): Promise<IntradayBar[]> {
+async function fetchBars(
+  origin: string,
+  symbol: string,
+  futures: boolean,
+  warnings: string[],
+  headers?: HeadersInit,
+): Promise<IntradayBar[]> {
   const qs = `timeframe=1m&days=2&limit=500&futures=${futures}`;
-  const raw = await fetchJson<unknown>(`${origin}/api/engine/analyze/bars/${encodeURIComponent(symbol)}?${qs}`, warnings);
+  const raw = await fetchJson<unknown>(
+    `${origin}/api/engine/analyze/bars/${encodeURIComponent(symbol)}?${qs}`,
+    warnings,
+    headers,
+  );
   return normalizeBars(raw);
 }
 
-export async function fetchSpxIntradayInputs(origin: string): Promise<SpxIntradayInputs> {
+export async function fetchSpxIntradayInputs(
+  origin: string,
+  authorization?: string | null,
+): Promise<SpxIntradayInputs> {
   const warnings: string[] = [];
+  const headers = authHeaders(authorization);
   const priceQuery = encodeURIComponent(PRICE_SYMBOLS.join(","));
   const prices =
-    (await fetchJson<MarketPriceSnapshot>(`${origin}/api/engine/prices/snapshot?symbols=${priceQuery}`, warnings)) ?? {};
+    (await fetchJson<MarketPriceSnapshot>(
+      `${origin}/api/engine/prices/snapshot?symbols=${priceQuery}`,
+      warnings,
+      headers,
+    )) ?? {};
 
   let proxyUsed: SpxProxyUsed = "SPX_DIRECT";
-  let bars = await fetchBars(origin, "^GSPC", false, warnings);
+  let bars = await fetchBars(origin, "^GSPC", false, warnings, headers);
 
   if (bars.length === 0) {
-    const esBars = await fetchBars(origin, "ES", true, warnings);
+    const esBars = await fetchBars(origin, "ES", true, warnings, headers);
     const spx = latestPrice(prices, "^GSPC");
     const es = esBars.at(-1)?.close ?? null;
     if (esBars.length && spx && es) {
@@ -122,7 +149,7 @@ export async function fetchSpxIntradayInputs(origin: string): Promise<SpxIntrada
   }
 
   if (bars.length === 0) {
-    const spyBars = await fetchBars(origin, "SPY", false, warnings);
+    const spyBars = await fetchBars(origin, "SPY", false, warnings, headers);
     const spx = latestPrice(prices, "^GSPC");
     const spy = latestPrice(prices, "SPY") ?? spyBars.at(-1)?.close ?? null;
     const scale = spx && spy ? spx / spy : 10;

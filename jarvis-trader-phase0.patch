@@ -1,0 +1,386 @@
+diff --git a/dashboard/components/RLockoutBanner.tsx b/dashboard/components/RLockoutBanner.tsx
+new file mode 100644
+index 0000000..20aea21
+--- /dev/null
++++ b/dashboard/components/RLockoutBanner.tsx
+@@ -0,0 +1,27 @@
++"use client";
++// Red banner when the 2R day stop is hit. Polls /safety/r-lockout every 30s.
++import { useEffect, useState } from "react";
++import { fetchEngine } from "@/lib/api";
++
++type Lock = { locked: boolean; day_r: number; stop_r: number; reason: string };
++
++export default function RLockoutBanner({ dayPnl }: { dayPnl: number }) {
++  const [lock, setLock] = useState<Lock | null>(null);
++  useEffect(() => {
++    const load = () =>
++      fetchEngine<Lock>(`/safety/r-lockout?day_pnl=${dayPnl}`)
++        .then(setLock)
++        .catch(() => setLock({ locked: true, day_r: 0, stop_r: 2, reason: "lockout check unreachable" }));
++    load();
++    const t = setInterval(load, 30_000);
++    return () => clearInterval(t);
++  }, [dayPnl]);
++  if (!lock) return null;
++  if (!lock.locked)
++    return <div className="px-3 py-1 text-xs text-zinc-400">Day {lock.day_r.toFixed(2)}R / stop -{lock.stop_r}R</div>;
++  return (
++    <div role="alert" className="w-full bg-red-700 px-4 py-3 text-center font-bold text-white">
++      LOCKED. {lock.reason}. Flat for the rest of the session. No new triggers.
++    </div>
++  );
++}
+diff --git a/engine/agents/risk_manager.py b/engine/agents/risk_manager.py
+index 629a510..156244f 100644
+--- a/engine/agents/risk_manager.py
++++ b/engine/agents/risk_manager.py
+@@ -313,6 +313,14 @@ class RiskManagerAgent:
+             )
+         _pass("daily_loss_limit", f"Daily P&L ${daily_pnl:,.2f} within limit ${max_daily_loss:,.2f}")
+ 
++        # 2b. Hard 2R day stop from the constitution. Latches for the session.
++        from datetime import date as _date
++        from risk.r_lockout import evaluate as _r_lockout
++        lock = _r_lockout(daily_pnl, _date.today())
++        if lock.locked:
++            return _fail("daily_r_lockout", f"LOCKED: {lock.reason} (day {lock.day_r:+.2f}R)")
++        _pass("daily_r_lockout", f"Day {lock.day_r:+.2f}R inside -{lock.stop_r:g}R stop")
++
+         # 3. Drawdown limit — use 0.09 as the pre-config-limit warning threshold
+         current_drawdown = safety.get("drawdown_pct", 0.0)
+         if current_drawdown > 0.09:
+diff --git a/engine/brokers/ib_scanner.py b/engine/brokers/ib_scanner.py
+index 9f845b4..bd1a28b 100644
+--- a/engine/brokers/ib_scanner.py
++++ b/engine/brokers/ib_scanner.py
+@@ -83,7 +83,8 @@ VALID_SCAN_CODES: frozenset[str] = frozenset(
+ _PAPER_PORT = 4002
+ _IB_HOST = "127.0.0.1"
+ # Client ID 10 — separate from engine's trading connections (client IDs 1-3)
+-_SCANNER_CLIENT_ID = 10
++from execution.ib_client_ids import client_id as _cid  # noqa: E402
++_SCANNER_CLIENT_ID = _cid("scanner")  # 10, fixed in registry
+ _DEFAULT_TIMEOUT_SECONDS = 10
+ _DEFAULT_N_RESULTS = 50
+ 
+diff --git a/engine/data/market_data.py b/engine/data/market_data.py
+index 2cb3740..a82ba6f 100644
+--- a/engine/data/market_data.py
++++ b/engine/data/market_data.py
+@@ -201,7 +201,13 @@ def resolve_data_client_id(config) -> int:
+         explicit = int(explicit)
+     except (TypeError, ValueError):
+         explicit = 0
+-    return explicit if explicit > 0 else int(config.IBKR_CLIENT_ID) + 1
++    cid = explicit if explicit > 0 else int(config.IBKR_CLIENT_ID) + 1
++    # Data leg must not land on another job's fixed id.
++    from execution.ib_client_ids import IB_CLIENT_IDS
++    taken = {j: i for j, i in IB_CLIENT_IDS.items() if i == cid and not j.endswith("_default")}
++    if taken:
++        raise ValueError(f"data-leg clientId {cid} collides with fixed job id {taken}")
++    return cid
+ 
+ 
+ # --- Connect-failure log throttle (SOTA plan P0.6) --------------------------
+diff --git a/engine/execution/ib_client_ids.py b/engine/execution/ib_client_ids.py
+new file mode 100644
+index 0000000..0a10f94
+--- /dev/null
++++ b/engine/execution/ib_client_ids.py
+@@ -0,0 +1,49 @@
++"""Fixed IB Gateway clientId per job.
++
++One job, one id. Two live sockets with the same id make IB drop one of them
++(10/20/2026: ibkr_check.py and fetch_ib_intraday.py both used 77).
++"""
++from __future__ import annotations
++
++# Engine executor rotates inside this band (restart_engine*.ps1); data leg = executor + 1.
++EXECUTOR_BAND = range(200, 261)
++
++IB_CLIENT_IDS: dict[str, int] = {
++    "executor_default": 1,   # used only when IBKR_CLIENT_ID is unset
++    "data_default": 2,       # executor_default + 1
++    "scanner": 10,
++    "domflow": 11,
++    "backfill": 77,          # fetch_ib_intraday.py
++    "ibkr_check": 81,        # /workspace/gex/ibkr_check.py (was 77)
++    "moc_check": 82,
++    "study_grade": 83,
++    "qqq_z_watch": 84,
++    "research": 99,          # validate_ib_paper.py, _pull_ibkr_bars.py
++}
++
++# Ports that must never carry orders (live Gateway / live TWS).
++LIVE_PORTS = frozenset({4001, 7496})
++
++
++def client_id(job: str) -> int:
++    """Look up a job's fixed id. Unknown job is a bug, so fail loudly."""
++    return IB_CLIENT_IDS[job]
++
++
++def check_registry() -> None:
++    """No duplicates, and nothing inside the executor band."""
++    ids = list(IB_CLIENT_IDS.values())
++    if len(ids) != len(set(ids)):
++        raise ValueError(f"duplicate IB clientId in registry: {ids}")
++    clash = [j for j, i in IB_CLIENT_IDS.items() if i in EXECUTOR_BAND]
++    if clash:
++        raise ValueError(f"clientId inside executor band 200-260: {clash}")
++
++
++def assert_order_port(port: int) -> None:
++    """Refuse any order connection on a live port. Paper is 4002."""
++    if int(port) in LIVE_PORTS:
++        raise ValueError(f"refusing order connection on live port {port}; paper only (4002)")
++
++
++check_registry()
+diff --git a/engine/execution/order_gateway_factory.py b/engine/execution/order_gateway_factory.py
+index fb7e40e..dc72f29 100644
+--- a/engine/execution/order_gateway_factory.py
++++ b/engine/execution/order_gateway_factory.py
+@@ -42,6 +42,7 @@ def build_order_gateway(
+         # Import here so the default (simulator) path never pulls ib_async.
+         from data.market_data import resolve_data_client_id
+         from execution.ib_gateway import IBGatewayConfig, IBGatewayManager
++        from execution.ib_client_ids import assert_order_port
+ 
+         order_client_id = int(getattr(settings, "IBKR_CLIENT_ID", 1))
+         data_client_id = int(resolve_data_client_id(settings))
+@@ -52,9 +53,13 @@ def build_order_gateway(
+                 "Set a distinct IBKR_DATA_CLIENT_ID or IBKR_CLIENT_ID."
+             )
+ 
++        # Hard stop: never route orders to a live port (4001/7496).
++        order_port = int(getattr(settings, "IBKR_PORT", 4002))
++        assert_order_port(order_port)
++
+         cfg = IBGatewayConfig(
+             host=getattr(settings, "IBKR_HOST", "127.0.0.1"),
+-            port=int(getattr(settings, "IBKR_PORT", 4002)),  # 4001/7496 rejected in __post_init__
++            port=order_port,  # also rejected in __post_init__
+             client_id=order_client_id,
+             account=getattr(settings, "IB_ACCOUNT_ID", "") or "",
+             timeout=float(getattr(settings, "IBKR_CONNECT_TIMEOUT_SECONDS", 10.0)),
+diff --git a/engine/risk/r_lockout.py b/engine/risk/r_lockout.py
+new file mode 100644
+index 0000000..f544cb4
+--- /dev/null
++++ b/engine/risk/r_lockout.py
+@@ -0,0 +1,68 @@
++"""Hard 2R daily-stop lockout.
++
++E and R come from the account-risk-constitution skill, never from code.
++Once day P&L <= -2R the session is LOCKED until the next session date.
++"""
++from __future__ import annotations
++
++import os
++import re
++from dataclasses import dataclass
++from datetime import date
++from pathlib import Path
++
++# Override with ACCOUNT_RISK_CONSTITUTION_PATH on AmoSZN (the skill lives on the box).
++DEFAULT_PATH = "/home/box/sand-data/workflows/account-risk-constitution/SKILL.md"
++
++_E_RE = re.compile(r"Account equity E\s*\|\s*\*\*\$([\d,]+(?:\.\d+)?)\*\*")
++_R_RE = re.compile(r"R \(risk unit\)\s*\|\s*\*\*[^=|]*=\s*\$([\d,]+(?:\.\d+)?)\*\*")
++_DAY_RE = re.compile(r"Daily max loss[^|]*\|\s*\*\*(\d+(?:\.\d+)?)R\*\*")
++
++
++@dataclass(frozen=True)
++class Constitution:
++    equity: float
++    r_dollars: float
++    day_stop_r: float  # e.g. 2.0
++
++
++def load_constitution(path: str | None = None) -> Constitution:
++    """Parse E, R and the daily stop from the constitution table. Missing -> raise."""
++    p = Path(path or os.getenv("ACCOUNT_RISK_CONSTITUTION_PATH", DEFAULT_PATH))
++    text = p.read_text(encoding="utf-8")
++    m_e, m_r, m_d = _E_RE.search(text), _R_RE.search(text), _DAY_RE.search(text)
++    if not (m_e and m_r and m_d):
++        # Unknown E/R means paper-only per the constitution; caller treats as locked.
++        raise ValueError(f"constitution at {p} missing E, R or daily stop")
++    num = lambda m: float(m.group(1).replace(",", ""))  # noqa: E731
++    return Constitution(equity=num(m_e), r_dollars=num(m_r), day_stop_r=num(m_d))
++
++
++@dataclass
++class LockoutState:
++    session: date
++    day_pnl: float
++    day_r: float
++    stop_r: float
++    locked: bool
++    reason: str
++
++
++_latched: dict[date, str] = {}  # once locked, stays locked for that session
++
++
++def evaluate(day_pnl: float, session: date, path: str | None = None) -> LockoutState:
++    """Return lockout state. Fails closed if the constitution can't be read."""
++    try:
++        c = load_constitution(path)
++    except (OSError, ValueError) as e:
++        return LockoutState(session, day_pnl, 0.0, 0.0, True, f"constitution unreadable: {e}")
++    day_r = day_pnl / c.r_dollars if c.r_dollars > 0 else 0.0
++    if day_r <= -c.day_stop_r and session not in _latched:
++        _latched[session] = f"day {day_r:+.2f}R hit {c.day_stop_r:g}R stop"
++    reason = _latched.get(session, "")
++    return LockoutState(session, day_pnl, round(day_r, 2), c.day_stop_r, bool(reason), reason)
++
++
++def reset_for_tests() -> None:
++    _latched.clear()
+diff --git a/engine/routers/r_lockout_router.py b/engine/routers/r_lockout_router.py
+new file mode 100644
+index 0000000..26fa85b
+--- /dev/null
++++ b/engine/routers/r_lockout_router.py
+@@ -0,0 +1,26 @@
++"""GET /safety/r-lockout: state for the dashboard banner. Fires the daily_loss breaker once."""
++from __future__ import annotations
++
++from datetime import date
++
++from fastapi import APIRouter, Query
++
++from risk.r_lockout import evaluate
++
++router = APIRouter(prefix="/safety", tags=["safety"])
++_emitted: set[date] = set()
++
++
++@router.get("/r-lockout")
++async def r_lockout(day_pnl: float = Query(..., description="Session P&L in $ (RH + IB, entered or synced)")):
++    today = date.today()
++    s = evaluate(day_pnl, today)
++    if s.locked and today not in _emitted:
++        _emitted.add(today)
++        try:  # reuse existing breaker event (see WEBSOCKET.md)
++            from websocket.events import emit_circuit_breaker
++            await emit_circuit_breaker("daily_loss", triggered=True, value=s.day_pnl)
++        except ImportError:
++            pass
++    return {"session": today.isoformat(), "day_pnl": s.day_pnl, "day_r": s.day_r,
++            "stop_r": s.stop_r, "locked": s.locked, "reason": s.reason}
+diff --git a/engine/scripts/fetch_ib_intraday.py b/engine/scripts/fetch_ib_intraday.py
+index 508d218..182434d 100644
+--- a/engine/scripts/fetch_ib_intraday.py
++++ b/engine/scripts/fetch_ib_intraday.py
+@@ -120,7 +120,8 @@ IB_PAPER_PORT = 4002
+ IB_LIVE_PORT = 4001  # PERMANENTLY BLOCKED — never connect here.
+ 
+ # DISTINCT backfill clientId (PR#34 collision avoidance). Executor=1, data-leg=2.
+-DEFAULT_BACKFILL_CLIENT_ID = 77
++from execution.ib_client_ids import client_id as _cid  # noqa: E402
++DEFAULT_BACKFILL_CLIENT_ID = _cid("backfill")  # 77; ibkr_check moved off 77 to 81
+ 
+ 
+ def _backfill_client_id() -> int:
+diff --git a/engine/tests/test_ib_client_ids.py b/engine/tests/test_ib_client_ids.py
+new file mode 100644
+index 0000000..5802bfe
+--- /dev/null
++++ b/engine/tests/test_ib_client_ids.py
+@@ -0,0 +1,21 @@
++import pytest
++
++from execution import ib_client_ids as ids
++
++
++def test_registry_has_no_duplicates_or_band_clash():
++    ids.check_registry()
++
++
++def test_ibkr_check_no_longer_shares_77_with_backfill():
++    assert ids.client_id("ibkr_check") != ids.client_id("backfill")
++
++
++@pytest.mark.parametrize("port", [4001, 7496])
++def test_live_ports_refused_for_orders(port):
++    with pytest.raises(ValueError):
++        ids.assert_order_port(port)
++
++
++def test_paper_port_allowed():
++    ids.assert_order_port(4002)
+diff --git a/engine/tests/test_r_lockout.py b/engine/tests/test_r_lockout.py
+new file mode 100644
+index 0000000..cbc936d
+--- /dev/null
++++ b/engine/tests/test_r_lockout.py
+@@ -0,0 +1,42 @@
++from datetime import date
++
++import pytest
++
++from risk import r_lockout
++
++SKILL = """| Account equity E | **$5,048** (Robinhood) |
++| R (risk unit) | **10% of E = $505** |
++| Daily max loss → flat rest of session | **2R** | $1,010 |
++"""
++
++
++@pytest.fixture
++def skill(tmp_path):
++    r_lockout.reset_for_tests()
++    p = tmp_path / "SKILL.md"
++    p.write_text(SKILL, encoding="utf-8")
++    return str(p)
++
++
++def test_reads_e_and_r_from_constitution(skill):
++    c = r_lockout.load_constitution(skill)
++    assert (c.equity, c.r_dollars, c.day_stop_r) == (5048.0, 505.0, 2.0)
++
++
++def test_unlocked_above_stop(skill):
++    assert not r_lockout.evaluate(-1000.0, date(2026, 10, 20), skill).locked
++
++
++def test_locks_at_2r_and_latches(skill):
++    d = date(2026, 10, 20)
++    assert r_lockout.evaluate(-1010.0, d, skill).locked
++    # Winning back later the same day does not unlock.
++    assert r_lockout.evaluate(+200.0, d, skill).locked
++    # Next session starts clean.
++    assert not r_lockout.evaluate(0.0, date(2026, 10, 21), skill).locked
++
++
++def test_fails_closed_when_constitution_missing(tmp_path):
++    r_lockout.reset_for_tests()
++    s = r_lockout.evaluate(0.0, date(2026, 10, 20), str(tmp_path / "nope.md"))
++    assert s.locked and "unreadable" in s.reason
+diff --git a/restart_engine.ps1 b/restart_engine.ps1
+index 46650aa..eb692d2 100644
+--- a/restart_engine.ps1
++++ b/restart_engine.ps1
+@@ -20,7 +20,9 @@ if ($pm2Managed) {
+     Write-Host "Detected jarvis-engine under PM2 - using pm2 restart (port-kill path skipped)"
+ 
+     if (Test-Path $envFile) {
+-        $clientId = [int]((Get-Date).ToString("ss")) + 200
++        # Executor band 200-259 (data leg +1 -> max 260). Fixed job ids live in
++# engine/execution/ib_client_ids.py and must stay outside this band.
++$clientId = [int]((Get-Date).ToString("ss")) + 200
+         (Get-Content $envFile) -replace "IBKR_CLIENT_ID=\d+", "IBKR_CLIENT_ID=$clientId" | Set-Content $envFile
+         Write-Host "Using IBKR client ID: $clientId"
+     }
+@@ -211,6 +213,8 @@ if ($stillListen.Count -gt 0) {
+ }
+ 
+ # Rotate IBKR client ID
++# Executor band 200-259 (data leg +1 -> max 260). Fixed job ids live in
++# engine/execution/ib_client_ids.py and must stay outside this band.
+ $clientId = [int]((Get-Date).ToString("ss")) + 200
+ (Get-Content $envFile) -replace "IBKR_CLIENT_ID=\d+", "IBKR_CLIENT_ID=$clientId" | Set-Content $envFile
+ Write-Host "Using IBKR client ID: $clientId"

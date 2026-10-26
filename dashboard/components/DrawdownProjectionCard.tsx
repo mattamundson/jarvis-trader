@@ -4,16 +4,16 @@ import { useEffect, useState } from "react";
 import { TrendingDown, AlertTriangle } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
+import { buildDrawdownProjection, type DrawdownProjection } from "@/lib/drawdownProjection";
 import { POLL_INTERVAL } from "@/lib/polling-config";
 
 /**
  * Drawdown Projection — Mission Control.
  *
  * Shows exactly how many consecutive losing trades remain before the kill
- * switch fires at -20% drawdown.  Computed from:
- *   - Current drawdown %       (GET /portfolio/paper/performance)
- *   - Average loss per trade   (derived from the performance data)
- *   - Portfolio equity         (same endpoint)
+ * switch fires. Current drawdown and the halt come from GET /safety/status,
+ * the same figures the risk panel and the kill switch use. Average loss
+ * comes from GET /portfolio/paper/performance.
  *
  * The projection is mechanical (not a model): it answers "if every
  * future trade loses the same amount as the average loser, how many
@@ -23,13 +23,12 @@ import { POLL_INTERVAL } from "@/lib/polling-config";
  * step toward the red kill-switch line.
  */
 
-interface Projection {
-  current_dd_pct: number;
-  avg_loss_dollars: number;
-  portfolio_equity: number;
-  max_drawdown_pct: number;
-  trades_remaining: number;   // how many avg losses until halt
-  streak: number[];           // projected equity after each loss
+type Projection = DrawdownProjection;
+
+interface SafetyStatus {
+  drawdown_pct?: number;
+  drawdown_limit_pct?: number;
+  portfolio_equity?: number;
 }
 
 function fmt(n: number | null | undefined, digits = 2): string {
@@ -44,49 +43,22 @@ export function DrawdownProjectionCard() {
     let cancelled = false;
     async function load() {
       try {
-        const wrapper = await fetchEngine<Record<string, unknown>>(
-          "/portfolio/paper/performance"
-        );
-        if (cancelled || !wrapper) return;
+        const [safety, wrapper] = await Promise.all([
+          fetchEngine<SafetyStatus>("/safety/status"),
+          fetchEngine<Record<string, unknown>>("/portfolio/paper/performance"),
+        ]);
+        if (cancelled || !safety || !wrapper) return;
 
-        // Real shape: { performance: { total_pnl, avg_loss (NEGATIVE),
-        // max_dd (DOLLARS, negative), win_rate, profit_factor, num_trades } }.
-        // Drawdown % must be derived against peak equity — the route has no
-        // drawdown_pct field.
         const perf = (wrapper.performance as Record<string, unknown>) ?? wrapper;
-        const totalPnl = Number(perf.total_pnl ?? 0);
-        const maxDdDollars = Math.abs(Number(perf.max_dd ?? 0));
         const avgLossRaw = Number(perf.avg_loss ?? 0);
-        const avgLoss = Math.abs(avgLossRaw); // route reports it negative
-
-        const STARTING_EQUITY = 10000;
-        const equity = STARTING_EQUITY + totalPnl;
-        const peakEquity = equity + maxDdDollars;
-        const ddPct = peakEquity > 0 ? (maxDdDollars / peakEquity) * 100 : 0;
-
-        const maxDD = Number(perf.max_drawdown_pct ?? 20);
-
-        // Projection: how many avg-loss trades until the kill switch
-        const remaining = ((maxDD - ddPct) / 100) * equity;
-        const tradesLeft = avgLoss > 0
-          ? Math.max(0, Math.floor(remaining / avgLoss))
-          : Infinity;
-
-        const streak: number[] = [];
-        let projected = equity;
-        for (let i = 0; i < Math.min(tradesLeft, 8); i++) {
-          projected -= avgLoss > 0 ? avgLoss : 0;
-          streak.push(projected);
-        }
-
-        setProj({
-          current_dd_pct: ddPct,
-          avg_loss_dollars: avgLoss,
-          portfolio_equity: equity,
-          max_drawdown_pct: maxDD,
-          trades_remaining: tradesLeft,
-          streak,
+        const equity = Number(safety.portfolio_equity);
+        const next = buildDrawdownProjection({
+          currentDrawdownFraction: Number(safety.drawdown_pct ?? 0),
+          haltFraction: Number(safety.drawdown_limit_pct ?? -0.2),
+          equity,
+          avgLossDollars: avgLossRaw,
         });
+        if (next) setProj(next);
       } catch {
         // data unavailable — card stays in loading/empty state
       } finally {
@@ -132,7 +104,7 @@ export function DrawdownProjectionCard() {
           <div className="font-mono text-bear">{fmt(proj.current_dd_pct)}%</div>
         </div>
         <div>
-          <span className="text-muted-foreground">Max DD</span>
+          <span className="text-muted-foreground">Halt</span>
           <div className="font-mono text-foreground">{fmt(proj.max_drawdown_pct)}%</div>
         </div>
         <div>
@@ -184,7 +156,7 @@ export function DrawdownProjectionCard() {
               <span className="text-[8px] text-bear w-10">{fmt(proj.max_drawdown_pct)}%</span>
             </div>
             {proj.streak.map((eq, i) => {
-              const ddAtStep = ((proj.portfolio_equity - eq) / proj.portfolio_equity) * 100;
+              const ddAtStep = ((proj.peak_equity - eq) / proj.peak_equity) * 100;
               const barPct = Math.min((ddAtStep / proj.max_drawdown_pct) * 100, 100);
               const stepVariant = ddAtStep >= proj.max_drawdown_pct ? "bear" : "warn";
               return (

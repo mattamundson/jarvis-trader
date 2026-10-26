@@ -42,13 +42,18 @@ $ErrorActionPreference = "Stop"
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 $cdpPort = 9222
-# Discover the installed TV Desktop version dir via wildcard resolve — survives
-# Microsoft Store auto-updates that rotate the version-stamped folder name (e.g.
-# 3.0.0.7652 → 3.0.0.7800). Resolve-Path with wildcards works from user context
-# without admin rights; Get-ChildItem on WindowsApps usually does not. Fallback
-# to the last-known path keeps old behaviour if discovery silently returns null.
-$tvResolved = Resolve-Path "C:\Program Files\WindowsApps\TradingView.Desktop_*_x64__*\TradingView.exe" -ErrorAction SilentlyContinue | Select-Object -Last 1
-$tvBinary = if ($tvResolved) { $tvResolved.Path } else { "C:\Program Files\WindowsApps\TradingView.Desktop_3.0.0.7652_x64__n534cwy3pjxzj\TradingView.exe" }
+# Prefer the current Store package; retain the legacy package as fallback.
+# Resolve via AppX metadata so version-stamped paths survive Store updates.
+$tvBinary = $null
+foreach ($packageName in @('31178TradingViewInc.TradingView', 'TradingView.Desktop')) {
+    $package = Get-AppxPackage -Name $packageName -ErrorAction SilentlyContinue
+    if (-not $package) { continue }
+    $candidate = Join-Path $package.InstallLocation 'TradingView.exe'
+    if (Test-Path $candidate) {
+        $tvBinary = $candidate
+        break
+    }
+}
 $logPath = Join-Path $env:USERPROFILE "jarvis-tv-cdp.log"
 $maxLogBytes = 1MB
 $launchTimeoutSec = 30  # 2026-04-24: bumped from 15s — TV cold-start observed at 22s (23:33) and 26s (failed at 23:23). 15s triggered false-failure on the 2026-04-23 22:23 scheduled-task fire (LastResult=1).
@@ -120,14 +125,25 @@ if ($tvProcs.Count -gt 0) {
 }
 
 # ── Step 3: Launch TV with CDP flag ────────────────────────────────────────────
-if (-not (Test-Path $tvBinary)) {
-    Write-Log "TV binary not found at: $tvBinary. If TV was updated via the Microsoft Store, the version-stamped path may have changed. Find the new path via: Get-Process TradingView | Select Path" "ERROR"
+if (-not $tvBinary -or -not (Test-Path $tvBinary)) {
+    Write-Log "TradingView Desktop package or binary not found for the current user." "ERROR"
     exit 1
 }
 
 Write-Log "Launching TV Desktop with --remote-debugging-port=$cdpPort"
 try {
-    Start-Process -FilePath $tvBinary -ArgumentList "--remote-debugging-port=$cdpPort --remote-debugging-address=0.0.0.0"
+    $userDataDir = Join-Path $env:TEMP 'tv-cdp'
+    if (-not (Test-Path $userDataDir)) {
+        New-Item -ItemType Directory -Path $userDataDir -Force | Out-Null
+    }
+    Start-Process -FilePath $tvBinary -ArgumentList @(
+        "--remote-debugging-port=$cdpPort",
+        '--remote-debugging-address=127.0.0.1',
+        "--user-data-dir=$userDataDir",
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding',
+        '--disable-background-timer-throttling'
+    )
 } catch {
     Write-Log "Start-Process failed: $($_.Exception.Message)" "ERROR"
     exit 1

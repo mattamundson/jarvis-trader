@@ -4,8 +4,9 @@ JARVIS TRADER — Bar Persistence Repository
 Reads/writes OHLCV bars from/to the market_data_bars SQLite table.
 Schema is created by migration_024 in engine/database/migrations.py.
 
-All writes use INSERT OR IGNORE — duplicate bars (same symbol+interval+ts_utc)
-are silently skipped so repeat fetches are cheap and idempotent.
+Duplicate finalized bars are immutable. For supported intervals, a newer fetch
+may atomically refresh a conflicting snapshot only while the persisted row is
+still provisional (its fetched_at precedes the scheduled bar end).
 """
 
 from __future__ import annotations
@@ -29,11 +30,58 @@ _INTERVAL_ALIASES: dict[str, str] = {
     "1h": "1h", "4h": "4h", "1d": "1d",
 }
 
-_INSERT_SQL = """
+_REFRESHABLE_INTERVAL_MINUTES: dict[str, int] = {
+    # Intentionally narrow: PR #967's observed divergence is on 1h bars. Other
+    # intervals keep insert-ignore semantics until their timestamp conventions
+    # and session boundaries receive dedicated tests.
+    "1h": 60,
+}
+
+_INSERT_IGNORE_SQL = """
     INSERT OR IGNORE INTO market_data_bars
         (symbol, interval, ts_utc, open, high, low, close, volume, source, fetched_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
+
+
+def _write_sql(interval: str) -> str:
+    """Return conflict handling for a trusted interval label.
+
+    Supported intervals may refresh a newer snapshot while the persisted row
+    is provisional. Other interval labels retain the conservative historical
+    behavior: insert once and ignore all conflicts.
+    """
+    minutes = _REFRESHABLE_INTERVAL_MINUTES.get(interval)
+    if minutes is None:
+        return _INSERT_IGNORE_SQL
+
+    return f"""
+        INSERT INTO market_data_bars
+            (symbol, interval, ts_utc, open, high, low, close, volume, source, fetched_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(symbol, interval, ts_utc) DO UPDATE SET
+            open = excluded.open,
+            high = excluded.high,
+            low = excluded.low,
+            close = excluded.close,
+            volume = COALESCE(excluded.volume, market_data_bars.volume),
+            source = excluded.source,
+            fetched_at = excluded.fetched_at
+        WHERE datetime(market_data_bars.fetched_at)
+                < datetime(market_data_bars.ts_utc, '+{minutes} minutes')
+          AND datetime(excluded.fetched_at)
+                > datetime(market_data_bars.fetched_at)
+          AND (
+                datetime(excluded.fetched_at)
+                    >= datetime(market_data_bars.ts_utc, '+{minutes} minutes')
+             OR excluded.open IS NOT market_data_bars.open
+             OR excluded.high IS NOT market_data_bars.high
+             OR excluded.low IS NOT market_data_bars.low
+             OR excluded.close IS NOT market_data_bars.close
+             OR COALESCE(excluded.volume, market_data_bars.volume)
+                    IS NOT market_data_bars.volume
+          )
+    """
 
 # ── Write-time sanity gate ────────────────────────────────────────────────────
 # Added after the 2026-06 contamination incident: 2,550 MCL rows at the IB
@@ -176,11 +224,12 @@ def save_bars(
     source: str,
     db_path: Optional[Path] = None,
 ) -> int:
-    """Write OHLCV rows to market_data_bars. Returns count of new rows inserted.
+    """Write OHLCV rows to market_data_bars.
 
-    Expects df to have columns: timestamp, open, high, low, close, volume (volume optional).
-    timestamp must be parseable by pd.to_datetime.
-    Empty df is silently skipped (returns 0).
+    Returns the count of rows inserted or legitimately refreshed. Expects df to
+    have columns: timestamp, open, high, low, close, volume (volume optional).
+    timestamp must be parseable by pd.to_datetime. Empty df is silently skipped
+    (returns 0).
     """
     if df is None or df.empty:
         return 0
@@ -278,11 +327,17 @@ def save_bars(
     conn = None
     try:
         conn = _connect(db)
-        cur = conn.executemany(_INSERT_SQL, rows)
+        cur = conn.executemany(_write_sql(interval), rows)
         conn.commit()
-        inserted = cur.rowcount
-        logger.debug("[bars_repo] save_bars %s %s: %d rows offered, %d new", symbol, interval, len(rows), inserted)
-        return max(inserted, 0)
+        changed = cur.rowcount
+        logger.debug(
+            "[bars_repo] save_bars %s %s: %d rows offered, %d inserted/refreshed",
+            symbol,
+            interval,
+            len(rows),
+            changed,
+        )
+        return max(changed, 0)
     except Exception as exc:
         logger.warning("[bars_repo] save_bars failed for %s %s: %s", symbol, interval, exc)
         return 0
