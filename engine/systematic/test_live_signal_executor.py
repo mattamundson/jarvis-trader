@@ -221,6 +221,29 @@ def test_safety_rejection_passed_through_and_recorded():
     print("[PASS] safety rejection passed through, recorded, does NOT claim shared slot")
 
 
+def test_unrouted_submit_does_not_claim_shared_slot():
+    """approved=True but routed_to_ib=False (broker call raised) placed nothing at
+    IB, so it must not block the queue path via the cross-path dedup ledger."""
+    safety = _mock_safety(approved=True, reason="IB order failed", routed=False)
+    with tempfile.TemporaryDirectory() as d:
+        shared = SubmissionDedup(Path(d) / "dedup.jsonl")
+        ex = _make(safety, d, dedup=shared)
+        out = asyncio.run(ex.execute_signal(_signal(), "MES_vwap_rank1"))
+        assert out["approved"] is True and out["routed_to_ib"] is False, out
+        assert shared.already_submitted(shared.make_key("MES", "BUY", "2026-06-26")) is False
+    print("[PASS] unrouted submit does NOT claim shared slot")
+
+
+def test_routed_submit_claims_shared_slot():
+    safety = _mock_safety(approved=True, reason="ok", order_id="101", routed=True)
+    with tempfile.TemporaryDirectory() as d:
+        shared = SubmissionDedup(Path(d) / "dedup.jsonl")
+        ex = _make(safety, d, dedup=shared)
+        asyncio.run(ex.execute_signal(_signal(), "MES_vwap_rank1"))
+        assert shared.already_submitted(shared.make_key("MES", "BUY", "2026-06-26")) is True
+    print("[PASS] routed submit claims shared slot")
+
+
 def main():
     tests = [
         test_disabled_by_default_submits_nothing,
@@ -232,6 +255,8 @@ def main():
         test_cross_path_duplicate_blocks_when_queue_already_submitted,
         test_short_maps_to_sell,
         test_safety_rejection_passed_through_and_recorded,
+        test_unrouted_submit_does_not_claim_shared_slot,
+        test_routed_submit_claims_shared_slot,
     ]
     failures = []
     for t in tests:

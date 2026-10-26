@@ -221,6 +221,38 @@ def _update_status(
         conn.commit()
 
 
+def _stamp_bracket_ids(db_path: str, trade_id: str, result: dict) -> bool:
+    """Write broker bracket child IDs onto the paper_trades row (migration 031).
+
+    Mirrors approval.service.approve_pending_trade so queue-approved trades carry
+    the same stop_order_id / target_order_id evidence. No-op when the broker
+    returned no child IDs. Returns True when exactly one row was updated.
+    """
+    stop_oid = result.get("stop_order_id") or result.get("stp_order_id")
+    tp_oid = result.get("target_order_id") or result.get("tp_order_id")
+    if stop_oid is None and tp_oid is None:
+        return False
+    status = "attached" if (stop_oid is not None and tp_oid is not None) else "partial"
+    with sqlite3.connect(db_path) as conn:
+        cur = conn.execute(
+            """
+            UPDATE paper_trades
+               SET stop_order_id = ?,
+                   target_order_id = ?,
+                   bracket_status = ?
+             WHERE trade_id = ?
+            """,
+            (
+                str(stop_oid) if stop_oid is not None else None,
+                str(tp_oid) if tp_oid is not None else None,
+                status,
+                trade_id,
+            ),
+        )
+        conn.commit()
+        return cur.rowcount == 1
+
+
 def _expire_stale(db_path: str) -> int:
     """Mark all pending candidates past their expires_at as expired. Returns count."""
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -579,6 +611,20 @@ async def approve_candidate(
             detail=f"Safety layer rejected order: {reason_from_result}",
         )
 
+    if not result.get("routed_to_ib", False):
+        # Safety passed but nothing reached the broker (gateway missing,
+        # disconnected, or the broker call failed). Booking a ledger row here
+        # created phantom paper_trades row 346 on 2026-10-26, so fail closed.
+        reason_not_routed = str(result.get("reason", "order not routed to broker"))
+        _update_status(
+            db, candidate_id, "rejected", reviewer_notes=f"not_routed: {reason_not_routed}"[:500]
+        )
+        _audit("approve_not_routed", candidate_id, {"reason": reason_not_routed})
+        raise HTTPException(
+            502,
+            detail=f"Order not routed to broker: {reason_not_routed}",
+        )
+
     order_id = str(result.get("order_id") or result.get("fill_id") or "")
     _update_status(db, candidate_id, "approved", order_id=order_id)
 
@@ -615,6 +661,8 @@ async def approve_candidate(
                 },
             )
             _audit("ledger_written", candidate_id, {"trade_id": _ledger_trade_id})
+            if _ledger_trade_id:
+                _stamp_bracket_ids(db, str(_ledger_trade_id), result)
         except Exception as _ledger_exc:
             logger.warning(
                 "ApprovalQueue: ledger write failed for approved candidate %d "

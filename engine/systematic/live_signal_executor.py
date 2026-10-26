@@ -225,9 +225,11 @@ class LiveSignalExecutor:
         }
         self._append(record)
 
-        # Claim the shared cross-path slot only on an APPROVED submit, so a
-        # rejected order never blocks the other path from trying.
-        if bool(result.get("approved")):
+        # Claim the shared cross-path slot only when the order actually reached
+        # the broker. A rejected or unrouted submit (approved=True but
+        # routed_to_ib=False, e.g. the broker call raised) placed nothing, so it
+        # must not block the other path for the rest of the day (2026-10-26).
+        if bool(result.get("approved")) and bool(result.get("routed_to_ib")):
             self._dedup.record(
                 dkey,
                 source="bridge",
