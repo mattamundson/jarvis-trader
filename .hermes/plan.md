@@ -1,37 +1,86 @@
-# Plan — [safety-review] MGC Active-Contract Freshness Repair
+# Open-Hour Bar Refresh Implementation Plan
+
+> **For Hermes:** Execute this plan with strict RED-GREEN-REFACTOR discipline and independent review.
+
+**Goal:** Correct later snapshots of a still-forming OHLCV bar in `market_data_bars` while making finalized historical rows immutable.
+
+**Architecture:** Keep `save_bars()` as the single write choke point. Replace unconditional duplicate suppression only for supported intervals with an atomic SQLite upsert that refreshes a conflicting row when the persisted snapshot was captured before the bar closed and the incoming snapshot is newer. Once a persisted snapshot's `fetched_at` is at or after its scheduled bar end, future conflicts remain no-ops.
+
+**Tech stack:** Python 3.12, pandas, SQLite, pytest, Ruff.
+
+---
+
+## Safety boundary
+
+- Work only in `fix/open-hour-bar-upsert-20261025`, based on current `origin/master`.
+- Read-only market-data persistence only; do not change execution routing, accounts, risk, symbol gates, kill switch, orders, or `.env`.
+- Preserve `127.0.0.1:4001` as the sole operational Gateway endpoint.
+- Do not operationally probe MCL or MNQ. MGC remains `DO_NOT_TRADE`.
+- Produce a focused PR; do not deploy or merge this new behavior without a separate explicit `[safety-review]` authorization.
+
+## Task 1 — Lock the MGC open-hour regression with a failing test
+
+**Files:**
+- Modify: `engine/tests/test_bars_repository.py`
+
+1. Add a deterministic test that writes an MGC `1h` snapshot fetched before bar end, then a newer snapshot at the same timestamp.
+2. Assert one stored row remains and its close/volume/source/fetched timestamp match the newer snapshot.
+3. Run only that test with the canonical project interpreter and confirm it fails because `INSERT OR IGNORE` retains the first snapshot.
+
+## Task 2 — Implement the minimal atomic refresh
+
+**Files:**
+- Modify: `engine/data/bars_repository.py`
+
+1. Add a fixed supported-interval-to-minutes mapping.
+2. Build the conflict SQL only from that trusted mapping; unknown intervals retain insert-ignore behavior.
+3. On primary-key conflict, update OHLCV/source/fetched_at only when:
+   - the stored snapshot was fetched before the scheduled bar end;
+   - the incoming snapshot was fetched later than the stored snapshot; and
+   - OHLCV differs, or the newer snapshot was fetched at/after bar end and therefore finalizes the row.
+4. Preserve a known volume when the newer snapshot has null volume.
+5. Update return-value/log wording from “new rows” to “inserted or refreshed rows.”
+6. Run the focused regression and confirm GREEN.
+
+## Task 3 — Prove finalized history cannot mutate
+
+**Files:**
+- Modify: `engine/tests/test_bars_repository.py`
+
+Add and run focused tests for:
+- a row first fetched at/after bar end remains immutable;
+- an older out-of-order snapshot cannot replace a newer provisional snapshot;
+- an identical repeat remains a no-op;
+- a mixed batch updates only provisional rows;
+- null incoming volume preserves a previously known volume;
+- unsupported intervals retain insert-ignore semantics.
+
+## Task 4 — Reconcile documentation and callers
+
+**Files:**
+- Modify: `engine/data/bars_repository.py`
+- Modify only if needed: `engine/database/migrations.py`
+- Modify: `engine/scripts/backfill_market_data_bars.py`
+
+1. Remove stale claims that every conflict is ignored.
+2. Confirm historical backfills are immutable because their existing rows were fetched after bar end.
+3. Confirm callers tolerate the count meaning inserts plus legitimate provisional refreshes.
+
+## Task 5 — Verify and publish the focused PR
+
+1. Run `tests/test_bars_repository.py` with the canonical interpreter and no CLI `-m` override.
+2. Run affected architecture/write-path tests with `-k`, never `-m`.
+3. Run changed-file Ruff, `py_compile`, and `git diff --check`.
+4. Verify the diff against `origin/master` contains only the plan, repository implementation, tests, migration documentation, and directly affected backfill wording.
+5. Obtain independent spec and code-quality review; resolve every blocking finding.
+6. Commit, push, and open a `[safety-review]` PR documenting rollback and the execution/risk non-impact boundary.
+7. Do not merge or deploy this new behavior without a new explicit human `[safety-review]` authorization.
 
 ## Finish line
 
-Prepare an isolated, reviewable fix that selects IBKR's active continuous futures contract for read-only historical data instead of the nearest non-expired serial contract, with regression coverage and no execution, risk, symbol-gate, kill-switch, or live-order changes.
-
-## Scope
-
-- Work only in `safety-review/ib4001-mgc-front-month-20261020` based on `origin/master`.
-- Preserve `127.0.0.1:4001` as the only operational Gateway endpoint; do not alter execution routing.
-- Add a failing regression test proving MGC prefers IBKR's active continuous contract over a nearer but inactive serial expiry.
-- Implement continuous-contract resolution using the repository's existing `export_ibkr_history.py` pattern, with the current expiry-list resolver retained as a fail-safe fallback.
-- Run targeted tests, full affected-file tests, Ruff, and independent review.
-- Do not deploy or merge. Open a `[safety-review]` PR only if verification passes.
-
-## Finish-line evidence
-
-1. RED test fails against the current nearest-expiry resolver for the expected reason.
-2. GREEN test passes after the minimal resolver change.
-3. Existing `test_market_data_ibkr.py` coverage passes.
-4. Ruff passes on changed Python files.
-5. Full non-slow engine suite is attempted; any unrelated baseline failures are reported exactly.
-6. Independent reviewer reports no blocking logic or security issue.
-7. PR is explicitly labeled `[safety-review]` and states live Gateway validation is still blocked until interactive IBKR 2FA/login restores local port 4001.
-
-## Verification record — 2026-10-20
-
-- RED: the new MGC regression selected `MGCV6` instead of the expected active `MGCZ6` before the implementation.
-- GREEN: the focused regression and all of `tests/test_market_data_ibkr.py` passed after the resolver change.
-- Static gates: changed-file Ruff, full engine Ruff, and `git diff --check` passed.
-- Full non-slow engine suite: `9519 passed, 28 skipped, 184 deselected, 1 xfailed, 5 failed` in 773.42 seconds.
-- All five failures were reproduced unchanged from a clean `origin/master` archive: one Kronos fixture-data failure and four stale `_FakeIB.connectAsync` signature failures in `test_ib_market_data_type.py` caused by the existing `readonly` argument.
-- Independent Codex review: `No discrete correctness, safety, or maintainability defects were identified in the current changes.`
-- Live read-only branch validation passed after the operator-authenticated Gateway restored port 4001: the resolver selected `MGCZ6` (expiry `20261229`) and returned 316 hourly bars through `2026-10-20 10:00:00-04:00`; the newest bar had volume `10126`.
-- Fresh sanitized account attestation still fails closed: one managed account, configured-account match `false`, paper-prefix classification `false`, identifiers redacted.
-- The unmerged serving engine remains intentionally unchanged. Its safety bundle still returns `1` and reports MGC `18.3h` stale versus the `1.5h` tolerance, demonstrating the production repair has not been deployed.
-- Delivery boundary remains PR-only. Do not deploy or merge from this worktree.
+- The original MGC reproduction is RED before implementation and GREEN afterward.
+- Finalized rows and historical backfills are proven immutable.
+- The focused test module and write-path guards pass.
+- Static checks pass.
+- PR exact head and file scope are verified.
+- The currently deployed engine remains unchanged and execution remains fail-closed.

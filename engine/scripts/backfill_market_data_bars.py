@@ -2,8 +2,9 @@
 JARVIS TRADER — One-shot bar backfill from cached CSVs.
 
 Loads 1h OHLCV bars from engine/backtest/cache/ CSV files into the
-market_data_bars SQLite table.  Uses INSERT OR IGNORE so re-running is a
-complete no-op — no row is written twice.
+market_data_bars SQLite table through ``save_bars``. Re-running historical
+files is a no-op; only a newer snapshot of a still-provisional 1h bar may be
+refreshed before that row is finalized.
 
 Usage:
     # Dry-run: show what would be loaded, no writes
@@ -222,18 +223,20 @@ def backfill_symbol(
         from data.bars_repository import save_bars  # noqa: E402
 
         if db_path is not None:
-            inserted = save_bars(df, symbol, "1h", source="cache", db_path=db_path)
+            changed = save_bars(df, symbol, "1h", source="cache", db_path=db_path)
         else:
-            inserted = save_bars(df, symbol, "1h", source="cache")
+            changed = save_bars(df, symbol, "1h", source="cache")
     except Exception as exc:
         result["error"] = f"save_bars failed: {exc}"
         return result
 
-    result["new_rows"] = inserted
-    result["skipped_rows"] = len(df) - inserted
+    # Preserve the public result keys for compatibility; ``new_rows`` now
+    # counts inserts plus the narrowly allowed provisional 1h refresh.
+    result["new_rows"] = changed
+    result["skipped_rows"] = len(df) - changed
     logger.info(
-        "%s: %d rows offered → %d new, %d skipped (file: %s)",
-        symbol, len(df), inserted, result["skipped_rows"], csv_path.name,
+        "%s: %d rows offered → %d inserted/refreshed, %d unchanged (file: %s)",
+        symbol, len(df), changed, result["skipped_rows"], csv_path.name,
     )
     return result
 
@@ -268,7 +271,7 @@ def run_backfill(
         )
     else:
         logger.info(
-            "Backfill complete: %d new rows inserted, %d already-present rows skipped",
+            "Backfill complete: %d rows inserted/refreshed, %d unchanged",
             total_new, total_skipped,
         )
 
