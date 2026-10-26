@@ -147,7 +147,12 @@ async def test_approve_submits_paper_order(tmp_path: Path) -> None:
     mock_safety = MagicMock()
     mock_safety.get_status.return_value = {"kill_switch_active": False}
     mock_safety.submit_paper_order = AsyncMock(
-        return_value={"approved": True, "order_id": "TEST-42", "fill_id": "TEST-42"}
+        return_value={
+            "approved": True,
+            "routed_to_ib": True,
+            "order_id": "TEST-42",
+            "fill_id": "TEST-42",
+        }
     )
 
     import routers.approval_queue_router as mod
@@ -200,7 +205,7 @@ async def test_approve_records_to_shared_dedup(tmp_path: Path) -> None:
     mock_safety = MagicMock()
     mock_safety.get_status.return_value = {"kill_switch_active": False}
     mock_safety.submit_paper_order = AsyncMock(
-        return_value={"approved": True, "order_id": "TEST-77"}
+        return_value={"approved": True, "routed_to_ib": True, "order_id": "TEST-77"}
     )
 
     import routers.approval_queue_router as mod
@@ -390,7 +395,7 @@ async def test_approve_writes_ledger_with_stop_and_target(tmp_path: Path) -> Non
     mock_safety = MagicMock()
     mock_safety.get_status.return_value = {"kill_switch_active": False}
     mock_safety.submit_paper_order = AsyncMock(
-        return_value={"approved": True, "order_id": "TEST-LEDGER-1"}
+        return_value={"approved": True, "routed_to_ib": True, "order_id": "TEST-LEDGER-1"}
     )
     mock_tracker = MagicMock()
     mock_tracker.add_paper_trade = MagicMock(return_value="trade-abc123")
@@ -445,7 +450,7 @@ async def test_approve_ledger_failure_does_not_fail_order(tmp_path: Path) -> Non
     mock_safety = MagicMock()
     mock_safety.get_status.return_value = {"kill_switch_active": False}
     mock_safety.submit_paper_order = AsyncMock(
-        return_value={"approved": True, "order_id": "TEST-LEDGER-2"}
+        return_value={"approved": True, "routed_to_ib": True, "order_id": "TEST-LEDGER-2"}
     )
     mock_tracker = MagicMock()
     mock_tracker.add_paper_trade = MagicMock(side_effect=RuntimeError("db locked"))
@@ -476,6 +481,66 @@ async def test_approve_ledger_failure_does_not_fail_order(tmp_path: Path) -> Non
         candidate = _get_candidate(db_path, row_id)
         assert candidate["status"] == "approved"
         assert candidate["order_id"] == "TEST-LEDGER-2"
+    finally:
+        mod._safety_layer = original_sl
+        mod._db_path = original_db
+        mod._dedup = original_dedup
+        mod._paper_tracker = original_tracker
+
+
+@pytest.mark.asyncio
+async def test_approve_not_routed_fails_closed(tmp_path: Path) -> None:
+    """2026-10-26 phantom row 346: safety passed (approved=True) but the broker
+    call raised, so routed_to_ib=False. The approve path must not write a
+    paper_trades row, must not claim the cross-path dedup slot, and must mark
+    the candidate rejected."""
+    db_path = _fresh_db(tmp_path)
+    row_id = _insert_via_sql(db_path, symbol="MES", direction="LONG", confidence=0.75)
+
+    mock_safety = MagicMock()
+    mock_safety.get_status.return_value = {"kill_switch_active": False}
+    mock_safety.submit_paper_order = AsyncMock(
+        return_value={
+            "approved": True,
+            "routed_to_ib": False,
+            "order_id": None,
+            "reason": "Safety checks passed but IB order failed: unexpected keyword 'take_profit'",
+        }
+    )
+    mock_tracker = MagicMock()
+
+    import routers.approval_queue_router as mod
+    from execution.submission_dedup import SubmissionDedup
+
+    dedup = SubmissionDedup(Path(tmp_path) / "dedup_not_routed.jsonl")
+    original_sl = mod._safety_layer
+    original_db = mod._db_path
+    original_dedup = mod._dedup
+    original_tracker = mod._paper_tracker
+    try:
+        mod._safety_layer = mock_safety
+        mod._db_path = db_path
+        mod._dedup = dedup
+        mod._paper_tracker = mock_tracker
+
+        with (
+            patch("routers.approval_queue_router._get_live_trading_enabled", return_value=False),
+            patch("backtest.gate_v2_policy.is_strategy_authorized", return_value=(True, "authorized")),
+        ):
+            from routers.approval_queue_router import ApproveBody, approve_candidate
+
+            with pytest.raises(HTTPException) as exc_info:
+                await approve_candidate(row_id, ApproveBody(entry_price=7671.25))
+
+        assert exc_info.value.status_code == 502
+        mock_tracker.add_paper_trade.assert_not_called()
+        today = datetime.now(timezone.utc).date()
+        assert dedup.already_submitted(dedup.make_key("MES", "BUY", today)) is False
+        with sqlite3.connect(db_path) as conn:
+            status = conn.execute(
+                "SELECT status FROM pipeline_approval_queue WHERE id=?", (row_id,)
+            ).fetchone()[0]
+        assert status == "rejected"
     finally:
         mod._safety_layer = original_sl
         mod._db_path = original_db

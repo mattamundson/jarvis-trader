@@ -180,6 +180,20 @@ class RiskCheckResult:
     adjusted_order: Optional[OrderRequest] = None  # Order with position size adjusted for losses
 
 
+def _is_real_ib_gateway(gateway: object) -> bool:
+    """True when the attached gateway is the real IB broker (IBGatewayManager).
+
+    Lazy import so the simulator path never pulls ib_async.
+    """
+    if gateway is None:
+        return False
+    try:
+        from execution.ib_gateway import IBGatewayManager
+    except Exception:
+        return False
+    return isinstance(gateway, IBGatewayManager)
+
+
 class SafetyLayer:
     """
     Non-LLM risk management. Every order MUST pass through here.
@@ -1875,6 +1889,17 @@ class SafetyLayer:
                 "quantity": final_quantity,
             }
 
+        if _is_real_ib_gateway(self._ib_gateway):
+            return await self._submit_real_ib_bracket(
+                symbol=symbol,
+                action_upper=action_upper,
+                quantity=final_quantity,
+                order_type=order_type,
+                limit_price=limit_price,
+                stop_price=stop_price,
+                take_profit=take_profit,
+            )
+
         try:
             order_id = await self._ib_gateway.place_paper_order(
                 symbol=symbol,
@@ -1927,6 +1952,90 @@ class SafetyLayer:
                 "routed_to_ib": False,
                 "quantity": final_quantity,
             }
+
+    async def _submit_real_ib_bracket(
+        self,
+        symbol: str,
+        action_upper: str,
+        quantity: int,
+        order_type: str,
+        limit_price: float | None,
+        stop_price: float | None,
+        take_profit: float | None,
+    ) -> dict:
+        """Route an already-approved order to the real IB paper broker as one bracket.
+
+        IBGatewayManager.place_paper_order() takes no ``take_profit`` and transmits
+        the entry immediately, so the stop child could not be linked atomically.
+        place_bracket_order() stages entry + OCA stop/target with transmit
+        sequencing. Same result contract as the place_paper_order path: a failure
+        returns approved=True (safety passed) with routed_to_ib=False, which
+        callers must treat as "nothing placed". An order without a stop is
+        refused rather than sent naked to the broker.
+        """
+        if stop_price is None:
+            logger.error(
+                "submit_paper_order: real IB order refused - symbol=%s has no stop_price", symbol
+            )
+            return {
+                "approved": True,
+                "reason": "Safety checks passed but real IB order refused: no stop_price",
+                "order_id": None,
+                "routed_to_ib": False,
+                "quantity": quantity,
+            }
+        try:
+            result = await self._ib_gateway.place_bracket_order(
+                symbol=symbol,
+                action=action_upper,
+                quantity=quantity,
+                entry_type=order_type.upper(),
+                limit_price=limit_price,
+                stop_loss=stop_price,
+                take_profit=take_profit,
+            )
+        except Exception as exc:
+            logger.error(
+                "submit_paper_order: real IB place_bracket_order raised - symbol=%s: %s",
+                symbol,
+                exc,
+                exc_info=True,
+            )
+            result = {"status": "error", "error": str(exc)}
+
+        if isinstance(result, dict) and result.get("status") == "placed":
+            entry_id = result.get("entry_id")
+            logger.info(
+                "submit_paper_order ROUTED bracket to IB Gateway (paper) - symbol=%s "
+                "action=%s qty=%d entry_id=%s sl_id=%s tp_id=%s",
+                symbol,
+                action_upper,
+                quantity,
+                entry_id,
+                result.get("sl_id"),
+                result.get("tp_id"),
+            )
+            return {
+                "approved": True,
+                "reason": "Bracket submitted to IB Gateway (paper trading)",
+                "order_id": str(entry_id) if entry_id is not None else None,
+                "stop_order_id": result.get("sl_id"),
+                "target_order_id": result.get("tp_id"),
+                "routed_to_ib": True,
+                "quantity": quantity,
+            }
+
+        error = result.get("error") if isinstance(result, dict) else result
+        logger.error(
+            "submit_paper_order: real IB bracket NOT placed - symbol=%s: %s", symbol, error
+        )
+        return {
+            "approved": True,
+            "reason": f"Safety checks passed but IB bracket placement failed: {error}",
+            "order_id": None,
+            "routed_to_ib": False,
+            "quantity": quantity,
+        }
 
     async def submit_paper_bracket_order(
         self,
