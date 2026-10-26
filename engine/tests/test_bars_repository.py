@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 import sys
 import tempfile
 from datetime import datetime, timezone
@@ -22,8 +23,6 @@ from data.bars_repository import latest_bar, load_bars, save_bars
 
 def _make_db(tmp_path: Path) -> Path:
     """Create a minimal SQLite DB with the market_data_bars table."""
-    import sqlite3
-
     db = tmp_path / "test.db"
     conn = sqlite3.connect(str(db))
     conn.execute("PRAGMA journal_mode=WAL")
@@ -47,6 +46,39 @@ def _make_db(tmp_path: Path) -> Path:
     conn.commit()
     conn.close()
     return db
+
+
+def _stored_bar(db: Path, symbol: str, interval: str, ts_utc: str) -> dict:
+    conn = sqlite3.connect(str(db))
+    conn.row_factory = sqlite3.Row
+    try:
+        row = conn.execute(
+            "SELECT * FROM market_data_bars "
+            "WHERE symbol=? AND interval=? AND ts_utc=?",
+            (symbol, interval, ts_utc),
+        ).fetchone()
+        assert row is not None
+        return dict(row)
+    finally:
+        conn.close()
+
+
+def _one_bar(
+    timestamp: datetime,
+    *,
+    close: float = 4038.0,
+    volume: float | None = 3231.0,
+) -> pd.DataFrame:
+    return pd.DataFrame(
+        [{
+            "timestamp": timestamp,
+            "open": 4034.0,
+            "high": 4042.0,
+            "low": 4030.0,
+            "close": close,
+            "volume": float("nan") if volume is None else volume,
+        }]
+    )
 
 
 def _make_bars(n: int = 5, symbol: str = "MES", start_hour: int = 9) -> pd.DataFrame:
@@ -97,11 +129,205 @@ def test_save_idempotent(tmp_path):
     second = save_bars(df, "MES", "1h", "ibkr", db_path=db)  # same ts, different source
 
     assert first == 3
-    # INSERT OR IGNORE — all 3 rows already exist, 0 new rows
+    # Finalized duplicate rows are immutable and remain a no-op.
     assert second == 0
 
     loaded = load_bars("MES", "1h", db_path=db)
     assert len(loaded) == 3  # no duplicates
+
+
+def test_newer_snapshot_refreshes_provisional_mgc_hour(monkeypatch, tmp_path):
+    """A newer fetch may refine one still-forming bar without duplicating it."""
+    from data import bars_repository
+
+    db = _make_db(tmp_path)
+    timestamp = datetime(2026, 10, 22, 20, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(bars_repository, "_utcnow_iso", lambda: "2026-10-22T20:31:00")
+    assert save_bars(_one_bar(timestamp), "MGC", "1h", "ibkr", db_path=db) == 1
+
+    monkeypatch.setattr(bars_repository, "_utcnow_iso", lambda: "2026-10-22T20:40:00")
+    revised = _one_bar(timestamp, close=4037.8, volume=3545.0)
+    assert save_bars(revised, "MGC", "1h", "ibkr", db_path=db) == 1
+
+    loaded = load_bars("MGC", "1h", db_path=db)
+    assert len(loaded) == 1
+    assert float(loaded.iloc[0]["close"]) == pytest.approx(4037.8)
+    assert float(loaded.iloc[0]["volume"]) == pytest.approx(3545.0)
+
+
+def test_finalized_hour_is_immutable(monkeypatch, tmp_path):
+    """A row first fetched at bar end is final and cannot be rewritten."""
+    from data import bars_repository
+
+    db = _make_db(tmp_path)
+    timestamp = datetime(2026, 10, 22, 20, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(bars_repository, "_utcnow_iso", lambda: "2026-10-22T21:00:00")
+    assert save_bars(_one_bar(timestamp), "MGC", "1h", "ibkr", db_path=db) == 1
+
+    monkeypatch.setattr(bars_repository, "_utcnow_iso", lambda: "2026-10-22T21:05:00")
+    revised = _one_bar(timestamp, close=4040.0, volume=4000.0)
+    assert save_bars(revised, "MGC", "1h", "tv", db_path=db) == 0
+
+    stored = _stored_bar(db, "MGC", "1h", "2026-10-22T20:00:00")
+    assert stored["close"] == pytest.approx(4038.0)
+    assert stored["volume"] == pytest.approx(3231.0)
+    assert stored["source"] == "ibkr"
+    assert stored["fetched_at"] == "2026-10-22T21:00:00"
+
+
+def test_post_close_refresh_finalizes_then_freezes_hour(monkeypatch, tmp_path):
+    """The first post-close revision finalizes a provisional row exactly once."""
+    from data import bars_repository
+
+    db = _make_db(tmp_path)
+    timestamp = datetime(2026, 10, 22, 20, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(bars_repository, "_utcnow_iso", lambda: "2026-10-22T20:31:00")
+    assert save_bars(_one_bar(timestamp), "MGC", "1h", "ibkr", db_path=db) == 1
+
+    monkeypatch.setattr(bars_repository, "_utcnow_iso", lambda: "2026-10-22T21:05:00")
+    finalized = _one_bar(timestamp, close=4037.8, volume=3545.0)
+    assert save_bars(finalized, "MGC", "1h", "ibkr", db_path=db) == 1
+
+    monkeypatch.setattr(bars_repository, "_utcnow_iso", lambda: "2026-10-22T21:10:00")
+    late_conflict = _one_bar(timestamp, close=4040.0, volume=4000.0)
+    assert save_bars(late_conflict, "MGC", "1h", "tv", db_path=db) == 0
+
+    stored = _stored_bar(db, "MGC", "1h", "2026-10-22T20:00:00")
+    assert stored["close"] == pytest.approx(4037.8)
+    assert stored["volume"] == pytest.approx(3545.0)
+    assert stored["source"] == "ibkr"
+    assert stored["fetched_at"] == "2026-10-22T21:05:00"
+
+
+def test_identical_post_close_snapshot_finalizes_hour(monkeypatch, tmp_path):
+    """A post-close confirmation freezes the row even when OHLCV is unchanged."""
+    from data import bars_repository
+
+    db = _make_db(tmp_path)
+    timestamp = datetime(2026, 10, 22, 20, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(bars_repository, "_utcnow_iso", lambda: "2026-10-22T20:31:00")
+    assert save_bars(_one_bar(timestamp), "MGC", "1h", "ibkr", db_path=db) == 1
+
+    monkeypatch.setattr(bars_repository, "_utcnow_iso", lambda: "2026-10-22T21:05:00")
+    assert save_bars(_one_bar(timestamp), "MGC", "1h", "ibkr", db_path=db) == 1
+
+    monkeypatch.setattr(bars_repository, "_utcnow_iso", lambda: "2026-10-22T21:10:00")
+    late_conflict = _one_bar(timestamp, close=4040.0, volume=4000.0)
+    assert save_bars(late_conflict, "MGC", "1h", "tv", db_path=db) == 0
+
+    stored = _stored_bar(db, "MGC", "1h", "2026-10-22T20:00:00")
+    assert stored["close"] == pytest.approx(4038.0)
+    assert stored["volume"] == pytest.approx(3231.0)
+    assert stored["fetched_at"] == "2026-10-22T21:05:00"
+
+
+def test_older_snapshot_cannot_replace_newer_provisional_snapshot(monkeypatch, tmp_path):
+    from data import bars_repository
+
+    db = _make_db(tmp_path)
+    timestamp = datetime(2026, 10, 22, 20, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(bars_repository, "_utcnow_iso", lambda: "2026-10-22T20:45:00")
+    newer = _one_bar(timestamp, close=4037.8, volume=3545.0)
+    assert save_bars(newer, "MGC", "1h", "ibkr", db_path=db) == 1
+
+    monkeypatch.setattr(bars_repository, "_utcnow_iso", lambda: "2026-10-22T20:30:00")
+    assert save_bars(_one_bar(timestamp), "MGC", "1h", "tv", db_path=db) == 0
+
+    stored = _stored_bar(db, "MGC", "1h", "2026-10-22T20:00:00")
+    assert stored["close"] == pytest.approx(4037.8)
+    assert stored["volume"] == pytest.approx(3545.0)
+    assert stored["fetched_at"] == "2026-10-22T20:45:00"
+
+
+def test_identical_provisional_repeat_is_noop(monkeypatch, tmp_path):
+    from data import bars_repository
+
+    db = _make_db(tmp_path)
+    timestamp = datetime(2026, 10, 22, 20, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(bars_repository, "_utcnow_iso", lambda: "2026-10-22T20:31:00")
+    assert save_bars(_one_bar(timestamp), "MGC", "1h", "ibkr", db_path=db) == 1
+
+    monkeypatch.setattr(bars_repository, "_utcnow_iso", lambda: "2026-10-22T20:40:00")
+    assert save_bars(_one_bar(timestamp), "MGC", "1h", "ibkr", db_path=db) == 0
+
+    stored = _stored_bar(db, "MGC", "1h", "2026-10-22T20:00:00")
+    assert stored["fetched_at"] == "2026-10-22T20:31:00"
+
+
+def test_null_volume_refresh_preserves_known_volume(monkeypatch, tmp_path):
+    from data import bars_repository
+
+    db = _make_db(tmp_path)
+    timestamp = datetime(2026, 10, 22, 20, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(bars_repository, "_utcnow_iso", lambda: "2026-10-22T20:31:00")
+    assert save_bars(_one_bar(timestamp), "MGC", "1h", "ibkr", db_path=db) == 1
+
+    monkeypatch.setattr(bars_repository, "_utcnow_iso", lambda: "2026-10-22T20:40:00")
+    no_volume = _one_bar(timestamp, close=4037.8, volume=None)
+    assert save_bars(no_volume, "MGC", "1h", "ibkr", db_path=db) == 1
+
+    stored = _stored_bar(db, "MGC", "1h", "2026-10-22T20:00:00")
+    assert stored["close"] == pytest.approx(4037.8)
+    assert stored["volume"] == pytest.approx(3231.0)
+
+
+@pytest.mark.parametrize("interval", ["5m", "2h"])
+def test_non_refreshable_interval_conflicts_remain_insert_ignore(
+    interval, monkeypatch, tmp_path
+):
+    from data import bars_repository
+
+    db = _make_db(tmp_path)
+    timestamp = datetime(2026, 10, 22, 20, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(bars_repository, "_utcnow_iso", lambda: "2026-10-22T20:31:00")
+    assert save_bars(_one_bar(timestamp), "MGC", interval, "ibkr", db_path=db) == 1
+
+    monkeypatch.setattr(bars_repository, "_utcnow_iso", lambda: "2026-10-22T20:40:00")
+    revised = _one_bar(timestamp, close=4037.8, volume=3545.0)
+    assert save_bars(revised, "MGC", interval, "ibkr", db_path=db) == 0
+
+    stored = _stored_bar(db, "MGC", interval, "2026-10-22T20:00:00")
+    assert stored["close"] == pytest.approx(4038.0)
+    assert stored["volume"] == pytest.approx(3231.0)
+
+
+def test_mixed_batch_refreshes_only_provisional_hour(monkeypatch, tmp_path):
+    from data import bars_repository
+
+    db = _make_db(tmp_path)
+    finalized_ts = datetime(2026, 10, 22, 19, tzinfo=timezone.utc)
+    provisional_ts = datetime(2026, 10, 22, 20, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(bars_repository, "_utcnow_iso", lambda: "2026-10-22T20:05:00")
+    assert save_bars(_one_bar(finalized_ts), "MGC", "1h", "ibkr", db_path=db) == 1
+
+    monkeypatch.setattr(bars_repository, "_utcnow_iso", lambda: "2026-10-22T20:31:00")
+    assert save_bars(_one_bar(provisional_ts), "MGC", "1h", "ibkr", db_path=db) == 1
+
+    revised_batch = pd.concat(
+        [
+            _one_bar(finalized_ts, close=4040.0, volume=4000.0),
+            _one_bar(provisional_ts, close=4037.8, volume=3545.0),
+        ],
+        ignore_index=True,
+    )
+    monkeypatch.setattr(bars_repository, "_utcnow_iso", lambda: "2026-10-22T20:40:00")
+    assert save_bars(revised_batch, "MGC", "1h", "ibkr", db_path=db) == 1
+
+    finalized = _stored_bar(db, "MGC", "1h", "2026-10-22T19:00:00")
+    provisional = _stored_bar(db, "MGC", "1h", "2026-10-22T20:00:00")
+    assert finalized["close"] == pytest.approx(4038.0)
+    assert finalized["volume"] == pytest.approx(3231.0)
+    assert provisional["close"] == pytest.approx(4037.8)
+    assert provisional["volume"] == pytest.approx(3545.0)
 
 
 # ---------------------------------------------------------------------------

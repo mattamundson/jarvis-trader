@@ -972,8 +972,10 @@ def migration_024(conn: sqlite3.Connection) -> None:
     post-trade report can re-run signal generators on actual bar history
     (counterfactual + tomorrow's outlook sections).
 
-    PRIMARY KEY (symbol, interval, ts_utc) makes double-inserts a no-op via
-    INSERT OR IGNORE.  WAL mode on the main DB keeps bar writes non-blocking.
+    PRIMARY KEY (symbol, interval, ts_utc) centralizes conflict handling in
+    data.bars_repository.save_bars. Finalized rows remain immutable; narrowly
+    supported forming intervals may refresh a provisional snapshot atomically.
+    WAL mode on the main DB keeps bar writes non-blocking.
     """
     conn.execute(
         """
