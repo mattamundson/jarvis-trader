@@ -119,3 +119,40 @@ async def test_modify_order_returns_error_on_real_gateway():
     out = await router.modify_order("abc", 5700.0)
     assert out["status"] == "error"
     assert "modify_order" in out["reason"]
+
+
+# ── lifespan price-source wiring (2026-10-26 boot crash) ─────────────────────
+
+
+def test_real_manager_has_no_attach_market_data_and_wiring_skips_it():
+    """The real manager must not crash the lifespan's price-source wiring.
+
+    Regression: main.py called ``attach_market_data`` unconditionally, so the
+    first IB_PAPER_BROKER_ENABLED=1 boot died with AttributeError.
+    """
+    from execution.ib_gateway import IBGatewayManager
+    from execution.order_gateway_factory import build_order_gateway, wire_paper_price_source
+
+    gw = build_order_gateway(_Settings(IB_PAPER_BROKER_ENABLED=True), safety_layer=object())
+    assert isinstance(gw, IBGatewayManager)
+    assert wire_paper_price_source(gw, data_manager=object()) is False
+
+
+def test_simulator_price_source_is_wired():
+    from execution.order_gateway_factory import wire_paper_price_source
+
+    calls = []
+
+    class _Sim:
+        def attach_market_data(self, dm):
+            calls.append(dm)
+
+    dm = object()
+    assert wire_paper_price_source(_Sim(), dm) is True
+    assert calls == [dm]
+
+
+def test_no_gateway_is_a_noop():
+    from execution.order_gateway_factory import wire_paper_price_source
+
+    assert wire_paper_price_source(None, data_manager=object()) is False
