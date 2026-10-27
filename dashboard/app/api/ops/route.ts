@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { OpsFeedData } from "@/lib/opsTypes";
+import { isOpsEnabled } from "@/lib/opsAuth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -64,6 +65,13 @@ function getFakeFixture(): OpsFeedData {
 }
 
 export async function GET() {
+  if (!isOpsEnabled()) {
+    return NextResponse.json(
+      { error: "ops_disabled" },
+      { status: 404 }
+    );
+  }
+
   const feedUrl = getOpsFeedUrl();
 
   if (!feedUrl) {
