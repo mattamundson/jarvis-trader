@@ -77,7 +77,6 @@ export const ROUTES: RouteSpec[] = [
   { path: "/data-integrity", name: "data integrity", kind: "page", criticality: "standard", landmark: /Data Integrity/i },
   { path: "/framing-brief", name: "framing brief", kind: "page", criticality: "standard", landmark: /Morning Framing Brief/i },
   { path: "/market-brief-public", name: "public market brief", kind: "page", criticality: "standard", landmark: /JARVIS Market Brief/i },
-  { path: "/jarvis", name: "ask jarvis", kind: "page", criticality: "standard", landmark: /JARVIS COMMAND CENTER/i },
   { path: "/master", name: "master jarvis", kind: "page", criticality: "standard", landmark: /Master Jarvis/i },
   { path: "/master/finances", name: "master finances", kind: "page", criticality: "standard", landmark: /Finances/i },
   { path: "/master/trading", name: "master trading", kind: "page", criticality: "standard", landmark: /Trading/i },
@@ -85,7 +84,6 @@ export const ROUTES: RouteSpec[] = [
   { path: "/signal-outcomes", name: "signal outcomes", kind: "page", criticality: "standard", landmark: /Signal Outcomes/i },
   { path: "/atr-trail", name: "atr trail", kind: "page", criticality: "standard", landmark: /ATR-Trail Strategy/i },
   { path: "/strategy-ledger", name: "strategy ledger", kind: "page", criticality: "standard", landmark: /Strategy Ledger/i },
-  { path: "/parallel-paper", name: "parallel paper", kind: "page", criticality: "standard", landmark: /Parallel Paper A\/B Comparison/i },
   { path: "/strategy-c-command", name: "strategy c command", kind: "page", criticality: "standard", landmark: null },
   { path: "/pipeline-board", name: "pipeline board", kind: "page", criticality: "standard", landmark: /Pipeline Board/i },
   { path: "/vault", name: "vault", kind: "page", criticality: "standard", landmark: /Vault/i },
@@ -96,7 +94,6 @@ export const ROUTES: RouteSpec[] = [
   { path: "/backtest", name: "backtest results", kind: "page", criticality: "research", landmark: /JARVIS TRADER . Backtest Results/i },
   { path: "/strategy-research", name: "strategy research", kind: "page", criticality: "research", landmark: /Strategy Research/i },
   { path: "/research-log", name: "research log", kind: "page", criticality: "research", landmark: /RESEARCH JOURNAL/i },
-  { path: "/journal-review", name: "journal review", kind: "page", criticality: "research", landmark: null },
   { path: "/learning", name: "learning", kind: "page", criticality: "research", landmark: null },
   { path: "/kairos", name: "kairos", kind: "page", criticality: "research", landmark: null },
   { path: "/hidden-pivots", name: "hidden pivots", kind: "page", criticality: "research", landmark: null },
@@ -107,7 +104,14 @@ export const ROUTES: RouteSpec[] = [
   { path: "/strategy-c", name: "strategy c", kind: "page", criticality: "research", landmark: null },
   { path: "/thinkscript", name: "thinkscript", kind: "page", criticality: "research", landmark: /ThinkScript/i },
 
-  { path: "/domflow", name: "domflow", kind: "page", criticality: "research", landmark: /MES DOM \/ Order-Flow/i },
+  // ---- legacy pages (archived in (legacy) route group, URL-invisible) ------
+  { path: "/domflow", name: "domflow legacy", kind: "page", criticality: "research", landmark: /MES DOM \/ Order-Flow/i },
+  { path: "/jarvis", name: "jarvis legacy", kind: "page", criticality: "standard", landmark: /JARVIS COMMAND CENTER/i },
+  { path: "/journal-review", name: "journal review legacy", kind: "page", criticality: "research", landmark: null },
+  { path: "/parallel-paper", name: "parallel paper legacy", kind: "page", criticality: "standard", landmark: /Parallel Paper A\/B Comparison/i },
+
+  // ---- new pages -----------------------------------------------------------
+  { path: "/setup-scorecard", name: "setup scorecard", kind: "page", criticality: "standard", landmark: /Setup Scorecard/i },
 
   // ---- dynamic -------------------------------------------------------------
   { path: "/trades/[id]/review", name: "trade review", kind: "dynamic", criticality: "critical", landmark: null, samplePath: "/trades/1/review" },
