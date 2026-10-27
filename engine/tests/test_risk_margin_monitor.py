@@ -167,3 +167,89 @@ class TestFetchAccountSnapshot:
         monitor = _monitor(connector=connector)
         snapshot = await monitor._fetch_account_snapshot()
         assert snapshot is None
+
+
+@pytest.mark.asyncio
+class TestPersistedPeakSource:
+    """2026-09-10 drawdown metric-source reconciliation (safety-review PR)."""
+
+    async def test_persisted_peak_used_when_pnl_monitor_injected(self):
+        """Drawdown must come from PnLMonitor's persisted peak, not process peak."""
+        connector = AsyncMock()
+        connector.get_account_summary.return_value = {
+            "equity": 13181.32,
+            "buying_power": 40000.0,
+            "margin_used": 0.0,
+        }
+        pnl_monitor = MagicMock()
+        # Persisted 90d high-water mark (2026-08-03 peak from daily_pnl)
+        pnl_monitor.get_peak_balance.return_value = 15057.89
+        monitor = _monitor(connector=connector, pnl_monitor=pnl_monitor)
+        result = await monitor.check_health()
+        metrics = result["metrics"]
+        # (15057.89 - 13181.32) / 15057.89 * 100 = 12.46%
+        assert abs(metrics["drawdown_pct"] - 12.46) < 0.05
+        assert result["status"] == "CRITICAL"
+        assert "DRAWDOWN" in result["message"]
+
+    async def test_pnl_monitor_exception_falls_back_to_process_peak(self):
+        """If PnLMonitor.get_peak_balance throws, use in-process peak."""
+        connector = AsyncMock()
+        connector.get_account_summary.return_value = {
+            "equity": 9100.0,
+            "buying_power": 36400.0,
+            "margin_used": 0.0,
+        }
+        pnl_monitor = MagicMock()
+        pnl_monitor.get_peak_balance.side_effect = RuntimeError("db unavailable")
+        monitor = _monitor(connector=connector, pnl_monitor=pnl_monitor, max_drawdown_pct=8.0)
+        # First call sets in-process peak at 10k
+        connector.get_account_summary.return_value = {
+            "equity": 10000.0,
+            "buying_power": 40000.0,
+            "margin_used": 0.0,
+        }
+        await monitor.check_health()
+        # Second call: equity drops; persisted peak throws -> process peak path
+        connector.get_account_summary.return_value = {
+            "equity": 9100.0,
+            "buying_power": 36400.0,
+            "margin_used": 0.0,
+        }
+        result = await monitor.check_health()
+        assert result["metrics"]["drawdown_pct"] == pytest.approx(9.0, abs=0.01)
+        assert result["status"] == "CRITICAL"
+
+    async def test_persisted_peak_zero_falls_back_to_process_peak(self):
+        """If persisted peak returns 0 (no DB rows), use in-process peak."""
+        connector = AsyncMock()
+        connector.get_account_summary.return_value = {
+            "equity": 10000.0,
+            "buying_power": 40000.0,
+            "margin_used": 0.0,
+        }
+        pnl_monitor = MagicMock()
+        pnl_monitor.get_peak_balance.return_value = 0.0
+        monitor = _monitor(connector=connector, pnl_monitor=pnl_monitor)
+        result = await monitor.check_health()
+        # Peak == equity -> 0% drawdown via process peak fallback
+        assert result["metrics"]["drawdown_pct"] == 0.0
+        assert result["status"] == "HEALTHY"
+
+    async def test_no_pnl_monitor_preserves_legacy_behavior(self):
+        """Without injection, behavior is identical to pre-change (regression guard)."""
+        connector = AsyncMock()
+        connector.get_account_summary.return_value = {
+            "equity": 10000.0,
+            "buying_power": 40000.0,
+            "margin_used": 0.0,
+        }
+        monitor = _monitor(connector=connector)
+        await monitor.check_health()
+        connector.get_account_summary.return_value = {
+            "equity": 9100.0,
+            "buying_power": 36400.0,
+            "margin_used": 0.0,
+        }
+        result = await monitor.check_health()
+        assert result["metrics"]["drawdown_pct"] == pytest.approx(9.0, abs=0.01)
