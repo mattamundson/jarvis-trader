@@ -17,6 +17,10 @@ function isPublicReadOnlyPath(pathname: string | null): boolean {
   return pathname === "/market-brief-public" || pathname?.startsWith("/market-brief-public/") === true;
 }
 
+function isTapePath(pathname: string | null): boolean {
+  return pathname === "/tape" || pathname?.startsWith("/tape/") === true;
+}
+
 function isMissionControlPath(pathname: string | null): boolean {
   return pathname === "/mission-control" || pathname?.startsWith("/mission-control/") === true;
 }
@@ -24,7 +28,8 @@ function isMissionControlPath(pathname: string | null): boolean {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
-  if (isPublicReadOnlyPath(pathname)) {
+  // /tape is a standalone read-only terminal view: no engine providers, no sidebar, no account surfaces.
+  if (isPublicReadOnlyPath(pathname) || isTapePath(pathname)) {
     return <main className="min-h-screen bg-background">{children}</main>;
   }
 

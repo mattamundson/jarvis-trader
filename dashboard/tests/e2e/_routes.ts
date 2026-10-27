@@ -107,6 +107,7 @@ export const ROUTES: RouteSpec[] = [
   { path: "/strategy-c", name: "strategy c", kind: "page", criticality: "research", landmark: null },
   { path: "/thinkscript", name: "thinkscript", kind: "page", criticality: "research", landmark: /ThinkScript/i },
 
+  { path: "/tape", name: "tape order flow", kind: "page", criticality: "standard", landmark: /TAPE . ORDER FLOW/i },
   { path: "/domflow", name: "domflow", kind: "page", criticality: "research", landmark: /MES DOM \/ Order-Flow/i },
 
   // ---- dynamic -------------------------------------------------------------
