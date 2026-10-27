@@ -3,7 +3,7 @@
 export interface HermesCleanSessions {
   have: number;
   need: number;
-  met: boolean;
+  met: boolean | string;
 }
 
 export interface HermesScoredSetups {
@@ -59,6 +59,7 @@ export interface HermesStrike {
   date: string;
   bans: string;
   status: string;
+  method_note?: string;
 }
 
 export interface HermesGatesData {

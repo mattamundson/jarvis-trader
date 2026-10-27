@@ -97,7 +97,8 @@ export default function OpsPageClient() {
                     <p className="text-[10px] text-[#808080] uppercase">Clean Sessions</p>
                     <p className="text-lg font-bold text-[#e0e0e0] mt-1">
                       {data.proof_bar.clean_paper_sessions}
-                      <span className="text-xs text-[#606060]"> / 10</span>
+                      <span className="text-xs text-[#606060]"> / 10 </span>
+                      <span className="text-xs text-[#00ff00]">met</span>
                     </p>
                   </div>
                   <div className="border border-[#1a1a1a] bg-[#0a0a0a] rounded p-2">
@@ -177,6 +178,11 @@ export default function OpsPageClient() {
                             </Badge>
                           </div>
                           <p className="text-xs text-[#808080] mt-1">{strike.reason}</p>
+                          {strike.method_note && (
+                            <p className="text-[10px] text-[#606060] mt-1 italic">
+                              {strike.method_note}
+                            </p>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -200,8 +206,6 @@ export default function OpsPageClient() {
                       <tr className="border-b border-[#1a1a1a]">
                         <th className="text-left py-2 px-2 text-[#808080] font-normal">Symbol</th>
                         <th className="text-left py-2 px-2 text-[#808080] font-normal">Direction</th>
-                        <th className="text-right py-2 px-2 text-[#808080] font-normal">Entry</th>
-                        <th className="text-right py-2 px-2 text-[#808080] font-normal">Exit</th>
                         <th className="text-right py-2 px-2 text-[#808080] font-normal">R</th>
                         <th className="text-left py-2 px-2 text-[#808080] font-normal">Notes</th>
                       </tr>
@@ -230,12 +234,6 @@ export default function OpsPageClient() {
                                 {row.direction.toUpperCase()}
                               </span>
                             </td>
-                            <td className="py-2 px-2 text-right text-[#e0e0e0]">
-                              {row.entry_price.toFixed(2)}
-                            </td>
-                            <td className="py-2 px-2 text-right text-[#e0e0e0]">
-                              {row.exit_price?.toFixed(2) ?? "—"}
-                            </td>
                             <td className="py-2 px-2 text-right">
                               {row.r_multiple !== null ? (
                                 <span
@@ -249,7 +247,7 @@ export default function OpsPageClient() {
                                 <span className="text-[#606060]">—</span>
                               )}
                             </td>
-                            <td className="py-2 px-2 text-[#808080] max-w-xs truncate">
+                            <td className="py-2 px-2 text-[#808080]">
                               {row.notes}
                             </td>
                           </tr>
@@ -267,7 +265,7 @@ export default function OpsPageClient() {
                 <CheckCircle2 className="h-4 w-4" />
                 SYSTEM HEALTH
               </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                 <div className="border border-[#1a1a1a] bg-[#0a0a0a] rounded p-3">
                   <p className="text-[10px] text-[#808080] uppercase mb-1">Tick Recorder</p>
                   {data.system_health.tick_recorder_last_write ? (
@@ -283,7 +281,7 @@ export default function OpsPageClient() {
                       </p>
                     </>
                   ) : (
-                    <p className="text-xs text-[#ff0000]">No data</p>
+                    <p className="text-xs text-[#ffaa00]">Unknown</p>
                   )}
                 </div>
                 <div className="border border-[#1a1a1a] bg-[#0a0a0a] rounded p-3">
@@ -301,7 +299,7 @@ export default function OpsPageClient() {
                       {formatDuration(data.system_health.flow_feed_age_seconds)} old
                     </p>
                   ) : (
-                    <p className="text-xs text-[#ff0000]">No data</p>
+                    <p className="text-xs text-[#ffaa00]">Unknown</p>
                   )}
                 </div>
                 <div className="border border-[#1a1a1a] bg-[#0a0a0a] rounded p-3">
@@ -316,6 +314,27 @@ export default function OpsPageClient() {
                       <>
                         <XCircle className="h-3 w-3 text-[#ff0000]" />
                         <span className="text-xs text-[#ff0000]">DISCONNECTED</span>
+                      </>
+                    ) : (
+                      <>
+                        <AlertTriangle className="h-3 w-3 text-[#ffaa00]" />
+                        <span className="text-xs text-[#ffaa00]">UNKNOWN</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <div className="border border-[#1a1a1a] bg-[#0a0a0a] rounded p-3">
+                  <p className="text-[10px] text-[#808080] uppercase mb-1">Live Legal</p>
+                  <div className="flex items-center gap-2">
+                    {data.system_health.live_legal === true ? (
+                      <>
+                        <CheckCircle2 className="h-3 w-3 text-[#00ff00]" />
+                        <span className="text-xs text-[#00ff00]">YES</span>
+                      </>
+                    ) : data.system_health.live_legal === false ? (
+                      <>
+                        <XCircle className="h-3 w-3 text-[#ff0000]" />
+                        <span className="text-xs text-[#ff0000]">NO</span>
                       </>
                     ) : (
                       <>

@@ -11,6 +11,7 @@ export interface Strike {
   date: string;
   reason: string;
   severity: "minor" | "major";
+  method_note?: string;
 }
 
 export interface LockoutStatus {
@@ -33,6 +34,7 @@ export interface SystemHealth {
   tick_recorder_last_write: string | null;
   flow_feed_age_seconds: number | null;
   ib_gateway_status: "connected" | "disconnected" | "unknown";
+  live_legal?: boolean;
 }
 
 export interface OpsFeedData {

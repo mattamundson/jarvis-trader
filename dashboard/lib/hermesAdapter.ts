@@ -16,6 +16,7 @@ export function adaptHermesToOps(hermes: HermesGatesData): OpsFeedData {
     date: s.date,
     reason: s.bans,
     severity: s.status === "major" ? "major" : "minor",
+    method_note: s.method_note,
   }));
 
   // Map lockouts
@@ -26,22 +27,24 @@ export function adaptHermesToOps(hermes: HermesGatesData): OpsFeedData {
     reason: activeLockout?.note || null,
   };
 
-  // Map e1_log to journal rows (if present)
+  // Map e1_log to journal rows (if present) - no entry/exit prices for E1
   const todayJournal: PaperJournalRow[] = (hermes.e1_log || []).map((entry) => ({
     date: entry.date,
     symbol: "E1",
     direction: entry.call,
-    entry_price: entry.points,
+    entry_price: 0,
     exit_price: null,
     r_multiple: entry.ref_R,
     notes: `Graded CT: ${entry.graded_ct}${hermes.e1.counts_toward_20 ? " • Pre-holdout" : ""}`,
   }));
 
-  // System health derived from Hermes metadata
+  // System health: pulled_ct is gates file age, not recorder timestamp
+  // Recorder and gateway status are unknown unless real data exists
   const systemHealth = {
-    tick_recorder_last_write: hermes.pulled_ct,
+    tick_recorder_last_write: null,
     flow_feed_age_seconds: Math.floor((Date.now() - new Date(hermes.pulled_ct).getTime()) / 1000),
-    ib_gateway_status: hermes.live_legal ? ("connected" as const) : ("disconnected" as const),
+    ib_gateway_status: "unknown" as const,
+    live_legal: hermes.live_legal,
   };
 
   return {

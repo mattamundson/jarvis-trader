@@ -27,7 +27,7 @@ describe("hermesAdapter", () => {
       { date: "2026-10-27", call: "short", points: 5885.5, ref_R: -0.5, graded_ct: 1 },
     ],
     strikes: [
-      { date: "2026-10-20", bans: "Late entry", status: "minor" },
+      { date: "2026-10-20", bans: "Late entry", status: "minor", method_note: "Manual review pending" },
     ],
   };
 
@@ -40,12 +40,45 @@ describe("hermesAdapter", () => {
       assert.strictEqual(result.proof_bar.rule_breaks, 0);
     });
 
-    it("maps strikes array", () => {
+    it("does not map pulled_ct to tick_recorder_last_write", () => {
+      const result = adaptHermesToOps(sampleHermes);
+      assert.strictEqual(result.system_health.tick_recorder_last_write, null);
+    });
+
+    it("does not map live_legal to ib_gateway_status", () => {
+      const result = adaptHermesToOps(sampleHermes);
+      assert.strictEqual(result.system_health.ib_gateway_status, "unknown");
+      assert.strictEqual(result.system_health.live_legal, true);
+    });
+
+    it("shows live_legal as separate field", () => {
+      const result = adaptHermesToOps(sampleHermes);
+      assert.strictEqual(result.system_health.live_legal, true);
+      
+      const hermesNotLegal = { ...sampleHermes, live_legal: false };
+      const resultNotLegal = adaptHermesToOps(hermesNotLegal);
+      assert.strictEqual(resultNotLegal.system_health.live_legal, false);
+    });
+
+    it("maps strikes array with method_note", () => {
       const result = adaptHermesToOps(sampleHermes);
       assert.strictEqual(result.strikes.length, 1);
       assert.strictEqual(result.strikes[0].date, "2026-10-20");
       assert.strictEqual(result.strikes[0].reason, "Late entry");
       assert.strictEqual(result.strikes[0].severity, "minor");
+      assert.strictEqual(result.strikes[0].method_note, "Manual review pending");
+    });
+
+    it("handles met='pending' as non-true value", () => {
+      const hermesPending: HermesGatesData = {
+        ...sampleHermes,
+        go_live: {
+          ...sampleHermes.go_live,
+          clean_sessions: { have: 7, need: 10, met: "pending" },
+        },
+      };
+      const result = adaptHermesToOps(hermesPending);
+      assert.strictEqual(result.proof_bar.clean_paper_sessions, 7);
     });
 
     it("maps lockout status", () => {

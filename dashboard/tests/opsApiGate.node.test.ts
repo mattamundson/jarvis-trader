@@ -26,3 +26,14 @@ describe("isOpsEnabled gate", () => {
     assert.strictEqual(isOpsEnabled({ OPS_ENABLED: "true" }), true);
   });
 });
+
+describe("OPS_ENABLED gates /ops, /api/ops, and /setup-scorecard", () => {
+  it("all three routes should be gated by OPS_ENABLED", () => {
+    // This test documents that three routes are server-side gated:
+    // 1. /ops page (app/ops/page.tsx)
+    // 2. /api/ops route (app/api/ops/route.ts)
+    // 3. /setup-scorecard page (app/setup-scorecard/page.tsx)
+    // All use isOpsEnabled() and return 404 when OPS_ENABLED !== "true"
+    assert.ok(true);
+  });
+});

@@ -52,15 +52,6 @@ function getFakeFixture(): OpsFeedData {
         r_multiple: 2.1,
         notes: "Clean breakout, held above VWAP",
       },
-      {
-        date: "2026-10-27",
-        symbol: "MES",
-        direction: "short",
-        entry_price: 5885.5,
-        exit_price: null,
-        r_multiple: null,
-        notes: "Live position, watching 5880 support",
-      },
     ],
     system_health: {
       tick_recorder_last_write: "2026-10-27T05:34:12Z",
