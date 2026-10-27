@@ -106,7 +106,11 @@ export const ROUTES: RouteSpec[] = [
   { path: "/thinkscript", name: "thinkscript", kind: "page", criticality: "research", landmark: /ThinkScript/i },
 
   // ---- legacy pages (archived in (legacy) route group, URL-invisible) ------
+<<<<<<< HEAD
   { path: "/legacy", name: "legacy root", kind: "page", criticality: "standard", landmark: /JARVIS COMMAND CENTER/i },
+=======
+  { path: "/legacy", name: "legacy index", kind: "page", criticality: "standard", landmark: /Legacy Pages/i },
+>>>>>>> origin/master
   { path: "/domflow", name: "domflow legacy", kind: "page", criticality: "research", landmark: /MES DOM \/ Order-Flow/i },
   { path: "/jarvis", name: "jarvis legacy", kind: "page", criticality: "standard", landmark: /JARVIS COMMAND CENTER/i },
   { path: "/journal-review", name: "journal review legacy", kind: "page", criticality: "research", landmark: null },

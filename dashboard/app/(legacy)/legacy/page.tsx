@@ -13,25 +13,25 @@ interface LegacyPage {
 
 const LEGACY_PAGES: LegacyPage[] = [
   {
-    path: "/legacy/domflow",
+    path: "/domflow",
     name: "DOM Flow",
     reason: "Backend service on port 8030 is down",
     status: "dead",
   },
   {
-    path: "/legacy/jarvis",
+    path: "/jarvis",
     name: "Ask Jarvis",
     reason: "Folded into command center",
     status: "superseded",
   },
   {
-    path: "/legacy/journal-review",
+    path: "/journal-review",
     name: "Journal Review",
     reason: "Folded into performance and journal tabs",
     status: "superseded",
   },
   {
-    path: "/legacy/parallel-paper",
+    path: "/parallel-paper",
     name: "Parallel Paper",
     reason: "Folded into paper trading as tab",
     status: "superseded",
