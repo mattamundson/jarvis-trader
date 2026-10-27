@@ -20,6 +20,18 @@ function fmt(n: number | null | undefined): string {
   return typeof n === "number" ? n.toFixed(2) : "—";
 }
 
+function fmtPct(n: number | null | undefined): string {
+  return typeof n === "number" ? `${(n * 100).toFixed(0)}%` : "—";
+}
+
+function fmtAtr(n: number | null | undefined): string {
+  return typeof n === "number" ? `${n > 0 ? "+" : ""}${n.toFixed(2)} ATR` : "—";
+}
+
+function labelize(value: string | null | undefined): string {
+  return value ? value.replaceAll("_", " ") : "—";
+}
+
 export function AuctionBiasCard({ symbol = "MES" }: { symbol?: string }) {
   const { data, error, isLoading } = useSWR<AuctionBiasResponse>(
     ["auction-bias", symbol],
@@ -94,6 +106,43 @@ export function AuctionBiasCard({ symbol = "MES" }: { symbol?: string }) {
                   {fmt(data.synthesis.confirm_short_below)}
                 </span>
               </div>
+            </div>
+
+            <div className="rounded-md border border-border/60 p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Saty ATR Pro context</p>
+                {data.saty?.chase_risk && <Badge variant="warn">CHASE RISK</Badge>}
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="flex flex-col">
+                  <span className="text-muted-foreground">Displacement</span>
+                  <span className="font-mono">{fmtAtr(data.saty?.atr_displacement)}</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-muted-foreground">Range used</span>
+                  <span className="font-mono">{fmtPct(data.saty?.day_range_pct_of_atr)}</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-muted-foreground">Range state</span>
+                  <span className="capitalize">{labelize(data.saty?.range_state)}</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-muted-foreground">Trigger state</span>
+                  <span className="capitalize">{labelize(data.saty?.trigger_state)}</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-muted-foreground">Next up</span>
+                  <span className="font-mono text-bull">{fmt(data.saty?.next_levels?.up)}</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-muted-foreground">Next down</span>
+                  <span className="font-mono text-bear">{fmt(data.saty?.next_levels?.down)}</span>
+                </div>
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                Context score: up {data.saty?.context_score?.up ?? 0} / down {data.saty?.context_score?.down ?? 0};
+                neutral read-only map, not an execution signal.
+              </p>
             </div>
 
             <div className="rounded-md bg-muted/40 p-2">
