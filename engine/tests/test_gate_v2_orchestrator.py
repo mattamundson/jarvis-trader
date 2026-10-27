@@ -266,3 +266,58 @@ def test_verdict_snapshot_roundtrips_through_json(synthetic_mes_rank7):
     assert reloaded.verdict == snap.verdict
     assert reloaded.passed_via == snap.passed_via
     assert reloaded.created_at == snap.created_at
+
+
+def test_options_family_certification_path(tmp_path):
+    """Options strategies certify through the same orchestrator with
+    family='options' (the new choices value), writing SPY_options_rank1.json
+    that the read-side policy can consume."""
+    from scripts.gate_v2_orchestrator import orchestrate_gate_v2
+
+    reports_dir = tmp_path / "reports"
+    reports_dir.mkdir()
+    results_file = tmp_path / "spy_options.json"
+    # Representative options PnL series (debit-spread sized, $): mixed winners/losers
+    pnls = [420.0, 380.0, -260.0, 350.0, 400.0, -280.0, 390.0, -240.0, 360.0, 300.0,
+            370.0, -250.0, 410.0, 340.0, -270.0, 380.0, 320.0, -230.0, 350.0, 290.0]
+    results = [{
+        "params": {
+            "strategy": "options_vertical_spread",
+            "signal_rule": "rsi14_meanrev_35_65_cooldown10",
+            "target_dte": 30, "target_delta": 0.30, "width_strikes": 1,
+        },
+        "pf": 1.6,
+        "n_trades": len(pnls),
+        "trades": [{"pnl": p} for p in pnls],
+    }]
+    results_file.write_text(json.dumps({
+        "symbol": "SPY",
+        "n_combos": 1,
+        "start": "2024-08-01",
+        "end": "2025-07-31",
+        "interval": "1d",
+        "results": results,
+    }))
+
+    snap = orchestrate_gate_v2(
+        results_file=results_file,
+        symbol="SPY", family="options", rank=1,
+        reports_dir=reports_dir,
+        output_dir=tmp_path / "verdicts",
+        n_resamples=500,
+    )
+    assert snap.family == "options"
+    assert snap.alt_verdict == "UNSCORED"  # no aux reports produced for options yet
+
+    outfile = tmp_path / "verdicts" / "SPY_options_rank1.json"
+    assert outfile.exists()
+    doc = json.loads(outfile.read_text())
+    assert doc["symbol"] == "SPY"
+    assert doc["family"] == "options"
+    assert doc["verdict"] in {"PASS", "FAIL"}
+
+    # Read-side policy must accept the new family's verdict file.
+    from backtest.gate_v2_policy import get_last_verdict
+
+    v = get_last_verdict("SPY", verdicts_dir=tmp_path / "verdicts")
+    assert v is not None and v.family == "options"

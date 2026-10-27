@@ -202,7 +202,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Gate v2 orchestrator (Phase 2)")
     ap.add_argument("--results-file", required=True)
     ap.add_argument("--symbol", required=True)
-    ap.add_argument("--family", required=True, choices=["trend", "meanrev", "breakout"])
+    ap.add_argument("--family", required=True, choices=["trend", "meanrev", "breakout", "options"])
     ap.add_argument("--rank", type=int, default=1)
     ap.add_argument(
         "--reports-dir",
