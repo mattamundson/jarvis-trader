@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 """
 Windows pusher script for live ES order flow.
-Reads C:\\Users\\mattm\\tape\\state\\flow-latest.json every 5s and pushes to Vercel.
+Reads flow snapshot JSON (default: ~\\tape\\state\\flow-latest.json) every 5s and pushes to Vercel.
 Standard library only. Never crashes. Logs failures only.
+
+Environment variables:
+  FLOW_SNAPSHOT_PATH  - Path to flow snapshot JSON (default: ~\\tape\\state\\flow-latest.json)
+  FLOW_PUSH_URL       - Dashboard ingest endpoint URL (required)
+  FLOW_INGEST_TOKEN   - Bearer token for authentication (required)
 """
 import json
 import os
@@ -132,7 +137,10 @@ def retry_push(url: str, token: str, data: dict, max_retries: int = 3) -> bool:
 
 
 def main():
-    flow_path = os.path.expanduser(r"C:\Users\mattm\tape\state\flow-latest.json")
+    flow_path = os.environ.get(
+        "FLOW_SNAPSHOT_PATH",
+        os.path.expanduser(r"~\tape\state\flow-latest.json")
+    )
     push_url = os.environ.get("FLOW_PUSH_URL")
     token = os.environ.get("FLOW_INGEST_TOKEN")
     

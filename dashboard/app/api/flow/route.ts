@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { head } from "@vercel/blob";
 import type { FlowSnapshot } from "@/lib/flowTypes";
+import { sanitizeFlowData } from "@/lib/flowSanitize";
 
 const FAKE_FIXTURE: FlowSnapshot = {
-  ts: new Date().toISOString(),
+  ts: "2024-01-01T00:00:00.000Z",
+  fixture: true,
   es: {
     last: 7718.25,
     vwap: 7716.5,
@@ -12,16 +14,16 @@ const FAKE_FIXTURE: FlowSnapshot = {
     cvd: 850,
     cvdLow: -420,
     bars1m: [
-      { ts: new Date(Date.now() - 9 * 60000).toISOString(), open: 7712, high: 7714, low: 7711, close: 7713, volume: 135 },
-      { ts: new Date(Date.now() - 8 * 60000).toISOString(), open: 7713, high: 7715, low: 7712, close: 7714, volume: 128 },
-      { ts: new Date(Date.now() - 7 * 60000).toISOString(), open: 7714, high: 7716, low: 7713, close: 7715, volume: 142 },
-      { ts: new Date(Date.now() - 6 * 60000).toISOString(), open: 7715, high: 7717, low: 7714, close: 7716, volume: 155 },
-      { ts: new Date(Date.now() - 5 * 60000).toISOString(), open: 7716, high: 7718, low: 7715, close: 7717, volume: 138 },
-      { ts: new Date(Date.now() - 4 * 60000).toISOString(), open: 7717, high: 7719, low: 7716, close: 7718, volume: 148 },
-      { ts: new Date(Date.now() - 3 * 60000).toISOString(), open: 7718, high: 7720, low: 7717, close: 7719, volume: 162 },
-      { ts: new Date(Date.now() - 2 * 60000).toISOString(), open: 7719, high: 7721, low: 7718, close: 7720, volume: 185 },
-      { ts: new Date(Date.now() - 1 * 60000).toISOString(), open: 7720, high: 7721, low: 7718, close: 7719, volume: 172 },
-      { ts: new Date().toISOString(), open: 7719, high: 7720, low: 7717, close: 7718.25, volume: 210 },
+      { ts: "2024-01-01T00:00:00.000Z", open: 7712, high: 7714, low: 7711, close: 7713, volume: 135 },
+      { ts: "2024-01-01T00:01:00.000Z", open: 7713, high: 7715, low: 7712, close: 7714, volume: 128 },
+      { ts: "2024-01-01T00:02:00.000Z", open: 7714, high: 7716, low: 7713, close: 7715, volume: 142 },
+      { ts: "2024-01-01T00:03:00.000Z", open: 7715, high: 7717, low: 7714, close: 7716, volume: 155 },
+      { ts: "2024-01-01T00:04:00.000Z", open: 7716, high: 7718, low: 7715, close: 7717, volume: 138 },
+      { ts: "2024-01-01T00:05:00.000Z", open: 7717, high: 7719, low: 7716, close: 7718, volume: 148 },
+      { ts: "2024-01-01T00:06:00.000Z", open: 7718, high: 7720, low: 7717, close: 7719, volume: 162 },
+      { ts: "2024-01-01T00:07:00.000Z", open: 7719, high: 7721, low: 7718, close: 7720, volume: 185 },
+      { ts: "2024-01-01T00:08:00.000Z", open: 7720, high: 7721, low: 7718, close: 7719, volume: 172 },
+      { ts: "2024-01-01T00:09:00.000Z", open: 7719, high: 7720, low: 7717, close: 7718.25, volume: 210 },
     ],
     deltaAtPrice: [
       { price: 7720, bidLots: 8, askLots: 15 },
@@ -33,10 +35,10 @@ const FAKE_FIXTURE: FlowSnapshot = {
       { price: 7717, bidLots: 15, askLots: 8 },
     ],
     bigPrints: [
-      { ts: new Date(Date.now() - 3 * 60000).toISOString(), price: 7719.5, lots: 28, side: "ask" },
-      { ts: new Date(Date.now() - 2 * 60000).toISOString(), price: 7718.5, lots: 35, side: "bid" },
-      { ts: new Date(Date.now() - 1 * 60000).toISOString(), price: 7719.0, lots: 42, side: "bid" },
-      { ts: new Date(Date.now() - 30000).toISOString(), price: 7720.0, lots: 25, side: "ask" },
+      { ts: "2024-01-01T00:06:00.000Z", price: 7719.5, lots: 28, side: "ask" },
+      { ts: "2024-01-01T00:07:00.000Z", price: 7718.5, lots: 35, side: "bid" },
+      { ts: "2024-01-01T00:08:00.000Z", price: 7719.0, lots: 42, side: "bid" },
+      { ts: "2024-01-01T00:08:30.000Z", price: 7720.0, lots: 25, side: "ask" },
     ],
   },
   nq: {
@@ -48,7 +50,7 @@ const FAKE_FIXTURE: FlowSnapshot = {
     putWall: 7695,
     flip: 7715,
     pin: 7725,
-    asOf: new Date(Date.now() - 15 * 60000).toISOString(),
+    asOf: "2024-01-01T00:00:00.000Z",
   },
   gates: [
     { level: 7730, status: "untested", closeCount: 0 },
@@ -102,8 +104,15 @@ async function fetchFromFeedUrl(): Promise<FlowSnapshot | null> {
       return null;
     }
     
-    const data = await res.json();
-    return data as FlowSnapshot;
+    const raw = await res.json();
+    const sanitized = sanitizeFlowData(raw);
+    
+    if (!sanitized) {
+      console.warn("[flow] FLOW_FEED_URL returned invalid schema");
+      return null;
+    }
+    
+    return sanitized;
   } catch (err) {
     console.error("[flow] Failed to fetch FLOW_FEED_URL:", err);
     return null;

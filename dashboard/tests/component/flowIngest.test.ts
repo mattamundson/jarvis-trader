@@ -70,6 +70,13 @@ describe("flow ingest endpoint", () => {
   };
   
   describe("authentication", () => {
+    it("is reachable without Basic auth (middleware exempt)", async () => {
+      const { isFlowIngestPath } = await import("@/lib/publicRoutes");
+      expect(isFlowIngestPath("/api/flow/ingest", "POST")).toBe(true);
+      expect(isFlowIngestPath("/api/flow/ingest", "GET")).toBe(false);
+      expect(isFlowIngestPath("/api/flow", "POST")).toBe(false);
+    });
+    
     it("rejects request with missing authorization header", async () => {
       const req = createRequest(validFlowData);
       req.headers.delete("authorization");

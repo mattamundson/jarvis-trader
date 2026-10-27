@@ -28,6 +28,7 @@ export interface Gate {
 
 export interface FlowSnapshot {
   ts: string;
+  fixture?: boolean;
   es: {
     last: number;
     vwap: number;
