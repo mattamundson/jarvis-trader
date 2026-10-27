@@ -121,6 +121,41 @@ Use `/jarvis-*` commands or invoke subagents by name from `.claude/agents/`:
   - Sends Discord alert if data >5 minutes old
   - Requires env vars: `CRON_SECRET`, `DISCORD_WEBHOOK_FLOW_ALERTS`
 
+### Windows Watchdog (Auto-Recovery)
+
+**Script:** `scripts/tape/watchdog_flow_pusher.py`
+
+**What it does:**
+- Checks if pusher process (`pythonw.exe`) is running
+- Checks if data is fresh via `/api/flow/health` endpoint
+- Auto-restarts pusher if crashed or data >120s stale
+- Logs all actions to `~/tape/logs/watchdog.log`
+
+**Windows Task Scheduler setup (PowerShell as Admin):**
+```powershell
+$action = New-ScheduledTaskAction -Execute "python" `
+  -Argument "C:\Users\mattm\ThinkorSwim\jarvis-trader\scripts\tape\watchdog_flow_pusher.py"
+$trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) `
+  -RepetitionInterval (New-TimeSpan -Minutes 5) `
+  -RepetitionDuration ([TimeSpan]::MaxValue)
+$settings = New-ScheduledTaskSettingsSet `
+  -AllowStartIfOnBatteries `
+  -DontStopIfGoingOnBatteries `
+  -StartWhenAvailable
+Register-ScheduledTask `
+  -TaskName "JARVIS Flow Watchdog" `
+  -Action $action `
+  -Trigger $trigger `
+  -Settings $settings
+Start-ScheduledTask -TaskName "JARVIS Flow Watchdog"
+```
+
+**Test auto-recovery:**
+1. Kill pusher: `taskkill /IM pythonw.exe /F`
+2. Wait 5-6 minutes
+3. Check: `tasklist | findstr pythonw` (should be running again)
+4. Check logs: `cat $env:USERPROFILE\tape\logs\watchdog.log`
+
 ## Imports
 
 @.claude/rules/safety.md
