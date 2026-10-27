@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, TrendingUp, TrendingDown, Activity } from "lucide-react";
 import type { FlowSnapshot } from "@/lib/flowTypes";
 import { isStale, biasLabel, analyzeGateAction, volumePaceRatio } from "@/lib/flowTypes";
+import { fetchDashboardApi } from "@/lib/api";
 
 const fontMono = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "600", "700"] });
 
@@ -19,9 +20,7 @@ const CvdChart = dynamic(
 );
 
 async function fetchFlow(): Promise<FlowSnapshot> {
-  const res = await fetch("/api/flow", { cache: "no-store" });
-  if (!res.ok) throw new Error(`Flow fetch failed: ${res.status}`);
-  return res.json();
+  return fetchDashboardApi<FlowSnapshot>("/api/flow");
 }
 
 export default function Home() {
