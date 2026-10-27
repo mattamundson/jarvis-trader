@@ -8,6 +8,15 @@ export function isPublicReadOnlyPath(pathname: string): boolean {
 }
 
 /**
+ * Flow ingest endpoint has its own Bearer token auth (FLOW_INGEST_TOKEN).
+ * Exempt POST /api/flow/ingest from Basic auth so pushers can authenticate
+ * with their Bearer token directly. GET is not exempt.
+ */
+export function isFlowIngestPath(pathname: string, method: string): boolean {
+  return pathname === "/api/flow/ingest" && method === "POST";
+}
+
+/**
  * Paths under `/ws/` carry WebSocket traffic.
  *
  * They are NOT public. The middleware matcher used to exclude the whole `ws/` prefix, which
