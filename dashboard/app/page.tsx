@@ -38,6 +38,12 @@ export default function Home() {
 
   const stale = flow && isStale(flow.ts);
   const bias = flow ? biasLabel(flow.es.last, flow.es.vwap) : "NEUTRAL";
+  
+  const dataAge = flow && now 
+    ? (now.getTime() - new Date(flow.ts).getTime()) / 1000 
+    : null;
+  const isLive = dataAge !== null && dataAge < 5;
+  const isFixture = flow?.fixture === true;
 
   const gateAnalyses = useMemo(() => {
     if (!flow) return [];
@@ -64,9 +70,19 @@ export default function Home() {
           <Badge variant="warn" className="font-mono text-xs">
             PAPER RESEARCH TOOL
           </Badge>
-          {stale && (
-            <Badge variant="bear" className="font-mono text-xs animate-pulse">
-              STALE DATA
+          {isFixture && (
+            <Badge variant="neutral" className="font-mono text-xs">
+              FIXTURE DATA
+            </Badge>
+          )}
+          {!isFixture && isLive && (
+            <Badge variant="bull" className="font-mono text-xs animate-pulse">
+              ● LIVE
+            </Badge>
+          )}
+          {!isFixture && !isLive && stale && (
+            <Badge variant="bear" className="font-mono text-xs">
+              STALE ({Math.floor(dataAge || 0)}s)
             </Badge>
           )}
         </div>
