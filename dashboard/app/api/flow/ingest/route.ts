@@ -55,7 +55,10 @@ export async function POST(request: NextRequest) {
   
   if (!sanitized) {
     return NextResponse.json(
-      { error: "Invalid flow data schema" },
+      { 
+        error: "Data failed validation",
+        hint: "Check source data quality (price range, CVD bounds, bar integrity, timestamp age)"
+      },
       { status: 400 }
     );
   }

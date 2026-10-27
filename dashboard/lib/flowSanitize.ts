@@ -88,6 +88,45 @@ export function sanitizeFlowData(data: unknown): FlowSnapshot | null {
     };
   });
   
+  // Quality validation gates
+  const errors: string[] = [];
+  
+  // ES price must be realistic (ES trades ~1000-10000 range)
+  if (es.last < 1000 || es.last > 10000) {
+    errors.push(`ES price unrealistic: ${es.last}`);
+  }
+  
+  // CVD magnitude check (absolute value < 10000)
+  if (Math.abs(es.cvd) > 10000) {
+    errors.push(`CVD magnitude unrealistic: ${es.cvd}`);
+  }
+  
+  // Price/VWAP divergence check (difference < 100 points)
+  if (Math.abs(es.last - es.vwap) > 100) {
+    errors.push(`Price/VWAP divergence: ${Math.abs(es.last - es.vwap)}`);
+  }
+  
+  // Must have bars
+  if (sanitizedBars.length === 0) {
+    errors.push("No bars");
+  }
+  
+  // Bar integrity check
+  if (sanitizedBars.some(b => b.volume < 0 || b.high < b.low)) {
+    errors.push("Invalid bars");
+  }
+  
+  // Timestamp age check (within 5 minutes forward, 60 seconds back)
+  const tsAge = (Date.now() - new Date(raw.ts).getTime()) / 1000;
+  if (tsAge > 300 || tsAge < -60) {
+    errors.push(`Timestamp age suspicious: ${Math.round(tsAge)}s`);
+  }
+  
+  if (errors.length > 0) {
+    console.warn("[flowSanitize] Rejected:", errors);
+    return null;
+  }
+  
   return {
     ts: raw.ts,
     fixture: raw.fixture === true ? true : undefined,
