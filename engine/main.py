@@ -1056,6 +1056,25 @@ async def lifespan(app: FastAPI):
         async def _analyze_and_alert(symbol: str, is_futures: bool) -> None:
             import time as _time_mod
 
+            if is_futures:
+                try:
+                    from backtest.signals import DO_NOT_TRADE_SYMBOLS as _DO_NOT_TRADE_SCAN
+
+                    if symbol.upper() in _DO_NOT_TRADE_SCAN:
+                        logger.warning(
+                            "[Scanner guard] %s is in DO_NOT_TRADE_SYMBOLS — skipping "
+                            "scheduled pipeline analysis and alerts",
+                            symbol,
+                        )
+                        return
+                except Exception as _dnt_exc:
+                    logger.warning(
+                        "[Scanner guard] DO_NOT_TRADE check failed for %s: %s (allowing scan; "
+                        "execution/risk gates still apply)",
+                        symbol,
+                        _dnt_exc,
+                    )
+
             # ── Scanner guards (added 2026-04-10) ────────────────────────
             # Guard 1: Already-open position check. Prevents duplicate trades
             # like the 2026-04-10 incident where MES shorts #108/#109/#110 were
