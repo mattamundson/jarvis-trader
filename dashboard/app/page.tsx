@@ -54,7 +54,7 @@ export default function Home() {
   return (
     <div className={`min-h-screen bg-gray-950 text-gray-100 p-4 ${fontMono.className}`}>
       <div className="flex items-center justify-between mb-4 border-b border-cyan-900/40 pb-3">
-        <h1 className="text-xl font-bold text-cyan-400 tracking-widest uppercase">
+        <h1 className="text-xl font-bold text-cyan-400 tracking-widest uppercase" data-testid="flow-page-header">
           JARVIS TRADER — ES ORDER FLOW
         </h1>
         <div className="flex items-center gap-3">
