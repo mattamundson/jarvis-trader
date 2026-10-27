@@ -118,5 +118,8 @@ export default defineConfig({
     // Opt-in only. Default false means every run exercises the build in the
     // working tree; see the PORT note above for why that matters on this machine.
     reuseExistingServer: process.env.PW_REUSE_SERVER === "1",
+    env: {
+      OPS_ENABLED: "true",
+    },
   },
 });
