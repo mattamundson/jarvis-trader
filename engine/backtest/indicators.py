@@ -124,8 +124,16 @@ def phase_oscillator(
     ema = close.ewm(span=ema_len, adjust=False).mean()
     atr = wilder_atr(high, low, close, atr_len)
 
-    phase = ((close - ema) / (3 * atr * (atr > 0).astype(float) + 1e-10)) * 100
-    phase = phase.clip(-100, 100)
+    raw = ((close - ema) / (3 * atr * (atr > 0).astype(float) + 1e-10)) * 100
+    # [safety-review/phase-ema3-smoothing] The Saty Phase Oscillator source
+    # smooths the raw ratio with EMA(3) BEFORE zone classification; the previous
+    # implementation omitted this step (golden-vector divergence 94.11 pts on the
+    # MES 1h deep cache) and clipped the raw ratio. EMA(span=3, adjust=False)
+    # seeds at the first finite value, matching the source recursion. The clip
+    # is REMOVED to match the source formula exactly (the .ts has no clip; zone
+    # thresholds are ±23.6/±61.8/±100 on the smoothed value, which may exceed
+    # ±100 on extreme bars — 1,487/43,010 bars on the MES cache).
+    phase = raw.ewm(span=3, adjust=False).mean()
 
     # Bollinger Bands on close
     bb_mid = close.rolling(bb_len).mean()
