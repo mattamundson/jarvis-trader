@@ -5,12 +5,17 @@ export interface ProofBarProgress {
   scored_setups: number;
   avg_r: number | null;
   rule_breaks: number;
+  sessions_met?: boolean | string;
+  setups_met?: boolean | string;
+  avg_r_met?: boolean | string;
+  rule_breaks_met?: boolean | string;
 }
 
 export interface Strike {
   date: string;
   reason: string;
   severity: "minor" | "major";
+  status?: "confirmed" | "pending";
   method_note?: string;
 }
 
@@ -40,7 +45,7 @@ export interface SystemHealth {
 export interface OpsFeedData {
   proof_bar: ProofBarProgress;
   strikes: Strike[];
-  lockout: LockoutStatus;
+  lockouts: LockoutStatus[];
   today_journal: PaperJournalRow[];
   system_health: SystemHealth;
   timestamp: string;

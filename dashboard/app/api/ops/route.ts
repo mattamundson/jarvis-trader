@@ -24,24 +24,32 @@ function getFakeFixture(): OpsFeedData {
       scored_setups: 14,
       avg_r: 1.8,
       rule_breaks: 0,
+      sessions_met: false,
+      setups_met: false,
+      avg_r_met: true,
+      rule_breaks_met: true,
     },
     strikes: [
       {
         date: "2026-10-20",
         reason: "Late entry on MES long setup",
         severity: "minor",
+        status: "pending",
       },
       {
         date: "2026-10-15",
         reason: "Oversized position by 10%",
         severity: "major",
+        status: "confirmed",
       },
     ],
-    lockout: {
-      active: false,
-      end_date: null,
-      reason: null,
-    },
+    lockouts: [
+      {
+        active: false,
+        end_date: null,
+        reason: null,
+      },
+    ],
     today_journal: [
       {
         date: "2026-10-27",

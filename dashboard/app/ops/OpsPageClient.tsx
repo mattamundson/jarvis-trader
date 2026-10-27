@@ -77,53 +77,87 @@ export default function OpsPageClient() {
             <section className="border border-[#1a1a1a] bg-[#0d0d0d] rounded p-4">
               <h2 className="text-sm font-bold text-[#00ff00] mb-3 flex items-center gap-2">
                 <Shield className="h-4 w-4" />
-                PROOF BAR PROGRESS
+                GO-LIVE GATES
               </h2>
-              <div className="space-y-3">
-                <div>
-                  <div className="flex items-center justify-between text-xs mb-1">
-                    <span className="text-[#808080]">Overall Progress</span>
-                    <span className="text-[#00ff00] font-bold">{proofBarProgress}%</span>
-                  </div>
-                  <div className="h-2 bg-[#1a1a1a] rounded overflow-hidden">
-                    <div
-                      className="h-full bg-[#00ff00] transition-all"
-                      style={{ width: `${proofBarProgress}%` }}
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
-                  <div className="border border-[#1a1a1a] bg-[#0a0a0a] rounded p-2">
-                    <p className="text-[10px] text-[#808080] uppercase">Clean Sessions</p>
-                    <p className="text-lg font-bold text-[#e0e0e0] mt-1">
-                      {data.proof_bar.clean_paper_sessions}
-                      <span className="text-xs text-[#606060]"> / 10 </span>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {/* Clean Sessions Gate */}
+                <div className="border border-[#1a1a1a] bg-[#0a0a0a] rounded p-2">
+                  <p className="text-[10px] text-[#808080] uppercase">Clean Sessions</p>
+                  <p className="text-lg font-bold text-[#e0e0e0] mt-1">
+                    {data.proof_bar.clean_paper_sessions}
+                    <span className="text-xs text-[#606060]"> / 10 </span>
+                    {data.proof_bar.sessions_met === true ? (
                       <span className="text-xs text-[#00ff00]">met</span>
-                    </p>
-                  </div>
-                  <div className="border border-[#1a1a1a] bg-[#0a0a0a] rounded p-2">
-                    <p className="text-[10px] text-[#808080] uppercase">Scored Setups</p>
-                    <p className="text-lg font-bold text-[#e0e0e0] mt-1">
-                      {data.proof_bar.scored_setups}
-                      <span className="text-xs text-[#606060]"> / 20</span>
-                    </p>
-                  </div>
-                  <div className="border border-[#1a1a1a] bg-[#0a0a0a] rounded p-2">
-                    <p className="text-[10px] text-[#808080] uppercase">Avg R-Multiple</p>
-                    <p className="text-lg font-bold text-[#00ff00] mt-1">
-                      {data.proof_bar.avg_r?.toFixed(2) ?? "N/A"}
-                    </p>
-                  </div>
-                  <div className="border border-[#1a1a1a] bg-[#0a0a0a] rounded p-2">
-                    <p className="text-[10px] text-[#808080] uppercase">Rule Breaks</p>
-                    <p
-                      className={`text-lg font-bold mt-1 ${
+                    ) : (
+                      <span className="text-xs text-[#ffaa00]">pending</span>
+                    )}
+                  </p>
+                </div>
+
+                {/* Scored Setups Gate */}
+                <div className="border border-[#1a1a1a] bg-[#0a0a0a] rounded p-2">
+                  <p className="text-[10px] text-[#808080] uppercase">Scored Setups</p>
+                  <p className="text-lg font-bold text-[#e0e0e0] mt-1">
+                    {data.proof_bar.scored_setups}
+                    <span className="text-xs text-[#606060]"> / 20 </span>
+                    {data.proof_bar.setups_met === true ? (
+                      <span className="text-xs text-[#00ff00]">met</span>
+                    ) : (
+                      <span className="text-xs text-[#ff0000]">not met</span>
+                    )}
+                  </p>
+                </div>
+
+                {/* Avg R Gate */}
+                <div className="border border-[#1a1a1a] bg-[#0a0a0a] rounded p-2">
+                  <p className="text-[10px] text-[#808080] uppercase">Avg R-Multiple</p>
+                  <p className="text-lg font-bold mt-1">
+                    {data.proof_bar.avg_r !== null ? (
+                      <>
+                        <span
+                          className={
+                            data.proof_bar.avg_r > 0
+                              ? "text-[#00ff00]"
+                              : data.proof_bar.avg_r < 0
+                              ? "text-[#ff0000]"
+                              : "text-[#808080]"
+                          }
+                        >
+                          {data.proof_bar.avg_r.toFixed(2)}
+                        </span>
+                        <span className="text-xs text-[#606060] ml-1">
+                          {data.proof_bar.avg_r_met === true ? (
+                            <span className="text-[#00ff00]">met</span>
+                          ) : (
+                            <span className="text-[#ff0000]">not met</span>
+                          )}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-[#808080]">N/A</span>
+                    )}
+                  </p>
+                </div>
+
+                {/* Rule Breaks Gate */}
+                <div className="border border-[#1a1a1a] bg-[#0a0a0a] rounded p-2">
+                  <p className="text-[10px] text-[#808080] uppercase">Rule Breaks</p>
+                  <p className="text-lg font-bold mt-1">
+                    <span
+                      className={
                         data.proof_bar.rule_breaks === 0 ? "text-[#00ff00]" : "text-[#ff0000]"
-                      }`}
+                      }
                     >
                       {data.proof_bar.rule_breaks}
-                    </p>
-                  </div>
+                    </span>
+                    <span className="text-xs text-[#606060] ml-1">
+                      {data.proof_bar.rule_breaks_met === true ? (
+                        <span className="text-[#00ff00]">met</span>
+                      ) : (
+                        <span className="text-[#ff0000]">not met</span>
+                      )}
+                    </span>
+                  </p>
                 </div>
               </div>
             </section>
@@ -135,31 +169,46 @@ export default function OpsPageClient() {
                 STRIKE & LOCKOUT TRACKER
               </h2>
               <div className="space-y-3">
-                {data.lockout.active ? (
-                  <div className="border border-[#ff0000] bg-[#1a0000] rounded p-3">
-                    <div className="flex items-center gap-2 mb-2">
-                      <XCircle className="h-4 w-4 text-[#ff0000]" />
-                      <span className="text-sm font-bold text-[#ff0000]">LOCKOUT ACTIVE</span>
-                    </div>
-                    <p className="text-xs text-[#e0e0e0]">End: {data.lockout.end_date ?? "Unknown"}</p>
-                    <p className="text-xs text-[#808080] mt-1">{data.lockout.reason ?? "No reason given"}</p>
-                  </div>
-                ) : (
+                {/* Lockouts */}
+                {data.lockouts.filter((l) => l.active).length === 0 ? (
                   <div className="border border-[#00ff00] bg-[#001a00] rounded p-3">
                     <div className="flex items-center gap-2">
                       <CheckCircle2 className="h-4 w-4 text-[#00ff00]" />
                       <span className="text-sm font-bold text-[#00ff00]">NO LOCKOUT</span>
                     </div>
                   </div>
+                ) : (
+                  <div className="space-y-2">
+                    {data.lockouts
+                      .filter((l) => l.active)
+                      .map((lockout, i) => (
+                        <div key={i} className="border border-[#ff0000] bg-[#1a0000] rounded p-3">
+                          <div className="flex items-center gap-2 mb-2">
+                            <XCircle className="h-4 w-4 text-[#ff0000]" />
+                            <span className="text-sm font-bold text-[#ff0000]">LOCKOUT ACTIVE</span>
+                          </div>
+                          <p className="text-xs text-[#e0e0e0]">
+                            End: {lockout.end_date ?? "Unknown"}
+                          </p>
+                          <p className="text-xs text-[#808080] mt-1">
+                            {lockout.reason ?? "No reason given"}
+                          </p>
+                        </div>
+                      ))}
+                  </div>
                 )}
 
+                {/* Strikes */}
                 <div>
-                  <p className="text-xs text-[#808080] uppercase mb-2">Recent Strikes</p>
+                  <p className="text-xs text-[#808080] uppercase mb-2">
+                    Strikes ({data.strikes.length} total,{" "}
+                    {data.strikes.filter((s) => s.status === "pending").length} pending)
+                  </p>
                   {data.strikes.length === 0 ? (
                     <p className="text-xs text-[#606060] italic">No strikes recorded</p>
                   ) : (
                     <div className="space-y-2">
-                      {data.strikes.slice(0, 5).map((strike, i) => (
+                      {data.strikes.map((strike, i) => (
                         <div
                           key={i}
                           className={`border ${
@@ -170,12 +219,19 @@ export default function OpsPageClient() {
                         >
                           <div className="flex items-center justify-between text-xs">
                             <span className="text-[#e0e0e0]">{strike.date}</span>
-                            <Badge
-                              variant={strike.severity === "major" ? "bear" : "warn"}
-                              className="text-[10px]"
-                            >
-                              {strike.severity.toUpperCase()}
-                            </Badge>
+                            <div className="flex gap-2">
+                              {strike.status === "pending" && (
+                                <Badge variant="warn" className="text-[10px]">
+                                  PENDING
+                                </Badge>
+                              )}
+                              <Badge
+                                variant={strike.severity === "major" ? "bear" : "warn"}
+                                className="text-[10px]"
+                              >
+                                {strike.severity.toUpperCase()}
+                              </Badge>
+                            </div>
                           </div>
                           <p className="text-xs text-[#808080] mt-1">{strike.reason}</p>
                           {strike.method_note && (

@@ -27,7 +27,7 @@ describe("hermesAdapter", () => {
       { date: "2026-10-27", call: "short", points: 5885.5, ref_R: -0.5, graded_ct: 1 },
     ],
     strikes: [
-      { date: "2026-10-20", bans: "Late entry", status: "minor", method_note: "Manual review pending" },
+      { date: "2026-10-20", bans: "Late entry", status: "pending", method_note: "Manual review pending" },
     ],
   };
 
@@ -69,35 +69,81 @@ describe("hermesAdapter", () => {
       assert.strictEqual(result.strikes[0].method_note, "Manual review pending");
     });
 
-    it("handles met='pending' as non-true value", () => {
+    it("preserves sessions_met value exactly from gates.json", () => {
+      const result = adaptHermesToOps(sampleHermes);
+      assert.strictEqual(result.proof_bar.sessions_met, false);
+    });
+
+    it("shows met only when sessions_met === true", () => {
+      const hermesMet: HermesGatesData = {
+        ...sampleHermes,
+        go_live: {
+          ...sampleHermes.go_live,
+          clean_sessions: { have: 12, need: 10, met: true },
+        },
+      };
+      const result = adaptHermesToOps(hermesMet);
+      assert.strictEqual(result.proof_bar.sessions_met, true);
+    });
+
+    it("handles met='pending' string value", () => {
       const hermesPending: HermesGatesData = {
         ...sampleHermes,
         go_live: {
           ...sampleHermes.go_live,
-          clean_sessions: { have: 7, need: 10, met: "pending" },
+          clean_sessions: { have: 12, need: 10, met: "pending" },
         },
       };
       const result = adaptHermesToOps(hermesPending);
-      assert.strictEqual(result.proof_bar.clean_paper_sessions, 7);
+      assert.strictEqual(result.proof_bar.sessions_met, "pending");
+      assert.notStrictEqual(result.proof_bar.sessions_met, true);
     });
 
     it("maps lockout status", () => {
       const result = adaptHermesToOps(sampleHermes);
-      assert.strictEqual(result.lockout.active, false);
+      assert.strictEqual(result.lockouts.length, 1);
+      assert.strictEqual(result.lockouts[0].active, false);
     });
 
     it("maps e1_log to journal with pre-holdout note", () => {
       const result = adaptHermesToOps(sampleHermes);
       assert.strictEqual(result.today_journal.length, 2);
-      assert.strictEqual(result.today_journal[0].symbol, "E1");
+      assert.strictEqual(result.today_journal[0].symbol, "MES");
       assert.strictEqual(result.today_journal[0].direction, "long");
-      assert.ok(result.today_journal[0].notes.includes("Pre-holdout"));
     });
 
-    it("does not include pre-holdout note when counts_toward_20 is false", () => {
-      const hermesNoCounts = { ...sampleHermes, e1: { counts_toward_20: false, flag: null, stop: null } };
-      const result = adaptHermesToOps(hermesNoCounts);
+    it("does not include pre-holdout note when counts_toward_20 is true", () => {
+      const result = adaptHermesToOps(sampleHermes);
+      assert.ok(result.today_journal[0].notes.includes("Holdout"));
       assert.ok(!result.today_journal[0].notes.includes("Pre-holdout"));
+    });
+
+    it("preserves met fields for all go-live gates", () => {
+      const result = adaptHermesToOps(sampleHermes);
+      assert.strictEqual(result.proof_bar.sessions_met, false);
+      assert.strictEqual(result.proof_bar.setups_met, false);
+      assert.strictEqual(result.proof_bar.avg_r_met, true);
+      assert.strictEqual(result.proof_bar.rule_breaks_met, true);
+    });
+
+    it("supports multiple active lockouts", () => {
+      const hermesMulti: HermesGatesData = {
+        ...sampleHermes,
+        lockouts: [
+          { name: "lockout-1", through: "2026-11-01", active: true, note: "First" },
+          { name: "lockout-2", since: "2026-10-25", active: true, note: "Second" },
+          { name: "lockout-3", through: "2026-10-20", active: false, note: "Past" },
+        ],
+      };
+      const result = adaptHermesToOps(hermesMulti);
+      assert.strictEqual(result.lockouts.length, 3);
+      assert.strictEqual(result.lockouts.filter((l) => l.active).length, 2);
+    });
+
+    it("adds status field to strikes", () => {
+      const result = adaptHermesToOps(sampleHermes);
+      assert.strictEqual(result.strikes[0].status, "pending");
+      assert.strictEqual(result.strikes[0].method_note, "Manual review pending");
     });
 
     it("handles missing optional fields", () => {
