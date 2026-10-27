@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
+import { promises as fs } from "node:fs";
 import type { OpsFeedData } from "@/lib/opsTypes";
+import type { HermesGatesData } from "@/lib/hermesTypes";
+import { adaptHermesToOps } from "@/lib/hermesAdapter";
 import { isOpsEnabled } from "@/lib/opsAuth";
 
 export const dynamic = "force-dynamic";
@@ -7,6 +10,10 @@ export const runtime = "nodejs";
 
 function getOpsFeedUrl(): string | null {
   return process.env.OPS_FEED_URL ?? null;
+}
+
+function getOpsGatesPath(): string | null {
+  return process.env.OPS_GATES_PATH ?? null;
 }
 
 // Clearly fake fixture data for when OPS_FEED_URL is not set
@@ -72,6 +79,20 @@ export async function GET() {
     );
   }
 
+  // Try local file path first
+  const gatesPath = getOpsGatesPath();
+  if (gatesPath) {
+    try {
+      const raw = await fs.readFile(gatesPath, "utf-8");
+      const hermes = JSON.parse(raw) as HermesGatesData;
+      const adapted = adaptHermesToOps(hermes);
+      return NextResponse.json(adapted);
+    } catch (error) {
+      // Fall through to URL fetch or fixture
+    }
+  }
+
+  // Try remote URL
   const feedUrl = getOpsFeedUrl();
 
   if (!feedUrl) {
@@ -89,6 +110,14 @@ export async function GET() {
     }
 
     const data = await res.json();
+    
+    // Check if it's Hermes format (has pulled_ct field)
+    if ("pulled_ct" in data && "go_live" in data) {
+      const adapted = adaptHermesToOps(data as HermesGatesData);
+      return NextResponse.json(adapted);
+    }
+    
+    // Otherwise assume it's already OpsFeedData format
     return NextResponse.json(data);
   } catch (error) {
     return NextResponse.json(

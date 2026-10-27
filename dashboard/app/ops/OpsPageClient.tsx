@@ -46,7 +46,7 @@ export default function OpsPageClient() {
           </div>
           {data?.timestamp && (
             <div className="text-right">
-              <p className="text-xs text-[#808080]">Last updated</p>
+              <p className="text-xs text-[#808080]">Data pulled</p>
               <p className="text-sm text-[#e0e0e0]">{formatTimestamp(data.timestamp)}</p>
               <p className="text-xs text-[#606060]">{formatDuration(dataAge)} ago</p>
             </div>
@@ -207,42 +207,54 @@ export default function OpsPageClient() {
                       </tr>
                     </thead>
                     <tbody>
-                      {data.today_journal.map((row, i) => (
-                        <tr key={i} className="border-b border-[#1a1a1a]">
-                          <td className="py-2 px-2 text-[#00ff00]">{row.symbol}</td>
-                          <td className="py-2 px-2">
-                            <span
-                              className={
-                                row.direction === "long" ? "text-[#00ff00]" : "text-[#ff0000]"
-                              }
-                            >
-                              {row.direction.toUpperCase()}
-                            </span>
-                          </td>
-                          <td className="py-2 px-2 text-right text-[#e0e0e0]">
-                            {row.entry_price.toFixed(2)}
-                          </td>
-                          <td className="py-2 px-2 text-right text-[#e0e0e0]">
-                            {row.exit_price?.toFixed(2) ?? "—"}
-                          </td>
-                          <td className="py-2 px-2 text-right">
-                            {row.r_multiple !== null ? (
+                      {data.today_journal.map((row, i) => {
+                        const isPreHoldout = row.notes.includes("Pre-holdout");
+                        return (
+                          <tr key={i} className="border-b border-[#1a1a1a]">
+                            <td className="py-2 px-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[#00ff00]">{row.symbol}</span>
+                                {isPreHoldout && (
+                                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#ffaa00]/20 border border-[#ffaa00]/40 text-[#ffaa00] uppercase font-bold">
+                                    Pre-Holdout
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="py-2 px-2">
                               <span
                                 className={
-                                  row.r_multiple >= 0 ? "text-[#00ff00]" : "text-[#ff0000]"
+                                  row.direction === "long" ? "text-[#00ff00]" : "text-[#ff0000]"
                                 }
                               >
-                                {row.r_multiple.toFixed(2)}R
+                                {row.direction.toUpperCase()}
                               </span>
-                            ) : (
-                              <span className="text-[#606060]">—</span>
-                            )}
-                          </td>
-                          <td className="py-2 px-2 text-[#808080] max-w-xs truncate">
-                            {row.notes}
-                          </td>
-                        </tr>
-                      ))}
+                            </td>
+                            <td className="py-2 px-2 text-right text-[#e0e0e0]">
+                              {row.entry_price.toFixed(2)}
+                            </td>
+                            <td className="py-2 px-2 text-right text-[#e0e0e0]">
+                              {row.exit_price?.toFixed(2) ?? "—"}
+                            </td>
+                            <td className="py-2 px-2 text-right">
+                              {row.r_multiple !== null ? (
+                                <span
+                                  className={
+                                    row.r_multiple >= 0 ? "text-[#00ff00]" : "text-[#ff0000]"
+                                  }
+                                >
+                                  {row.r_multiple.toFixed(2)}R
+                                </span>
+                              ) : (
+                                <span className="text-[#606060]">—</span>
+                              )}
+                            </td>
+                            <td className="py-2 px-2 text-[#808080] max-w-xs truncate">
+                              {row.notes}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
