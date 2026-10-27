@@ -1,0 +1,45 @@
+// Types for the private /ops page feed
+
+export interface ProofBarProgress {
+  clean_paper_sessions: number;
+  scored_setups: number;
+  avg_r: number | null;
+  rule_breaks: number;
+}
+
+export interface Strike {
+  date: string;
+  reason: string;
+  severity: "minor" | "major";
+}
+
+export interface LockoutStatus {
+  active: boolean;
+  end_date: string | null;
+  reason: string | null;
+}
+
+export interface PaperJournalRow {
+  date: string;
+  symbol: string;
+  direction: "long" | "short";
+  entry_price: number;
+  exit_price: number | null;
+  r_multiple: number | null;
+  notes: string;
+}
+
+export interface SystemHealth {
+  tick_recorder_last_write: string | null;
+  flow_feed_age_seconds: number | null;
+  ib_gateway_status: "connected" | "disconnected" | "unknown";
+}
+
+export interface OpsFeedData {
+  proof_bar: ProofBarProgress;
+  strikes: Strike[];
+  lockout: LockoutStatus;
+  today_journal: PaperJournalRow[];
+  system_health: SystemHealth;
+  timestamp: string;
+}
