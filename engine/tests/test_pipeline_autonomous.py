@@ -206,3 +206,60 @@ async def test_autonomous_tick_skips_low_confidence(tmp_path: Path) -> None:
     assert len(result["enqueued"]) == 0
     assert len(result["skipped_low_confidence"]) == 1
     assert _count_pending(db_path) == 0
+
+
+async def _run_tick_with(result_dict: dict, tmp_path: Path) -> tuple[dict, str]:
+    db_path = _fresh_db(tmp_path)
+    mock_pipeline = MagicMock()
+    mock_pipeline.analyze_and_decide = AsyncMock(return_value=result_dict)
+    mock_safety = MagicMock()
+    mock_safety.get_status.return_value = {"kill_switch_active": False}
+    inject_autonomous_deps(mock_pipeline, mock_safety, db_path)
+    with (
+        patch.dict(
+            os.environ,
+            {
+                _FLAG_NAME: "1",
+                "AUTONOMOUS_ACTIVE_SYMBOLS": "MCL",
+                "AUTONOMOUS_CONFIDENCE_THRESHOLD": "0.65",
+            },
+        ),
+        patch("scheduler.pipeline_autonomous._get_live_trading_enabled", return_value=False),
+    ):
+        return await autonomous_tick(), db_path
+
+
+@pytest.mark.asyncio
+async def test_autonomous_tick_gates_on_boosted_confidence(tmp_path: Path) -> None:
+    """2026-10-26 candidates 920/922: raw 0.75 passed the 0.65 tick gate while the
+    pipeline's scored (boosted) confidence was 0.64. The tick must gate on boosted."""
+    res = _make_green_result("buy", confidence=0.75)
+    res["boosted_confidence"] = 0.64
+
+    result, db_path = await _run_tick_with(res, tmp_path)
+
+    assert len(result["enqueued"]) == 0
+    assert len(result["skipped_low_confidence"]) == 1
+    assert result["skipped_low_confidence"][0]["confidence"] == pytest.approx(0.64)
+    assert _count_pending(db_path) == 0
+
+
+@pytest.mark.asyncio
+async def test_autonomous_tick_enqueues_when_boosted_above_threshold(tmp_path: Path) -> None:
+    res = _make_green_result("buy", confidence=0.60)
+    res["boosted_confidence"] = 0.70
+
+    result, db_path = await _run_tick_with(res, tmp_path)
+
+    assert len(result["enqueued"]) == 1
+    assert result["enqueued"][0]["confidence"] == pytest.approx(0.70, abs=0.01)
+    assert _count_pending(db_path) == 1
+
+
+@pytest.mark.asyncio
+async def test_autonomous_tick_falls_back_when_boosted_absent(tmp_path: Path) -> None:
+    """No boosted_confidence (e.g. older pipeline path): keep the previous fallback."""
+    result, _ = await _run_tick_with(_make_green_result("buy", confidence=0.82), tmp_path)
+
+    assert len(result["enqueued"]) == 1
+    assert result["enqueued"][0]["confidence"] == pytest.approx(0.82, abs=0.01)

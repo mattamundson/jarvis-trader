@@ -196,6 +196,25 @@ def _ensure_table(db_path: str) -> None:
         conn.commit()
 
 
+def _effective_confidence(result: dict, fund_dec: dict, trade_dec: dict) -> float:
+    """Confidence the tick gates on.
+
+    Prefers the pipeline's ``boosted_confidence`` (raw confidence after the
+    regime boost and ConfidenceScorer multiplier). Gating on the raw trader
+    confidence let the scorer's penalty be ignored: candidates 920/922 on
+    2026-10-26 enqueued at raw 0.75 while their scored confidence was 0.64,
+    below the 0.65 tick threshold. Falls back to the previous fields when the
+    pipeline did not compute a boosted value.
+    """
+    boosted = result.get("boosted_confidence")
+    if boosted is not None:
+        try:
+            return float(boosted)
+        except (TypeError, ValueError):
+            pass
+    return float(fund_dec.get("final_conviction") or trade_dec.get("confidence") or 0.0)
+
+
 def _has_pending_candidate(db_path: str, symbol: str, direction: str) -> bool:
     """Return True if a non-expired pending candidate exists for (symbol, direction)."""
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -441,9 +460,7 @@ async def autonomous_tick() -> dict:
             action = str(result.get("final_action", "hold")).lower()
             fund_dec = result.get("fund_decision") or {}
             trade_dec = result.get("trade_decision") or {}
-            confidence = float(
-                fund_dec.get("final_conviction") or trade_dec.get("confidence") or 0.0
-            )
+            confidence = _effective_confidence(result, fund_dec, trade_dec)
 
             if action in ("hold", ""):
                 logger.info("[AutonomousTick] %s → HOLD — no candidate enqueued", symbol)
