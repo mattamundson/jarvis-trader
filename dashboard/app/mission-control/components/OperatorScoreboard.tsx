@@ -205,7 +205,7 @@ export function GatesBlock({
       ) : gates == null ? (
         <p className="text-xs text-muted-foreground">…</p>
       ) : !gates.found ? (
-        <p className="text-xs font-semibold text-warn">gates file missing</p>
+        <p className="text-xs font-semibold text-warn">{gates.message}</p>
       ) : gates.gates.length === 0 ? (
         <p className="text-xs text-muted-foreground">{gates.message}</p>
       ) : (
