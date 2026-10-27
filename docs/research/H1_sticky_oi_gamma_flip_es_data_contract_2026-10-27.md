@@ -49,3 +49,7 @@ A separate session has a Databento metadata quote of $20.72 for `GLBX.MDP3` `ohl
 ## Stop line
 
 `INSUFFICIENT` remains the verdict. No estimation row can be admitted from the loader output above.
+
+## Clock convention, frozen before any price is read.
+
+A later scorer, when a file exists, uses the open of the 1-minute bar whose America/Chicago timestamp is exactly 09:35, and the open of the bar stamped exactly 10:05. The close of those bars is one minute later and is not the decision price. This paragraph does not authorize reading those opens now.
