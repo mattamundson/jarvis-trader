@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { decideDashboardAuth, readDashboardAuthEnv } from "@/lib/dashboardAuth";
-import { isPublicReadOnlyPath, isWebSocketPath, isWebSocketUpgrade } from "@/lib/publicRoutes";
+import { isPublicReadOnlyPath, isWebSocketPath, isWebSocketUpgrade, isFlowIngestPath } from "@/lib/publicRoutes";
 
 /**
  * HTTP Basic Auth for the JARVIS trading dashboard.
@@ -62,6 +62,12 @@ function unauthorized(): NextResponse {
 
 export function middleware(req: NextRequest) {
   if (isPublicReadOnlyPath(req.nextUrl.pathname)) {
+    return NextResponse.next();
+  }
+
+  // Flow ingest endpoint has its own Bearer token auth (FLOW_INGEST_TOKEN).
+  // Exempt POST /api/flow/ingest from Basic auth so pushers can authenticate directly.
+  if (isFlowIngestPath(req.nextUrl.pathname, req.method)) {
     return NextResponse.next();
   }
 
