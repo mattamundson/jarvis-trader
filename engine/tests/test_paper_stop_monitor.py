@@ -489,3 +489,14 @@ if __name__ == "__main__":  # allow plain `python test_paper_stop_monitor.py`
             traceback.print_exc()
     print(f"\n{passed}/{len(fns)} passed")
     sys.exit(0 if passed == len(fns) else 1)
+
+
+def test_check_once_leaves_broker_bracketed_trade_to_fill_sync():
+    """A row with a live IB STP child (stop_order_id) is closed by the broker;
+    the ledger must take its exit from IB's fill (execution.ledger_fill_sync),
+    not book a theoretical close at the stop level from a 5-minute quote."""
+    db = _FakeDB([_trade(stop_order_id="6", target_order_id="7")])
+    mon = PaperStopMonitor(db, _FakeData(4490.0))  # well through the stop
+    fired = asyncio.run(mon.check_once())
+    assert fired == 0
+    assert db.close_calls == []
