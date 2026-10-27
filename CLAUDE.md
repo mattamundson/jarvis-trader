@@ -94,6 +94,33 @@ Use `/jarvis-*` commands or invoke subagents by name from `.claude/agents/`:
 - `backtest-runner` — WFE / PF / Sharpe validation + Monte Carlo
 - `safety-reviewer` — kill switch, stop-loss direction invariants, safety layer
 
+## Monitoring
+
+### Live Order Flow Feed
+
+- **Health endpoint:** https://jarvis-trader-dashboard.vercel.app/api/flow/health
+  - Returns `status` (live/stale/offline), `age_seconds`, `last_update`, `size_bytes`
+  - Live: < 10s, Stale: < 120s, Offline: >= 120s or unreachable
+
+- **External monitoring setup (UptimeRobot):**
+  1. Sign up: https://uptimerobot.com (free tier)
+  2. Add Monitor:
+     - Type: HTTP(S)
+     - URL: https://jarvis-trader-dashboard.vercel.app/api/flow/health
+     - Name: JARVIS Flow Health
+     - Interval: 5 minutes
+     - Alert: Email + Discord webhook
+  3. Discord webhook setup:
+     - Discord Server → Channel (#alerts) → Settings → Integrations → Webhooks
+     - Create webhook, copy URL
+     - UptimeRobot: Alert Contacts → Add → Webhook → Paste URL
+  4. Test: Stop pusher. Within 10 minutes, verify Discord alert arrives.
+
+- **Proactive monitoring:** Vercel Cron at `/api/cron/check-flow` runs every 5 minutes
+  - Checks blob age directly
+  - Sends Discord alert if data >5 minutes old
+  - Requires env vars: `CRON_SECRET`, `DISCORD_WEBHOOK_FLOW_ALERTS`
+
 ## Imports
 
 @.claude/rules/safety.md
