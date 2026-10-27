@@ -1,16 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import useSWR from "swr";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { JetBrains_Mono } from "next/font/google";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, TrendingUp, TrendingDown, Activity } from "lucide-react";
 import type { FlowSnapshot } from "@/lib/flowTypes";
-import { isStale, biasLabel } from "@/lib/flowTypes";
+import { isStale, biasLabel, analyzeGateAction, volumePaceRatio } from "@/lib/flowTypes";
 
 const fontMono = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "600", "700"] });
+
+const CvdChart = dynamic(
+  () => import("@/components/flow/CvdChart").then((m) => ({ default: m.CvdChart })),
+  { ssr: false, loading: () => <div className="h-80 animate-pulse rounded bg-slate-950/40" /> }
+);
 
 async function fetchFlow(): Promise<FlowSnapshot> {
   const res = await fetch("/api/flow", { cache: "no-store" });
@@ -34,6 +40,18 @@ export default function Home() {
   const stale = flow && isStale(flow.ts);
   const bias = flow ? biasLabel(flow.es.last, flow.es.vwap) : "NEUTRAL";
 
+  const gateAnalyses = useMemo(() => {
+    if (!flow) return [];
+    return flow.gates.map((gate) =>
+      analyzeGateAction(gate, flow.es.last, flow.es.cvd, flow.es.cvdLow, flow.es.deltaAtPrice)
+    );
+  }, [flow]);
+
+  const volPace = useMemo(() => {
+    if (!flow || flow.es.bars1m.length === 0) return null;
+    return volumePaceRatio(flow.es.bars1m);
+  }, [flow]);
+
   return (
     <div className={`min-h-screen bg-gray-950 text-gray-100 p-4 ${fontMono.className}`}>
       <div className="flex items-center justify-between mb-4 border-b border-cyan-900/40 pb-3">
@@ -55,13 +73,7 @@ export default function Home() {
         </div>
       </div>
 
-      {error && (
-        <div className="mb-4 p-3 bg-red-950/40 border border-red-700 rounded text-sm text-red-300 font-mono">
-          Failed to load flow data: {error.message}
-        </div>
-      )}
-
-      {!flow && !error && (
+      {!flow && (
         <div className="flex items-center justify-center py-20">
           <div className="text-slate-500 font-mono animate-pulse">Loading flow data...</div>
         </div>
@@ -115,12 +127,15 @@ export default function Home() {
                   <div className="space-y-4">
                     <div>
                       <div className="text-xs text-slate-500 mb-2">
-                        Cumulative Delta: {flow.es.cvd} (low: {flow.es.cvdLow})
+                        CVD: {flow.es.cvd} (low: {flow.es.cvdLow}) | 1m Price + CVD Line
                       </div>
-                      <div className="h-40 bg-slate-950/60 border border-slate-800 rounded p-2">
-                        <div className="text-center text-slate-600 text-xs py-16">
-                          CVD chart placeholder (1m/5m price + CVD line)
-                        </div>
+                      <div className="bg-slate-950/60 border border-slate-800 rounded p-2">
+                        <CvdChart
+                          bars={flow.es.bars1m}
+                          gates={flow.gates}
+                          cvdLow={flow.es.cvdLow}
+                          currentCvd={flow.es.cvd}
+                        />
                       </div>
                     </div>
 
@@ -172,7 +187,7 @@ export default function Home() {
 
                       <div>
                         <div className="text-xs text-slate-500 mb-2">Big Print Tape (≥20 lots)</div>
-                        <div className="bg-slate-950/60 border border-slate-800 rounded p-2 space-y-1">
+                        <div className="bg-slate-950/60 border border-slate-800 rounded p-2 space-y-1 max-h-32 overflow-y-auto">
                           {flow.es.bigPrints.length === 0 ? (
                             <div className="text-xs text-slate-600 py-8 text-center">
                               No big prints
@@ -201,8 +216,28 @@ export default function Home() {
                             ))
                           )}
                         </div>
-                        <div className="text-xs text-slate-600 mt-2">
-                          Absorption vs break: placeholder
+                        <div className="mt-2 space-y-1">
+                          <div className="text-xs text-slate-500 mb-1">Gate Actions</div>
+                          {gateAnalyses.map((ga, i) => (
+                            <div
+                              key={i}
+                              className="flex items-center justify-between text-xs py-0.5"
+                            >
+                              <span className="text-slate-400">{ga.level.toFixed(0)}</span>
+                              <Badge
+                                variant={
+                                  ga.action === "BREAK"
+                                    ? "bear"
+                                    : ga.action === "ABSORB"
+                                      ? "bull"
+                                      : "neutral"
+                                }
+                                className="text-[10px] py-0"
+                              >
+                                {ga.action}
+                              </Badge>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     </div>
@@ -224,27 +259,40 @@ export default function Home() {
                     <div>
                       <div className="text-xs text-slate-500 mb-2">Gate Levels</div>
                       <div className="space-y-1">
-                        {flow.gates.map((g, i) => (
-                          <div
-                            key={i}
-                            className="flex items-center justify-between text-xs py-1 border-b border-slate-800/50 last:border-0"
-                          >
-                            <span className="text-white font-bold">{g.level.toFixed(2)}</span>
-                            <Badge
-                              variant={
-                                g.status === "untested"
-                                  ? "neutral"
-                                  : g.status === "testing"
-                                    ? "warn"
-                                    : "bear"
-                              }
-                              className="text-xs"
+                        {flow.gates.map((g, i) => {
+                          const analysis = gateAnalyses[i];
+                          return (
+                            <div
+                              key={i}
+                              className="flex items-center justify-between text-xs py-1 border-b border-slate-800/50 last:border-0"
                             >
-                              {g.status.toUpperCase()}
-                            </Badge>
-                            <span className="text-slate-500">{g.closeCount}/2</span>
-                          </div>
-                        ))}
+                              <span className="text-white font-bold">{g.level.toFixed(2)}</span>
+                              <div className="flex items-center gap-1">
+                                <Badge
+                                  variant={
+                                    g.status === "untested"
+                                      ? "neutral"
+                                      : g.status === "testing"
+                                        ? "warn"
+                                        : "bear"
+                                  }
+                                  className="text-[10px] py-0"
+                                >
+                                  {g.status.toUpperCase()}
+                                </Badge>
+                                {analysis && analysis.action !== "NEUTRAL" && (
+                                  <Badge
+                                    variant={analysis.action === "ABSORB" ? "bull" : "bear"}
+                                    className="text-[10px] py-0"
+                                  >
+                                    {analysis.action}
+                                  </Badge>
+                                )}
+                              </div>
+                              <span className="text-slate-500">{g.closeCount}/2</span>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
 
@@ -338,11 +386,31 @@ export default function Home() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="px-4 pb-3">
-                <div className="text-sm text-slate-500">
-                  <div className="text-xs text-slate-600 py-8 text-center">
-                    Volume pace placeholder
+                {volPace ? (
+                  <div className="space-y-2">
+                    <div className="flex items-baseline justify-between">
+                      <span className="text-xs text-slate-500">Current vs Avg</span>
+                      <span className={`text-2xl font-bold font-mono ${volPace.color}`}>
+                        {volPace.ratio.toFixed(2)}x
+                      </span>
+                    </div>
+                    <div className="text-xs text-slate-600">
+                      {volPace.ratio >= 1.5
+                        ? "Heavy volume"
+                        : volPace.ratio >= 1.2
+                          ? "Above average"
+                          : volPace.ratio <= 0.7
+                            ? "Light volume"
+                            : volPace.ratio <= 0.85
+                              ? "Below average"
+                              : "Normal pace"}
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="text-xs text-slate-600 py-8 text-center">
+                    Insufficient data
+                  </div>
+                )}
               </CardContent>
             </Card>
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { isStale, biasLabel } from "@/lib/flowTypes";
+import { isStale, biasLabel, analyzeGateAction, volumePaceRatio, type Gate, type DeltaAtPrice, type Bar1m } from "@/lib/flowTypes";
 
 describe("flowTypes", () => {
   beforeEach(() => {
@@ -70,6 +70,124 @@ describe("flowTypes", () => {
 
     it("returns BEAR exactly at -1 threshold", () => {
       expect(biasLabel(5844, 5845)).toBe("BEAR");
+    });
+  });
+
+  describe("analyzeGateAction", () => {
+    const deltaAtPrice: DeltaAtPrice[] = [
+      { price: 7720, bidLots: 5, askLots: 8 },
+      { price: 7715, bidLots: 35, askLots: 15 },
+      { price: 7710, bidLots: 12, askLots: 10 },
+    ];
+
+    it("returns BREAK when price beyond gate and CVD near low", () => {
+      const gate: Gate = { level: 7715, status: "testing", closeCount: 1 };
+      const result = analyzeGateAction(gate, 7722, -200, -250, deltaAtPrice);
+      
+      expect(result.action).toBe("BREAK");
+      expect(result.reason).toContain("Price beyond gate");
+    });
+
+    it("returns ABSORB when heavy aggressive volume at gate with price holding", () => {
+      const gate: Gate = { level: 7715, status: "testing", closeCount: 1 };
+      const result = analyzeGateAction(gate, 7715.25, 500, -250, deltaAtPrice);
+      
+      expect(result.action).toBe("ABSORB");
+      expect(result.reason).toContain("Heavy aggressive volume");
+    });
+
+    it("returns NEUTRAL when no clear signal", () => {
+      const gate: Gate = { level: 7720, status: "untested", closeCount: 0 };
+      const result = analyzeGateAction(gate, 7718, 100, -250, deltaAtPrice);
+      
+      expect(result.action).toBe("NEUTRAL");
+      expect(result.reason).toBe("No clear signal");
+    });
+
+    it("requires price to be holding for ABSORB", () => {
+      const gate: Gate = { level: 7715, status: "testing", closeCount: 1 };
+      const result = analyzeGateAction(gate, 7720, 500, -250, deltaAtPrice);
+      
+      expect(result.action).not.toBe("ABSORB");
+    });
+
+    it("requires CVD near low for BREAK", () => {
+      const gate: Gate = { level: 7715, status: "testing", closeCount: 1 };
+      const result = analyzeGateAction(gate, 7722, 500, -250, deltaAtPrice);
+      
+      expect(result.action).not.toBe("BREAK");
+    });
+  });
+
+  describe("volumePaceRatio", () => {
+    it("returns 1.0 and neutral color for insufficient data", () => {
+      const bars: Bar1m[] = [
+        { ts: "2024-01-01T12:00:00Z", open: 7710, high: 7712, low: 7709, close: 7711, volume: 100 },
+      ];
+      
+      const result = volumePaceRatio(bars);
+      expect(result.ratio).toBe(1.0);
+      expect(result.color).toBe("text-slate-400");
+    });
+
+    it("returns green for volume 1.5x+ above average", () => {
+      const bars: Bar1m[] = [
+        { ts: "2024-01-01T12:00:00Z", open: 7710, high: 7712, low: 7709, close: 7711, volume: 100 },
+        { ts: "2024-01-01T12:01:00Z", open: 7711, high: 7713, low: 7710, close: 7712, volume: 100 },
+        { ts: "2024-01-01T12:02:00Z", open: 7712, high: 7714, low: 7711, close: 7713, volume: 150 },
+      ];
+      
+      const result = volumePaceRatio(bars);
+      expect(result.ratio).toBe(1.5);
+      expect(result.color).toBe("text-green-400");
+    });
+
+    it("returns cyan for volume 1.2-1.5x above average", () => {
+      const bars: Bar1m[] = [
+        { ts: "2024-01-01T12:00:00Z", open: 7710, high: 7712, low: 7709, close: 7711, volume: 100 },
+        { ts: "2024-01-01T12:01:00Z", open: 7711, high: 7713, low: 7710, close: 7712, volume: 100 },
+        { ts: "2024-01-01T12:02:00Z", open: 7712, high: 7714, low: 7711, close: 7713, volume: 125 },
+      ];
+      
+      const result = volumePaceRatio(bars);
+      expect(result.ratio).toBe(1.25);
+      expect(result.color).toBe("text-cyan-400");
+    });
+
+    it("returns red for volume 0.7x or below average", () => {
+      const bars: Bar1m[] = [
+        { ts: "2024-01-01T12:00:00Z", open: 7710, high: 7712, low: 7709, close: 7711, volume: 100 },
+        { ts: "2024-01-01T12:01:00Z", open: 7711, high: 7713, low: 7710, close: 7712, volume: 100 },
+        { ts: "2024-01-01T12:02:00Z", open: 7712, high: 7714, low: 7711, close: 7713, volume: 70 },
+      ];
+      
+      const result = volumePaceRatio(bars);
+      expect(result.ratio).toBe(0.7);
+      expect(result.color).toBe("text-red-400");
+    });
+
+    it("returns yellow for volume 0.7-0.85x average", () => {
+      const bars: Bar1m[] = [
+        { ts: "2024-01-01T12:00:00Z", open: 7710, high: 7712, low: 7709, close: 7711, volume: 100 },
+        { ts: "2024-01-01T12:01:00Z", open: 7711, high: 7713, low: 7710, close: 7712, volume: 100 },
+        { ts: "2024-01-01T12:02:00Z", open: 7712, high: 7714, low: 7711, close: 7713, volume: 80 },
+      ];
+      
+      const result = volumePaceRatio(bars);
+      expect(result.ratio).toBe(0.8);
+      expect(result.color).toBe("text-yellow-400");
+    });
+
+    it("returns neutral for volume near average", () => {
+      const bars: Bar1m[] = [
+        { ts: "2024-01-01T12:00:00Z", open: 7710, high: 7712, low: 7709, close: 7711, volume: 100 },
+        { ts: "2024-01-01T12:01:00Z", open: 7711, high: 7713, low: 7710, close: 7712, volume: 100 },
+        { ts: "2024-01-01T12:02:00Z", open: 7712, high: 7714, low: 7711, close: 7713, volume: 100 },
+      ];
+      
+      const result = volumePaceRatio(bars);
+      expect(result.ratio).toBe(1.0);
+      expect(result.color).toBe("text-slate-400");
     });
   });
 });
