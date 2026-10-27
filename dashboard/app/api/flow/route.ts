@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { head } from "@vercel/blob";
 import type { FlowSnapshot } from "@/lib/flowTypes";
 
 const FAKE_FIXTURE: FlowSnapshot = {
@@ -57,13 +58,39 @@ const FAKE_FIXTURE: FlowSnapshot = {
   ],
 };
 
-export async function GET() {
+async function fetchFromBlob(): Promise<FlowSnapshot | null> {
+  const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
+  
+  if (!blobToken) {
+    return null;
+  }
+  
+  try {
+    const blob = await head("flow/latest.json", { token: blobToken });
+    const res = await fetch(blob.url, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(5000),
+    });
+    
+    if (!res.ok) {
+      return null;
+    }
+    
+    const data = await res.json();
+    return data as FlowSnapshot;
+  } catch (err) {
+    console.error("[flow] Failed to fetch from Vercel Blob:", err);
+    return null;
+  }
+}
+
+async function fetchFromFeedUrl(): Promise<FlowSnapshot | null> {
   const feedUrl = process.env.FLOW_FEED_URL;
   
   if (!feedUrl) {
-    return NextResponse.json(FAKE_FIXTURE);
+    return null;
   }
-
+  
   try {
     const res = await fetch(feedUrl, { 
       cache: "no-store",
@@ -71,14 +98,28 @@ export async function GET() {
     });
     
     if (!res.ok) {
-      console.warn(`[flow] FLOW_FEED_URL returned ${res.status}, falling back to fixture`);
-      return NextResponse.json(FAKE_FIXTURE);
+      console.warn(`[flow] FLOW_FEED_URL returned ${res.status}`);
+      return null;
     }
     
     const data = await res.json();
-    return NextResponse.json(data);
+    return data as FlowSnapshot;
   } catch (err) {
-    console.error("[flow] Failed to fetch FLOW_FEED_URL, falling back to fixture:", err);
+    console.error("[flow] Failed to fetch FLOW_FEED_URL:", err);
+    return null;
+  }
+}
+
+export async function GET() {
+  let data = await fetchFromBlob();
+  
+  if (!data) {
+    data = await fetchFromFeedUrl();
+  }
+  
+  if (!data) {
     return NextResponse.json(FAKE_FIXTURE);
   }
+  
+  return NextResponse.json(data);
 }
