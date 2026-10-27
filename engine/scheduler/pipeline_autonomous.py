@@ -517,6 +517,12 @@ async def autonomous_tick() -> dict:
                                 }
                             )
                             continue
+                        # Log the pass too, so prod logs prove the check actually ran.
+                        logger.info(
+                            "[AutonomousTick][ENTRY_PRICE_SANITY] %s entry=%s passed",
+                            symbol,
+                            _entry_price_for_check,
+                        )
                 except Exception as _sanity_exc:
                     # Fail CLOSED: an error verifying the entry price must not let a
                     # possibly-corrupted candidate through to the approval queue.
