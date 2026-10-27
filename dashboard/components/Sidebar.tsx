@@ -115,6 +115,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Performance", href: "/performance", icon: <TrendingUp className="h-3.5 w-3.5" /> },
       { label: "Journal", href: "/journal", icon: <BookOpen className="h-3.5 w-3.5" /> },
       { label: "Scorecard", href: "/scorecard", icon: <Trophy className="h-3.5 w-3.5" /> },
+      { label: "Setup Scorecard", href: "/setup-scorecard", icon: <Target className="h-3.5 w-3.5" /> },
     ],
   },
   {
