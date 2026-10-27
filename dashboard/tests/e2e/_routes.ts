@@ -87,6 +87,7 @@ export const ROUTES: RouteSpec[] = [
   { path: "/strategy-c-command", name: "strategy c command", kind: "page", criticality: "standard", landmark: null },
   { path: "/pipeline-board", name: "pipeline board", kind: "page", criticality: "standard", landmark: /Pipeline Board/i },
   { path: "/vault", name: "vault", kind: "page", criticality: "standard", landmark: /Vault/i },
+  { path: "/ops", name: "ops terminal", kind: "page", criticality: "standard", landmark: /Ops · Hermes record/i },
 
   // ---- research: must carry an exploratory provenance banner ---------------
   { path: "/analysis", name: "analysis", kind: "page", criticality: "research", landmark: /JARVIS TRADER . Analysis/i },
