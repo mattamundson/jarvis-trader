@@ -14,7 +14,7 @@ import { ToastProvider } from "@/lib/toast-context";
 import { Sidebar } from "@/components/Sidebar";
 
 function isPublicReadOnlyPath(pathname: string | null): boolean {
-  return pathname === "/market-brief-public" || pathname?.startsWith("/market-brief-public/") === true;
+  return pathname === "/" || pathname === "/market-brief-public" || pathname?.startsWith("/market-brief-public/") === true;
 }
 
 function isMissionControlPath(pathname: string | null): boolean {

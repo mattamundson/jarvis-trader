@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { decideDashboardAuth, readDashboardAuthEnv } from "@/lib/dashboardAuth";
-import { isPublicReadOnlyPath, isWebSocketPath, isWebSocketUpgrade, isFlowIngestPath } from "@/lib/publicRoutes";
+import { isPublicReadOnlyRequest, isWebSocketPath, isWebSocketUpgrade, isFlowIngestPath } from "@/lib/publicRoutes";
 
 /**
  * HTTP Basic Auth for the JARVIS trading dashboard.
@@ -61,7 +61,7 @@ function unauthorized(): NextResponse {
 }
 
 export function middleware(req: NextRequest) {
-  if (isPublicReadOnlyPath(req.nextUrl.pathname)) {
+  if (isPublicReadOnlyRequest(req.nextUrl.pathname, req.method)) {
     return NextResponse.next();
   }
 
