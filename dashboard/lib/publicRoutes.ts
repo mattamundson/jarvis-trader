@@ -1,5 +1,8 @@
+/** Only audited display routes are public; never expose the generic engine proxy. */
 export function isPublicReadOnlyPath(pathname: string): boolean {
   return (
+    pathname === "/" ||
+    pathname === "/api/flow" ||
     pathname === "/market-brief-public" ||
     pathname.startsWith("/market-brief-public/") ||
     pathname === "/api/public-market-brief/latest" ||
@@ -32,4 +35,9 @@ export function isWebSocketPath(pathname: string): boolean {
 /** A real WebSocket handshake sends `Upgrade: websocket`. An ordinary GET does not. */
 export function isWebSocketUpgrade(upgradeHeader: string | null): boolean {
   return (upgradeHeader ?? "").trim().toLowerCase() === "websocket";
+}
+
+/** Public display routes cannot be used for server actions or other writes. */
+export function isPublicReadOnlyRequest(pathname: string, method: string): boolean {
+  return (method === "GET" || method === "HEAD") && isPublicReadOnlyPath(pathname);
 }

@@ -68,7 +68,7 @@ export default function Home() {
             {now ? now.toLocaleTimeString("en-US", { hour12: false }) : "--:--:--"}
           </span>
           <Badge variant="warn" className="font-mono text-xs">
-            PAPER RESEARCH TOOL
+            PUBLIC READ-ONLY · PAPER RESEARCH
           </Badge>
           {isFixture && (
             <Badge variant="neutral" className="font-mono text-xs">

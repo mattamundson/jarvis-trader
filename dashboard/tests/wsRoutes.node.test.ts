@@ -3,11 +3,13 @@ import { test } from "node:test";
 
 import { isPublicReadOnlyPath, isWebSocketPath, isWebSocketUpgrade } from "@/lib/publicRoutes";
 
-test("only the two documented read-only paths are public", () => {
+test("only audited read-only display paths are public", () => {
   assert.equal(isPublicReadOnlyPath("/market-brief-public"), true);
   assert.equal(isPublicReadOnlyPath("/api/public-market-brief/latest"), true);
+  assert.equal(isPublicReadOnlyPath("/"), true);
+  assert.equal(isPublicReadOnlyPath("/api/flow"), true);
   // control surfaces must never be public
-  for (const p of ["/mission-control", "/api/engine/health", "/api/market-brief", "/", "/ws/events"]) {
+  for (const p of ["/mission-control", "/api/engine/health", "/api/market-brief", "/ws/events"]) {
     assert.equal(isPublicReadOnlyPath(p), false, `${p} must not be public`);
   }
 });
