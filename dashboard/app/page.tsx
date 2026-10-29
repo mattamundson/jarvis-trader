@@ -4,15 +4,12 @@ import { useEffect, useState, useMemo } from "react";
 import useSWR from "swr";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { JetBrains_Mono } from "next/font/google";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, TrendingUp, TrendingDown, Activity } from "lucide-react";
 import type { FlowSnapshot } from "@/lib/flowTypes";
 import { isStale, biasLabel, analyzeGateAction, volumePaceRatio } from "@/lib/flowTypes";
 import { fetchDashboardApi } from "@/lib/api";
-
-const fontMono = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "600", "700"] });
 
 const CvdChart = dynamic(
   () => import("@/components/flow/CvdChart").then((m) => ({ default: m.CvdChart })),
@@ -58,7 +55,7 @@ export default function Home() {
   }, [flow]);
 
   return (
-    <div className={`min-h-screen bg-gray-950 text-gray-100 p-4 ${fontMono.className}`}>
+    <div className="min-h-screen bg-gray-950 text-gray-100 p-4 font-mono">
       <div className="flex items-center justify-between mb-4 border-b border-cyan-900/40 pb-3">
         <h1 className="text-xl font-bold text-cyan-400 tracking-widest uppercase" data-testid="flow-page-header">
           JARVIS TRADER — ES ORDER FLOW

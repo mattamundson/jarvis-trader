@@ -1,20 +1,23 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import { AppShell } from "@/components/AppShell";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 
-const inter = Inter({
-  subsets: ["latin"],
+const inter = localFont({
+  src: "./fonts/Inter-latin.woff2",
   variable: "--font-sans",
   display: "swap",
+  weight: "100 900",
+  style: "normal",
 });
 
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
+const jetbrainsMono = localFont({
+  src: "./fonts/JetBrainsMono-latin.woff2",
   variable: "--font-mono",
   display: "swap",
-  weight: ["400", "500", "700"],
+  weight: "100 800",
+  style: "normal",
 });
 
 export const metadata: Metadata = {

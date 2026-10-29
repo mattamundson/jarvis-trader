@@ -29,7 +29,7 @@
   /* Monospace for numbers/prices */
   .tabular-nums {
     font-variant-numeric: tabular-nums;
-    font-family: "JetBrains Mono", monospace;
+    @apply font-mono;
   }
 }
 

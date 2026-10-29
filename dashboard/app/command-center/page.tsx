@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import useSWR from "swr";
-import { JetBrains_Mono, Orbitron } from "next/font/google";
+import localFont from "next/font/local";
 import {
   Shield,
   Zap,
@@ -63,14 +63,18 @@ const CandlestickChart = dynamic(
   { ssr: false, loading: () => <div className="h-[360px] animate-pulse rounded bg-slate-950/40" /> }
 );
 
-const fontDisplay = Orbitron({
-  subsets: ["latin"],
-  weight: ["500", "700", "900"],
+const fontDisplay = localFont({
+  src: "../fonts/Orbitron-latin.woff2",
+  weight: "400 900",
+  style: "normal",
+  display: "swap",
   variable: "--font-cc-display",
 });
-const fontMono = JetBrains_Mono({
-  subsets: ["latin"],
-  weight: ["400", "600"],
+const fontMono = localFont({
+  src: "../fonts/JetBrainsMono-latin.woff2",
+  weight: "100 800",
+  style: "normal",
+  display: "swap",
   variable: "--font-cc-mono",
 });
 
