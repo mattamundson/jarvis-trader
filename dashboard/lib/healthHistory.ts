@@ -1,5 +1,8 @@
 // In-memory health check history (last 100 checks)
-type HealthRecord = {
+// Also persists to Vercel KV if configured
+import { persistHealthRecord } from "./kvHistory";
+
+export type HealthRecord = {
   timestamp: string;
   status: "live" | "stale" | "offline";
   age_seconds: number;
@@ -13,6 +16,11 @@ export function recordHealthCheck(record: HealthRecord) {
   if (history.length > MAX_HISTORY) {
     history.shift();
   }
+  
+  // Also persist to KV if available (fire-and-forget, non-blocking)
+  persistHealthRecord(record).catch(err => 
+    console.warn("[healthHistory] KV persist failed (non-fatal):", err)
+  );
 }
 
 export function getHealthHistory() {
