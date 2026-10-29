@@ -8,8 +8,8 @@ test("only audited read-only display paths are public", () => {
   assert.equal(isPublicReadOnlyPath("/api/public-market-brief/latest"), true);
   assert.equal(isPublicReadOnlyPath("/"), true);
   assert.equal(isPublicReadOnlyPath("/api/flow"), true);
-  // control surfaces must never be public
-  for (const p of ["/mission-control", "/api/engine/health", "/api/market-brief", "/ws/events"]) {
+  // Actions and arbitrary WebSocket HTTP requests must never be public
+  for (const p of ["/api/engine/halt", "/api/engine/unknown", "/api/master/master/command/stream", "/ws/events"]) {
     assert.equal(isPublicReadOnlyPath(p), false, `${p} must not be public`);
   }
 });

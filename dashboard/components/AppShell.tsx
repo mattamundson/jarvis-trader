@@ -14,7 +14,7 @@ import { ToastProvider } from "@/lib/toast-context";
 import { Sidebar } from "@/components/Sidebar";
 
 function isPublicReadOnlyPath(pathname: string | null): boolean {
-  return pathname === "/" || pathname === "/market-brief-public" || pathname?.startsWith("/market-brief-public/") === true;
+  return pathname === "/market-brief-public" || pathname?.startsWith("/market-brief-public/") === true;
 }
 
 function isMissionControlPath(pathname: string | null): boolean {
@@ -44,6 +44,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="flex min-h-screen">
           {!missionControlFocus && <Sidebar />}
           <main className="flex-1 min-w-0 overflow-x-hidden">
+            <div role="status" className="border-b border-cyan-900/40 bg-slate-950 px-4 py-2 text-sm text-cyan-300">Public read-only dashboard · Trading actions and changes require authentication.</div>
             {children}
           </main>
         </div>

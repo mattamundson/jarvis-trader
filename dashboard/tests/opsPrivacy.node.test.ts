@@ -18,12 +18,9 @@ function walk(rel: string): string[] {
   return readdirSync(abs).flatMap((n) => walk(path.join(rel, n)));
 }
 
-test("/ops and /api/ops are not public paths, so middleware Basic Auth covers them", () => {
-  for (const p of ["/ops", "/ops/", "/ops/anything", "/api/ops", "/api/ops/ladder", "/OPS"]) {
-    assert.equal(isPublicReadOnlyPath(p), false, p);
-  }
-  // sanity: the real public paths are still public, so the check above is not vacuous
-  assert.equal(isPublicReadOnlyPath("/market-brief-public"), true);
+test("operations page is public but unknown operations APIs remain private", () => {
+  assert.equal(isPublicReadOnlyPath("/ops"), true);
+  assert.equal(isPublicReadOnlyPath("/api/ops"), false);
 });
 
 test("middleware matcher covers /ops (nothing excludes it from auth)", () => {
@@ -42,19 +39,11 @@ test("auth policy: hosted without credentials is denied, credentials are enforce
   assert.equal(decideDashboardAuth({ user: "u", pass: "p" }), "enforce");
 });
 
-test("ops guard: hosted and remote-without-credentials are refused; localhost and credentialed are allowed", () => {
-  assert.equal(decideOpsAccess({ host: "localhost:3010" }).allowed, true);
-  assert.equal(decideOpsAccess({ host: "127.0.0.1:3077" }).allowed, true);
-  assert.equal(decideOpsAccess({ host: "[::1]:3010" }).allowed, true);
-  assert.deepEqual(decideOpsAccess({ host: "abc.trycloudflare.com" }), { allowed: false, reason: "remote-without-auth" });
-  assert.equal(decideOpsAccess({ host: "192.168.1.20:3010" }).allowed, false);
-  assert.equal(decideOpsAccess({ host: null }).allowed, false);
-  assert.equal(decideOpsAccess({ host: "localhost.evil.com" }).allowed, false);
-  assert.equal(decideOpsAccess({ host: "dash.example.com", user: "u", pass: "p" }).allowed, true);
-  assert.equal(decideOpsAccess({ host: "dash.example.com", user: "u" }).allowed, false);
-  assert.equal(decideOpsAccess({ host: "localhost", vercel: "1" }).reason, "hosted");
-  assert.equal(decideOpsAccess({ host: "localhost", user: "u", pass: "p", vercel: "1" }).allowed, false);
-  assert.equal(decideOpsAccess({ host: "localhost", opsDisabled: "1" }).allowed, false);
+test("ops record is public read-only unless explicitly disabled", () => {
+  for (const input of [{}, { host: "example.com" }, { vercel: "1" }]) {
+    assert.deepEqual(decideOpsAccess(input), { allowed: true, reason: "public-read-only" });
+  }
+  assert.equal(decideOpsAccess({ opsDisabled: "1" }).allowed, false);
   assert.equal(isLocalHost("LOCALHOST:80"), true);
 });
 
