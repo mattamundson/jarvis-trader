@@ -6,6 +6,7 @@ Tracks connected clients and broadcasts real-time events.
 
 import asyncio
 import logging
+from collections import deque
 from datetime import datetime
 from typing import Set
 
@@ -23,11 +24,14 @@ class WebSocketManager:
     - Graceful disconnection handling (remove on send failure)
     - JSON event broadcasting with timestamp
     - Ping/pong keep-alive
+    - Recent event buffer for REST polling fallback
     """
 
     def __init__(self):
         self.active_connections: Set[WebSocket] = set()
         self._lock = asyncio.Lock()
+        self._event_buffer: deque = deque(maxlen=50)
+        self._buffer_lock = asyncio.Lock()
 
     async def connect(self, websocket: WebSocket):
         """Accept a new WebSocket connection and add to active connections."""
@@ -48,11 +52,11 @@ class WebSocketManager:
 
     async def broadcast(self, event_type: str, data: dict):
         """
-        Broadcast an event to all connected clients.
+        Broadcast an event to all connected clients and store in buffer.
 
         Event structure:
         {
-            "type": "order_fill" | "kill_switch" | "circuit_breaker" | "pipeline_complete" | "safety_event" | "price_update",
+            "type": "order_fill" | "kill_switch" | "circuit_breaker" | "pipeline_complete" | "safety_event" | "price_update" | "pending_approval_created",
             "data": {...},
             "timestamp": "ISO8601"
         }
@@ -65,10 +69,12 @@ class WebSocketManager:
             "timestamp": datetime.now().isoformat(),
         }
 
-        if not self.active_connections:
-            return  # No clients connected
+        async with self._buffer_lock:
+            self._event_buffer.append(event)
 
-        # Make a copy of connections in case set changes during iteration
+        if not self.active_connections:
+            return
+
         async with self._lock:
             connections_copy = list(self.active_connections)
 
@@ -79,10 +85,8 @@ class WebSocketManager:
                 await websocket.send_json(event)
             except Exception as e:
                 logger.warning(f"Failed to send WebSocket event: {e}")
-                # Mark for removal (client likely disconnected)
                 disconnected.add(websocket)
 
-        # Remove failed connections
         if disconnected:
             async with self._lock:
                 self.active_connections.difference_update(disconnected)
@@ -109,3 +113,16 @@ class WebSocketManager:
     def get_connection_count(self) -> int:
         """Get the current number of active connections."""
         return len(self.active_connections)
+
+    async def get_recent_events(self, limit: int = 20) -> list[dict]:
+        """Get recent WS events from buffer, newest first.
+        
+        Args:
+            limit: Maximum number of events to return
+            
+        Returns:
+            List of event dicts in reverse chronological order
+        """
+        async with self._buffer_lock:
+            events = list(self._event_buffer)
+        return list(reversed(events))[:limit]

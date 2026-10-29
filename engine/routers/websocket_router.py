@@ -93,4 +93,26 @@ async def websocket_status():
     return {"status": "ok", "connections": ws_manager.get_connection_count()}
 
 
+@router.get("/ws/events/recent")
+async def get_recent_ws_events(limit: int = 20):
+    """Get recent WebSocket events from buffer (for polling fallback).
+    
+    Returns the same event structure as the WebSocket stream, newest first.
+    Used by dashboard when WebSocket connection unavailable (e.g., Vercel).
+    
+    Args:
+        limit: Maximum events to return (default 20, max 50)
+        
+    Returns:
+        events: List of event dicts with type, data, timestamp
+        count: Number of events returned
+    """
+    if not ws_manager:
+        return {"events": [], "count": 0}
+    
+    limit = min(max(1, limit), 50)
+    events = await ws_manager.get_recent_events(limit)
+    return {"events": events, "count": len(events)}
+
+
 # ── Performance Report Endpoint ───────────────────────────────────────────────

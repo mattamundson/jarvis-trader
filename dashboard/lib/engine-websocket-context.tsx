@@ -64,8 +64,9 @@ export function EngineWebSocketProvider({
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const attemptRef = useRef(0);
   const connectImplRef = useRef<(() => void) | null>(null);
-  const pollingTimer = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
-  const lastSeenEventRef = useRef<string | null>(null);
+  const pollingTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const seenEventIdsRef = useRef<Set<string>>(new Set());
+  const pollingInProgressRef = useRef(false);
 
   const subscribe = useCallback((handler: WsSubscriber) => {
     subscribersRef.current.add(handler);
@@ -93,35 +94,63 @@ export function EngineWebSocketProvider({
       setPolling(true);
       
       const poll = async () => {
+        if (pollingInProgressRef.current) return;
+        
+        pollingInProgressRef.current = true;
         try {
           const response = await fetchEngine<{
-            events: Array<{ type: string; timestamp?: string; [key: string]: unknown }>;
-          }>("/events/recent?limit=10");
+            events: Array<{
+              type: string;
+              data?: Record<string, unknown>;
+              timestamp?: string;
+            }>;
+          }>("/ws/events/recent?limit=20");
           
           if (response.events && response.events.length > 0) {
-            const latestEvent = response.events[0];
-            const eventId = `${latestEvent.type}-${latestEvent.timestamp || Date.now()}`;
+            const newEvents: WsEvent[] = [];
             
-            if (eventId !== lastSeenEventRef.current) {
-              lastSeenEventRef.current = eventId;
-              const flat = latestEvent as WsEvent;
-              broadcast(flat);
+            for (const event of response.events) {
+              const eventId = `${event.type}-${event.timestamp || Date.now()}`;
+              
+              if (!seenEventIdsRef.current.has(eventId)) {
+                seenEventIdsRef.current.add(eventId);
+                
+                if (seenEventIdsRef.current.size > 100) {
+                  const oldIds = Array.from(seenEventIdsRef.current).slice(0, 50);
+                  oldIds.forEach(id => seenEventIdsRef.current.delete(id));
+                }
+                
+                const flat = (
+                  event.data != null
+                    ? { type: event.type, ...event.data, timestamp: event.timestamp }
+                    : event
+                ) as WsEvent;
+                newEvents.push(flat);
+              }
             }
+            
+            newEvents.reverse().forEach(broadcast);
           }
         } catch (err) {
           console.error("[EngineWebSocket] polling error:", err);
+        } finally {
+          pollingInProgressRef.current = false;
+          
+          if (reconnectRef.current && polling) {
+            pollingTimer.current = setTimeout(poll, POLL_INTERVAL.FAST);
+          }
         }
       };
 
       poll();
-      pollingTimer.current = setInterval(poll, POLL_INTERVAL.FAST);
     };
 
     const stopPolling = () => {
       if (pollingTimer.current) {
-        clearInterval(pollingTimer.current);
+        clearTimeout(pollingTimer.current);
         pollingTimer.current = undefined;
       }
+      pollingInProgressRef.current = false;
       setPolling(false);
     };
 
@@ -212,11 +241,15 @@ export function EngineWebSocketProvider({
   const disconnect = useCallback(() => {
     reconnectRef.current = false;
     if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+    if (pollingTimer.current) clearTimeout(pollingTimer.current);
+    pollingTimer.current = undefined;
+    pollingInProgressRef.current = false;
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
     }
     setConnected(false);
+    setPolling(false);
   }, []);
 
   const value = useMemo(
