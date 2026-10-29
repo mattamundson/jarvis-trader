@@ -3,38 +3,11 @@ import { decideDashboardAuth, readDashboardAuthEnv } from "@/lib/dashboardAuth";
 import { isPublicReadOnlyRequest, isWebSocketPath, isWebSocketUpgrade, isFlowIngestPath } from "@/lib/publicRoutes";
 
 /**
- * HTTP Basic Auth for the JARVIS trading dashboard.
- *
- * The dashboard is a trading control surface (positions, kill-switch state,
- * order approval) — it must never be reachable without credentials when
- * exposed beyond localhost. This middleware enforces Basic Auth at the edge
- * (before any route handler runs) whenever credentials are configured.
- *
- * Configuration (server-side env, never NEXT_PUBLIC):
- *   DASHBOARD_AUTH_USER  — username
- *   DASHBOARD_AUTH_PASS  — password
- *
- * Behavior (see lib/dashboardAuth.ts for the policy and its unit tests):
- *   - Both vars set   -> enforced. Missing/wrong creds get 401 + WWW-Authenticate
- *                        (browser shows the native credential prompt).
- *   - Neither set, on a hosted deployment -> FAIL CLOSED (503). This is the
- *                        important case: a Vercel deploy without DASHBOARD_AUTH_*
- *                        previously served the whole dashboard and the
- *                        /api/engine/* proxy (which injects the engine API key
- *                        server-side) to the public internet. Refusing traffic is
- *                        the safe failure mode.
- *   - Neither set, plain localhost -> allowed, so local dev and CI need no shared
- *                        secret. Logs a warning so the gap stays visible.
- *   - DASHBOARD_AUTH_DISABLED=1 -> allowed even on a hosted deployment, for a
- *                        deliberate public demo. Never set this in production.
- *
- * Security notes:
- *   - Uses a constant-time comparison (crypto.timingSafeEqual) to avoid
- *     user-enumerable timing side channels.
- *   - The check runs in the Edge runtime (Next middleware) — no secrets are
- *     shipped to the client bundle.
- *   - Credentials travel in the Authorization header; in production this must
- *     sit behind TLS (local dev is loopback-only by default).
+ * Pages and explicitly allowlisted data reads are public. Other routes and
+ * mutations require DASHBOARD_AUTH_USER/PASS; engine credentials remain server-only.
+ * GET is not inherently safe: command streams, LLM actions and unknown proxies
+ * are deliberately excluded from public reads. The legacy public-demo disable
+ * flag must never disable action authentication on a hosted deployment.
  */
 
 function timingSafeEqualStr(a: string, b: string): boolean {
@@ -78,17 +51,24 @@ export function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
+  // A public page may poll a protected diagnostic. Do not turn an API denial
+  // into a browser-wide Basic Auth dialog; owners can still supply credentials.
+  if (req.nextUrl.pathname.startsWith("/api/") && req.nextUrl.pathname !== "/api/owner-sign-in" && !req.headers.get("authorization")) {
+    return NextResponse.json({ error: "read_only", message: "This action requires authentication." },
+      { status: 403, headers: { "Cache-Control": "no-store" } });
+  }
+
   const user = process.env.DASHBOARD_AUTH_USER;
   const pass = process.env.DASHBOARD_AUTH_PASS;
 
-  const decision = decideDashboardAuth(readDashboardAuthEnv());
+  const decision = decideDashboardAuth({ ...readDashboardAuthEnv(), disabled: undefined });
 
   if (decision === "deny") {
     if (!warnedUnauthenticated) {
       warnedUnauthenticated = true;
       console.error(
         "[auth] DASHBOARD_AUTH_USER/DASHBOARD_AUTH_PASS not set on a hosted deployment — refusing to serve private routes. " +
-          "Set both, or set DASHBOARD_AUTH_DISABLED=1 deliberately for a public demo.",
+          "Set both to authenticate protected actions.",
       );
     }
     return new NextResponse(

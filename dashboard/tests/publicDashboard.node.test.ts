@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
+import { ROUTES } from "./e2e/_routes.ts";
 import { isPublicReadOnlyRequest } from "../lib/publicRoutes.ts";
 
 test("home and its feed permit anonymous reads only", () => {
@@ -12,17 +13,43 @@ test("home and its feed permit anonymous reads only", () => {
   }
 });
 
-test("private pages, ingest and all engine routes remain authenticated", () => {
-  for (const path of ["/ops", "/mission-control", "/api/flow/ingest", "/api/flow/anything",
-    "/api/engine/health", "/api/engine/halt", "/api/master/status", "/ws/events"]) {
-    for (const method of ["GET", "HEAD", "POST", "DELETE"]) {
+test("all pages and financial and journal reads are public; writes are not", () => {
+  for (const path of ["/ops", "/mission-control", "/settings", "/journal", "/master/finances",
+    "/api/engine/health", "/api/engine/portfolio/summary", "/api/engine/journal/entries",
+    "/api/master/master/finances/detail"]) {
+    assert.equal(isPublicReadOnlyRequest(path, "GET"), true, path);
+    for (const method of ["POST", "PUT", "PATCH", "DELETE"]) {
       assert.equal(isPublicReadOnlyRequest(path, method), false, `${method} ${path}`);
     }
   }
 });
 
-test("public home uses the display-only shell before private providers mount", () => {
+test("GET actions, unknown APIs, encoded paths, and WebSockets are not public reads", () => {
+  for (const path of ["/api/flow/ingest", "/api/flow/anything", "/api/engine/halt",
+    "/api/engine/portfolio/halt", "/api/engine/jarvis/analyze", "/api/engine/discord/bookmarks/weekly-themes", "/api/engine/journal/review/monthly", "/api/owner-sign-in",
+    "/api/master/master/command/stream", "/api/cron/check-flow", "/api/engine/unknown",
+    "/api/engine/decisions/%2e%2e%2fhalt/detail", "/ws/events"]) {
+    assert.equal(isPublicReadOnlyRequest(path, "GET"), false, path);
+  }
+});
+
+test("dashboard navigation remains available with a public-read-only notice", () => {
   const shell = readFileSync(new URL("../components/AppShell.tsx", import.meta.url), "utf8");
-  assert.match(shell, /return pathname === "\/" \|\| pathname === "\/market-brief-public"/);
-  assert.ok(shell.indexOf("if (isPublicReadOnlyPath(pathname))") < shell.indexOf("<EngineWebSocketProvider>"));
+  assert.match(shell, /<Sidebar/);
+  assert.match(shell, /Public read-only dashboard/);
+});
+
+test("every dashboard page in the route manifest is publicly readable, never writable", () => {
+  for (const { path } of ROUTES) {
+    assert.equal(isPublicReadOnlyRequest(path, "GET"), true, path);
+    assert.equal(isPublicReadOnlyRequest(path, "POST"), false, path);
+  }
+});
+
+test("saved vault reports and full health are public reads, never generation", () => {
+  for (const path of ["/health/full", "/vault/brief/latest", "/vault/contradictions/latest", "/vault/lint/latest"]) {
+    assert.equal(isPublicReadOnlyRequest(`/api/engine${path}`, "GET"), true, path);
+    assert.equal(isPublicReadOnlyRequest(`/api/engine${path}`, "POST"), false, path);
+  }
+  assert.equal(isPublicReadOnlyRequest("/api/engine/vault/brief/run", "POST"), false);
 });

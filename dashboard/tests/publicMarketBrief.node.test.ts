@@ -56,13 +56,13 @@ test("public market brief snapshot strips sourcePath and preserves analysis-only
   assert.ok(!raw.includes("sourcePath"));
 });
 
-test("public route allowlist excludes dashboard and engine control surfaces", () => {
+test("public route allowlist permits viewing but not engine actions", () => {
   assert.equal(isPublicReadOnlyPath("/market-brief-public"), true);
   assert.equal(isPublicReadOnlyPath("/market-brief-public/history"), true);
   assert.equal(isPublicReadOnlyPath("/api/public-market-brief/latest"), true);
 
-  assert.equal(isPublicReadOnlyPath("/mission-control"), false);
-  assert.equal(isPublicReadOnlyPath("/api/market-brief"), false);
-  assert.equal(isPublicReadOnlyPath("/api/engine/health"), false);
-  assert.equal(isPublicReadOnlyPath("/command-center-v2/trade"), false);
+  assert.equal(isPublicReadOnlyPath("/mission-control"), true);
+  assert.equal(isPublicReadOnlyPath("/api/market-brief"), true);
+  assert.equal(isPublicReadOnlyPath("/api/engine/health"), true);
+  assert.equal(isPublicReadOnlyPath("/api/engine/portfolio/halt"), false);
 });
