@@ -3,10 +3,16 @@ import { head } from "@vercel/blob";
 import { logCronAlert, logHealthCheck } from "@/lib/healthLogger";
 import { recordHealthCheck } from "@/lib/healthHistory";
 import { sendAlert } from "@/lib/alerting";
+import { logCronInvocation } from "@/lib/auditLog";
 
 export async function GET(request: Request) {
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0] || "unknown";
   const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  
+  const authorized = authHeader === `Bearer ${process.env.CRON_SECRET}`;
+  logCronInvocation(ip, "/api/cron/check-flow", authorized);
+  
+  if (!authorized) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

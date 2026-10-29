@@ -1,13 +1,19 @@
 import { NextResponse } from "next/server";
 import { sendAlert } from "@/lib/alerting";
+import { logCronInvocation, logAuthAttempt } from "@/lib/auditLog";
 
 // Vercel KV store for last watchdog check timestamp
 // (If KV not available, degrade to in-memory with warning)
 let lastWatchdogCheck: number = Date.now();
 
 export async function GET(request: Request) {
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0] || "unknown";
   const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  
+  const authorized = authHeader === `Bearer ${process.env.CRON_SECRET}`;
+  logCronInvocation(ip, "/api/cron/watchdog-health", authorized);
+  
+  if (!authorized) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   
@@ -44,9 +50,13 @@ export async function GET(request: Request) {
 
 // Health endpoint for watchdog to ping
 export async function POST(request: Request) {
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0] || "unknown";
   const apiKey = request.headers.get("x-api-key");
   
-  if (apiKey !== process.env.API_KEY) {
+  const authorized = apiKey === process.env.API_KEY;
+  logAuthAttempt(ip, "/api/cron/watchdog-health (POST)", authorized);
+  
+  if (!authorized) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   

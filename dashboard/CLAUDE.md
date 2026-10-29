@@ -45,3 +45,57 @@ enforces against the actual `app/**/page.tsx` tree, so it cannot drift.
 Real-time data via `hooks/useWebSocket.ts` — resolves through
 `NEXT_PUBLIC_ENGINE_URL` when set, otherwise falls back to the current dashboard
 origin so Next.js proxying can handle the engine connection.
+
+## Security: Secrets Rotation Procedure
+
+For Live Order Flow Feed and dashboard security, rotate secrets quarterly (90 days) or immediately after any suspected compromise.
+
+### Secrets Inventory
+
+| Secret | Used By | Rotation Impact |
+|--------|---------|----------------|
+| `FLOW_INGEST_TOKEN` | `/api/flow/ingest` auth, Windows pusher `push_flow.py` | Medium — pusher will fail until updated locally |
+| `CRON_SECRET` | Vercel Cron auth for `/api/cron/*` endpoints | Low — only Vercel platform uses this |
+| `DASHBOARD_AUTH_USER` / `DASHBOARD_AUTH_PASS` | Dashboard Basic Auth (middleware) | High — all users must re-login |
+| `API_KEY` | Engine ↔ Dashboard proxy, watchdog heartbeat | High — dashboard/engine link breaks |
+| `DISCORD_WEBHOOK_FLOW_ALERTS` | Flow alerts (Discord primary channel) | Low — alerts degrade to email fallback |
+| `RESEND_API_KEY` | Email fallback alerts | Low — alerts degrade to Discord only (if Discord works) |
+| `BLOB_READ_WRITE_TOKEN` | Vercel Blob storage for `flow/latest.json` | Critical — flow feed stops working |
+
+### Rotation Steps
+
+1. **Generate new secret** (use strong random generator, min 32 chars):
+   ```bash
+   openssl rand -base64 32
+   ```
+
+2. **Update in Vercel dashboard** (Settings → Environment Variables):
+   - Set new value for target secret
+   - Deploy to take effect (automatic redeploy on env var change)
+
+3. **Update external consumers** (if applicable):
+   - `FLOW_INGEST_TOKEN`: Update `~/tape/.env` on Windows PC, restart pusher
+   - `API_KEY`: Update `engine/.env`, restart engine (if changed)
+   - `DASHBOARD_AUTH_*`: Notify users of new credentials
+
+4. **Verify rotation** (monitor for 24h):
+   - Check `/api/flow/health` — data still updating?
+   - Check Vercel logs — any 401 errors from pusher/watchdog?
+   - Check alert channels — Discord/email still working?
+
+5. **Document rotation** in `docs/security-log.md`:
+   ```
+   ## 2026-10-28 - Quarterly Rotation
+   - Rotated: FLOW_INGEST_TOKEN, CRON_SECRET
+   - Reason: Routine 90-day rotation
+   - Impact: None (pusher updated, alerts stable)
+   ```
+
+### Emergency Rotation (Suspected Compromise)
+
+If any secret is suspected compromised:
+1. Rotate **immediately** (don't wait for maintenance window)
+2. Review Vercel logs (`/api/flow/ingest`, `/api/cron/*`) for unauthorized access
+3. Check audit logs (structured JSON logs with `type: "security_audit"`)
+4. Alert Matt via Discord + email
+5. Consider rotating ALL secrets in inventory as precaution

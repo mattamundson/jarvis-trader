@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { put } from "@vercel/blob";
 import { sanitizeFlowData } from "@/lib/flowSanitize";
+import { logIngestAttempt } from "@/lib/auditLog";
 
 function constantTimeCompare(a: string, b: string): boolean {
   if (a.length !== b.length) {
@@ -14,6 +15,7 @@ function constantTimeCompare(a: string, b: string): boolean {
 }
 
 export async function POST(request: NextRequest) {
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0] || "unknown";
   const authHeader = request.headers.get("authorization");
   const expectedToken = process.env.FLOW_INGEST_TOKEN;
   
@@ -26,6 +28,7 @@ export async function POST(request: NextRequest) {
   }
   
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    logIngestAttempt(ip, false, "missing_or_malformed_auth_header");
     return NextResponse.json(
       { error: "Unauthorized" },
       { status: 401 }
@@ -35,6 +38,7 @@ export async function POST(request: NextRequest) {
   const token = authHeader.slice(7);
   
   if (!constantTimeCompare(token, expectedToken)) {
+    logIngestAttempt(ip, false, "invalid_token");
     return NextResponse.json(
       { error: "Unauthorized" },
       { status: 401 }
@@ -54,6 +58,7 @@ export async function POST(request: NextRequest) {
   const sanitized = sanitizeFlowData(body);
   
   if (!sanitized) {
+    logIngestAttempt(ip, false, "validation_failed");
     return NextResponse.json(
       { 
         error: "Data failed validation",
@@ -79,9 +84,11 @@ export async function POST(request: NextRequest) {
       token: blobToken,
     });
     
+    logIngestAttempt(ip, true);
     return NextResponse.json({ success: true, ts: sanitized.ts });
   } catch (err) {
     console.error("[flow/ingest] Failed to store blob:", err);
+    logIngestAttempt(ip, false, "storage_failed");
     return NextResponse.json(
       { error: "Storage failed" },
       { status: 500 }
