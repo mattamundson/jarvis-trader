@@ -20,7 +20,12 @@ function timingSafeEqualStr(a: string, b: string): boolean {
 
 let warnedUnauthenticated = false;
 
-function unauthorized(): NextResponse {
+function unauthorized(interactive = true): NextResponse {
+  if (!interactive) {
+    return NextResponse.json({ error: "authentication_required" }, {
+      status: 401, headers: { "Cache-Control": "no-store" },
+    });
+  }
   return new NextResponse("Authentication required", {
     status: 401,
     headers: {
@@ -36,6 +41,11 @@ export function middleware(req: NextRequest) {
   if (isFlowIngestPath(req.nextUrl.pathname, req.method)) {
     return NextResponse.next();
   }
+
+  // Keep WebSockets protected, but never issue a browser login dialog from
+  // background reconnects. Invalid credentials still receive 401.
+  const interactive = !req.nextUrl.pathname.startsWith("/ws/") && req.nextUrl.pathname !== "/ws";
+  const reject = () => unauthorized(interactive);
 
   const user = process.env.DASHBOARD_AUTH_USER;
   const pass = process.env.DASHBOARD_AUTH_PASS;
@@ -69,26 +79,26 @@ export function middleware(req: NextRequest) {
 
   // decision === "enforce" implies both are configured; this narrows the types and
   // fails closed if that invariant is ever broken.
-  if (!user || !pass) return unauthorized();
+  if (!user || !pass) return reject();
 
   const auth = req.headers.get("authorization") ?? "";
   const [scheme, encoded] = auth.split(" ");
-  if (scheme !== "Basic" || !encoded) return unauthorized();
+  if (scheme !== "Basic" || !encoded) return reject();
 
   let decoded: string;
   try {
     decoded = Buffer.from(encoded, "base64").toString("utf8");
   } catch {
-    return unauthorized();
+    return reject();
   }
 
   const colon = decoded.indexOf(":");
-  if (colon === -1) return unauthorized();
+  if (colon === -1) return reject();
   const reqUser = decoded.slice(0, colon);
   const reqPass = decoded.slice(colon + 1);
 
   if (!timingSafeEqualStr(reqUser, user) || !timingSafeEqualStr(reqPass, pass)) {
-    return unauthorized();
+    return reject();
   }
 
   return NextResponse.next();

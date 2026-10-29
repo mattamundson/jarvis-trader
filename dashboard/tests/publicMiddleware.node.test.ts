@@ -20,13 +20,14 @@ test("actual middleware challenges every page, API, and WebSocket request", () =
     process.env.DASHBOARD_AUTH_USER = "owner-test";
     process.env.DASHBOARD_AUTH_PASS = "test-only-value";
     for (const path of ["/", "/ops", "/mission-control", "/market-brief-public",
-      "/api/engine/portfolio/summary", "/api/engine/journal/entries", "/api/flow", "/ws/events"]) {
+      "/api/engine/portfolio/summary", "/api/engine/journal/entries", "/api/flow"]) {
       const response = middleware(new NextRequest(`https://example.invalid${path}`));
       assert.equal(response.status, 401, path);
       assert.match(response.headers.get("www-authenticate"), /^Basic /);
     }
     const ws = middleware(new NextRequest("https://example.invalid/ws/events", { headers: { upgrade: "websocket" } }));
     assert.equal(ws.status, 401);
+    assert.equal(ws.headers.has("www-authenticate"), false);
   } finally {
     for (const key of ["VERCEL", "DASHBOARD_AUTH_USER", "DASHBOARD_AUTH_PASS"]) {
       if (saved[key] === undefined) delete process.env[key]; else process.env[key] = saved[key];
