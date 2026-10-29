@@ -1,273 +1,276 @@
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
 import useSWR from "swr";
-import Link from "next/link";
-import { ArrowLeft, RefreshCw } from "lucide-react";
-import { fetchTradeJournal, type TradeJournalEntry } from "@/lib/api";
-import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
-import { useHonestTrades } from "@/lib/useHonestTrades";
-import { dedupCaveat, isHonestUnavailable } from "@/lib/honestTrades";
+import { fetchTradeJournal, type TradeJournalEntry } from "@/lib/api";
+import { Calendar, TrendingUp, AlertCircle, Info } from "lucide-react";
 
 const REFRESH_MS = 30_000;
+const PROOF_BAR_TARGET = 20;
+
+interface Setup {
+  date: string;
+  symbol: string;
+  setup: string;
+  rResult: number | null;
+  pnl: number | null;
+  ruleBreakStatus: "unknown";
+  side: string;
+  hasValidR: boolean;
+}
 
 export default function JournalPage() {
-  const [limit] = useState(100);
-
-  const { data, error, isLoading, mutate } = useSWR(
-    ["trade-journal", limit],
-    () => fetchTradeJournal(undefined, undefined, limit),
+  const { data, error, isLoading } = useSWR(
+    "trade-journal-scored",
+    () => fetchTradeJournal(undefined, undefined, 100),
     { refreshInterval: REFRESH_MS }
   );
 
-  // Honest deduped trade record — source of truth for the aggregate stat
-  // cards below. /trades/journal (fetchTradeJournal above) is a raw,
-  // undeduped SELECT * FROM paper_trades that over-counts re-logged rows
-  // (see lib/honestTrades.ts header) -- the per-trade attribution table
-  // still reads from it (regime/stage/bull/bear/confidence columns have no
-  // honest-record equivalent), but Total/Wins/Losses/Win Rate/Total P&L must
-  // not be computed off the raw rows.
-  const { honest, isLoading: honestLoading } = useHonestTrades();
-  const honestUnavailable = isHonestUnavailable(honest, honestLoading);
+  const setups = React.useMemo<Setup[]>(() => {
+    if (!data) return [];
+    return data
+      .filter((t) => t.exit_time && t.pnl !== null)
+      .map((t) => {
+        let setupType = "Unknown";
+        if (t.strategy_params) {
+          try {
+            const params = typeof t.strategy_params === "string" 
+              ? JSON.parse(t.strategy_params) 
+              : t.strategy_params;
+            setupType = params?.setup || t.bias || "Unknown";
+          } catch {
+            setupType = t.bias || "Unknown";
+          }
+        } else {
+          setupType = t.bias || "Unknown";
+        }
 
-  const formatDate = (dateString: string): string => {
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleString("en-US", {
-        month: "short",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
+        return {
+          date: new Date(t.exit_time!).toLocaleDateString(),
+          symbol: t.symbol,
+          setup: setupType,
+          rResult: null,
+          pnl: t.pnl,
+          ruleBreakStatus: "unknown" as const,
+          side: t.side,
+          hasValidR: false,
+        };
       });
-    } catch {
-      return dateString;
-    }
+  }, [data]);
+
+  const validSetups = React.useMemo(() => {
+    return setups.filter((s) => s.hasValidR);
+  }, [setups]);
+
+  const avgR = React.useMemo(() => {
+    const validRs = validSetups.filter((s) => s.rResult !== null).map((s) => s.rResult!);
+    return validRs.length > 0 ? validRs.reduce((a, b) => a + b, 0) / validRs.length : null;
+  }, [validSetups]);
+
+  const progress = validSetups.length;
+  const progressPct = Math.min((progress / PROOF_BAR_TARGET) * 100, 100);
+
+  const formatR = (hasValidR: boolean): string => {
+    return hasValidR ? "—" : "R n/a";
   };
 
-  const formatNumber = (num: number | null | undefined, decimals: number = 2): string => {
-    if (num === null || num === undefined) return "—";
-    return num.toFixed(decimals);
-  };
-
-  const getSideBadgeVariant = (side: string): "bull" | "bear" | "warn" | "info" | "neutral" => {
-    if (!side) return "neutral";
-    const lowerSide = side.toLowerCase();
-    if (lowerSide.includes("buy") || lowerSide.includes("long")) return "bull";
-    if (lowerSide.includes("sell") || lowerSide.includes("short")) return "bear";
-    return "neutral";
-  };
-
-  const getStageBadgeVariant = (stage: string | null): "bull" | "bear" | "warn" | "info" | "neutral" => {
-    if (!stage) return "neutral";
-    const lowerStage = stage.toLowerCase();
-    if (lowerStage.includes("technical")) return "info";
-    if (lowerStage.includes("debate")) return "warn";
-    if (lowerStage.includes("news")) return "bull";
-    if (lowerStage.includes("risk")) return "bear";
-    return "neutral";
+  const formatAvgR = (r: number | null): string => {
+    if (r === null) return "n/a";
+    return `${r >= 0 ? "+" : ""}${r.toFixed(2)}R`;
   };
 
   return (
-    <div className="w-full min-h-screen bg-background text-foreground p-6">
-      <div className="mb-6 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Link href="/trades">
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </Link>
-          <div>
-            <h1 className="text-3xl font-bold text-foreground">Trade Journal</h1>
-            <p className="text-sm text-muted-foreground">
-              Paper trades with signal provenance and pipeline attribution
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link href="/journal-review">
-            <Button variant="ghost" size="sm">
-              Review
-            </Button>
-          </Link>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => void mutate()}
-            disabled={isLoading}
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
-        </div>
-      </div>
-
-      {isLoading && !data && (
-        <Card>
-          <CardContent className="pt-8 pb-8">
-            <div className="flex items-center justify-center">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-border border-t-foreground" />
-              <span className="ml-4 text-muted-foreground">Loading trade journal...</span>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {error && (
-        <Card className="border-bear/30 bg-bear/5">
-          <CardContent className="pt-6">
-            <p className="text-bear">Error loading trade journal: {String(error)}</p>
-          </CardContent>
-        </Card>
-      )}
-
-      {data && data.length > 0 && (
-        <p className="mb-2 text-[11px] text-muted-foreground">
-          Raw per-trade attribution (regime/stage/bull/bear/confidence) below — may include
-          re-logged/duplicate rows. Use the &quot;Honest Totals&quot; section for P&amp;L
-          accuracy, not the per-trade P&amp;L shading in this table.
-        </p>
-      )}
-
-      {data && data.length > 0 && (
-        <div className="overflow-x-auto rounded-lg border border-border bg-card">
-          <table className="w-full text-sm">
-            <thead className="border-b border-border bg-muted/40">
-              <tr>
-                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Date</th>
-                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Symbol</th>
-                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Side</th>
-                <th className="px-4 py-3 text-right font-semibold text-muted-foreground">P&L</th>
-                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Regime</th>
-                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Stage</th>
-                <th className="px-4 py-3 text-right font-semibold text-muted-foreground">Bull</th>
-                <th className="px-4 py-3 text-right font-semibold text-muted-foreground">Bear</th>
-                <th className="px-4 py-3 text-right font-semibold text-muted-foreground">Conf</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {data.map((trade: TradeJournalEntry) => (
-                <tr key={trade.trade_id} className="hover:bg-muted/20">
-                  <td className="px-4 py-3 text-foreground">
-                    {formatDate(trade.exit_time || trade.entry_time)}
-                  </td>
-                  <td className="px-4 py-3 font-mono font-semibold">{trade.symbol}</td>
-                  <td className="px-4 py-3">
-                    <Badge variant={getSideBadgeVariant(trade.side)}>{trade.side}</Badge>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    {trade.pnl !== null ? (
-                      <span className={trade.pnl > 0 ? "text-bull font-semibold" : "text-bear font-semibold"}>
-                        {trade.pnl > 0 && "+"}{formatNumber(trade.pnl, 2)}
-                      </span>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    {trade.regime_tier ? `T${trade.regime_tier}` : "—"}
-                  </td>
-                  <td className="px-4 py-3">
-                    {trade.deciding_stage ? (
-                      <Badge variant={getStageBadgeVariant(trade.deciding_stage)}>
-                        {trade.deciding_stage.substring(0, 3)}
-                      </Badge>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right">{formatNumber(trade.bull_score, 1)}</td>
-                  <td className="px-4 py-3 text-right">{formatNumber(trade.bear_score, 1)}</td>
-                  <td className="px-4 py-3 text-right">
-                    {trade.debate_confidence ? `${formatNumber(trade.debate_confidence * 100, 0)}%` : "—"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {data && data.length === 0 && (
-        <Card>
-          <CardContent className="pt-8 pb-8">
-            <p className="text-center text-muted-foreground">No trades in journal yet</p>
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="mt-6">
-        <div className="mb-2 flex items-center gap-2">
-          <h2 className="text-sm font-semibold text-muted-foreground">
-            Honest Totals
-          </h2>
-          {honest && <Badge variant="info">{dedupCaveat(honest)}</Badge>}
+    <div className="min-h-screen bg-background text-foreground p-6 font-mono">
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold text-foreground tracking-tight">
+            Paper Trading Journal
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Scored setups toward 20-setup proof bar
+          </p>
         </div>
 
-        {honestLoading && (
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <Card key={i}>
-                <CardContent className="pt-4 h-20 animate-pulse" />
-              </Card>
-            ))}
-          </div>
-        )}
-
-        {honestUnavailable && (
-          <Card>
-            <CardContent className="pt-6 pb-6">
-              <p className="text-center text-sm text-muted-foreground">
-                Honest trade record unavailable — falling back is not shown to avoid
-                displaying inflated raw totals.
-              </p>
+        {isLoading && !data && (
+          <Card className="mb-6">
+            <CardContent className="pt-8 pb-8">
+              <div className="flex items-center justify-center">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-border border-t-foreground" />
+                <span className="ml-4 text-muted-foreground">Loading journal...</span>
+              </div>
             </CardContent>
           </Card>
         )}
 
-        {honest && (
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
-            <Card>
-              <CardContent className="pt-4">
-                <p className="text-sm text-muted-foreground">Total</p>
-                <p className="text-2xl font-bold text-foreground">{honest.trades.length}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-4">
-                <p className="text-sm text-muted-foreground">Wins</p>
-                <p className="text-2xl font-bold text-bull">{honest.wins}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-4">
-                <p className="text-sm text-muted-foreground">Losses</p>
-                <p className="text-2xl font-bold text-bear">{honest.losses}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-4">
-                <p className="text-sm text-muted-foreground">Win Rate</p>
-                <p className="text-2xl font-bold text-foreground">
-                  {formatNumber(honest.winRate * 100, 1)}%
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-4">
-                <p className="text-sm text-muted-foreground">Total P&L</p>
-                <p
-                  className={`text-2xl font-bold ${
-                    honest.net > 0 ? "text-bull" : honest.net < 0 ? "text-bear" : "text-muted-foreground"
-                  }`}
-                >
-                  {honest.net >= 0 ? "+" : ""}
-                  {formatNumber(honest.net, 2)}
-                </p>
-              </CardContent>
-            </Card>
-          </div>
+        {error && (
+          <Card className="mb-6 border-bear/30 bg-bear/5">
+            <CardContent className="pt-6">
+              <p className="text-bear">Error loading journal: {String(error)}</p>
+            </CardContent>
+          </Card>
+        )}
+
+        {data && (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-xs font-medium text-muted-foreground flex items-center gap-2">
+                    <Calendar className="h-3.5 w-3.5" />
+                    Scored Setups
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold">
+                    {progress}
+                    <span className="text-lg text-muted-foreground ml-1">
+                      / {PROOF_BAR_TARGET}
+                    </span>
+                  </div>
+                  <div className="mt-2 h-2 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-bull transition-all duration-300"
+                      style={{ width: `${progressPct}%` }}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-xs font-medium text-muted-foreground flex items-center gap-2">
+                    <TrendingUp className="h-3.5 w-3.5" />
+                    Average R
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-muted-foreground">
+                    {formatAvgR(avgR)}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-2">
+                    Target: +1.0R minimum
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-xs font-medium text-muted-foreground flex items-center gap-2">
+                    <Info className="h-3.5 w-3.5" />
+                    Clean Sessions
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-muted-foreground">n/a</div>
+                  <div className="text-xs text-muted-foreground mt-2">
+                    Session-level stat (not available)
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-xs font-medium text-muted-foreground flex items-center gap-2">
+                    <AlertCircle className="h-3.5 w-3.5" />
+                    Data Source
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    R-multiples require stop loss data not present in current trade records.
+                    Scored setups from Hermes tracker are not exposed via API.
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {setups.length === 0 ? (
+              <Card>
+                <CardContent className="pt-8 pb-8">
+                  <div className="text-center">
+                    <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <p className="text-lg font-medium text-foreground mb-2">
+                      No scored setups yet
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Closed trades with completed exits will appear here
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm font-semibold uppercase tracking-wider">
+                    Scored Setups
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="border-b border-border">
+                        <tr>
+                          <th className="px-4 py-3 text-left font-semibold text-muted-foreground">
+                            Date
+                          </th>
+                          <th className="px-4 py-3 text-left font-semibold text-muted-foreground">
+                            Symbol
+                          </th>
+                          <th className="px-4 py-3 text-left font-semibold text-muted-foreground">
+                            Setup
+                          </th>
+                          <th className="px-4 py-3 text-left font-semibold text-muted-foreground">
+                            Side
+                          </th>
+                          <th className="px-4 py-3 text-right font-semibold text-muted-foreground">
+                            R Result
+                          </th>
+                          <th className="px-4 py-3 text-center font-semibold text-muted-foreground">
+                            Status
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {setups.map((setup, idx) => (
+                          <tr key={idx} className="hover:bg-muted/20">
+                            <td className="px-4 py-3 text-foreground">{setup.date}</td>
+                            <td className="px-4 py-3 font-semibold">{setup.symbol}</td>
+                            <td className="px-4 py-3 text-muted-foreground">
+                              {setup.setup}
+                            </td>
+                            <td className="px-4 py-3">
+                              <Badge
+                                variant={
+                                  setup.side.toLowerCase().includes("buy") ||
+                                  setup.side.toLowerCase().includes("long")
+                                    ? "bull"
+                                    : "bear"
+                                }
+                              >
+                                {setup.side}
+                              </Badge>
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <span className="text-muted-foreground text-xs">
+                                {formatR(setup.hasValidR)}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <Badge variant="neutral" className="text-xs">
+                                unknown
+                              </Badge>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </>
         )}
       </div>
     </div>
