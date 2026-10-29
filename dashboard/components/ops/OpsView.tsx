@@ -13,10 +13,10 @@ export function OpsView({ snapshot: s }: { snapshot: OpsSnapshot }) {
         <header className="flex flex-wrap items-center justify-between gap-2 rounded border border-border px-3 py-2">
           <div>
             <h1 className="text-sm font-semibold uppercase tracking-wider">Ops · Hermes record</h1>
-            <p className="text-[11px] text-muted-foreground">Public, read-only. Paper and record-keeping only. Account ids are masked to the last 4.</p>
+            <p className="text-[11px] text-muted-foreground">Private, read-only. Paper and record-keeping only. Account ids are masked to the last 4.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Pill tone="bear">Live legal? NO</Pill><Pill tone="bear">size 0</Pill><Pill tone="muted">public read-only</Pill>
+            <Pill tone="bear">Live legal? NO</Pill><Pill tone="bear">size 0</Pill><Pill tone="muted">private</Pill>
             <span className={`text-[10px] text-muted-foreground ${MONO}`}>source: {s.dir ?? "none found"} · built {s.generatedIso.slice(0, 16).replace("T", " ")}Z</span>
           </div>
         </header>

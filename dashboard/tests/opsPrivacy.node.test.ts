@@ -18,8 +18,8 @@ function walk(rel: string): string[] {
   return readdirSync(abs).flatMap((n) => walk(path.join(rel, n)));
 }
 
-test("operations page is public but unknown operations APIs remain private", () => {
-  assert.equal(isPublicReadOnlyPath("/ops"), true);
+test("operations pages and APIs require authentication", () => {
+  assert.equal(isPublicReadOnlyPath("/ops"), false);
   assert.equal(isPublicReadOnlyPath("/api/ops"), false);
 });
 
@@ -31,7 +31,7 @@ test("middleware matcher covers /ops (nothing excludes it from auth)", () => {
   const re = new RegExp("^" + m![1].replace(/favicon\.ico/, "favicon\\.ico") + "$");
   assert.ok(re.test("/ops") && re.test("/api/ops"), "matcher applies to /ops and /api/ops");
   assert.ok(!re.test("/_next/static/x"), "matcher still skips static assets (so the regex is real)");
-  assert.match(src, /isPublicReadOnlyRequest\(req\.nextUrl\.pathname, req\.method\)/);
+  assert.ok(!src.includes("isPublicReadOnlyRequest"), "no public-read bypass in middleware");
 });
 
 test("auth policy: hosted without credentials is denied, credentials are enforced", () => {
