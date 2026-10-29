@@ -36,6 +36,7 @@ export function useWebSocket(_url?: string, onEvent?: WsEventHandler) {
       disconnect: ctx.disconnect,
       lastEvent: ctx.lastEvent,
       isConnected: ctx.isConnected,
+      isPolling: ctx.isPolling,
     };
   }
 
@@ -44,5 +45,6 @@ export function useWebSocket(_url?: string, onEvent?: WsEventHandler) {
     disconnect: () => {},
     lastEvent: null as WsEvent | null,
     isConnected: false,
+    isPolling: false,
   };
 }
