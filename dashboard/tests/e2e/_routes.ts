@@ -34,12 +34,7 @@ export interface RouteSpec {
 
 export const ROUTES: RouteSpec[] = [
   // ---- redirects -----------------------------------------------------------
-  // NOTE: `/` is a server redirect, not a page. It renders nothing of its own.
-  // Consequence worth knowing: homepage.spec.ts and homepage-golden-path.spec.ts
-  // both navigate to "/" and therefore actually exercise /command-center -- the
-  // same page command-center.spec.ts and command-center-golden-path.spec.ts
-  // cover. Four specs, one route. Consolidating them is tracked separately.
-  { path: "/", name: "root redirect", kind: "redirect", criticality: "critical", landmark: null, target: "/command-center" },
+  { path: "/", name: "es order flow dashboard", kind: "page", criticality: "critical", landmark: /JARVIS TRADER — ES ORDER FLOW/i },
   { path: "/stats", name: "stats redirect", kind: "redirect", criticality: "standard", landmark: null, target: "/performance" },
   { path: "/trades/journal", name: "trades journal redirect", kind: "redirect", criticality: "standard", landmark: null, target: "/journal" },
   // Added by PR #558. Its page.tsx comment claims a client-side navigation but the
