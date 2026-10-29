@@ -45,8 +45,8 @@ export default {
         "panel-border": "#1a1a2e",
       },
       fontFamily: {
-        mono: ["JetBrains Mono", "Fira Code", "monospace"],
-        sans: ["Inter", "system-ui", "sans-serif"],
+        mono: ["var(--font-mono)", "Fira Code", "monospace"],
+        sans: ["var(--font-sans)", "system-ui", "sans-serif"],
       },
     },
   },
