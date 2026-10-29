@@ -257,9 +257,16 @@ class ScoredSetupsResponse(BaseModel):
     total_r: Optional[float] = None
     setups: List[ScoredSetup] = []
     error: Optional[str] = None
+    file_mtime: Optional[str] = None
+    age_seconds: Optional[float] = None
 
 
-def build_scored_setups(raw: Dict[str, Any], source: str) -> ScoredSetupsResponse:
+def build_scored_setups(
+    raw: Dict[str, Any], 
+    source: str, 
+    file_mtime: Optional[str] = None, 
+    age_seconds: Optional[float] = None
+) -> ScoredSetupsResponse:
     """Normalize a proof-record.json payload. Aggregates are recomputed from
     counted setups so the response can't drift from its own rows."""
     setups: List[ScoredSetup] = []
@@ -298,10 +305,12 @@ def build_scored_setups(raw: Dict[str, Any], source: str) -> ScoredSetupsRespons
         else DEFAULT_PROOF_GOAL,
         counted=len(rs),
         wins=sum(1 for r in rs if r > 0),
-        losses=sum(1 for r in rs if r <= 0),
+        losses=sum(1 for r in rs if r < 0),
         avg_r=round(sum(rs) / len(rs), 2) if rs else None,
         total_r=round(sum(rs), 2) if rs else None,
         setups=setups,
+        file_mtime=file_mtime,
+        age_seconds=age_seconds,
     )
 
 
@@ -313,9 +322,22 @@ def build_scored_setups(raw: Dict[str, Any], source: str) -> ScoredSetupsRespons
 def get_scored_setups() -> ScoredSetupsResponse:
     import json
     import os
+    from datetime import datetime, timezone
 
     path = _proof_record_path()
     source = os.path.basename(path)
+    
+    file_mtime: Optional[str] = None
+    age_seconds: Optional[float] = None
+    
+    try:
+        stat_result = os.stat(path)
+        mtime_ts = stat_result.st_mtime
+        file_mtime = datetime.fromtimestamp(mtime_ts, tz=timezone.utc).isoformat()
+        age_seconds = (datetime.now(timezone.utc).timestamp() - mtime_ts)
+    except (OSError, ValueError):
+        pass
+    
     try:
         with open(path, "r", encoding="utf-8-sig") as fh:
             raw = json.load(fh)
@@ -326,7 +348,7 @@ def get_scored_setups() -> ScoredSetupsResponse:
         return ScoredSetupsResponse(available=False, source=source, error="proof record unreadable")
     if not isinstance(raw, dict):
         return ScoredSetupsResponse(available=False, source=source, error="proof record malformed")
-    return build_scored_setups(raw, source)
+    return build_scored_setups(raw, source, file_mtime, age_seconds)
 
 
 @router.get(

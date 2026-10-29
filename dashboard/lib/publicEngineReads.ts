@@ -274,7 +274,6 @@ const ENGINE_READ_ROUTES = [
   "/trade-intents/{intent_id}",
   "/trades/journal",
   "/trades/reviews",
-  "/trades/scored-setups",
   "/trades/{trade_id}/full-review",
   "/trades/{trade_id}/review",
   "/trading-status",

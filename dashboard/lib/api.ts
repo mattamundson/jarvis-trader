@@ -2128,6 +2128,8 @@ export interface ScoredSetupsResponse {
   total_r: number | null;
   setups: ScoredSetup[];
   error: string | null;
+  file_mtime: string | null;
+  age_seconds: number | null;
 }
 
 export async function fetchScoredSetups(): Promise<ScoredSetupsResponse> {

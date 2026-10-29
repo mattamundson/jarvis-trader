@@ -76,7 +76,12 @@ describe("JournalPage", () => {
     setSWR({ data: undefined, error: undefined, isLoading: true });
     render(<JournalPage />);
     expect(screen.getByText(/Loading journal/i)).toBeInTheDocument();
-    expect(screen.getByText(/Paper Trading Journal/i)).toBeInTheDocument();
+  });
+
+  it("renders page title with 'Trade Journal' heading", () => {
+    setSWR({ data: undefined, error: undefined, isLoading: true });
+    render(<JournalPage />);
+    expect(screen.getByText(/Trade Journal/i)).toBeInTheDocument();
   });
 
   it("renders the proof record from /trades/scored-setups", () => {
@@ -109,5 +114,42 @@ describe("JournalPage", () => {
       screen.getByText(/Proof record unavailable: proof record not found/),
     ).toBeInTheDocument();
     expect(screen.getByText(/No scored setups yet/i)).toBeInTheDocument();
+  });
+
+  it("renders Trade Journal heading when engine is down", () => {
+    setSWR({
+      data: null,
+      error: new Error("Engine unavailable"),
+      isLoading: false,
+    });
+
+    render(<JournalPage />);
+    expect(screen.getByText(/Trade Journal/i)).toBeInTheDocument();
+    expect(screen.getByText(/Error loading journal/i)).toBeInTheDocument();
+  });
+
+  it("handles empty data response from engine", () => {
+    setSWR({
+      data: {
+        available: false,
+        source: "proof-record.json",
+        error: "proof record not found",
+        goal_setups: 20,
+        counted: 0,
+        wins: 0,
+        losses: 0,
+        avg_r: null,
+        total_r: null,
+        setups: [],
+        file_mtime: null,
+        age_seconds: null,
+      },
+      error: null,
+      isLoading: false,
+    });
+
+    render(<JournalPage />);
+    expect(screen.getByText(/Trade Journal/i)).toBeInTheDocument();
+    expect(screen.getByText(/Proof record unavailable/i)).toBeInTheDocument();
   });
 });

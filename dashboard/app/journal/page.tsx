@@ -42,7 +42,7 @@ export default function JournalPage() {
       <div className="mx-auto max-w-7xl">
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-foreground tracking-tight">
-            Paper Trading Journal
+            Trade Journal
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
             Scored setups toward 20-setup proof bar
@@ -135,6 +135,11 @@ export default function JournalPage() {
                   <CardTitle className="text-xs font-medium text-muted-foreground flex items-center gap-2">
                     <AlertCircle className="h-3.5 w-3.5" />
                     Data Source
+                    {data.available && data.age_seconds !== null && data.age_seconds > 3600 && (
+                      <Badge variant="warn" className="ml-auto text-xs">
+                        Stale
+                      </Badge>
+                    )}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
