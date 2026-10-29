@@ -42,3 +42,26 @@ describe("AppShell route layout", () => {
     expect(screen.getByText("STATS CONTENT")).toBeInTheDocument();
   });
 });
+
+describe("AppShell authentication status", () => {
+  beforeEach(() => mockedUsePathname.mockReturnValue("/stats"));
+
+  it("confirms a verified sign-in without asking the owner to sign in again", () => {
+    render(<AppShell authStatus="authenticated"><section>CONTENT</section></AppShell>);
+    expect(screen.getByRole("status")).toHaveTextContent("Signed in · Dashboard protected");
+    expect(screen.queryByRole("link", { name: "Owner sign in" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Authentication required/)).not.toBeInTheDocument();
+  });
+
+  it("does not claim protection when local development permits anonymous access", () => {
+    render(<AppShell authStatus="unprotected"><section>CONTENT</section></AppShell>);
+    expect(screen.getByRole("status")).toHaveTextContent("Not signed in · Local authentication is not configured");
+    expect(screen.queryByText("Signed in · Dashboard protected")).not.toBeInTheDocument();
+  });
+
+  it("does not claim sign-in when authentication status is unavailable", () => {
+    render(<AppShell><section>CONTENT</section></AppShell>);
+    expect(screen.getByRole("status")).toHaveTextContent("Sign-in status unavailable");
+    expect(screen.getByRole("link", { name: "Owner sign in" })).toHaveAttribute("href", "/api/owner-sign-in");
+  });
+});
