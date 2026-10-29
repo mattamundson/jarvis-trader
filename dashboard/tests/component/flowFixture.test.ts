@@ -11,6 +11,7 @@ describe("flow fixture", () => {
     
     expect(data.ts).toBe("2024-01-01T00:00:00.000Z");
     expect(data.fixture).toBe(true);
+    expect(data.fixtureReason).toMatch(/No live data source configured/);
   });
   
   it("fixture timestamp is stale", async () => {

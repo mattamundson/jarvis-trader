@@ -49,7 +49,6 @@ async function proxyGet(request: NextRequest, path: string[]): Promise<NextRespo
     return NextResponse.json(
       {
         error: "master_proxy_failed",
-        target: target.toString(),
         message: error instanceof Error ? error.message : "Unknown proxy error",
       },
       { status: 502 },

@@ -85,7 +85,6 @@ async function proxy(request: NextRequest, path: string[]): Promise<NextResponse
     return NextResponse.json(
       {
         error: "engine_proxy_failed",
-        target: target.toString(),
         message: error instanceof Error ? error.message : "Unknown proxy error",
       },
       { status: 502 },

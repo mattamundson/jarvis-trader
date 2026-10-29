@@ -127,7 +127,12 @@ export async function GET() {
   }
   
   if (!data) {
-    return NextResponse.json(FAKE_FIXTURE);
+    // No live data available - return fixture with clear provenance marking
+    return NextResponse.json({
+      ...FAKE_FIXTURE,
+      fixture: true,
+      fixtureReason: "No live data source configured (BLOB_READ_WRITE_TOKEN and FLOW_FEED_URL both unset)",
+    });
   }
   
   return NextResponse.json(data);
