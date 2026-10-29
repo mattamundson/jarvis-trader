@@ -26,7 +26,7 @@ test("all pages and financial and journal reads are public; writes are not", () 
 
 test("GET actions, unknown APIs, encoded paths, and WebSockets are not public reads", () => {
   for (const path of ["/api/flow/ingest", "/api/flow/anything", "/api/engine/halt",
-    "/api/engine/portfolio/halt", "/api/engine/jarvis/analyze", "/api/engine/discord/bookmarks/weekly-themes",
+    "/api/engine/portfolio/halt", "/api/engine/jarvis/analyze", "/api/engine/discord/bookmarks/weekly-themes", "/api/engine/journal/review/monthly", "/api/owner-sign-in",
     "/api/master/master/command/stream", "/api/cron/check-flow", "/api/engine/unknown",
     "/api/engine/decisions/%2e%2e%2fhalt/detail", "/ws/events"]) {
     assert.equal(isPublicReadOnlyRequest(path, "GET"), false, path);
@@ -44,4 +44,12 @@ test("every dashboard page in the route manifest is publicly readable, never wri
     assert.equal(isPublicReadOnlyRequest(path, "GET"), true, path);
     assert.equal(isPublicReadOnlyRequest(path, "POST"), false, path);
   }
+});
+
+test("saved vault reports and full health are public reads, never generation", () => {
+  for (const path of ["/health/full", "/vault/brief/latest", "/vault/contradictions/latest", "/vault/lint/latest"]) {
+    assert.equal(isPublicReadOnlyRequest(`/api/engine${path}`, "GET"), true, path);
+    assert.equal(isPublicReadOnlyRequest(`/api/engine${path}`, "POST"), false, path);
+  }
+  assert.equal(isPublicReadOnlyRequest("/api/engine/vault/brief/run", "POST"), false);
 });

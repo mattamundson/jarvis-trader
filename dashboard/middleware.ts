@@ -53,7 +53,7 @@ export function middleware(req: NextRequest) {
 
   // A public page may poll a protected diagnostic. Do not turn an API denial
   // into a browser-wide Basic Auth dialog; owners can still supply credentials.
-  if (req.nextUrl.pathname.startsWith("/api/") && !req.headers.get("authorization")) {
+  if (req.nextUrl.pathname.startsWith("/api/") && req.nextUrl.pathname !== "/api/owner-sign-in" && !req.headers.get("authorization")) {
     return NextResponse.json({ error: "read_only", message: "This action requires authentication." },
       { status: 403, headers: { "Cache-Control": "no-store" } });
   }

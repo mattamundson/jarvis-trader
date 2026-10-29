@@ -44,7 +44,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="flex min-h-screen">
           {!missionControlFocus && <Sidebar />}
           <main className="flex-1 min-w-0 overflow-x-hidden">
-            <div role="status" className="border-b border-cyan-900/40 bg-slate-950 px-4 py-2 text-sm text-cyan-300">Public read-only dashboard · Trading actions and changes require authentication.</div>
+            <div role="status" className="border-b border-cyan-900/40 bg-slate-950 px-4 py-2 text-sm text-cyan-300">Public read-only dashboard · Trading actions and changes require authentication. <a className="ml-2 underline" href="/api/owner-sign-in">Owner sign in</a></div>
             {children}
           </main>
         </div>
