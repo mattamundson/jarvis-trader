@@ -9,6 +9,10 @@
     {
       "path": "/api/cron/check-flow",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/watchdog-health",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

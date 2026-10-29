@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { head } from "@vercel/blob";
 import { logCronAlert, logHealthCheck } from "@/lib/healthLogger";
 import { recordHealthCheck } from "@/lib/healthHistory";
+import { sendAlert } from "@/lib/alerting";
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
@@ -10,13 +11,10 @@ export async function GET(request: Request) {
   }
 
   const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
-  const discordWebhook = process.env.DISCORD_WEBHOOK_FLOW_ALERTS;
   
-  if (!blobToken || !discordWebhook) {
+  if (!blobToken) {
     return NextResponse.json({ 
-      error: "Not configured",
-      has_blob: !!blobToken,
-      has_webhook: !!discordWebhook 
+      error: "BLOB_READ_WRITE_TOKEN not configured"
     }, { status: 503 });
   }
 
@@ -50,39 +48,26 @@ export async function GET(request: Request) {
     });
     
     if (ageMin > 5) {
-      let discordSuccess = false;
-      let discordStatus = 0;
-      
-      try {
-        const discordRes = await fetch(discordWebhook, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            embeds: [{
-              title: "🔴 Flow Feed STALE",
-              description: `Last update: **${ageMin} minutes ago**\n\nCheck Windows pusher.`,
-              color: 0xFF0000,
-              timestamp,
-              footer: { text: "JARVIS Flow Monitor" }
-            }]
-          })
-        });
-        discordSuccess = discordRes.ok;
-        discordStatus = discordRes.status;
-      } catch (discordErr) {
-        console.error("Discord webhook failed:", discordErr);
-      }
+      // Send alert via multi-channel system (Discord primary, email fallback)
+      const alertResult = await sendAlert(
+        `🔴 **Flow Feed STALE**\n\nLast update: **${ageMin} minutes ago**\n\nCheck Windows pusher.`
+      );
       
       // Log alert event
       logCronAlert({
         timestamp,
         triggered: true,
         blob_age_seconds: ageSec,
-        discord_sent: discordSuccess,
-        discord_response_status: discordStatus
+        discord_sent: alertResult.channel === "discord",
+        discord_response_status: alertResult.success ? 200 : 0
       });
       
-      return NextResponse.json({ status: "alerted", age_minutes: ageMin });
+      return NextResponse.json({ 
+        status: "alerted", 
+        age_minutes: ageMin,
+        alert_channel: alertResult.channel,
+        alert_success: alertResult.success
+      });
     }
     
     // Log healthy check (no alert)
@@ -112,37 +97,25 @@ export async function GET(request: Request) {
       age_seconds: -1
     });
     
-    let discordSuccess = false;
-    let discordStatus = 0;
-    
-    try {
-      const discordRes = await fetch(discordWebhook, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          embeds: [{
-            title: "🔴 Flow Feed OFFLINE",
-            description: `Blob unreachable.\n\nError: \`${String(err).slice(0, 200)}\``,
-            color: 0xFF0000,
-            timestamp
-          }]
-        })
-      });
-      discordSuccess = discordRes.ok;
-      discordStatus = discordRes.status;
-    } catch (discordErr) {
-      console.error("Discord webhook failed:", discordErr);
-    }
+    // Send offline alert via multi-channel system
+    const alertResult = await sendAlert(
+      `🔴 **Flow Feed OFFLINE**\n\nBlob unreachable.\n\nError: \`${String(err).slice(0, 200)}\``
+    );
     
     // Log offline alert
     logCronAlert({
       timestamp,
       triggered: true,
       blob_age_seconds: -1,
-      discord_sent: discordSuccess,
-      discord_response_status: discordStatus
+      discord_sent: alertResult.channel === "discord",
+      discord_response_status: alertResult.success ? 200 : 0
     });
     
-    return NextResponse.json({ status: "error", error: String(err) }, { status: 500 });
+    return NextResponse.json({ 
+      status: "error", 
+      error: String(err),
+      alert_channel: alertResult.channel,
+      alert_success: alertResult.success
+    }, { status: 500 });
   }
 }

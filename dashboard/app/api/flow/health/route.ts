@@ -2,8 +2,21 @@ import { NextResponse } from "next/server";
 import { head } from "@vercel/blob";
 import { logHealthCheck } from "@/lib/healthLogger";
 import { recordHealthCheck } from "@/lib/healthHistory";
+import { rateLimit } from "@/lib/rateLimit";
 
-export async function GET() {
+export async function GET(request: Request) {
+  // Rate limiting: 60 requests per minute per IP
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0] || "unknown";
+  
+  if (!rateLimit(ip, 60, 60000)) {
+    return NextResponse.json(
+      { error: "Rate limited", retry_after: 60 },
+      { 
+        status: 429,
+        headers: { "Retry-After": "60" }
+      }
+    );
+  }
   const startTime = Date.now();
   const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
   

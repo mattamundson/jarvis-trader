@@ -45,6 +45,27 @@ def check_data_freshness() -> int | None:
         log(f"ERROR: Health check failed: {e}")
         return None
 
+def send_heartbeat():
+    """Notify Vercel that watchdog is alive."""
+    heartbeat_url = os.environ.get("FLOW_PUSH_URL", "").replace("/flow/ingest", "/cron/watchdog-health")
+    api_key = os.environ.get("API_KEY")
+    
+    if not heartbeat_url or not api_key:
+        return
+    
+    try:
+        req = urllib.request.Request(
+            heartbeat_url,
+            method="POST",
+            headers={"X-API-Key": api_key, "Content-Type": "application/json"},
+            data=b"{}"
+        )
+        with urllib.request.urlopen(req, timeout=10) as response:
+            if response.status == 200:
+                log("Heartbeat sent successfully")
+    except Exception as e:
+        log(f"WARNING: Heartbeat failed (non-fatal): {e}")
+
 def start_pusher() -> bool:
     batch_file = Path.home() / "tape" / "start_flow_pusher.bat"
     if not batch_file.exists():
@@ -67,6 +88,9 @@ def main():
     log("=" * 60)
     running = is_pusher_running()
     age = check_data_freshness()
+    
+    # Send heartbeat to Vercel cron
+    send_heartbeat()
     
     if not running or (age and age > 120):
         log(f"UNHEALTHY: {'not running' if not running else f'stale ({age}s)'}")

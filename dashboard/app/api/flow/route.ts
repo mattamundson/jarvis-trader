@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { head } from "@vercel/blob";
 import type { FlowSnapshot } from "@/lib/flowTypes";
 import { sanitizeFlowData } from "@/lib/flowSanitize";
+import { cacheFlowData, getLastKnownGood } from "@/lib/flowCache";
 
 const FAKE_FIXTURE: FlowSnapshot = {
   ts: "2024-01-01T00:00:00.000Z",
@@ -126,9 +127,36 @@ export async function GET() {
     data = await fetchFromFeedUrl();
   }
   
-  if (!data) {
-    return NextResponse.json(FAKE_FIXTURE);
+  if (data) {
+    // Cache successful fetch
+    cacheFlowData(data);
+    return NextResponse.json(data);
   }
   
-  return NextResponse.json(data);
+  // All sources failed - try last-known-good cache
+  const cached = getLastKnownGood();
+  
+  if (cached.data) {
+    console.warn(`[flow] Serving cached data (${cached.age_seconds}s old) - blob + feed unreachable`);
+    
+    // Add metadata to indicate cached/stale data
+    const response = {
+      ...cached.data,
+      _cache: {
+        served_from_cache: true,
+        age_seconds: cached.age_seconds,
+        is_stale: cached.is_stale
+      }
+    };
+    
+    return NextResponse.json(response, {
+      headers: {
+        "X-Cache-Status": "STALE",
+        "X-Cache-Age": String(cached.age_seconds)
+      }
+    });
+  }
+  
+  // No cache available - fall back to fixture
+  return NextResponse.json(FAKE_FIXTURE);
 }
