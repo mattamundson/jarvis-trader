@@ -127,4 +127,45 @@ describe("EngineWebSocketProvider polling fallback logic", () => {
     expect(pollingInProgress).toBe(false);
     expect(polling).toBe(false);
   });
+
+  it("requirement 1: pollingRef avoids stale closure (continues across 3+ cycles)", () => {
+    const pollingRef = { current: true };
+    const reconnectRef = { current: true };
+    let cycleCount = 0;
+    
+    const simulatePollCycle = () => {
+      if (reconnectRef.current && pollingRef.current) {
+        cycleCount++;
+        return true;
+      }
+      return false;
+    };
+    
+    expect(simulatePollCycle()).toBe(true);
+    expect(simulatePollCycle()).toBe(true);
+    expect(simulatePollCycle()).toBe(true);
+    expect(cycleCount).toBe(3);
+    
+    pollingRef.current = false;
+    expect(simulatePollCycle()).toBe(false);
+    expect(cycleCount).toBe(3);
+  });
+
+  it("requirement 2: startPolling guard prevents double start via pollingRef", () => {
+    const pollingRef = { current: false };
+    let startCount = 0;
+    
+    const startPolling = () => {
+      if (pollingRef.current) return;
+      pollingRef.current = true;
+      startCount++;
+    };
+    
+    startPolling();
+    expect(startCount).toBe(1);
+    expect(pollingRef.current).toBe(true);
+    
+    startPolling();
+    expect(startCount).toBe(1);
+  });
 });

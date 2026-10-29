@@ -62,6 +62,10 @@ class WebSocketManager:
         }
 
         Removes clients that fail to receive (disconnected).
+
+        Note: price_update events are excluded from the REST buffer to prevent
+        high-frequency updates from evicting critical events (fills, kill-switch,
+        approvals, safety). WebSocket clients still receive all price updates.
         """
         event = {
             "type": event_type,
@@ -69,8 +73,9 @@ class WebSocketManager:
             "timestamp": datetime.now().isoformat(),
         }
 
-        async with self._buffer_lock:
-            self._event_buffer.append(event)
+        if event_type != "price_update":
+            async with self._buffer_lock:
+                self._event_buffer.append(event)
 
         if not self.active_connections:
             return
@@ -116,10 +121,10 @@ class WebSocketManager:
 
     async def get_recent_events(self, limit: int = 20) -> list[dict]:
         """Get recent WS events from buffer, newest first.
-        
+
         Args:
             limit: Maximum number of events to return
-            
+
         Returns:
             List of event dicts in reverse chronological order
         """

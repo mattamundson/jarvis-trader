@@ -65,6 +65,7 @@ export function EngineWebSocketProvider({
   const attemptRef = useRef(0);
   const connectImplRef = useRef<(() => void) | null>(null);
   const pollingTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const pollingRef = useRef(false);
   const seenEventIdsRef = useRef<Set<string>>(new Set());
   const pollingInProgressRef = useRef(false);
 
@@ -90,8 +91,11 @@ export function EngineWebSocketProvider({
     };
 
     const startPolling = () => {
-      if (pollingTimer.current) return;
+      if (pollingRef.current) return;
+      
+      pollingRef.current = true;
       setPolling(true);
+      pollingTimer.current = setTimeout(() => {}, 0);
       
       const poll = async () => {
         if (pollingInProgressRef.current) return;
@@ -136,7 +140,7 @@ export function EngineWebSocketProvider({
         } finally {
           pollingInProgressRef.current = false;
           
-          if (reconnectRef.current && polling) {
+          if (reconnectRef.current && pollingRef.current) {
             pollingTimer.current = setTimeout(poll, POLL_INTERVAL.FAST);
           }
         }
@@ -146,6 +150,7 @@ export function EngineWebSocketProvider({
     };
 
     const stopPolling = () => {
+      pollingRef.current = false;
       if (pollingTimer.current) {
         clearTimeout(pollingTimer.current);
         pollingTimer.current = undefined;
@@ -240,6 +245,7 @@ export function EngineWebSocketProvider({
 
   const disconnect = useCallback(() => {
     reconnectRef.current = false;
+    pollingRef.current = false;
     if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
     if (pollingTimer.current) clearTimeout(pollingTimer.current);
     pollingTimer.current = undefined;
