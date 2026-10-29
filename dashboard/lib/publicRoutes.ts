@@ -1,24 +1,6 @@
-import { isPublicEngineRead } from "@/lib/publicEngineReads";
-
-/** All pages are public; proxy reads require an explicit allowlist. */
-export function isPublicReadOnlyPath(pathname: string): boolean {
-  if (/%|\\|\/\//.test(pathname) || pathname.split("/").some((part) => part === "." || part === "..")) return false;
-  if (isWebSocketPath(pathname)) return false;
-  if (!pathname.startsWith("/api/") && pathname !== "/api") return true;
-  if (pathname.startsWith("/api/engine/")) {
-    return isPublicEngineRead(pathname.slice("/api/engine".length));
-  }
-  return [
-    "/api/domflow/domflow/mes/latest", "/api/domflow/domflow/mes/history",
-    "/api/flow", "/api/flow/health", "/api/flow/metrics", "/api/fleet",
-    "/api/runtime-snapshot", "/api/market-brief", "/api/public-market-brief/latest",
-    "/api/jarvis/readiness-scorecard", "/api/spx-intraday",
-    "/api/master/master/status", "/api/master/master/finances/detail",
-    "/api/master/master/trading/realized", "/api/master/master/scheduler/status",
-    "/api/master/master/scheduler/runs",
-    "/api/amo/api/health", "/api/amo/api/edge-verdict", "/api/amo/api/commodities",
-    "/api/amo/api/signal-outcomes/aggregate", "/api/amo/api/scoreboard", "/api/amo/api/actionable",
-  ].includes(pathname.replace(/\/$/, ""));
+/** No dashboard pages or data APIs allow anonymous reads. */
+export function isPublicReadOnlyPath(_pathname: string): boolean {
+  return false;
 }
 
 /**

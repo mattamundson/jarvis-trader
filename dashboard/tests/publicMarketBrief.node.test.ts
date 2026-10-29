@@ -56,13 +56,8 @@ test("public market brief snapshot strips sourcePath and preserves analysis-only
   assert.ok(!raw.includes("sourcePath"));
 });
 
-test("public route allowlist permits viewing but not engine actions", () => {
-  assert.equal(isPublicReadOnlyPath("/market-brief-public"), true);
-  assert.equal(isPublicReadOnlyPath("/market-brief-public/history"), true);
-  assert.equal(isPublicReadOnlyPath("/api/public-market-brief/latest"), true);
-
-  assert.equal(isPublicReadOnlyPath("/mission-control"), true);
-  assert.equal(isPublicReadOnlyPath("/api/market-brief"), true);
-  assert.equal(isPublicReadOnlyPath("/api/engine/health"), true);
-  assert.equal(isPublicReadOnlyPath("/api/engine/portfolio/halt"), false);
+test("market brief pages and API now require authentication too", () => {
+  for (const path of ["/market-brief-public", "/api/public-market-brief/latest", "/mission-control", "/api/engine/health"]) {
+    assert.equal(isPublicReadOnlyPath(path), false, path);
+  }
 });

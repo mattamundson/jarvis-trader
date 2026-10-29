@@ -1,13 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { decideDashboardAuth, readDashboardAuthEnv } from "@/lib/dashboardAuth";
-import { isPublicReadOnlyRequest, isWebSocketPath, isWebSocketUpgrade, isFlowIngestPath } from "@/lib/publicRoutes";
+import { isFlowIngestPath } from "@/lib/publicRoutes";
 
-/**
- * Pages and explicitly allowlisted data reads are public. Other routes and
- * mutations require DASHBOARD_AUTH_USER/PASS; engine credentials remain server-only.
- * GET is not inherently safe: command streams, LLM actions and unknown proxies
- * are deliberately excluded from public reads. The legacy public-demo disable
- * flag must never disable action authentication on a hosted deployment.
+/** Require dashboard credentials on every page, API and WebSocket handshake.
+ * Feed ingestion retains its separate Bearer-token authentication.
+ * Hosted deployments without credentials fail closed; demo flags cannot bypass it.
  */
 
 function timingSafeEqualStr(a: string, b: string): boolean {
@@ -34,28 +31,10 @@ function unauthorized(): NextResponse {
 }
 
 export function middleware(req: NextRequest) {
-  if (isPublicReadOnlyRequest(req.nextUrl.pathname, req.method)) {
-    return NextResponse.next();
-  }
-
   // Flow ingest endpoint has its own Bearer token auth (FLOW_INGEST_TOKEN).
   // Exempt POST /api/flow/ingest from Basic auth so pushers can authenticate directly.
   if (isFlowIngestPath(req.nextUrl.pathname, req.method)) {
     return NextResponse.next();
-  }
-
-  // WebSocket handshakes cannot carry an Authorization header, so a genuine upgrade must be
-  // allowed through. An ordinary GET under /ws/ is NOT an upgrade and falls through to the
-  // auth checks below — otherwise the whole /ws/ prefix is an unauthenticated hole.
-  if (isWebSocketPath(req.nextUrl.pathname) && isWebSocketUpgrade(req.headers.get("upgrade"))) {
-    return NextResponse.next();
-  }
-
-  // A public page may poll a protected diagnostic. Do not turn an API denial
-  // into a browser-wide Basic Auth dialog; owners can still supply credentials.
-  if (req.nextUrl.pathname.startsWith("/api/") && req.nextUrl.pathname !== "/api/owner-sign-in" && !req.headers.get("authorization")) {
-    return NextResponse.json({ error: "read_only", message: "This action requires authentication." },
-      { status: 403, headers: { "Cache-Control": "no-store" } });
   }
 
   const user = process.env.DASHBOARD_AUTH_USER;
@@ -116,18 +95,7 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  // Protect every route except Next.js internals (static assets under _next
-  // are fine to gate too — the browser resends credentials after the 401,
-  // and it prevents unauthenticated probing of build assets).
-  //
-  // /ws/:path* is NO LONGER excluded from the matcher.
-  //
-  // Excluding the whole `ws/` prefix meant any ORDINARY GET under /ws/ bypassed Basic Auth
-  // and was proxied to the engine tunnel — which disclosed the tunnel hostname to anonymous
-  // callers and exposed its unauthenticated surface. WebSocket traffic genuinely cannot
-  // carry an Authorization header, so the decision now lives in the request instead of the
-  // path: a real `Upgrade: websocket` handshake passes, and everything else under /ws/ must
-  // authenticate like any other route. See lib/publicRoutes.ts (isWebSocketPath /
-  // isWebSocketUpgrade) and the lib/pipeline_ws.ts security note.
+  // All pages, APIs, and WebSocket handshakes are protected. Only framework
+  // assets bypass Basic Auth; ingestion verifies its own Bearer token.
   matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };
