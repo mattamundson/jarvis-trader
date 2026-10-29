@@ -21,7 +21,10 @@ function isMissionControlPath(pathname: string | null): boolean {
   return pathname === "/mission-control" || pathname?.startsWith("/mission-control/") === true;
 }
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({ children, authStatus = "unknown" }: {
+  children: React.ReactNode;
+  authStatus?: "authenticated" | "unprotected" | "unknown";
+}) {
   const pathname = usePathname();
 
   if (isPublicReadOnlyPath(pathname)) {
@@ -44,7 +47,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="flex min-h-screen">
           {!missionControlFocus && <Sidebar />}
           <main className="flex-1 min-w-0 overflow-x-hidden">
-            <div role="status" className="border-b border-cyan-900/40 bg-slate-950 px-4 py-2 text-sm text-cyan-300">Private dashboard · Authentication required. <a className="ml-2 underline" href="/api/owner-sign-in">Owner sign in</a></div>
+            <div role="status" className="border-b border-cyan-900/40 bg-slate-950 px-4 py-2 text-sm text-cyan-300">
+              {authStatus === "authenticated" ? (
+                <span>Signed in · Dashboard protected</span>
+              ) : authStatus === "unprotected" ? (
+                <span>Not signed in · Local authentication is not configured</span>
+              ) : (
+                <>
+                  Sign-in status unavailable.
+                  <a className="ml-2 underline" href="/api/owner-sign-in">Owner sign in</a>
+                </>
+              )}
+            </div>
             {children}
           </main>
         </div>
