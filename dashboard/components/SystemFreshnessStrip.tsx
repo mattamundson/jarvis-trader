@@ -36,7 +36,7 @@ function eventTimestamp(event: ReturnType<typeof useEngineWebSocketContext>["las
  */
 export function SystemFreshnessStrip() {
   const { isOnline, lastChecked } = useEngineStatus();
-  const { isConnected, lastEvent } = useEngineWebSocketContext();
+  const { isConnected, isPolling, lastEvent } = useEngineWebSocketContext();
   const lastEventTime = fmtEventTime(eventTimestamp(lastEvent));
 
   // Hydration-safe rendering: SSR paints the neutral "checking" state, and the
@@ -86,10 +86,12 @@ export function SystemFreshnessStrip() {
       <span className="flex items-center gap-1.5">
         {isConnected ? (
           <Wifi className="h-3 w-3 text-bull" />
+        ) : isPolling ? (
+          <Activity className="h-3 w-3 text-info" />
         ) : (
           <WifiOff className="h-3 w-3 text-warn" />
         )}
-        WS {isConnected ? "connected" : "disconnected"}
+        {isConnected ? "WS connected" : isPolling ? "polling" : "WS disconnected"}
       </span>
 
       <span className="flex items-center gap-1.5">
