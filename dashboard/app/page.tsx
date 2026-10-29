@@ -69,7 +69,7 @@ export default function Home() {
           </Badge>
           {isFixture && (
             <Badge variant="neutral" className="font-mono text-xs">
-              FIXTURE DATA
+              FIXTURE ({new Date(flow.ts).toLocaleDateString()})
             </Badge>
           )}
           {!isFixture && isLive && (

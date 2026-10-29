@@ -63,31 +63,33 @@ export default function IntradayRegimePage() {
   const [symbol, setSymbol] = useState("SPY");
   const [showEma, setShowEma] = useState(true);
 
-  // Live engine data; fall back to the deterministic sample when the engine is
-  // unavailable so the page always renders (and is honest about provenance).
-  const sample = useMemo(() => buildSampleRegime(symbol), [symbol]);
-  const { data: live, isLoading, mutate: refetchRegime } = useSWR<IntradayRegime>(
+  // Live engine data; show error/empty state when unavailable instead of
+  // falling back to a misleading deterministic sample.
+  const { data: live, error, isLoading, mutate: refetchRegime } = useSWR<IntradayRegime>(
     ["regime", symbol],
     () => fetchIntradayRegime(symbol),
     { refreshInterval: REFRESH_MS, shouldRetryOnError: false }
   );
-  const data: IntradayRegime = live ?? sample;
+  
+  const engineDown = error || (!isLoading && !live);
 
   return (
     <div className="min-h-screen bg-background">
       <RegimeBanner />
 
       <main className="mx-auto max-w-6xl space-y-4 px-4 py-5 lg:px-6">
-        <TabsRow source={data.source} isLoading={isLoading && !live} />
+        <TabsRow isLoading={isLoading && !live} engineDown={engineDown} />
 
         {/* Symbol + price + analyze */}
         <div className="flex flex-wrap items-center gap-3">
           <span className="font-mono text-2xl font-extrabold tracking-tight text-info">
-            {data.symbol}
+            {symbol}
           </span>
-          <span className="font-mono text-2xl font-bold text-foreground">
-            ${data.price.toFixed(2)}
-          </span>
+          {live && (
+            <span className="font-mono text-2xl font-bold text-foreground">
+              ${live.price.toFixed(2)}
+            </span>
+          )}
           <div className="ml-auto flex items-center gap-2">
             <div className="relative">
               <select
@@ -113,13 +115,28 @@ export default function IntradayRegimePage() {
           </div>
         </div>
 
-        <VerdictCard data={data} />
-        <RegimeScoreBar score={data.score} />
-        <VixPercentileRegimeCard />
-        <ScoreHistoryCard data={data} showEma={showEma} onToggleEma={() => setShowEma((v) => !v)} />
-        <TimeframeScores scores={data.timeframeScores} />
-        <IndicatorBreakdown timeframe={data.indicatorTimeframe} indicators={data.indicators} />
-        <OptionsFlow flow={data.optionsFlow} />
+        {engineDown ? (
+          <div className="rounded-xl border border-warn/40 bg-warn/5 p-8 text-center">
+            <p className="text-lg font-semibold text-warn mb-2">Engine Unavailable</p>
+            <p className="text-sm text-muted-foreground">
+              Cannot fetch regime data. Check engine connection at localhost:8010.
+            </p>
+          </div>
+        ) : live ? (
+          <>
+            <VerdictCard data={live} />
+            <RegimeScoreBar score={live.score} />
+            <VixPercentileRegimeCard />
+            <ScoreHistoryCard data={live} showEma={showEma} onToggleEma={() => setShowEma((v) => !v)} />
+            <TimeframeScores scores={live.timeframeScores} />
+            <IndicatorBreakdown timeframe={live.indicatorTimeframe} indicators={live.indicators} />
+            <OptionsFlow flow={live.optionsFlow} />
+          </>
+        ) : (
+          <div className="rounded-xl border border-border bg-card p-8 text-center">
+            <p className="text-lg font-semibold text-muted-foreground mb-2">Loading…</p>
+          </div>
+        )}
       </main>
     </div>
   );
@@ -158,13 +175,12 @@ function RegimeBanner() {
 // ── Tabs row ─────────────────────────────────────────────────────────────────
 
 function TabsRow({
-  source,
   isLoading,
+  engineDown,
 }: {
-  source: IntradayRegime["source"];
   isLoading: boolean;
+  engineDown: boolean;
 }) {
-  const live = source === "live";
   return (
     <div className="flex flex-wrap items-center gap-2">
       <button className="rounded-lg border border-border bg-card px-4 py-2 text-xs font-semibold text-foreground">
@@ -174,14 +190,17 @@ function TabsRow({
         Ticker Intraday Market Regime
       </button>
       <span className="ml-auto">
-        <Badge variant={live ? "bull" : "static"} className="gap-1.5">
-          <span
-            className={`h-1.5 w-1.5 rounded-full ${
-              live ? "animate-pulse bg-bull" : "bg-muted-foreground"
-            }`}
-          />
-          {isLoading ? "Loading…" : live ? "Live Engine Data" : "Sample Data"}
-        </Badge>
+        {engineDown ? (
+          <Badge variant="bear" className="gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-bear" />
+            Engine Down
+          </Badge>
+        ) : (
+          <Badge variant="bull" className="gap-1.5">
+            <span className={`h-1.5 w-1.5 rounded-full ${isLoading ? "animate-pulse" : ""} bg-bull`} />
+            {isLoading ? "Loading…" : "Live Engine Data"}
+          </Badge>
+        )}
       </span>
     </div>
   );
