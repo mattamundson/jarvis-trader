@@ -26,11 +26,22 @@ describe("JournalPage", () => {
     expect(screen.getByText(/Paper Trading Journal/i)).toBeInTheDocument();
   });
 
-  it("shows progress cards", () => {
+  it("shows progress cards with correct states", () => {
     render(<JournalPage />);
     expect(screen.getByText(/Scored Setups/i)).toBeInTheDocument();
     expect(screen.getByText(/Average R/i)).toBeInTheDocument();
     expect(screen.getByText(/Clean Sessions/i)).toBeInTheDocument();
-    expect(screen.getByText(/Rule Breaks/i)).toBeInTheDocument();
+    expect(screen.getByText(/Data Source/i)).toBeInTheDocument();
+  });
+
+  it("shows n/a for clean sessions", () => {
+    render(<JournalPage />);
+    expect(screen.getByText(/n\/a/i)).toBeInTheDocument();
+    expect(screen.getByText(/Session-level stat/i)).toBeInTheDocument();
+  });
+  
+  it("shows data source note", () => {
+    render(<JournalPage />);
+    expect(screen.getByText(/R-multiples require stop loss data/i)).toBeInTheDocument();
   });
 });
