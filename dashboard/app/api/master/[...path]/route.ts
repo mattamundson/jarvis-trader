@@ -1,3 +1,4 @@
+import { upstreamAuthFailure } from "@/lib/upstreamAuth";
 import { NextRequest, NextResponse } from "next/server";
 
 // Read-only server-side proxy to the master-api service (separate service,
@@ -57,7 +58,13 @@ async function proxyGet(request: NextRequest, path: string[]): Promise<NextRespo
     clearTimeout(timeout);
   }
 
+  const authFailure = upstreamAuthFailure(upstream.status, "master");
+  if (authFailure) {
+    await upstream.body?.cancel();
+    return new NextResponse(authFailure.body, { status: authFailure.status, headers: authFailure.headers });
+  }
   const responseHeaders = new Headers(upstream.headers);
+  responseHeaders.delete("www-authenticate");
   responseHeaders.delete("content-encoding");
   responseHeaders.delete("content-length");
   responseHeaders.delete("transfer-encoding");

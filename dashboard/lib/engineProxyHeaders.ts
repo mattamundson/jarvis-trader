@@ -21,6 +21,7 @@ export function applyEngineAuthHeaders(
   headers: Headers,
   env: EngineAuthEnv,
 ): Headers {
+  headers.delete("authorization");
   if (env.apiKey) {
     headers.set("X-API-Key", env.apiKey);
   }
