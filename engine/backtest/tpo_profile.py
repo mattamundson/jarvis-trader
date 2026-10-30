@@ -4,7 +4,7 @@ Python port of thinkorswim-scripts/AA_CoreyTPOProfilev1STUDY.ts (Corey Surles).
 Spec: thinkorswim-scripts/docs/corey_tpo_profile_v1.md
 
 Computes per-session (RTH day) Time-Price-Opportunity levels:
-  vpoc          — price level with highest bar count in the session
+  vpoc          — price level with the most volume in the RTH session
   va_high       — upper boundary of 70% value area (VAH)
   va_low        — lower boundary of 70% value area (VAL)
   profile_high  — session price extreme high
@@ -14,11 +14,15 @@ Computes per-session (RTH day) Time-Price-Opportunity levels:
   seller_control_signal — bool: close < va_low
 
 Value area algorithm mirrors the TOS TimeProfile logic:
-  1. Bin prices to nearest tick_size.
-  2. Count bars per bin (TPO count).
-  3. VPOC = bin with max count.
-  4. Expand outward from VPOC, adding the higher-count adjacent bin first,
-     until the cumulative count >= value_area_pct of session total.
+  1. Spread each bar's volume evenly across the tick bins from its low to
+     its high (one unit per bin when there is no volume column).
+  2. VPOC = bin with the most volume.
+  3. Expand outward from VPOC, adding the larger adjacent bin first,
+     until the cumulative volume >= value_area_pct of session total.
+
+Sessions are RTH only, 08:30-15:00 CT. Every bar of trade date D (from the
+prior RTH close through D's RTH close) carries the last completed RTH
+session before D.
 """
 
 from __future__ import annotations
@@ -40,9 +44,22 @@ def _session_tpo(
     tick_size: float,
     value_area_pct: float,
 ) -> pd.Series:
-    close = group["close"]
-    bins = (close / tick_size).round() * tick_size
-    counts = bins.value_counts().sort_index()
+    close = group["close"].to_numpy(dtype=float)
+    high = group["high"].to_numpy(dtype=float) if "high" in group else close
+    low = group["low"].to_numpy(dtype=float) if "low" in group else close
+    vol = group["volume"].to_numpy(dtype=float) if "volume" in group else np.ones(len(close))
+    lo_t = np.round(np.minimum(low, high) / tick_size).astype(np.int64)
+    hi_t = np.round(np.maximum(low, high) / tick_size).astype(np.int64)
+    acc: dict[int, float] = {}
+    for lo_i, hi_i, v in zip(lo_t, hi_t, vol):
+        if not np.isfinite(v) or v <= 0:
+            continue
+        n = hi_i - lo_i + 1
+        for t in range(lo_i, hi_i + 1):
+            acc[t] = acc.get(t, 0.0) + v / n
+    counts = pd.Series(
+        {round(t * tick_size, 8): v for t, v in acc.items()}, dtype=float
+    ).sort_index()
 
     if counts.empty:
         nan = float("nan")
@@ -60,14 +77,14 @@ def _session_tpo(
     profile_low = float(counts.index.min())
     vpoc_price = float(counts.idxmax())
     total = counts.sum()
-    target = int(np.ceil(total * value_area_pct))
+    target = total * value_area_pct
 
     # Expand value area outward from VPOC
     sorted_prices = counts.index.tolist()
     vpoc_idx = sorted_prices.index(vpoc_price)
     lo_ptr = vpoc_idx
     hi_ptr = vpoc_idx
-    accumulated = int(counts.iloc[vpoc_idx])
+    accumulated = float(counts.iloc[vpoc_idx])
 
     while accumulated < target:
         lo_candidate = counts.iloc[lo_ptr - 1] if lo_ptr > 0 else 0
@@ -76,10 +93,10 @@ def _session_tpo(
             break
         if hi_candidate >= lo_candidate:
             hi_ptr += 1
-            accumulated += int(hi_candidate)
+            accumulated += float(hi_candidate)
         else:
             lo_ptr -= 1
-            accumulated += int(lo_candidate)
+            accumulated += float(lo_candidate)
 
     va_high = float(sorted_prices[hi_ptr])
     va_low = float(sorted_prices[lo_ptr])
@@ -98,8 +115,10 @@ def _session_tpo(
 def compute_tpo_profile(
     df: pd.DataFrame,
     value_area_pct: float = 0.70,
-    session_start_hour: int = 9,
+    session_start_hour: int = 8,
     session_start_minute: int = 30,
+    session_end_hour: int = 15,
+    session_end_minute: int = 0,
     tz: str = "America/Chicago",
     tick_size: float | None = None,
 ) -> pd.DataFrame:
@@ -110,12 +129,15 @@ def compute_tpo_profile(
     ----------
     df : DataFrame
         Must have a DatetimeIndex (timezone-aware or naive) and a 'close' column.
+        'high', 'low' and 'volume' are used when present.
     value_area_pct : float
         Fraction of TPO bars included in the value area (default 0.70).
     session_start_hour : int
-        RTH open hour in local tz (default 9 for 9:30 CT).
+        RTH open hour in local tz (default 8 for 08:30 CT).
     session_start_minute : int
         RTH open minute (default 30).
+    session_end_hour, session_end_minute : int
+        RTH close in local tz (default 15:00 CT).
     tz : str
         Timezone for session detection.
     tick_size : float | None
@@ -140,33 +162,36 @@ def compute_tpo_profile(
         idx = idx.tz_localize("UTC")
     idx_local = idx.tz_convert(tz)
 
-    # Assign each bar to the RTH session date it belongs to.
-    # Bars before the session open belong to the previous calendar date's session.
-    session_open = idx_local.hour * 60 + idx_local.minute
-    open_cutoff = session_start_hour * 60 + session_start_minute
-    session_date = idx_local.normalize()
-    pre_open_mask = session_open < open_cutoff
-    session_date = session_date - pd.to_timedelta(pre_open_mask.astype(int), unit="D")
-
-    out["_session_date"] = session_date.values
-
-    tpo = (
-        out.groupby("_session_date")
-        .apply(_session_tpo, tick_size=tick_size, value_area_pct=value_area_pct)
-        .reset_index()
+    # RTH-only profiles. Each bar is mapped to its trade date (bars at or
+    # after the RTH close roll to the next business day) and carries the last
+    # completed RTH session strictly before that trade date.
+    minute = idx_local.hour * 60 + idx_local.minute
+    rth_open = session_start_hour * 60 + session_start_minute
+    rth_close = session_end_hour * 60 + session_end_minute
+    day = idx_local.normalize().tz_localize(None)
+    in_rth = (minute >= rth_open) & (minute < rth_close)
+    after_close = minute >= rth_close
+    trade_date = pd.DatetimeIndex(
+        np.where(after_close, day + pd.offsets.BDay(1), day)
     )
-    tpo = tpo.rename(columns={"_session_date": "session_date"})
 
-    # Merge using prior session values (shift by 1 session to avoid look-ahead)
-    tpo_sorted = tpo.sort_values("session_date").copy()
-    for col in ("vpoc", "va_high", "va_low", "profile_high", "profile_low"):
-        tpo_sorted[col] = tpo_sorted[col].shift(1)
-    tpo_sorted = tpo_sorted.set_index("session_date")
+    rth = out[np.asarray(in_rth)].copy()
+    rth["_session_date"] = day[np.asarray(in_rth)]
+    level_cols = ("vpoc", "va_high", "va_low", "profile_high", "profile_low")
+    if rth.empty:
+        tpo = pd.DataFrame(columns=list(level_cols), index=pd.DatetimeIndex([]))
+    else:
+        tpo = (
+            rth.groupby("_session_date")
+            .apply(_session_tpo, tick_size=tick_size, value_area_pct=value_area_pct)
+            .sort_index()
+        )
 
-    for col in ("vpoc", "va_high", "va_low", "profile_high", "profile_low"):
-        out[col] = out["_session_date"].map(tpo_sorted[col])
-
-    out = out.drop(columns=["_session_date"])
+    sessions = pd.DatetimeIndex(tpo.index)
+    pos = sessions.searchsorted(trade_date, side="left") - 1
+    for col in level_cols:
+        vals = tpo[col].to_numpy(dtype=float) if len(tpo) else np.array([])
+        out[col] = np.where(pos >= 0, vals[np.clip(pos, 0, None)] if len(vals) else np.nan, np.nan)
 
     # Derived classification
     def _classify(row: pd.Series) -> str:
