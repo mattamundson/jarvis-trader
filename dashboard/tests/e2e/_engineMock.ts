@@ -42,6 +42,7 @@ const SHAPES: Array<[RegExp, unknown]> = [
   [/\/prices\/snapshot/, { MES: { symbol: "MES", ...NULL_PRICE }, MGC: { symbol: "MGC", ...NULL_PRICE } }],
   [/\/decisions\/recent/, []],
   [/\/portfolio\/history\/trades/, []],
+  [/\/trades\/journal/, []],
   [/\/scheduler\/status/, { jobs: [] }],
   [
     // `diagnosis` is required and non-nullable; the page guards on `!journalStats`
