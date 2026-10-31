@@ -76,6 +76,13 @@ FLAG_DEFINITIONS: List[Dict[str, Any]] = [
         "requires_restart": True,
     },
     {
+        "name": "ENABLE_NIGHTLY_DISCOVERY",
+        "default": False,
+        "description": "Nightly 01:00 CT LLM strategy discovery job. Off by default.",
+        "category": "experimental",
+        "requires_restart": True,
+    },
+    {
         "name": "ENABLE_RL_TRADING",
         "default": False,
         "description": "RL-based strategy execution",

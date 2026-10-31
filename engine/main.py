@@ -2829,7 +2829,14 @@ async def lifespan(app: FastAPI):
             except Exception as _disc_err:
                 logger.error(f"[NightlyDiscovery] Failed: {_disc_err}", exc_info=True)
 
-        if scheduler is not None:
+        from flags.registry import get_flags as _get_disc_flags
+
+        if not _get_disc_flags().is_enabled("ENABLE_NIGHTLY_DISCOVERY"):
+            logger.info(
+                "[NightlyDiscovery] Disabled (ENABLE_NIGHTLY_DISCOVERY=False) -- "
+                "LLM strategy loop not scheduled"
+            )
+        elif scheduler is not None:
             scheduler.add_job(
                 _run_nightly_discovery,
                 CronTrigger(hour=1, minute=0, timezone="America/Chicago"),
