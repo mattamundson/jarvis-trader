@@ -23,13 +23,27 @@ export async function GET() {
   if (isSnapshotMode()) return NextResponse.json(tapeExtrasSnapshot(), { headers: { "cache-control": "no-store" } });
   const flow = await readJson(path.join(STATE, "flow-latest.json"));
   const gex = await readJson(path.join(STATE, "gex-latest.json"));
-  const [proof, plan, footprint, profile, ib] = await Promise.all([
+  const [proof, plan, footprint, profile, ib, footprintWide] = await Promise.all([
     readProof(),
     readPlanCard(flow?.j ?? null),
     readFootprint().catch((e) => ({ ok: false, error: String(e) })),
     readCompositeProfile().catch((e) => ({ ok: false, error: String(e) })),
     readIbStatus().catch((e) => ({ ok: false, light: "red", error: String(e), checks: [] })),
+    readFootprint(36).catch((e) => ({ ok: false, error: String(e) })),
   ]);
+  // Chart overlays (addition): VWAP/last from flow-latest, plan levels from config/tape-plan.json.
+  const chart: any = { vwap: flow?.j?.price?.vwap ?? null, last: flow?.j?.price?.last ?? null, levels: [] as any[], levelsSource: "config/tape-plan.json" };
+  try {
+    const tp = JSON.parse(await fs.readFile(process.env.TAPE_PLAN_FILE || path.join(process.cwd(), "config", "tape-plan.json"), "utf8"));
+    for (const side of ["long", "short"] as const) {
+      const s = tp?.[side]; if (!s) continue;
+      const S = side === "long" ? "Long" : "Short";
+      if (s.trigger != null) chart.levels.push({ name: `${S} trigger`, px: s.trigger, kind: "trigger" });
+      if (s.stop != null) chart.levels.push({ name: `${S} stop`, px: s.stop, kind: "invalid" });
+      (s.targets ?? []).forEach((t: number, i: number) => chart.levels.push({ name: `${S} T${i + 1}`, px: t, kind: "target" }));
+    }
+    for (const l of tp?.extraLevels ?? []) if (typeof l?.px === "number") chart.levels.push({ name: l.name, px: l.px, kind: "level" });
+  } catch {}
   const flowSrc = normalizeSource(flow?.j?.source, flow?.j?.recorder?.connected_port);
   const sources = {
     labels: SOURCE_LABELS,
@@ -40,5 +54,5 @@ export async function GET() {
     profile: { source: (profile as any).source ?? null },
     proof: { source: (proof as any).source ?? null },
   };
-  return NextResponse.json({ generatedAt: Date.now(), snapshotMode: false, sources, proof, plan, footprint, profile, ib }, { headers: { "cache-control": "no-store" } });
+  return NextResponse.json({ generatedAt: Date.now(), snapshotMode: false, sources, proof, plan, footprint, profile, ib, footprintWide, chart }, { headers: { "cache-control": "no-store" } });
 }
