@@ -56,11 +56,13 @@ export default function TapePage() {
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const alive = useRef(true);
+  const [meta, setMeta] = useState<{ source: string | null; sourceBars: string | null; file: string | null; fileAgeS: number | null; stale10m: boolean; gexSource: string | null; gexAgeS: number | null; gexStale: boolean } | null>(null);
 
   const poll = useCallback(async () => {
     try {
       const res = await fetch("/api/flow/tape", { cache: "no-store" });
       const body = await res.json();
+      setMeta({ source: body?.source ?? null, sourceBars: body?.sourceBars ?? null, file: body?.file ?? null, fileAgeS: typeof body?.fileAgeS === "number" ? body.fileAgeS : null, stale10m: !!body?.stale10m, gexSource: body?.gex?.source ?? null, gexAgeS: typeof body?.gex?.file_age_s === "number" ? body.gex.file_age_s : null, gexStale: !!body?.gex?.stale });
       if (!body?.ok) throw new Error(typeof body?.error === "string" ? body.error : "feed unavailable");
       const snap = normalizeSnapshot(body.snapshot);
       if (!snap) throw new Error("snapshot unusable");
@@ -143,6 +145,12 @@ export default function TapePage() {
       )}
 
       <h1 className="mb-1 text-sm font-bold tracking-wide text-zinc-300">ES TAPE <span className="font-normal text-zinc-500">(paper, readout only, refreshes every 5s)</span></h1>
+
+      <div data-testid="tape-source" className="mb-2 flex flex-wrap items-center gap-2 text-[11px] text-zinc-400">
+        {meta?.stale10m && <span data-testid="stale-10m-badge" className="rounded bg-red-600 px-2 py-0.5 font-bold text-white">STALE &gt;10 min</span>}
+        <span>Tape source: <b className="text-zinc-200">{meta?.source ?? "unknown"}</b>{meta?.sourceBars ? ` (bars: ${meta.sourceBars})` : ""}{meta?.file === "box-fallback" ? " [box fallback file]" : ""}{meta && meta.fileAgeS !== null ? ` | file age ${fmtAge(meta.fileAgeS)}` : ""}</span>
+        <span>| GEX source: <b className="text-zinc-200">{meta?.gexSource ?? "unknown"}</b>{meta && meta.gexAgeS !== null ? ` (${fmtAge(meta.gexAgeS)})` : ""}{meta?.gexStale && <span className="ml-1 rounded bg-red-600 px-1 font-bold text-white">STALE</span>}</span>
+      </div>
 
       {snap && <TriggerBox panel={derived?.panel ?? null} plan={plan} planError={data?.planError ?? null} stale={stale} live={data?.live ?? null} />}
 

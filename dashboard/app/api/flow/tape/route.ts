@@ -1,18 +1,42 @@
-﻿import { NextResponse } from "next/server";
-import { readFile } from "node:fs/promises";
+import { NextResponse } from "next/server";
+import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
 /**
  * Read-only local readout of the recorder snapshot for the /tape screen.
- * Reads TAPE_FLOW_FILE (default: the recorder's flow-latest.json) and the trigger plan
- * (TAPE_PLAN_FILE, default config/tape-plan.json) on every request, no cache.
- * Only whitelisted market fields are returned. Never throws; failures come back as { ok: false }.
- * A missing or broken plan does not break the readout: plan is null and planError says why.
+ * Primary: TAPE_FLOW_FILE (the PC recorder's flow-latest.json). Fallback: the box export copied to
+ * TAPE_FLOW_FALLBACK_FILE (state\box\flow-latest.json) when the primary is older than 10 min and
+ * the fallback is newer. Same for gex. Every block carries a `source` label. Never throws.
  */
 export const dynamic = "force-dynamic";
 
-const DEFAULT_FILE = "C:\\Users\\mattm\\tape\\state\\flow-latest.json";
+const STATE = "C:\\Users\\mattm\\tape\\state";
+const DEFAULT_FILE = path.join(STATE, "flow-latest.json");
+const DEFAULT_FALLBACK = path.join(STATE, "box", "flow-latest.json");
+const DEFAULT_GEX_FILE = path.join(STATE, "gex-latest.json");
+const DEFAULT_GEX_FALLBACK = path.join(STATE, "box", "gex-latest.json");
 const HEADERS = { "Cache-Control": "no-store" };
+const STALE_AFTER_MS = 10 * 60 * 1000;
+
+const PORT_LABEL: Record<number, string> = { 4002: "IB paper 4002", 4001: "IB live read-only 4001" };
+
+async function readJson(file: string): Promise<{ raw: any; mtimeMs: number } | null> {
+  try {
+    const [txt, st] = await Promise.all([readFile(file, "utf8"), stat(file)]);
+    return { raw: JSON.parse(txt.replace(/^\uFEFF/, "")), mtimeMs: st.mtimeMs };
+  } catch {
+    return null;
+  }
+}
+
+/** Prefer primary; use fallback only if primary is missing/stale and fallback is newer. */
+async function pick(primary: string, fallback: string, now: number) {
+  const p = await readJson(primary);
+  if (p && now - p.mtimeMs <= STALE_AFTER_MS) return { ...p, file: "primary" as const };
+  const f = await readJson(fallback);
+  if (f && (!p || f.mtimeMs > p.mtimeMs)) return { ...f, file: "box-fallback" as const };
+  return p ? { ...p, file: "primary" as const } : null;
+}
 
 async function readPlan(): Promise<{ plan: unknown; planError: string | null }> {
   const file = process.env.TAPE_PLAN_FILE || path.join(process.cwd(), "config", "tape-plan.json");
@@ -24,57 +48,51 @@ async function readPlan(): Promise<{ plan: unknown; planError: string | null }> 
   }
 }
 
-const DEFAULT_GEX_FILE = "C:\\Users\\mattm\\tape\\state\\gex-latest.json";
-
-/** Gamma levels from the ZeroGEX snapshot. Never throws: missing file gives { gex: null, gexError }. */
-async function readGex(): Promise<{ gex: unknown; gexError: string | null }> {
-  const file = process.env.TAPE_GEX_FILE || DEFAULT_GEX_FILE;
-  try {
-    const r = JSON.parse((await readFile(file, "utf8")).replace(/^\uFEFF/, ""));
-    return {
-      gex: { asof_ct: r.asof_ct ?? null, pulled_ct: r.pulled_ct ?? null, flip: r.flip ?? null, call_wall: r.call_wall ?? null, put_wall: r.put_wall ?? null, max_pain: r.max_pain ?? null, net_gex: r.net_gex ?? null, source: r.source ?? null, fetch_ok: r.fetch_ok ?? null },
-      gexError: null,
-    };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "unreadable";
-    return { gex: null, gexError: `gex file unreadable: ${msg.slice(0, 120)}` };
-  }
+function flowSource(raw: any, which: string): string {
+  if (typeof raw?.source === "string" && raw.source) return which === "box-fallback" ? `${raw.source} (box fallback)` : raw.source;
+  const port = Number(raw?.recorder?.connected_port);
+  return PORT_LABEL[port] ?? "unknown";
 }
 
 export async function GET() {
-  const { gex, gexError } = await readGex();
   const serverEpochMs = Date.now();
-  const file = process.env.TAPE_FLOW_FILE || DEFAULT_FILE;
   const { plan, planError } = await readPlan();
-  try {
-    const raw = JSON.parse((await readFile(file, "utf8")).replace(/^\uFEFF/, ""));
-    const nq = raw?.nq ? { rel: raw.nq.rel ?? null, status: raw.nq.status ?? null } : null;
-    return NextResponse.json(
-      {
-        ok: true,
-        serverEpochMs,
-        plan,
-        planError,
-        gex,
-        gexError,
-        snapshot: {
-          as_of_epoch: raw.as_of_epoch ?? null,
-          as_of_ct: raw.as_of_ct ?? null,
-          price: raw.price ?? null,
-          cvd: raw.cvd ?? null,
-          gate_cvd: raw.gate_cvd ?? null,
-          nq,
-          levels: raw.levels ?? [],
-          series_1m: raw.series_1m ?? [],
-        },
-      },
-      { headers: HEADERS },
-    );
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "unreadable";
-    return NextResponse.json(
-      { ok: false, serverEpochMs, gex, gexError, error: `flow file unreadable: ${msg.slice(0, 120)}` },
-      { status: 200, headers: HEADERS },
-    );
+  const g = await pick(process.env.TAPE_GEX_FILE || DEFAULT_GEX_FILE, process.env.TAPE_GEX_FALLBACK_FILE || DEFAULT_GEX_FALLBACK, serverEpochMs);
+  const gex = g
+    ? { asof_ct: g.raw.asof_ct ?? null, pulled_ct: g.raw.pulled_ct ?? null, flip: g.raw.flip ?? null, call_wall: g.raw.call_wall ?? null, put_wall: g.raw.put_wall ?? null, max_pain: g.raw.max_pain ?? null, net_gex: g.raw.net_gex ?? null, source: g.raw.source ?? "ZeroGEX", fetch_ok: g.raw.fetch_ok ?? null, file: g.file, file_age_s: Math.round((serverEpochMs - g.mtimeMs) / 1000), stale: serverEpochMs - g.mtimeMs > STALE_AFTER_MS }
+    : null;
+  const gexError = g ? null : "gex file unreadable";
+  const f = await pick(process.env.TAPE_FLOW_FILE || DEFAULT_FILE, process.env.TAPE_FLOW_FALLBACK_FILE || DEFAULT_FALLBACK, serverEpochMs);
+  if (!f) {
+    return NextResponse.json({ ok: false, serverEpochMs, gex, gexError, error: "flow file unreadable" }, { status: 200, headers: HEADERS });
   }
+  const raw = f.raw;
+  const nq = raw?.nq ? { rel: raw.nq.rel ?? null, status: raw.nq.status ?? null } : null;
+  const fileAgeS = Math.round((serverEpochMs - f.mtimeMs) / 1000);
+  return NextResponse.json(
+    {
+      ok: true,
+      serverEpochMs,
+      plan,
+      planError,
+      gex,
+      gexError,
+      source: flowSource(raw, f.file),
+      sourceBars: raw.source_bars ?? null,
+      file: f.file,
+      fileAgeS,
+      stale10m: fileAgeS * 1000 > STALE_AFTER_MS,
+      snapshot: {
+        as_of_epoch: raw.as_of_epoch ?? null,
+        as_of_ct: raw.as_of_ct ?? null,
+        price: raw.price ?? null,
+        cvd: raw.cvd ?? null,
+        gate_cvd: raw.gate_cvd ?? null,
+        nq,
+        levels: raw.levels ?? [],
+        series_1m: raw.series_1m ?? [],
+      },
+    },
+    { headers: HEADERS },
+  );
 }
