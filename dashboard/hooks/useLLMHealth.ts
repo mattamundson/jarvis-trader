@@ -8,6 +8,8 @@ import { HEALTH_FULL_KEY, POLL_INTERVAL } from "@/lib/polling-config";
 export interface LLMHealth {
   /** The leg actually serving (active_provider, or primary if nothing served yet). */
   provider: string | null;
+  /** Configured primary leg (subsystems.llm.primary_provider), when reported. */
+  primaryProvider?: string | null;
   /** True when serving on a non-primary leg. */
   fallbackActive: boolean;
   /** ok | degraded | unknown — mirrors subsystems.llm.status. */
@@ -62,6 +64,7 @@ export function useLLMHealth(): LLMHealth {
 
   return {
     provider: (llm!.provider ?? null) as string | null,
+    primaryProvider: (llm!.primary_provider ?? null) as string | null,
     fallbackActive: llm!.fallback_active === true,
     status: (llm!.status ?? null) as string | null,
     healthy: llm!.healthy ?? null,
