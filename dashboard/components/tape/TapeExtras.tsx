@@ -1,6 +1,7 @@
 "use client";
 // /tape extras panels (items 2-6). Read-only display; no order buttons.
 import { useEffect, useState } from "react";
+import { ChartOrTable, FootprintChart, ProfileChart, chartLevels } from "./TapeCharts";
 
 const box = "mb-2 rounded border border-zinc-800 bg-zinc-950 p-2";
 const ago = (s: number | null | undefined) => (s == null ? "?" : s < 90 ? `${s}s` : s < 5400 ? `${Math.round(s / 60)}m` : `${(s / 3600).toFixed(1)}h`);
@@ -141,8 +142,8 @@ export default function TapeExtras() {
       <IbLight ib={d.ib} />
       <PlanCard p={d.plan} src={d.sources?.plan ? { ...d.sources.plan, ageS: d.sources.tape?.ageS } : null} />
       <Proof p={d.proof} src={d.sources?.proof} />
-      <Footprint f={d.footprint} />
-      <Profile p={d.profile} />
+      <ChartOrTable id="footprint" chart={<div className="mb-2"><FootprintChart f={d.footprintWide ?? d.footprint} vwap={d.chart?.vwap} last={d.chart?.last} levels={chartLevels(d.chart)} profile={d.profile} /></div>} table={<Footprint f={d.footprint} />} />
+      <ChartOrTable id="profile" chart={<div className="mb-2"><ProfileChart p={d.profile} last={d.chart?.last} vwap={d.chart?.vwap} /></div>} table={<Profile p={d.profile} />} />
     </section>
   );
 }
