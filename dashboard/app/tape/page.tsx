@@ -33,6 +33,7 @@ import {
   type TriggerPanel,
 } from "@/lib/tapePlan";
 
+import TapeExtras from "@/components/tape/TapeExtras";
 import { liveBias, todayCT, type LiveBias } from "@/lib/liveBias";
 
 const POLL_MS = 5000;
@@ -151,6 +152,8 @@ export default function TapePage() {
         <span>Tape source: <b className="text-zinc-200">{meta?.source ?? "unknown"}</b>{meta?.sourceBars ? ` (bars: ${meta.sourceBars})` : ""}{meta?.file === "box-fallback" ? " [box fallback file]" : ""}{meta && meta.fileAgeS !== null ? ` | file age ${fmtAge(meta.fileAgeS)}` : ""}</span>
         <span>| GEX source: <b className="text-zinc-200">{meta?.gexSource ?? "unknown"}</b>{meta && meta.gexAgeS !== null ? ` (${fmtAge(meta.gexAgeS)})` : ""}{meta?.gexStale && <span className="ml-1 rounded bg-red-600 px-1 font-bold text-white">STALE</span>}</span>
       </div>
+
+      <TapeExtras />
 
       {snap && <TriggerBox panel={derived?.panel ?? null} plan={plan} planError={data?.planError ?? null} stale={stale} live={data?.live ?? null} />}
 
