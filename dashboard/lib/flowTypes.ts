@@ -5,6 +5,10 @@ export interface Bar1m {
   low: number;
   close: number;
   volume: number;
+  /** Net aggressor delta for the bar; null/absent = unavailable. */
+  delta?: number | null;
+  /** Session cumulative delta at bar close; null/absent = unavailable. */
+  cvd?: number | null;
 }
 
 export interface DeltaAtPrice {
@@ -20,45 +24,79 @@ export interface BigPrint {
   side: "bid" | "ask";
 }
 
+export type GateStatus = "untested" | "testing" | "broken" | "pending" | "touched" | "confirmed";
+export type GateKind = "target" | "trigger" | "support" | "resistance" | "invalid" | "level";
+
 export interface Gate {
   level: number;
-  status: "untested" | "testing" | "broken";
-  closeCount: number;
+  status: GateStatus;
+  /** null = unavailable (the real recorder snapshot has no close counts). */
+  closeCount: number | null;
+  kind?: GateKind;
 }
 
+export interface FlowSource {
+  src: string;
+  asOf: string | null;
+  /** es only: when the recorder session behind hi/lo/CVD began. */
+  since?: string;
+}
+
+/**
+ * Public flow payload. Rule: unavailable is `null` (shown as UNAVAILABLE), never 0.
+ * Prices, levels and gates only; no dollar amounts or account data.
+ */
 export interface FlowSnapshot {
   ts: string;
   fixture?: boolean;
   es: {
     last: number;
-    vwap: number;
-    onHigh: number;
-    onLow: number;
-    cvd: number;
-    cvdLow: number;
+    vwap: number | null;
+    /** Recorder-session high/low (see sources.es.since). */
+    onHigh: number | null;
+    onLow: number | null;
+    cvd: number | null;
+    cvdLow: number | null;
     bars1m: Bar1m[];
-    deltaAtPrice: DeltaAtPrice[];
-    bigPrints: BigPrint[];
+    deltaAtPrice: DeltaAtPrice[] | null;
+    bigPrints: BigPrint[] | null;
   };
   nq: {
-    last: number;
-    vwap: number;
+    last: number | null;
+    vwap: number | null;
   };
   gex: {
-    callWall: number;
-    putWall: number;
-    flip: number;
-    pin: number;
-    asOf: string;
+    callWall: number | null;
+    putWall: number | null;
+    flip: number | null;
+    pin: number | null;
+    asOf: string | null;
   };
   gates: Gate[];
+  /** Dotted names of fields that are null because the source does not have them. */
+  unavailable?: string[];
+  sources?: Partial<Record<"es" | "nq" | "gex" | "gates", FlowSource>>;
+}
+
+export const UNAVAILABLE = "UNAVAILABLE";
+
+export function fmtNum(v: number | null | undefined, digits = 2): string {
+  return typeof v === "number" && Number.isFinite(v) ? v.toFixed(digits) : UNAVAILABLE;
+}
+
+export function fmtAsOf(iso: string | null | undefined): string {
+  if (!iso) return UNAVAILABLE;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return UNAVAILABLE;
+  return d.toLocaleString("en-US", { hour12: false, month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 export function isStale(ts: string, thresholdMs = 60_000): boolean {
   return Date.now() - new Date(ts).getTime() > thresholdMs;
 }
 
-export function biasLabel(last: number, vwap: number): string {
+export function biasLabel(last: number, vwap: number | null): string {
+  if (vwap === null) return UNAVAILABLE;
   const diff = last - vwap;
   if (Math.abs(diff) < 1) return "NEUTRAL";
   return diff > 0 ? "BULL" : "BEAR";
@@ -75,13 +113,16 @@ export interface GateAnalysis {
 export function analyzeGateAction(
   gate: Gate,
   currentPrice: number,
-  currentCvd: number,
-  cvdLow: number,
-  deltaAtPrice: DeltaAtPrice[],
+  currentCvd: number | null,
+  cvdLow: number | null,
+  deltaAtPrice: DeltaAtPrice[] | null,
 ): GateAnalysis {
-  const priceAtGate = deltaAtPrice.find((d) => Math.abs(d.price - gate.level) < 0.5);
+  if (currentCvd === null && deltaAtPrice === null) {
+    return { level: gate.level, action: "NEUTRAL", reason: "CVD and delta-at-price unavailable" };
+  }
+  const priceAtGate = deltaAtPrice?.find((d) => Math.abs(d.price - gate.level) < 0.5);
   const priceBeyondGate = currentPrice > gate.level ? currentPrice - gate.level > 1 : gate.level - currentPrice > 1;
-  const cvdNewLow = currentCvd <= cvdLow + 50;
+  const cvdNewLow = currentCvd !== null && cvdLow !== null && currentCvd <= cvdLow + 50;
   
   if (priceBeyondGate && cvdNewLow) {
     return {
