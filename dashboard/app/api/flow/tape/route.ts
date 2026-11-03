@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import { isSnapshotMode, flowTapeSnapshot } from "@/lib/tape/snapshotMode";
 
 /**
  * Read-only local readout of the recorder snapshot for the /tape screen.
@@ -55,6 +56,7 @@ function flowSource(raw: any, which: string): string {
 }
 
 export async function GET() {
+  if (isSnapshotMode()) return NextResponse.json(flowTapeSnapshot(), { headers: { "cache-control": "no-store" } });
   const serverEpochMs = Date.now();
   const { plan, planError } = await readPlan();
   const g = await pick(process.env.TAPE_GEX_FILE || DEFAULT_GEX_FILE, process.env.TAPE_GEX_FALLBACK_FILE || DEFAULT_GEX_FALLBACK, serverEpochMs);

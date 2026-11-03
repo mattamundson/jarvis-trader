@@ -41,7 +41,7 @@ export interface NqFreshness {
 export const NQ_STALE_AFTER_MS = 120_000;
 
 export function nqFreshness(
-  flow: Pick<FlowSnapshot, "ts" | "fixture" | "sources">,
+  flow: Pick<FlowSnapshot, "ts" | "fixture"> & { sources?: { nq?: { asOf?: string | null } | null } | null },
   nowMs: number,
   thresholdMs: number = NQ_STALE_AFTER_MS,
 ): NqFreshness {

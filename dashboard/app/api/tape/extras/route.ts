@@ -8,32 +8,19 @@ import { readProof } from "@/lib/tape/proof";
 import { readPlanCard } from "@/lib/tape/planCard";
 import { readFootprint, readCompositeProfile } from "@/lib/tape/footprint";
 import { readIbStatus } from "@/lib/tape/ibStatus";
+import { isSnapshotMode, tapeExtrasSnapshot } from "@/lib/tape/snapshotMode";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const STATE = process.env.TAPE_STATE_DIR || "C:\\Users\\mattm\\tape\\state";
 
-async function snapshot() {
-  const base = process.env.TAPE_SNAPSHOT_BASE_URL;
-  try {
-    if (base) {
-      const r = await fetch(`${base.replace(/\/$/, "")}/tape-extras.json`, { cache: "no-store" });
-      if (r.ok) return { ...(await r.json()), snapshotMode: true };
-    }
-    const j = JSON.parse(await fs.readFile(path.join(process.cwd(), "public", "tape-snapshots", "tape-extras.json"), "utf8"));
-    return { ...j, snapshotMode: true };
-  } catch (e) {
-    return { snapshotMode: true, error: `no snapshot: ${(e as Error).message}` };
-  }
-}
-
 async function readJson(file: string) {
   try { const st = await fs.stat(file); return { j: JSON.parse(await fs.readFile(file, "utf8")), ageS: Math.round((Date.now() - st.mtimeMs) / 1000) }; } catch { return null; }
 }
 
 export async function GET() {
-  if (process.env.TAPE_SNAPSHOT_MODE === "1") return NextResponse.json(await snapshot(), { headers: { "cache-control": "no-store" } });
+  if (isSnapshotMode()) return NextResponse.json(tapeExtrasSnapshot(), { headers: { "cache-control": "no-store" } });
   const flow = await readJson(path.join(STATE, "flow-latest.json"));
   const gex = await readJson(path.join(STATE, "gex-latest.json"));
   const [proof, plan, footprint, profile, ib] = await Promise.all([

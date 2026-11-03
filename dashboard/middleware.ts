@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { decideDashboardAuth, readDashboardAuthEnv } from "@/lib/dashboardAuth";
 import { isFlowIngestPath } from "@/lib/publicRoutes";
+import { isReadOnlyDeploy } from "@/lib/tape/snapshotMode";
 
 /** Require dashboard credentials on every page, API and WebSocket handshake.
  * Feed ingestion retains its separate Bearer-token authentication.
@@ -40,6 +41,11 @@ export function middleware(req: NextRequest) {
   // Exempt POST /api/flow/ingest from Basic auth so pushers can authenticate directly.
   if (isFlowIngestPath(req.nextUrl.pathname, req.method)) {
     return NextResponse.next();
+  }
+
+  // Read-only hosted build: no engine/broker write calls through any proxy.
+  if (isReadOnlyDeploy() && /^\/api\/(engine|amo|master|domflow)(\/|$)/.test(req.nextUrl.pathname) && !["GET", "HEAD", "OPTIONS"].includes(req.method)) {
+    return NextResponse.json({ error: "read_only_deploy", detail: "This hosted build is read-only; no engine writes or orders." }, { status: 403, headers: { "Cache-Control": "no-store" } });
   }
 
   // Keep WebSockets protected, but never issue a browser login dialog from
