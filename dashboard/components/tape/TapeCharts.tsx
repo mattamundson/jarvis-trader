@@ -8,7 +8,7 @@ const FONT = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
 const C = {
   bg: "#0a0d12", grid: "#151b24", text: "#cbd5e1", dim: "#64748b", axisBg: "#0f141b",
   bid: [239, 68, 68], ask: [16, 185, 129], poc: "#facc15", vwap: "#e879f9", price: "#38bdf8",
-  trigger: "#f59e0b", stop: "#ef4444", target: "#22d3ee", level: "#475569",
+  trigger: "#f59e0b", stop: "#ef4444", target: "#22d3ee", level: "#475569", gex: "#a78bfa", planref: "#64748b", cvd: "#fbbf24",
 };
 const rgba = (c: number[], a: number) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
 const ct = (t: number) => new Date(t * 1000).toLocaleTimeString("en-US", { timeZone: "America/Chicago", hour: "numeric", minute: "2-digit" });
@@ -16,6 +16,7 @@ const fmtV = (v: number) => (v >= 10000 ? `${(v / 1000).toFixed(0)}k` : v >= 100
 const r4 = (p: number) => Math.round(p / TICK) * TICK;
 
 export type ChartLevel = { name: string; px: number; kind?: string };
+const ageTxt = (s?: number | null) => (s == null ? "age ?" : s < 90 ? `${s}s` : s < 5400 ? `${Math.round(s / 60)}m` : `${(s / 3600).toFixed(1)}h`);
 
 function useCanvas(draw: (g: CanvasRenderingContext2D) => void, w: number, h: number, deps: any[]) {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -34,6 +35,8 @@ function useCanvas(draw: (g: CanvasRenderingContext2D) => void, w: number, h: nu
 
 function levelColor(l: ChartLevel) {
   const n = l.name.toLowerCase();
+  if (l.kind === "gex") return C.gex;
+  if (l.kind === "planref") return C.planref;
   if (l.kind === "trigger" || n.includes("trigger")) return C.trigger;
   if (l.kind === "invalid" || n.includes("stop")) return C.stop;
   if (l.kind === "target" || /\bt\d|target/.test(n)) return C.target;
@@ -69,25 +72,37 @@ function Hdr({ id, t, src, age }: { id: string; t: string; src?: string | null; 
   );
 }
 
-export function FootprintChart({ f, vwap, last, levels, profile }: { f: any; vwap?: number | null; last?: number | null; levels: ChartLevel[]; profile?: any }) {
+export function FootprintChart({ f, vwap, last, levels, profile, priceSrc, priceAgeS }: { f: any; vwap?: number | null; last?: number | null; levels: ChartLevel[]; profile?: any; priceSrc?: string | null; priceAgeS?: number | null }) {
   const [zoom, setZoom] = useState(1);
   const [imb, setImb] = useState(3);
   const scroller = useRef<HTMLDivElement>(null);
   const bars: any[] = f?.ok ? f.bars : [];
-  const colW = Math.round(96 * zoom), rowH = Math.max(9, Math.round(14 * zoom)), TOP = 22, DELTA_H = 64, AXIS = 150, PROF = 70;
+  const colW = Math.round(96 * zoom), rowH = Math.max(9, Math.round(14 * zoom)), TOP = 22, DELTA_H = 64, CVD_H = 70, AXIS = 200, PROF = 70;
   const fsz = Math.max(8, Math.min(13, Math.round(10 * zoom)));
 
   const geo = useMemo(() => {
     if (!bars.length) return null;
     let hi = Math.max(...bars.map((b) => b.h)), lo = Math.min(...bars.map((b) => b.l));
     for (const p of [vwap, last]) if (p != null && Math.abs(p - (hi + lo) / 2) < 40) { hi = Math.max(hi, p); lo = Math.min(lo, p); }
-    for (const l of levels) if (l.px <= hi + 6 && l.px >= lo - 6) { hi = Math.max(hi, l.px); lo = Math.min(lo, l.px); }
+    for (const l of levels) if (l.kind !== "gex" && l.px <= hi + 6 && l.px >= lo - 6) { hi = Math.max(hi, l.px); lo = Math.min(lo, l.px); }
     hi = r4(hi + 1); lo = r4(lo - 1);
     return { hi, lo, rows: Math.round((hi - lo) / TICK) + 1 };
   }, [bars, vwap, last, levels]);
 
+  // cumulative delta over the bars shown + price/delta divergence (3-bar lookback)
+  const cvd = useMemo(() => {
+    let acc = 0; const v = bars.map((b) => (acc += b.delta));
+    const rng = Math.max(1, Math.max(...v, 0) - Math.min(...v, 0));
+    const div = bars.map((b, i) => {
+      if (i < 3) return 0;
+      const dp = b.c - bars[i - 3].c, dc = v[i] - v[i - 3];
+      if (Math.abs(dp) < 1 || Math.abs(dc) < rng * 0.08) return 0;
+      return dp > 0 && dc < 0 ? -1 : dp < 0 && dc > 0 ? 1 : 0; // -1 bearish (price up, Δ down), +1 bullish
+    });
+    return { v, div, min: Math.min(...v, 0), max: Math.max(...v, 0) };
+  }, [bars]);
   const W = bars.length * colW + PROF + AXIS;
-  const H = geo ? TOP + geo.rows * rowH + DELTA_H + 6 : 120;
+  const H = geo ? TOP + geo.rows * rowH + DELTA_H + CVD_H + 12 : 120;
   const y = (px: number) => TOP + ((geo!.hi - px) / TICK) * rowH;
 
   const ref = useCanvas((g) => {
@@ -131,10 +146,32 @@ export function FootprintChart({ f, vwap, last, levels, profile }: { f: any; vwa
       g.fillRect(x0 + colW * 0.2, b.delta >= 0 ? mid - bh : mid, colW * 0.6, bh);
       g.fillStyle = b.delta >= 0 ? "#6ee7b7" : "#fca5a5"; g.font = `bold ${fsz}px ${FONT}`;
       g.fillText(`${b.delta >= 0 ? "+" : ""}${b.delta}`, x0 + colW / 2, b.delta >= 0 ? mid + 8 : mid - 8);
-      g.fillStyle = C.grid; g.fillRect(x0 + colW - 1, TOP, 1, bodyH + DELTA_H);
+      g.fillStyle = C.grid; g.fillRect(x0 + colW - 1, TOP, 1, bodyH + DELTA_H + CVD_H + 6);
     });
     g.fillStyle = "#334155"; g.fillRect(0, TOP + bodyH + 6 + DELTA_H / 2, bars.length * colW, 1);
     g.fillStyle = C.dim; g.textAlign = "left"; g.font = `9px ${FONT}`; g.fillText("Δ delta", 4, TOP + bodyH + 12);
+    // cumulative delta line + divergence markers
+    {
+      const cy0 = TOP + bodyH + 6 + DELTA_H + 6, span = Math.max(1, cvd.max - cvd.min);
+      const cy = (v: number) => cy0 + 8 + (1 - (v - cvd.min) / span) * (CVD_H - 16);
+      g.fillStyle = "#0d1219"; g.fillRect(0, cy0, bars.length * colW, CVD_H);
+      g.fillStyle = "#334155"; g.fillRect(0, cy(0), bars.length * colW, 1);
+      g.save(); g.strokeStyle = C.cvd; g.lineWidth = 1.8; g.beginPath();
+      cvd.v.forEach((v, i) => { const xx = i * colW + colW / 2; i ? g.lineTo(xx, cy(v)) : g.moveTo(xx, cy(v)); }); g.stroke(); g.restore();
+      cvd.v.forEach((v, i) => {
+        const xx = i * colW + colW / 2; g.fillStyle = C.cvd; g.fillRect(xx - 1.5, cy(v) - 1.5, 3, 3);
+        const d = cvd.div[i]; if (!d) return;
+        g.fillStyle = d < 0 ? "#f87171" : "#34d399"; g.beginPath();
+        if (d < 0) { g.moveTo(xx - 6, cy(v) - 12); g.lineTo(xx + 6, cy(v) - 12); g.lineTo(xx, cy(v) - 4); }
+        else { g.moveTo(xx - 6, cy(v) + 12); g.lineTo(xx + 6, cy(v) + 12); g.lineTo(xx, cy(v) + 4); }
+        g.fill();
+        // matching marker on the price body (bar high / low)
+        const b = bars[i]; const py = d < 0 ? y(b.h) - 4 : y(b.l) + rowH + 4;
+        g.beginPath(); g.arc(xx, py, 4, 0, Math.PI * 2); g.fill();
+      });
+      g.fillStyle = C.dim; g.textAlign = "left"; g.font = `9px ${FONT}`;
+      g.fillText(`cum Δ since ${ct(bars[0].t)}: ${cvd.v[cvd.v.length - 1] >= 0 ? "+" : ""}${cvd.v[cvd.v.length - 1]}`, 4, cy0 + 7);
+    }
     // aligned composite mini-profile
     const px0 = bars.length * colW;
     g.fillStyle = C.axisBg; g.fillRect(px0, 0, PROF + AXIS, H);
@@ -158,15 +195,28 @@ export function FootprintChart({ f, vwap, last, levels, profile }: { f: any; vwa
       g.beginPath(); g.moveTo(0, yy); g.lineTo(ax, yy); g.stroke(); g.restore();
       g.fillStyle = color; g.fillRect(ax, yy - 7, AXIS, 14);
       g.fillStyle = "#0b0f14"; g.font = `bold 10px ${FONT}`; g.textAlign = "left";
-      g.fillText(`${px.toFixed(2)} ${label}`.slice(0, 24), ax + 3, yy);
+      g.fillText(`${px.toFixed(2)} ${label}`.slice(0, 32), ax + 3, yy);
+    };
+    // off-range tags (GEX levels are often far from the bars): pinned at top/bottom edge
+    let upN = 0, dnN = 0;
+    const edgeTag = (l: ChartLevel) => {
+      const above = l.px > geo.hi; const yy = above ? TOP + 8 + upN++ * 15 : TOP + bodyH - 8 - dnN++ * 15;
+      const d = l.px - (last ?? (geo.hi + geo.lo) / 2);
+      g.fillStyle = "rgba(167,139,250,0.18)"; g.fillRect(ax, yy - 7, AXIS, 14);
+      g.fillStyle = C.gex; g.font = `bold 10px ${FONT}`; g.textAlign = "left";
+      g.fillText(`${above ? "▲" : "▼"} ${l.px.toFixed(0)} ${l.name} (${d >= 0 ? "+" : ""}${d.toFixed(0)})`.slice(0, 34), ax + 3, yy);
     };
     // price ladder
     g.font = `10px ${FONT}`; g.textAlign = "left";
     for (let i = 0; i < geo.rows; i++) { const px = geo.hi - i * TICK; if (Number.isInteger(px) && (rowH >= 12 || px % 2 === 0)) { g.fillStyle = C.dim; g.fillText(px.toFixed(2), ax + 3, TOP + i * rowH + rowH / 2); } }
-    for (const l of levels) hline(l.px, levelColor(l), l.name, l.kind === "level" ? [2, 4] : [6, 3]);
-    if (vwap != null) hline(r4(vwap), C.vwap, "VWAP", [8, 3], true);
-    if (last != null) hline(r4(last), C.price, "LAST", [], true);
-  }, W, H, [bars, geo, zoom, imb, vwap, last, levels, profile]);
+    for (const l of levels) {
+      if (l.kind === "gex" && (l.px > geo.hi || l.px < geo.lo)) { edgeTag(l); continue; }
+      hline(l.px, levelColor(l), l.name, l.kind === "level" || l.kind === "planref" ? [2, 4] : l.kind === "gex" ? [10, 4] : [6, 3], l.kind === "gex");
+    }
+    const ps = priceSrc ? ` ${priceSrc.replace(/ read-only| delayed/g, "")}` : "";
+    if (vwap != null) hline(r4(vwap), C.vwap, `VWAP${ps}`, [8, 3], true);
+    if (last != null) hline(r4(last), C.price, `LAST${ps} ${ageTxt(priceAgeS)}`, [], true);
+  }, W, H, [bars, geo, zoom, imb, vwap, last, levels, profile, cvd, priceSrc, priceAgeS]);
 
   // wheel zoom (non-passive) + start scrolled to the latest bar / price
   useEffect(() => {
@@ -204,16 +254,28 @@ export function FootprintChart({ f, vwap, last, levels, profile }: { f: any; vwa
         <span><i className="mr-1 inline-block h-2 w-3 border border-red-400 align-middle" />bid imbalance</span>
         <span style={{ color: C.vwap }}>— VWAP</span><span style={{ color: C.price }}>— last</span>
         <span style={{ color: C.trigger }}>-- trigger</span><span style={{ color: C.stop }}>-- stop</span><span style={{ color: C.target }}>-- target</span>
+        <span style={{ color: C.gex }}>-- γ flip / walls / pin (ZeroGEX, delayed)</span><span style={{ color: C.planref }}>.. plan ref (static)</span>
+        <span style={{ color: C.cvd }}>— cum Δ</span><span><b className="text-red-400">▼●</b>/<b className="text-emerald-400">▲●</b> price vs Δ divergence (3 bars)</span>
+        {priceSrc && <span>VWAP/last: {priceSrc} · {ageTxt(priceAgeS)} old</span>}
         <span>wheel = zoom · shift+wheel / drag bar = scroll</span>
       </div>
     </div>
   );
 }
 
-export function ProfileChart({ p, last, vwap }: { p: any; last?: number | null; vwap?: number | null }) {
+export function ProfileChart({ p, last, vwap, title = "Composite volume profile", testid = "profile-chart", ageS, width = 640 }: { p: any; last?: number | null; vwap?: number | null; title?: string; testid?: string; ageS?: number | null; width?: number }) {
   const scroller = useRef<HTMLDivElement>(null);
   const rows: any[] = p?.ok ? p.rows : [];
-  const bucket = p?.bucket ?? 1, rowH = 7, TOP = 8, W = 640, LBL = 64, BARW = 470;
+  const [mode, setMode] = useState<"fit" | "all">("fit");
+  const VIEW = 480; // visible px
+  const bucket = p?.bucket ?? 1, TOP = 8, W = width, LBL = 64, BARW = Math.round((width - LBL) * 0.78);
+  // default zoom: fit POC, VAH/VAL and current price (+ VWAP) into the view
+  const fit = useMemo(() => {
+    if (!rows.length) return null;
+    const pts = [p.poc, p.vah, p.val, last, vwap].filter((v): v is number => typeof v === "number" && v <= rows[0].px + 20 && v >= rows[rows.length - 1].px - 20);
+    return { hi: Math.max(...pts) + 3 * bucket, lo: Math.min(...pts) - 3 * bucket };
+  }, [rows, p, last, vwap, bucket]);
+  const rowH = mode === "fit" && fit ? Math.max(3, Math.min(22, Math.floor((VIEW - TOP * 2) / ((fit.hi - fit.lo) / bucket + 1)))) : 7;
   const H = TOP * 2 + rows.length * rowH;
   const hi = rows[0]?.px ?? 0;
   const y = (px: number) => TOP + ((hi - px) / bucket) * rowH;
@@ -221,15 +283,15 @@ export function ProfileChart({ p, last, vwap }: { p: any; last?: number | null; 
     g.fillStyle = C.bg; g.fillRect(0, 0, W, H);
     if (!rows.length) return;
     const mv = Math.max(1, ...rows.map((r) => r.vol)), mt = Math.max(1, ...rows.map((r) => r.tpo));
-    // value area band
     g.fillStyle = "rgba(56,189,248,0.07)"; g.fillRect(LBL, y(p.vah), W - LBL, y(p.val) - y(p.vah) + rowH);
     g.font = `9px ${FONT}`; g.textAlign = "right";
+    const every = rowH >= 12 ? 1 : rowH >= 6 ? 2 : 5;
     for (const r of rows) {
       const yy = y(r.px), inVA = r.px <= p.vah && r.px >= p.val;
       g.fillStyle = r.px === p.poc ? C.poc : inVA ? "rgba(56,189,248,0.8)" : "rgba(100,116,139,0.55)";
-      g.fillRect(LBL + 4, yy + 0.5, (r.vol / mv) * BARW, rowH - 1);
-      g.fillStyle = "rgba(167,139,250,0.55)"; g.fillRect(W - 4 - (r.tpo / mt) * 90, yy + 2, (r.tpo / mt) * 90, rowH - 4);
-      if (r.px % 5 === 0) { g.fillStyle = C.dim; g.fillText(r.px.toFixed(0), LBL - 4, yy + rowH / 2); }
+      g.fillRect(LBL + 4, yy + 0.5, (r.vol / mv) * BARW, Math.max(1, rowH - 1));
+      g.fillStyle = "rgba(167,139,250,0.55)"; g.fillRect(W - 4 - (r.tpo / mt) * 70, yy + 1, (r.tpo / mt) * 70, Math.max(1, rowH - 2));
+      if (r.px % every === 0) { g.fillStyle = C.dim; g.fillText(r.px.toFixed(0), LBL - 4, yy + rowH / 2); }
     }
     const line = (px: number, color: string, label: string, w = 1, dash: number[] = []) => {
       const yy = y(px) + rowH / 2; g.save(); g.strokeStyle = color; g.lineWidth = w; g.setLineDash(dash);
@@ -243,15 +305,35 @@ export function ProfileChart({ p, last, vwap }: { p: any; last?: number | null; 
       g.strokeStyle = C.price; g.lineWidth = 1.6; g.beginPath(); g.moveTo(0, yy); g.lineTo(W, yy); g.stroke();
       g.fillStyle = C.price; g.fillRect(0, yy - 7, LBL - 2, 14); g.fillStyle = "#0b0f14"; g.font = `bold 10px ${FONT}`; g.textAlign = "left"; g.fillText(last.toFixed(2), 3, yy);
     }
-  }, W, H, [rows, p, last, vwap]);
-  useEffect(() => { const el = scroller.current; if (el && rows.length) el.scrollTop = Math.max(0, y(last ?? p.poc) - el.clientHeight / 2); // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows.length]);
-  if (!p?.ok) return <div className="rounded border border-zinc-800 bg-[#0a0d12] p-2"><Hdr id="profile-chart" t="Composite profile" src={p?.source} />{p?.error ?? "unavailable"}</div>;
+  }, W, H, [rows, p, last, vwap, rowH]);
+  useEffect(() => {
+    const el = scroller.current; if (!el || !rows.length) return;
+    el.scrollTop = mode === "fit" && fit ? Math.max(0, y(fit.hi) - 4) : Math.max(0, y(last ?? p.poc) - el.clientHeight / 2);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows.length, mode, rowH]);
+  if (!p?.ok) return <div className="rounded border border-zinc-800 bg-[#0a0d12] p-2"><Hdr id={testid} t={title} src={p?.source} age={ageS} />{p?.error ?? "unavailable"}</div>;
   return (
-    <div className="rounded border border-zinc-800 bg-[#0a0d12] p-2">
-      <Hdr id="profile-chart" t={`Composite volume profile · ${p.days.length} days · POC ${p.poc} · VAH ${p.vah} · VAL ${p.val}`} src={p.source} />
-      <div ref={scroller} className="max-h-[520px] overflow-auto rounded border border-zinc-900"><canvas ref={ref} data-testid="profile-canvas" /></div>
-      <div className="mt-1 flex gap-3 text-[10px] text-zinc-500"><span className="text-sky-300">■ value area (70%)</span><span className="text-yellow-300">■ POC</span><span className="text-violet-300">■ TPO count (right)</span><span>{p.days.join(", ")}</span></div>
+    <div className="min-w-0 rounded border border-zinc-800 bg-[#0a0d12] p-2">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <Hdr id={testid} t={`${title} · POC ${p.poc} · VAH ${p.vah} · VAL ${p.val}`} src={p.source} age={ageS} />
+        <div className="flex gap-1 text-[10px]">
+          {(["fit", "all"] as const).map((m) => (
+            <button key={m} data-testid={`${testid}-zoom-${m}`} onClick={() => setMode(m)} className={`rounded px-1.5 ${mode === m ? "bg-zinc-700 text-white" : "bg-zinc-900 text-zinc-400"}`}>{m === "fit" ? "fit POC/VA/price" : "full range"}</button>
+          ))}
+        </div>
+      </div>
+      <div ref={scroller} className="overflow-auto rounded border border-zinc-900" style={{ maxHeight: VIEW }}><canvas ref={ref} data-testid={testid.replace("-chart", "-canvas")} /></div>
+      <div className="mt-1 flex flex-wrap gap-3 text-[10px] text-zinc-500"><span className="text-sky-300">■ value area (70%)</span><span className="text-yellow-300">■ POC</span><span className="text-violet-300">■ TPO count (right)</span><span>{(p.days ?? []).join(", ")}</span></div>
+    </div>
+  );
+}
+
+/** 4-day composite next to today's single-day profile (addition). */
+export function ProfilePair({ composite, today, last, vwap, ageS }: { composite: any; today?: any; last?: number | null; vwap?: number | null; ageS?: number | null }) {
+  return (
+    <div className="grid gap-2 xl:grid-cols-2">
+      <ProfileChart p={composite} last={last} vwap={vwap} ageS={ageS} width={560} title={`Composite volume profile · ${composite?.days?.length ?? "?"} days`} />
+      <ProfileChart p={today} last={last} vwap={vwap} ageS={ageS} width={560} testid="profile-today-chart" title={`Today profile · ${today?.days?.[0] ?? "?"}`} />
     </div>
   );
 }
