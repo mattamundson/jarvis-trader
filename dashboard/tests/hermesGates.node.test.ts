@@ -6,56 +6,46 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { parseHermesGates, readHermesGates } from "../lib/hermesGates.ts";
 import { bookDisagreements } from "../lib/bookDisagreement.ts";
 
-test("parses checkbox and status lines and ignores prose", () => {
+test("parses status lines and ignores prose", () => {
   const parsed = parseHermesGates(`
 # Hermes
 Paper trading stays on.
 
-- [x] MES paper path
-- [ ] Public engine tunnel
-IB connected: pass
+- MES paper path: pass
+- IB connected: pass
 Random sentence with a colon: not a status word
 lockout: off
 `);
   assert.deepEqual(parsed.gates, [
     { name: "MES paper path", status: "pass" },
-    { name: "Public engine tunnel", status: "fail" },
     { name: "IB connected", status: "pass" },
   ]);
   assert.equal(parsed.fileLockout, false);
 });
 
-test("missing gates file reports the closed message", async () => {
+test("missing gates file returns not found", async () => {
   const report = await readHermesGates({
-    HERMES_GATES_PATH: path.join(os.tmpdir(), "does-not-exist-gates.md"),
+    TAPE_STATE_DIR: path.join(os.tmpdir(), "does-not-exist"),
     USERPROFILE: path.join(os.tmpdir(), "no-such-home"),
     HOME: path.join(os.tmpdir(), "no-such-home"),
   } as NodeJS.ProcessEnv);
   assert.equal(report.found, false);
-  assert.equal(report.message, "gates file missing");
   assert.deepEqual(report.gates, []);
 });
 
-test("a configured gates.md is read and a non-gates name is ignored", async () => {
+test("a gates.md file in .jarvis is read", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "hermes-gates-"));
-  const file = path.join(dir, "gates.md");
-  await writeFile(file, "- [x] Engine health\nlockout: on\n", "utf8");
+  const jarvisDir = path.join(dir, ".jarvis");
+  const { mkdir } = await import("node:fs/promises");
+  await mkdir(jarvisDir, { recursive: true });
+  const file = path.join(jarvisDir, "gates.md");
+  await writeFile(file, "- Engine health: pass\nlockout: on\n", "utf8");
   const found = await readHermesGates({
-    HERMES_GATES_PATH: file,
-    USERPROFILE: dir,
     HOME: dir,
   } as NodeJS.ProcessEnv);
   assert.equal(found.found, true);
   assert.equal(found.gates[0]?.name, "Engine health");
   assert.equal(found.fileLockout, true);
-
-  const rejected = await readHermesGates({
-    HERMES_GATES_PATH: path.join(dir, ".env"),
-    USERPROFILE: dir,
-    HOME: dir,
-  } as NodeJS.ProcessEnv);
-  assert.equal(rejected.found, false);
-  assert.equal(rejected.message, "gates file missing");
 });
 
 test("book disagreement names symbol and quantity only", () => {

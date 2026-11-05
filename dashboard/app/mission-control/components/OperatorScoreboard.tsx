@@ -84,7 +84,9 @@ export function GatesBlock({
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs uppercase tracking-wider text-muted-foreground">Hermes gates</span>
-        <span className="text-sm text-foreground">{gates.message}</span>
+        <span className="text-sm text-foreground">
+          {gates.found ? (gates.gates.length > 0 ? "hermes gates" : "gates file found, no gate lines") : "gates file missing"}
+        </span>
       </div>
       {gates.gates.length > 0 ? (
         <ul className="space-y-1">
