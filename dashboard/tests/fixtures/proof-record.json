@@ -1,0 +1,63 @@
+{
+  "generated_ct": "2026-11-06T09:00:00Z",
+  "goal_setups": 20,
+  "counted": 3,
+  "avg_R": 0.13,
+  "total_R": 0.4,
+  "wins": 2,
+  "losses": 1,
+  "r_basis": "initial_stop",
+  "setups": [
+    {
+      "date": "2026-11-01",
+      "setup": "FVG",
+      "side": "LONG",
+      "trigger": "break_above",
+      "entry_time": "09:35:00",
+      "entry": 5800.0,
+      "stop": 5795.0,
+      "target": 5815.0,
+      "exit_time": "09:50:00",
+      "exit": 5810.0,
+      "exit_reason": "target_partial",
+      "R": 0.67,
+      "rule_breaks": [],
+      "status": "complete",
+      "counted": true
+    },
+    {
+      "date": "2026-11-02",
+      "setup": "BB",
+      "side": "SHORT",
+      "trigger": "rejection",
+      "entry_time": "10:15:00",
+      "entry": 5820.0,
+      "stop": 5825.0,
+      "target": 5810.0,
+      "exit_time": "10:30:00",
+      "exit": 5823.0,
+      "exit_reason": "stop_loss",
+      "R": -0.6,
+      "rule_breaks": ["over_traded"],
+      "status": "complete",
+      "counted": true
+    },
+    {
+      "date": "2026-11-03",
+      "setup": "FVG",
+      "side": "LONG",
+      "trigger": "break_above",
+      "entry_time": "11:00:00",
+      "entry": 5830.0,
+      "stop": 5825.0,
+      "target": 5845.0,
+      "exit_time": "11:20:00",
+      "exit": 5832.5,
+      "exit_reason": "manual_exit",
+      "R": 0.33,
+      "rule_breaks": [],
+      "status": "complete",
+      "counted": true
+    }
+  ]
+}
