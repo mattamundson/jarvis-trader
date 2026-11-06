@@ -29,7 +29,7 @@ export default function JournalPage() {
   );
 
   const setups = React.useMemo<Setup[]>(() => {
-    if (!data) return [];
+    if (!Array.isArray(data)) return [];
     return data
       .filter((t) => t.exit_time && t.pnl !== null)
       .map((t) => {
@@ -86,10 +86,10 @@ export default function JournalPage() {
       <div className="mx-auto max-w-7xl">
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-foreground tracking-tight">
-            Paper Trading Journal
+            Trade Journal
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Scored setups toward 20-setup proof bar
+            Paper scored setups toward 20-setup proof bar
           </p>
         </div>
 

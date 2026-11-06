@@ -16,6 +16,7 @@ import useSWR from "swr";
 import { fetchBars, type OHLCVBar } from "@/lib/api";
 import { calculateAllLevels, type ESChartLevels } from "@/lib/esChartLevels";
 import { Badge } from "@/components/ui/badge";
+import { ExploratoryBanner } from "@/components/ExploratoryBanner";
 
 interface OverlayToggles {
   atr: boolean;
@@ -293,6 +294,7 @@ export default function ESChartPage() {
   return (
     <div className="min-h-screen bg-background p-4 md:p-6">
       <div className="max-w-7xl mx-auto space-y-4">
+        <ExploratoryBanner what="ES candlestick overlays are a research visualization" />
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-foreground">ES Candlestick Chart</h1>
           <p className="text-sm text-muted-foreground mt-1">
