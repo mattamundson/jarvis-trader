@@ -17,6 +17,7 @@ import { fetchBars, type OHLCVBar } from "@/lib/api";
 import { calculateAllLevels, type ESChartLevels } from "@/lib/esChartLevels";
 import { Badge } from "@/components/ui/badge";
 import { ExploratoryBanner } from "@/components/ExploratoryBanner";
+import { fetchESOverlayData, isGammaStale, formatAge, type ESOverlayData } from "@/lib/esChartOverlays";
 
 interface OverlayToggles {
   atr: boolean;
@@ -26,6 +27,8 @@ interface OverlayToggles {
   gapFill: boolean;
   vwap: boolean;
   overnight: boolean;
+  gamma: boolean;
+  plan: boolean;
 }
 
 export default function ESChartPage() {
@@ -42,11 +45,19 @@ export default function ESChartPage() {
     gapFill: true,
     vwap: true,
     overnight: true,
+    gamma: true,
+    plan: true,
   });
 
   const { data: bars = [], error, isLoading } = useSWR<OHLCVBar[]>(
     ["/analyze/bars/MES", "5m", 3],
     () => fetchBars("MES", { timeframe: "5m", days: 3 }),
+    { refreshInterval: 60_000, revalidateOnFocus: false }
+  );
+
+  const { data: overlayData } = useSWR<ESOverlayData>(
+    "es-overlay-data",
+    fetchESOverlayData,
     { refreshInterval: 60_000, revalidateOnFocus: false }
   );
 
@@ -285,7 +296,60 @@ export default function ESChartPage() {
       priceLineRefs.current.set("on_high", onHigh);
       priceLineRefs.current.set("on_low", onLow);
     }
-  }, [overlays, levels]);
+
+    if (overlays.gamma && overlayData?.gamma) {
+      const isStale = isGammaStale(overlayData.gamma.pullTime);
+      const gammaColor = isStale ? "#64748b" : "#ec4899";
+      
+      const gexFlip = candleSeriesRef.current.createPriceLine({
+        price: overlayData.gamma.gexFlipLevel,
+        color: gammaColor,
+        lineWidth: 2,
+        lineStyle: LineStyle.Solid,
+        axisLabelVisible: true,
+        title: `γ Flip ${isStale ? "(stale)" : ""}`,
+      });
+      priceLineRefs.current.set("gex_flip", gexFlip);
+    }
+
+    if (overlays.plan && overlayData?.plan) {
+      if (overlayData.plan.entry !== null) {
+        const entryLine = candleSeriesRef.current.createPriceLine({
+          price: overlayData.plan.entry,
+          color: "#38bdf8",
+          lineWidth: 2,
+          lineStyle: LineStyle.Solid,
+          axisLabelVisible: true,
+          title: "Plan Entry",
+        });
+        priceLineRefs.current.set("plan_entry", entryLine);
+      }
+      
+      if (overlayData.plan.stop !== null) {
+        const stopLine = candleSeriesRef.current.createPriceLine({
+          price: overlayData.plan.stop,
+          color: "#ef4444",
+          lineWidth: 2,
+          lineStyle: LineStyle.Solid,
+          axisLabelVisible: true,
+          title: "Plan Stop",
+        });
+        priceLineRefs.current.set("plan_stop", stopLine);
+      }
+      
+      if (overlayData.plan.target !== null) {
+        const targetLine = candleSeriesRef.current.createPriceLine({
+          price: overlayData.plan.target,
+          color: "#22c55e",
+          lineWidth: 2,
+          lineStyle: LineStyle.Solid,
+          axisLabelVisible: true,
+          title: "Plan Target",
+        });
+        priceLineRefs.current.set("plan_target", targetLine);
+      }
+    }
+  }, [overlays, levels, overlayData]);
 
   const toggleOverlay = (key: keyof OverlayToggles) => {
     setOverlays((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -398,6 +462,48 @@ export default function ESChartPage() {
                     <span className="text-sm font-medium">Overnight High/Low</span>
                   </div>
                 </button>
+
+                <button
+                  onClick={() => toggleOverlay("gamma")}
+                  className="flex items-center justify-between p-3 rounded border border-border hover:bg-accent/50 transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className={`w-3 h-3 rounded-full ${overlays.gamma ? "bg-pink-500" : "bg-muted"}`} />
+                    <span className="text-sm font-medium">Gamma Flip Level</span>
+                  </div>
+                  {overlayData?.gamma && (
+                    <div className="flex items-center gap-1">
+                      <Badge variant={isGammaStale(overlayData.gamma.pullTime) ? "neutral" : "info"} className="text-xs">
+                        {formatAge(overlayData.gamma.pullTime)}
+                      </Badge>
+                    </div>
+                  )}
+                  {!overlayData?.gamma && (
+                    <Badge variant="neutral" className="text-xs">
+                      unavailable
+                    </Badge>
+                  )}
+                </button>
+
+                <button
+                  onClick={() => toggleOverlay("plan")}
+                  className="flex items-center justify-between p-3 rounded border border-border hover:bg-accent/50 transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className={`w-3 h-3 rounded-full ${overlays.plan ? "bg-sky-400" : "bg-muted"}`} />
+                    <span className="text-sm font-medium">Plan Levels</span>
+                  </div>
+                  {overlayData?.plan && (overlayData.plan.entry || overlayData.plan.stop || overlayData.plan.target) && (
+                    <Badge variant="info" className="text-xs">
+                      {overlayData.plan.symbol || "—"}
+                    </Badge>
+                  )}
+                  {(!overlayData?.plan || (!overlayData.plan.entry && !overlayData.plan.stop && !overlayData.plan.target)) && (
+                    <Badge variant="neutral" className="text-xs">
+                      unavailable
+                    </Badge>
+                  )}
+                </button>
               </div>
 
               <div className="pt-3 border-t border-border space-y-2">
@@ -418,6 +524,12 @@ export default function ESChartPage() {
                 </p>
                 <p className="text-xs text-muted-foreground">
                   <span className="font-semibold">Overnight:</span> High/low from non-RTH bars
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-semibold">Gamma Flip:</span> Zero-gamma level from dealer GEX (greyed when &gt;1h old)
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-semibold">Plan Levels:</span> Entry/stop/target from latest pipeline recommendation
                 </p>
               </div>
             </div>
