@@ -4,6 +4,7 @@ import React from "react";
 import useSWR from "swr";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { DataFreshness } from "@/components/DataFreshness";
 import { fetchTradeJournal, type TradeJournalEntry } from "@/lib/api";
 import { Calendar, TrendingUp, AlertCircle, Info } from "lucide-react";
 
@@ -69,6 +70,12 @@ export default function JournalPage() {
     return validRs.length > 0 ? validRs.reduce((a, b) => a + b, 0) / validRs.length : null;
   }, [validSetups]);
 
+  const mostRecentExitTime = React.useMemo(() => {
+    if (!data || data.length === 0) return null;
+    const exits = data.filter((t) => t.exit_time).map((t) => new Date(t.exit_time!).getTime());
+    return exits.length > 0 ? new Date(Math.max(...exits)) : null;
+  }, [data]);
+
   const progress = validSetups.length;
   const progressPct = Math.min((progress / PROOF_BAR_TARGET) * 100, 100);
 
@@ -84,13 +91,22 @@ export default function JournalPage() {
   return (
     <div className="min-h-screen bg-background text-foreground p-6 font-mono">
       <div className="mx-auto max-w-7xl">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-foreground tracking-tight">
-            Paper Trading Journal
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Scored setups toward 20-setup proof bar
-          </p>
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground tracking-tight">
+              Paper Trading Journal
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Scored setups toward 20-setup proof bar
+            </p>
+          </div>
+          {mostRecentExitTime && (
+            <DataFreshness
+              source="Trade Journal"
+              dataTimestamp={mostRecentExitTime}
+              stalenessThresholdMs={24 * 60 * 60 * 1000}
+            />
+          )}
         </div>
 
         {isLoading && !data && (

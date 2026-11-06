@@ -110,6 +110,7 @@ export const ROUTES: RouteSpec[] = [
 
   // ---- new pages -----------------------------------------------------------
   { path: "/setup-scorecard", name: "setup scorecard", kind: "page", criticality: "standard", landmark: /Setup Scorecard/i },
+  { path: "/footprint", name: "footprint volume profile", kind: "page", criticality: "standard", landmark: /FOOTPRINT & VOLUME PROFILE/i },
 
   // ---- dynamic -------------------------------------------------------------
   { path: "/trades/[id]/review", name: "trade review", kind: "dynamic", criticality: "critical", landmark: null, samplePath: "/trades/1/review" },
