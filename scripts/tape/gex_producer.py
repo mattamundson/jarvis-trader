@@ -10,6 +10,9 @@ reads the levels object embedded in the page payload and writes <tape state>/gex
 as-of is the vendor snapshot time, never our pull time. The file carries levels and gate numbers only.
 If a fetch fails the last good levels are kept and fetch_ok=false, age and stale keep ticking.
 `pin` is not published in the page payload, so it is written as null rather than invented.
+
+gammaFlip may be null (vendor unresolved) or out of ES range (~2000-12000); never invent a
+SPY-scale flip. CTA fields: symbol, source_ts, received_ts.
 """
 from __future__ import annotations
 import argparse, json, os, re, sys, time, urllib.request
@@ -23,6 +26,8 @@ SOURCE = "ZeroGEX ES free (~15m delayed)"
 STALE_MIN = 35          # vendor snapshot older than this = stale (15m delay + one missed refresh + slack)
 HIST_KEEP = 24
 VEL_WINDOW_MIN = 120
+# ES futures levels are ~thousands; SPY flips are ~hundreds. Reject wrong-scale.
+ES_FLIP_MIN, ES_FLIP_MAX = 2000.0, 12000.0
 
 
 def state_dir() -> Path:
@@ -39,17 +44,49 @@ def _num(m):
     return float(m.group(1)) if m else None
 
 
+def _iso(dt: datetime) -> str:
+    return dt.isoformat(timespec="seconds")
+
+
+def validate_flip(flip: float | None) -> tuple[float | None, str]:
+    """Return (flip_or_None, flip_status). Never invent a number when unresolved."""
+    if flip is None:
+        return None, "unresolved"
+    if not (ES_FLIP_MIN <= flip <= ES_FLIP_MAX):
+        return None, "unresolved"
+    return flip, "ok"
+
+
 def parse(html: str) -> dict | None:
-    """Pull levels out of the page's embedded payload. Returns None when the page has no levels."""
+    """Pull levels out of the page's embedded payload. Returns None when the page has no levels.
+
+    Accepts gammaFlip=null. Does not fall back to HTML text scrapes (those can pick up SPY-scale).
+    """
     s = html.replace('\\"', '"')
-    m = re.search(r'"levels":\{"symbol":"ES","gammaFlip":(-?[\d.]+),"callWall":(-?[\d.]+),"putWall":(-?[\d.]+),"maxPain":(-?[\d.]+),"asOf":"([^"]+)"', s)
+    m = re.search(
+        r'"levels":\{"symbol":"ES","gammaFlip":(null|-?[\d.]+),"callWall":(-?[\d.]+),'
+        r'"putWall":(-?[\d.]+),"maxPain":(-?[\d.]+),"asOf":"([^"]+)"',
+        s,
+    )
     if not m:
         return None
-    flip, cw, pw, mp = (float(m.group(i)) for i in range(1, 5))
-    asof = datetime.fromisoformat(m.group(5)).astimezone(CT)
+    raw_flip = m.group(1)
+    flip = None if raw_flip == "null" else float(raw_flip)
+    flip, flip_status = validate_flip(flip)
+    asof = datetime.fromisoformat(m.group(5))  # keep vendor offset
     net = _num(re.search(r'"netGexAtSpot":(-?[\d.eE+]+)', s))
     spot = _num(re.search(r'"quote":\{"close":(-?[\d.]+)', s))
-    return dict(asof=asof, flip=flip, call_wall=cw, put_wall=pw, max_pain=mp, net_gex=net, spot=spot)
+    return dict(
+        asof=asof,
+        flip=flip,
+        flip_status=flip_status,
+        call_wall=float(m.group(2)),
+        put_wall=float(m.group(3)),
+        max_pain=float(m.group(4)),
+        net_gex=net,
+        spot=spot,
+        symbol="ES",
+    )
 
 
 def fmt_net(v: float | None) -> str | None:
@@ -65,7 +102,7 @@ def fmt_net(v: float | None) -> str | None:
 
 
 def _wall(dt: datetime) -> str:
-    return dt.strftime("%Y-%m-%d %H:%M")
+    return dt.astimezone(CT).strftime("%Y-%m-%d %H:%M")
 
 
 def _parse_wall(s: str) -> datetime:
@@ -74,20 +111,36 @@ def _parse_wall(s: str) -> datetime:
 
 def build(prev: dict | None, got: dict | None, now: datetime) -> dict:
     prev = prev or {}
+    received = _iso(now.astimezone(CT))
     if got is None:  # keep last good levels, flag the failure
         out = dict(prev)
         out["fetch_ok"] = False
+        out["received_ts"] = received
+        out.setdefault("symbol", "ES")
     else:
         out = dict(
-            asof_ct=_wall(got["asof"]), spot=got["spot"], call_wall=got["call_wall"], put_wall=got["put_wall"],
-            flip=got["flip"], max_pain=got["max_pain"], pin=None, net_gex=fmt_net(got["net_gex"]),
-            source=SOURCE, fetch_ok=True,
+            symbol="ES",
+            asof_ct=_wall(got["asof"]),
+            source_ts=_iso(got["asof"]),
+            received_ts=received,
+            spot=got["spot"],
+            call_wall=got["call_wall"],
+            put_wall=got["put_wall"],
+            flip=got["flip"],
+            flip_status=got["flip_status"],
+            max_pain=got["max_pain"],
+            pin=None,
+            net_gex=fmt_net(got["net_gex"]),
+            source=SOURCE,
+            fetch_ok=True,
         )
         hist = [h for h in (prev.get("history_today") or []) if str(h.get("asof_ct", ""))[:10] == out["asof_ct"][:10]]
         if not hist or hist[-1].get("asof_ct") != out["asof_ct"]:
             hist.append(dict(asof_ct=out["asof_ct"], flip=out["flip"], pin=out["pin"], put_wall=out["put_wall"]))
         out["history_today"] = hist[-HIST_KEEP:]
     out["pulled_ct"] = _wall(now)
+    out["received_ts"] = received
+    out.setdefault("symbol", "ES")
     asof = out.get("asof_ct")
     if asof:
         age = max(0, int((now - _parse_wall(asof)).total_seconds() // 60))
@@ -104,7 +157,7 @@ def build(prev: dict | None, got: dict | None, now: datetime) -> dict:
             if 20 <= dm <= VEL_WINDOW_MIN:
                 ref = (h, dm)
                 break
-        if ref:
+        if ref and out.get("flip") is not None:
             out["flip_vel_pts_hr"] = round((out["flip"] - ref[0]["flip"]) / (ref[1] / 60), 1)
             out["flip_vel_since"] = ref[0]["asof_ct"][11:16]
         else:
@@ -143,21 +196,52 @@ SAMPLE = ('x\\"levels\\":{\\"symbol\\":\\"ES\\",\\"gammaFlip\\":7776,\\"callWall
           '\\"maxPain\\":7716.75,\\"asOf\\":\\"2026-10-26T19:59:00+00:00\\"}} y \\"quote\\":{\\"close\\":7721.75,\\"s\\":1}'
           ' \\"netGexAtSpot\\":-34601389733.3049')
 
+SAMPLE_NULL_FLIP = (
+    'x\\"levels\\":{\\"symbol\\":\\"ES\\",\\"gammaFlip\\":null,\\"callWall\\":7730.5,\\"putWall\\":7027.75,'
+    '\\"maxPain\\":7680.25,\\"asOf\\":\\"2026-11-05T20:59:00+00:00\\"}} y \\"quote\\":{\\"close\\":7353.0,\\"s\\":1}'
+    ' \\"netGexAtSpot\\":-51715492221.2309'
+)
+
+SAMPLE_SPY_SCALE = (
+    'x\\"levels\\":{\\"symbol\\":\\"ES\\",\\"gammaFlip\\":775,\\"callWall\\":8038.5,\\"putWall\\":7686.75,'
+    '\\"maxPain\\":7716.75,\\"asOf\\":\\"2026-10-26T19:59:00+00:00\\"}} y \\"quote\\":{\\"close\\":7721.75,\\"s\\":1}'
+    ' \\"netGexAtSpot\\":-1000'
+)
+
 
 def selftest() -> int:
     g = parse(SAMPLE)
     assert g and g["flip"] == 7776 and g["call_wall"] == 8038.5 and g["spot"] == 7721.75, g
+    assert g["flip_status"] == "ok"
     assert _wall(g["asof"]) == "2026-10-26 14:59", _wall(g["asof"])
     assert fmt_net(g["net_gex"]) == "-34.60B"
     now = datetime(2026, 10, 26, 15, 10, tzinfo=CT)
     o1 = build(None, g, now)
     assert o1["age_min"] == 11 and o1["stale"] is False and o1["flip_vel_pts_hr"] is None and "$" not in json.dumps(o1)
+    assert o1["symbol"] == "ES" and o1["flip_status"] == "ok"
+    assert o1["source_ts"].endswith("+00:00") or "+00:00" in o1["source_ts"] or o1["source_ts"].startswith("2026-10-26")
+    assert "received_ts" in o1
     prev = dict(o1, history_today=[dict(asof_ct="2026-10-26 13:59", flip=7772.0, pin=None, put_wall=7686.75)])
     o2 = build(prev, g, now)
     assert o2["flip_vel_pts_hr"] == 4.0 and o2["flip_vel_since"] == "13:59", o2
     o3 = build(o2, None, datetime(2026, 10, 26, 16, 5, tzinfo=CT))
     assert o3["fetch_ok"] is False and o3["stale"] is True and o3["age_min"] == 66
     assert parse("<html>nothing</html>") is None
+
+    # null gammaFlip -> unresolved; walls kept
+    gn = parse(SAMPLE_NULL_FLIP)
+    assert gn is not None
+    assert gn["flip"] is None and gn["flip_status"] == "unresolved"
+    assert gn["put_wall"] == 7027.75 and gn["call_wall"] == 7730.5
+    on = build(None, gn, datetime(2026, 11, 5, 17, 10, tzinfo=CT))
+    assert on["flip"] is None and on["flip_status"] == "unresolved"
+    assert on["flip_vel_pts_hr"] is None
+    assert on["put_wall"] == 7027.75
+
+    # out-of-range (SPY-scale) -> unresolved
+    gs = parse(SAMPLE_SPY_SCALE)
+    assert gs is not None and gs["flip"] is None and gs["flip_status"] == "unresolved"
+
     print("selftest ok")
     return 0
 
@@ -172,7 +256,11 @@ if __name__ == "__main__":
         sys.exit(selftest())
     while True:
         o = run_once()
-        print(f"gex {o.get('asof_ct')} flip={o.get('flip')} ok={o.get('fetch_ok')} age={o.get('age_min')}m", flush=True)
+        print(
+            f"gex {o.get('asof_ct')} symbol={o.get('symbol')} flip={o.get('flip')} "
+            f"status={o.get('flip_status')} ok={o.get('fetch_ok')} age={o.get('age_min')}m",
+            flush=True,
+        )
         if not a.loop:
             break
         time.sleep(a.loop)
