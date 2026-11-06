@@ -6,10 +6,12 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { DataFreshness } from "@/components/DataFreshness";
 import { AlertTriangle, TrendingUp, TrendingDown, Activity } from "lucide-react";
 import type { FlowSnapshot } from "@/lib/flowTypes";
 import { isStale, biasLabel, analyzeGateAction, volumePaceRatio } from "@/lib/flowTypes";
 import { fetchDashboardApi } from "@/lib/api";
+import { getRTHStalenessThreshold } from "@/lib/freshness";
 
 const CvdChart = dynamic(
   () => import("@/components/flow/CvdChart").then((m) => ({ default: m.CvdChart })),
@@ -67,20 +69,13 @@ export default function Home() {
           <Badge variant="warn" className="font-mono text-xs">
             PUBLIC READ-ONLY · PAPER RESEARCH
           </Badge>
-          {isFixture && (
-            <Badge variant="neutral" className="font-mono text-xs">
-              FIXTURE ({new Date(flow.ts).toLocaleDateString()})
-            </Badge>
-          )}
-          {!isFixture && isLive && (
-            <Badge variant="bull" className="font-mono text-xs animate-pulse">
-              ● LIVE
-            </Badge>
-          )}
-          {!isFixture && !isLive && stale && (
-            <Badge variant="bear" className="font-mono text-xs">
-              STALE ({Math.floor(dataAge || 0)}s)
-            </Badge>
+          {flow && (
+            <DataFreshness
+              source="Order Flow"
+              dataTimestamp={flow.ts}
+              isFixture={flow.fixture}
+              stalenessThresholdMs={getRTHStalenessThreshold()}
+            />
           )}
         </div>
       </div>
@@ -311,9 +306,11 @@ export default function Home() {
                     <div>
                       <div className="flex items-center justify-between mb-2">
                         <div className="text-xs text-slate-500">GEX Levels</div>
-                        <Badge variant="warn" className="text-[10px]">
-                          DELAYED
-                        </Badge>
+                        <DataFreshness
+                          source="GEX"
+                          dataTimestamp={flow.gex.asOf}
+                          stalenessThresholdMs={60 * 60 * 1000}
+                        />
                       </div>
                       <div className="space-y-1 text-xs">
                         <div className="flex justify-between">

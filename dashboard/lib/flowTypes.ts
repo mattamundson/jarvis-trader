@@ -5,6 +5,8 @@ export interface Bar1m {
   low: number;
   close: number;
   volume: number;
+  bidAtPrice?: Record<number, number>;
+  askAtPrice?: Record<number, number>;
 }
 
 export interface DeltaAtPrice {

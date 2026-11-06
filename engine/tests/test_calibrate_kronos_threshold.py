@@ -211,13 +211,17 @@ class TestPerInstrumentIsolation:
     def test_thresholds_are_positive(self, tmp_path: Path) -> None:
         db = tmp_path / "test.db"
         n = 50
-        timestamps = _make_ts_sequence(n, start="2025-11-01T00:00:00")
+        # Keep synthetic bars inside the 365-day lookback window.
+        start = datetime.now(tz=timezone.utc) - timedelta(hours=n)
+        timestamps = _make_ts_sequence(n, start=start.replace(tzinfo=None).isoformat())
         closes = [200.0 + i * 0.1 for i in range(n)]
         rows = {"ALPHA": list(zip(timestamps, closes, strict=False))}
         _create_minimal_db(db, rows)
 
         result = run_calibration(db_path=db, horizon=5, lookback_days=365, instruments=["ALPHA"])
-        assert result["per_instrument"]["ALPHA"]["recommended_threshold_bps"] > 0
+        alpha = result["per_instrument"]["ALPHA"]
+        assert alpha["status"] == "ok", f"ALPHA failed: {alpha}"
+        assert alpha["recommended_threshold_bps"] > 0
 
 
 # ---------------------------------------------------------------------------
