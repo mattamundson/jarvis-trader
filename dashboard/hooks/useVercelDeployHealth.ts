@@ -1,4 +1,5 @@
 import useSWR from "swr";
+import { localFetch } from "@/lib/api";
 
 type DeployStatus = "READY" | "ERROR" | "BUILDING" | "UNKNOWN";
 
@@ -8,16 +9,8 @@ interface VercelDeployHealth {
   createdAt?: string;
 }
 
-async function fetcher(url: string): Promise<VercelDeployHealth> {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error("Failed to fetch Vercel deploy health");
-  }
-  return response.json();
-}
-
 export function useVercelDeployHealth() {
-  return useSWR<VercelDeployHealth>("/api/vercel-deploy-health", fetcher, {
+  return useSWR<VercelDeployHealth>("/api/vercel-deploy-health", localFetch, {
     refreshInterval: 30_000,
     shouldRetryOnError: false,
   });

@@ -119,7 +119,7 @@ export default function IntradayRegimePage() {
           <div className="rounded-xl border border-warn/40 bg-warn/5 p-8 text-center">
             <p className="text-lg font-semibold text-warn mb-2">Engine Unavailable</p>
             <p className="text-sm text-muted-foreground">
-              Cannot fetch regime data. Check engine connection at localhost:8010.
+              Cannot fetch regime data. Check the engine connection.
             </p>
           </div>
         ) : live ? (
