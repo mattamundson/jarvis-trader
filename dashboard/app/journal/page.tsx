@@ -30,7 +30,7 @@ export default function JournalPage() {
   );
 
   const setups = React.useMemo<Setup[]>(() => {
-    if (!data) return [];
+    if (!Array.isArray(data)) return [];
     return data
       .filter((t) => t.exit_time && t.pnl !== null)
       .map((t) => {
@@ -71,7 +71,7 @@ export default function JournalPage() {
   }, [validSetups]);
 
   const mostRecentExitTime = React.useMemo(() => {
-    if (!data || data.length === 0) return null;
+    if (!Array.isArray(data) || data.length === 0) return null;
     const exits = data.filter((t) => t.exit_time).map((t) => new Date(t.exit_time!).getTime());
     return exits.length > 0 ? new Date(Math.max(...exits)) : null;
   }, [data]);
@@ -94,10 +94,10 @@ export default function JournalPage() {
         <div className="mb-6 flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-foreground tracking-tight">
-              Paper Trading Journal
+              Trade Journal
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Scored setups toward 20-setup proof bar
+              Paper scored setups toward 20-setup proof bar
             </p>
           </div>
           {mostRecentExitTime && (
