@@ -51,7 +51,7 @@ def _session_tpo(
     lo_t = np.round(np.minimum(low, high) / tick_size).astype(np.int64)
     hi_t = np.round(np.maximum(low, high) / tick_size).astype(np.int64)
     acc: dict[int, float] = {}
-    for lo_i, hi_i, v in zip(lo_t, hi_t, vol):
+    for lo_i, hi_i, v in zip(lo_t, hi_t, vol, strict=True):
         if not np.isfinite(v) or v <= 0:
             continue
         n = hi_i - lo_i + 1
@@ -170,10 +170,6 @@ def compute_tpo_profile(
     rth_close = session_end_hour * 60 + session_end_minute
     day = idx_local.normalize().tz_localize(None)
     in_rth = (minute >= rth_open) & (minute < rth_close)
-    after_close = minute >= rth_close
-    trade_date = pd.DatetimeIndex(
-        np.where(after_close, day + pd.offsets.BDay(1), day)
-    )
 
     rth = out[np.asarray(in_rth)].copy()
     rth["_session_date"] = day[np.asarray(in_rth)]
@@ -187,11 +183,28 @@ def compute_tpo_profile(
             .sort_index()
         )
 
-    sessions = pd.DatetimeIndex(tpo.index)
-    pos = sessions.searchsorted(trade_date, side="left") - 1
-    for col in level_cols:
-        vals = tpo[col].to_numpy(dtype=float) if len(tpo) else np.array([])
-        out[col] = np.where(pos >= 0, vals[np.clip(pos, 0, None)] if len(vals) else np.nan, np.nan)
+    # Attach levels from the most recent RTH session whose close is at or
+    # before each bar. Calendar trade_date searchsorted is not enough: it can
+    # select a later session_date that is still < trade_date but has not
+    # occurred yet at the bar timestamp (weekend/holiday roll look-ahead).
+    if len(tpo) == 0:
+        for col in level_cols:
+            out[col] = np.nan
+    else:
+        ends = []
+        sessions_list = []
+        for sdate in tpo.index:
+            end_local = pd.Timestamp(sdate).tz_localize(tz) + pd.Timedelta(
+                hours=session_end_hour, minutes=session_end_minute
+            )
+            ends.append(end_local.tz_convert(idx.tz if idx.tz is not None else "UTC"))
+            sessions_list.append(sdate)
+        end_s = pd.Series(sessions_list, index=pd.DatetimeIndex(ends)).sort_index()
+        # last session with end <= bar time
+        pos = end_s.index.searchsorted(idx, side="right") - 1
+        for col in level_cols:
+            vals = tpo.loc[end_s.to_numpy(), col].to_numpy(dtype=float)
+            out[col] = np.where(pos >= 0, vals[np.clip(pos, 0, None)], np.nan)
 
     # Derived classification
     def _classify(row: pd.Series) -> str:
