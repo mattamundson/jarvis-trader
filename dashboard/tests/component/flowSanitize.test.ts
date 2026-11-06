@@ -2,8 +2,14 @@ import { describe, it, expect } from "vitest";
 import { sanitizeFlowData } from "@/lib/flowSanitize";
 
 describe("flowSanitize", () => {
+  const now = new Date();
+  const recentTs = new Date(now.getTime() - 30_000).toISOString();
+  const barTs = new Date(now.getTime() - 60_000).toISOString();
+  const printTs = new Date(now.getTime() - 30_000).toISOString();
+  const gexTs = new Date(now.getTime() - 15 * 60_000).toISOString();
+
   const validData = {
-    ts: "2024-01-01T12:00:00Z",
+    ts: recentTs,
     es: {
       last: 7718.25,
       vwap: 7716.5,
@@ -12,13 +18,13 @@ describe("flowSanitize", () => {
       cvd: 850,
       cvdLow: -420,
       bars1m: [
-        { ts: "2024-01-01T11:59:00Z", open: 7712, high: 7714, low: 7711, close: 7713, volume: 135 },
+        { ts: barTs, open: 7712, high: 7714, low: 7711, close: 7713, volume: 135 },
       ],
       deltaAtPrice: [
         { price: 7720, bidLots: 8, askLots: 15 },
       ],
       bigPrints: [
-        { ts: "2024-01-01T11:59:30Z", price: 7719.5, lots: 28, side: "ask" },
+        { ts: printTs, price: 7719.5, lots: 28, side: "ask" },
       ],
     },
     nq: {
@@ -30,7 +36,7 @@ describe("flowSanitize", () => {
       putWall: 7695,
       flip: 7715,
       pin: 7725,
-      asOf: "2024-01-01T11:45:00Z",
+      asOf: gexTs,
     },
     gates: [
       { level: 7730, status: "untested", closeCount: 0 },
@@ -41,7 +47,7 @@ describe("flowSanitize", () => {
     const result = sanitizeFlowData(validData);
     
     expect(result).not.toBeNull();
-    expect(result?.ts).toBe("2024-01-01T12:00:00Z");
+    expect(result?.ts).toBe(recentTs);
     expect(result?.es.last).toBe(7718.25);
   });
   
@@ -128,5 +134,236 @@ describe("flowSanitize", () => {
     expect(sanitizeFlowData("not an object")).toBeNull();
     expect(sanitizeFlowData(42)).toBeNull();
     expect(sanitizeFlowData([])).toBeNull();
+  });
+
+  describe("bidAtPrice / askAtPrice validation", () => {
+    it("passes through valid bidAtPrice and askAtPrice", () => {
+      const dataWithFootprint = {
+        ...validData,
+        es: {
+          ...validData.es,
+          bars1m: [
+            {
+              ts: barTs,
+              open: 7712,
+              high: 7714,
+              low: 7711,
+              close: 7713,
+              volume: 135,
+              bidAtPrice: { "7712.25": 15, "7713.00": 20 },
+              askAtPrice: { "7712.25": 10, "7713.00": 18 },
+            },
+          ],
+        },
+      };
+
+      const result = sanitizeFlowData(dataWithFootprint);
+
+      expect(result).not.toBeNull();
+      expect(result?.es.bars1m[0].bidAtPrice).toEqual({ 7712.25: 15, 7713: 20 });
+      expect(result?.es.bars1m[0].askAtPrice).toEqual({ 7712.25: 10, 7713: 18 });
+    });
+
+    it("strips bidAtPrice with negative lots", () => {
+      const dataWithNegative = {
+        ...validData,
+        es: {
+          ...validData.es,
+          bars1m: [
+            {
+              ts: barTs,
+              open: 7712,
+              high: 7714,
+              low: 7711,
+              close: 7713,
+              volume: 135,
+              bidAtPrice: { "7712.25": -5, "7713.00": 20 },
+            },
+          ],
+        },
+      };
+
+      const result = sanitizeFlowData(dataWithNegative);
+
+      expect(result).not.toBeNull();
+      expect(result?.es.bars1m[0].bidAtPrice).toBeUndefined();
+    });
+
+    it("strips askAtPrice with invalid price", () => {
+      const dataWithInvalidPrice = {
+        ...validData,
+        es: {
+          ...validData.es,
+          bars1m: [
+            {
+              ts: barTs,
+              open: 7712,
+              high: 7714,
+              low: 7711,
+              close: 7713,
+              volume: 135,
+              askAtPrice: { "not-a-number": 10, "7713.00": 18 },
+            },
+          ],
+        },
+      };
+
+      const result = sanitizeFlowData(dataWithInvalidPrice);
+
+      expect(result).not.toBeNull();
+      expect(result?.es.bars1m[0].askAtPrice).toBeUndefined();
+    });
+
+    it("strips bidAtPrice with > 400 keys", () => {
+      const tooManyKeys: Record<string, number> = {};
+      for (let i = 0; i < 401; i++) {
+        tooManyKeys[`${7700 + i * 0.25}`] = 5;
+      }
+
+      const dataWithTooMany = {
+        ...validData,
+        es: {
+          ...validData.es,
+          bars1m: [
+            {
+              ts: barTs,
+              open: 7712,
+              high: 7714,
+              low: 7711,
+              close: 7713,
+              volume: 135,
+              bidAtPrice: tooManyKeys,
+            },
+          ],
+        },
+      };
+
+      const result = sanitizeFlowData(dataWithTooMany);
+
+      expect(result).not.toBeNull();
+      expect(result?.es.bars1m[0].bidAtPrice).toBeUndefined();
+    });
+
+    it("allows exactly 400 keys", () => {
+      const exactLimit: Record<string, number> = {};
+      for (let i = 0; i < 400; i++) {
+        exactLimit[`${7700 + i * 0.25}`] = 5;
+      }
+
+      const dataWithExactLimit = {
+        ...validData,
+        es: {
+          ...validData.es,
+          bars1m: [
+            {
+              ts: barTs,
+              open: 7712,
+              high: 7714,
+              low: 7711,
+              close: 7713,
+              volume: 135,
+              bidAtPrice: exactLimit,
+            },
+          ],
+        },
+      };
+
+      const result = sanitizeFlowData(dataWithExactLimit);
+
+      expect(result).not.toBeNull();
+      expect(result?.es.bars1m[0].bidAtPrice).toBeDefined();
+      expect(Object.keys(result?.es.bars1m[0].bidAtPrice || {}).length).toBe(400);
+    });
+
+    it("strips empty bidAtPrice/askAtPrice objects", () => {
+      const dataWithEmpty = {
+        ...validData,
+        es: {
+          ...validData.es,
+          bars1m: [
+            {
+              ts: barTs,
+              open: 7712,
+              high: 7714,
+              low: 7711,
+              close: 7713,
+              volume: 135,
+              bidAtPrice: {},
+              askAtPrice: {},
+            },
+          ],
+        },
+      };
+
+      const result = sanitizeFlowData(dataWithEmpty);
+
+      expect(result).not.toBeNull();
+      expect(result?.es.bars1m[0].bidAtPrice).toBeUndefined();
+      expect(result?.es.bars1m[0].askAtPrice).toBeUndefined();
+    });
+
+    it("handles bars with mixed footprint data presence", () => {
+      const dataWithMixed = {
+        ...validData,
+        es: {
+          ...validData.es,
+          bars1m: [
+            {
+              ts: new Date(now.getTime() - 120_000).toISOString(),
+              open: 7710,
+              high: 7712,
+              low: 7709,
+              close: 7711,
+              volume: 100,
+            },
+            {
+              ts: barTs,
+              open: 7712,
+              high: 7714,
+              low: 7711,
+              close: 7713,
+              volume: 135,
+              bidAtPrice: { "7712.25": 15 },
+              askAtPrice: { "7712.25": 10 },
+            },
+          ],
+        },
+      };
+
+      const result = sanitizeFlowData(dataWithMixed);
+
+      expect(result).not.toBeNull();
+      expect(result?.es.bars1m[0].bidAtPrice).toBeUndefined();
+      expect(result?.es.bars1m[0].askAtPrice).toBeUndefined();
+      expect(result?.es.bars1m[1].bidAtPrice).toEqual({ 7712.25: 15 });
+      expect(result?.es.bars1m[1].askAtPrice).toEqual({ 7712.25: 10 });
+    });
+
+    it("strips non-object bidAtPrice/askAtPrice", () => {
+      const dataWithNonObject = {
+        ...validData,
+        es: {
+          ...validData.es,
+          bars1m: [
+            {
+              ts: barTs,
+              open: 7712,
+              high: 7714,
+              low: 7711,
+              close: 7713,
+              volume: 135,
+              bidAtPrice: "not-an-object",
+              askAtPrice: [1, 2, 3],
+            },
+          ],
+        },
+      };
+
+      const result = sanitizeFlowData(dataWithNonObject);
+
+      expect(result).not.toBeNull();
+      expect(result?.es.bars1m[0].bidAtPrice).toBeUndefined();
+      expect(result?.es.bars1m[0].askAtPrice).toBeUndefined();
+    });
   });
 });

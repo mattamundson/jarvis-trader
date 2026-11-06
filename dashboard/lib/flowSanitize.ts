@@ -50,7 +50,7 @@ export function sanitizeFlowData(data: unknown): FlowSnapshot | null {
   
   const sanitizedBars = es.bars1m.map((bar: unknown) => {
     const b = bar as Record<string, unknown>;
-    return {
+    const base = {
       ts: String(b.ts),
       open: Number(b.open),
       high: Number(b.high),
@@ -58,6 +58,61 @@ export function sanitizeFlowData(data: unknown): FlowSnapshot | null {
       close: Number(b.close),
       volume: Number(b.volume),
     };
+
+    // Optional bidAtPrice / askAtPrice validation
+    if (b.bidAtPrice && typeof b.bidAtPrice === "object" && !Array.isArray(b.bidAtPrice)) {
+      const bidMap = b.bidAtPrice as Record<string, unknown>;
+      const entries = Object.entries(bidMap);
+      
+      if (entries.length > 0 && entries.length <= 400) {
+        const validBids: Record<number, number> = {};
+        let allValid = true;
+        
+        for (const [price, lots] of entries) {
+          const p = Number(price);
+          const l = Number(lots);
+          
+          if (isNaN(p) || isNaN(l) || l < 0) {
+            allValid = false;
+            break;
+          }
+          
+          validBids[p] = l;
+        }
+        
+        if (allValid) {
+          (base as Record<string, unknown>).bidAtPrice = validBids;
+        }
+      }
+    }
+
+    if (b.askAtPrice && typeof b.askAtPrice === "object" && !Array.isArray(b.askAtPrice)) {
+      const askMap = b.askAtPrice as Record<string, unknown>;
+      const entries = Object.entries(askMap);
+      
+      if (entries.length > 0 && entries.length <= 400) {
+        const validAsks: Record<number, number> = {};
+        let allValid = true;
+        
+        for (const [price, lots] of entries) {
+          const p = Number(price);
+          const l = Number(lots);
+          
+          if (isNaN(p) || isNaN(l) || l < 0) {
+            allValid = false;
+            break;
+          }
+          
+          validAsks[p] = l;
+        }
+        
+        if (allValid) {
+          (base as Record<string, unknown>).askAtPrice = validAsks;
+        }
+      }
+    }
+
+    return base;
   });
   
   const sanitizedDelta = es.deltaAtPrice.map((d: unknown) => {
