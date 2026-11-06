@@ -97,6 +97,7 @@ const NAV_GROUPS: NavGroup[] = [
     title: "Analysis",
     items: [
       { label: "Analysis", href: "/analysis", icon: <Brain className="h-3.5 w-3.5" /> },
+      { label: "ES Chart", href: "/es-chart", icon: <LineChart className="h-3.5 w-3.5" /> },
       { label: "Intraday Regime", href: "/regime", icon: <Flame className="h-3.5 w-3.5" /> },
       { label: "Hidden Pivots", href: "/hidden-pivots", icon: <Target className="h-3.5 w-3.5" />, exploratory: true },
       { label: "Backtest", href: "/backtest", icon: <FlaskConical className="h-3.5 w-3.5" /> },
