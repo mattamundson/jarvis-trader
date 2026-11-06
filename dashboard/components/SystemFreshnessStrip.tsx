@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { fetchMasterStatus, aggregationBannerState } from "@/lib/masterApi";
 import { POLL_INTERVAL } from "@/lib/polling-config";
 import { cn } from "@/lib/utils";
+import { useVercelDeployHealth } from "@/hooks/useVercelDeployHealth";
 
 function fmtEventType(type: string | undefined): string {
   if (!type) return "none";
@@ -61,6 +62,8 @@ export function SystemFreshnessStrip() {
     ? null
     : aggregationBannerState(masterStatus ?? null, !!masterError);
   const masterUnreachable = !masterLoading && (!!masterError || masterStatus == null);
+
+  const { data: vercelHealth } = useVercelDeployHealth();
 
   return (
     <div
@@ -139,6 +142,35 @@ export function SystemFreshnessStrip() {
           </Badge>
         ) : (
           "reachable"
+        )}
+      </span>
+
+      <span className="flex items-center gap-1.5">
+        <span
+          className={cn(
+            "h-1.5 w-1.5 rounded-full",
+            vercelHealth?.status === "READY"
+              ? "bg-bull"
+              : vercelHealth?.status === "ERROR"
+              ? "bg-bear"
+              : vercelHealth?.status === "BUILDING"
+              ? "bg-info animate-pulse"
+              : "bg-muted-foreground/50",
+          )}
+        />
+        Vercel{" "}
+        {vercelHealth?.status === "READY" ? (
+          "ready"
+        ) : vercelHealth?.status === "ERROR" ? (
+          <Badge variant="bear" className="h-5 px-1.5 text-[10px] font-normal">
+            error
+          </Badge>
+        ) : vercelHealth?.status === "BUILDING" ? (
+          <Badge variant="info" className="h-5 px-1.5 text-[10px] font-normal">
+            building
+          </Badge>
+        ) : (
+          "—"
         )}
       </span>
     </div>
