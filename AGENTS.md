@@ -13,18 +13,26 @@ Two services make up the product: the **engine** (FastAPI, Python 3.12, port 801
 
 - The Python venv lives at `engine/.venv` (Linux path `engine/.venv/bin/...`, not the
   Windows `engine/.venv/Scripts/...` paths referenced throughout `CLAUDE.md`/docs).
-- The startup update script provisions deps from `engine/requirements-core.txt` (NOT
-  `engine/requirements.txt`). `requirements.txt` pins `questdb==1.2.1`, which has no
+- Cloud Agent install provisions `engine/.venv` from `engine/requirements-core.txt`
+  (NOT `engine/requirements.txt`). `requirements.txt` pins `questdb==1.2.1`, which has no
   Python 3.12 wheel and breaks the full install; `requirements-core.txt` is the
   CI-canonical set that resolves and includes the test deps (`hypothesis`, `respx`,
   `pypdf`). Heavy/optional libs (`ta-lib`, `vectorbt`, `nautilus_trader`, `langchain`,
-  `openbb`) are intentionally excluded — engine modules guard those imports.
-- `engine/.env` and `dashboard/.env.local` are gitignored and already created in the VM
-  with a local dev `API_KEY` (the two values match so the dashboard can reach the engine).
-  If `engine/.env` is missing, the engine exits at startup with "Missing Required
-  Environment Variables". Recreate it with at least `API_KEY=<any value>` plus
-  `MAX_DRAWDOWN_PCT=0.20` (the paper-phase override; `test_drawdown_recurrence_prevention`
-  asserts the runtime value is `0.20`, while `config.py`'s code default is `0.10`).
+  `openbb`) are intentionally excluded — engine modules guard those imports. `ruff` is
+  not in that file; install the CI pin afterwards: `engine/.venv/bin/pip install 'ruff==0.8.0'`.
+- Dashboard deps: Node 22 and pnpm `10.33.2` (`corepack prepare pnpm@10.33.2 --activate`,
+  then `pnpm install --frozen-lockfile` from `dashboard/`). pnpm 11 rejects this
+  lockfile's ignored-build config.
+- `engine/.env` and `dashboard/.env.local` are gitignored. When `engine/.env` is
+  absent, install writes one line, `API_KEY=jarvis-dev-key-change-me` (the placeholder
+  already in `dashboard/.env.example`), and writes `dashboard/.env.local` with
+  `ENGINE_INTERNAL_URL=http://127.0.0.1:8010` plus the same value as `ENGINE_API_KEY`.
+  It never overwrites an existing `engine/.env`. Do not add safety overrides to that
+  placeholder: pytest constructs `TradingConfig()` against `engine/.env`, and setting
+  `REQUIRE_HUMAN_APPROVAL` fails `test_human_approval_default_true`. Code defaults
+  already keep `LIVE_TRADING_ENABLED=False` and `MAX_DRAWDOWN_PCT=0.20`. If
+  `engine/.env` is missing entirely, the engine exits at startup with "Missing Required
+  Environment Variables".
 
   > **⚠️ `engine/.env` IS NOT A MINIMAL FILE — NEVER RECREATE IT WHOLESALE.**
   > The "at least `API_KEY`" line above is for a throwaway cloud VM, never the production
