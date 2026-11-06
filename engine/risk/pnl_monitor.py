@@ -70,11 +70,16 @@ class PnLMonitor:
         ib_gateway=None,
         paper_tracker=None,
         starting_balance: float = 0.0,
+        equity_basis=None,
     ) -> None:
         self._db = db_manager
         self._ib = ib_gateway
         self._paper = paper_tracker
         self._starting_balance = starting_balance  # configured paper balance fallback
+        # Optional zero-arg callable returning risk.equity_basis.EquityState.
+        # When set, get_drawdown_pct() measures the broker-confirmed curve
+        # (equity and peak on one basis) instead of simulated-ledger history.
+        self._equity_basis = equity_basis
 
         # Bug #2 fix: capture the tracker's total_pnl at session start so that
         # _read_memory() computes daily_realized = session_delta (not lifetime).
@@ -165,6 +170,16 @@ class PnLMonitor:
 
         Example: -0.08 means the account is 8% below its peak.
         """
+        if self._equity_basis is not None:
+            try:
+                return float(self._equity_basis().drawdown_pct)
+            except Exception as exc:
+                # Not silent: fall through to the legacy computation and say so.
+                logger.error(
+                    "[PnLMonitor] broker-confirmed equity basis failed (%s) - "
+                    "using legacy drawdown source",
+                    exc,
+                )
         state = self.get_current_pnl_state()
         current = state.current_balance
         if current <= 0:
