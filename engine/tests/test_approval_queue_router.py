@@ -546,3 +546,59 @@ async def test_approve_not_routed_fails_closed(tmp_path: Path) -> None:
         mod._db_path = original_db
         mod._dedup = original_dedup
         mod._paper_tracker = original_tracker
+
+
+@pytest.mark.asyncio
+async def test_approve_ledger_records_stop_target_sent_to_broker(tmp_path: Path) -> None:
+    """2026-10-27 cert row 347: the stop/target arrived in the request body (the
+    verdict carried none). The broker got the body stop -- IB placed STP child 6
+    and TP child 7 -- but the ledger re-derived stop/target from the verdict only
+    and stored NULL. The ledger must record exactly what was sent to the broker,
+    plus the entry order id so fills can be matched back to the row."""
+    db_path = _fresh_db(tmp_path)
+    row_id = _insert_via_sql(db_path, symbol="MES", direction="LONG", confidence=0.75)
+
+    mock_safety = MagicMock()
+    mock_safety.get_status.return_value = {"kill_switch_active": False}
+    mock_safety.submit_paper_order = AsyncMock(
+        return_value={
+            "approved": True,
+            "routed_to_ib": True,
+            "order_id": "5",
+            "stop_order_id": 6,
+            "target_order_id": 7,
+        }
+    )
+    mock_tracker = MagicMock()
+    mock_tracker.add_paper_trade = MagicMock(return_value="trade-cert-347")
+
+    import routers.approval_queue_router as mod
+    from execution.submission_dedup import SubmissionDedup
+
+    original = (mod._safety_layer, mod._db_path, mod._dedup, mod._paper_tracker)
+    try:
+        mod._safety_layer = mock_safety
+        mod._db_path = db_path
+        mod._dedup = SubmissionDedup(Path(tmp_path) / "dedup_ledger_body.jsonl")
+        mod._paper_tracker = mock_tracker
+
+        with (
+            patch("routers.approval_queue_router._get_live_trading_enabled", return_value=False),
+            patch("backtest.gate_v2_policy.is_strategy_authorized", return_value=(True, "authorized")),
+            patch("routers.approval_queue_router._stamp_bracket_ids", return_value=True),
+        ):
+            from routers.approval_queue_router import ApproveBody, approve_candidate
+
+            await approve_candidate(
+                row_id,
+                ApproveBody(entry_price=7704.75, stop_price=7690.0, take_profit=7720.0),
+            )
+
+        sent = mock_safety.submit_paper_order.call_args.kwargs
+        kwargs = mock_tracker.add_paper_trade.call_args.kwargs
+        assert sent["stop_price"] == 7690.0
+        assert kwargs["stop_loss"] == sent["stop_price"]
+        assert kwargs["take_profit"] == sent["take_profit"] == 7720.0
+        assert kwargs["strategy_params"]["entry_order_id"] == "5"
+    finally:
+        mod._safety_layer, mod._db_path, mod._dedup, mod._paper_tracker = original

@@ -637,16 +637,19 @@ async def approve_candidate(
     # the audit record of the broker submission).
     if _paper_tracker is not None:
         try:
-            _snap = row.get("verdict") or {}
-            _td = _snap.get("trade_decision") or {}
-            _stop = _td.get("stop_price") or _td.get("stop_loss") or None
-            _tgt = (
-                _td.get("target_1")
-                or _td.get("target_price")
-                or _td.get("take_profit")
-                or _td.get("target_2")
-                or None
-            )
+            # Record exactly the stop/target sent to the broker. Re-deriving
+            # them from the verdict alone dropped body-supplied values, so cert
+            # row 347 (2026-10-27) had a live IB stop but stop_loss=NULL.
+            _stop = _stop_price
+            _tgt = _take_profit
+            _params = {
+                "source": "approval_queue",
+                "candidate_id": candidate_id,
+                "direction": direction.upper(),
+            }
+            if order_id:
+                # Lets the broker fill sync match IB executions to this row.
+                _params["entry_order_id"] = order_id
             _ledger_trade_id = _paper_tracker.add_paper_trade(
                 symbol=symbol,
                 side=action.lower(),
@@ -654,11 +657,7 @@ async def approve_candidate(
                 entry_price=float(entry_price),
                 stop_loss=float(_stop) if _stop is not None else None,
                 take_profit=float(_tgt) if _tgt is not None else None,
-                strategy_params={
-                    "source": "approval_queue",
-                    "candidate_id": candidate_id,
-                    "direction": direction.upper(),
-                },
+                strategy_params=_params,
             )
             _audit("ledger_written", candidate_id, {"trade_id": _ledger_trade_id})
             if _ledger_trade_id:
