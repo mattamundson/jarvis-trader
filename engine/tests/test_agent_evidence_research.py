@@ -1,13 +1,13 @@
 """Unit tests for agent-evidence research; no broker or network required."""
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from agents.agent_evidence_research import AgentObservation, compare_agent_to_baseline
 
 
-T0 = datetime(2026, 10, 1, 14, 0, tzinfo=timezone.utc)
+T0 = datetime(2026, 10, 1, 14, 0, tzinfo=UTC)
 
 
 def observation(event_id="x", **overrides):
