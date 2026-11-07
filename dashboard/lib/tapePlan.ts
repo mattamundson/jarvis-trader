@@ -249,6 +249,58 @@ export interface TriggerPanel {
   short: TriggerEval | null;
 }
 
+// ---- Plan-of-record availability (truthfulness gate) ----
+
+export interface PlanAvailability {
+  usable: boolean;
+  kind: "ok" | "missing_plan" | "missing_date" | "stale_date" | "wrong_session" | "conflict";
+  reason: string;
+}
+
+const PLAN_DATE_RE = /dated (\d{4}-\d{2}-\d{2})/;
+
+/**
+ * Decide whether the dashboard plan file may back ACTIONABLE trigger evaluation.
+ * A stale, wrong-session, or plan-source-conflicting file is reported unavailable —
+ * the dashboard never auto-picks between the dashboard config plan and the recorder's
+ * plan of record, and never falls back silently to either.
+ */
+export function planAvailability(
+  plan: TapePlan | null,
+  args: {
+    todayCt: string | null;
+    globexTradingDate: string | null;
+    recorderSessionTradingDay: string | null;
+    recorderLevelsSource: string | null;
+  },
+): PlanAvailability {
+  if (!plan) {
+    return { usable: false, kind: "missing_plan", reason: "plan missing or invalid" };
+  }
+  if (!plan.date) {
+    return { usable: false, kind: "missing_date", reason: "plan file has no date field" };
+  }
+  if (args.todayCt && plan.date !== args.todayCt) {
+    return { usable: false, kind: "stale_date", reason: `plan dated ${plan.date}, today is ${args.todayCt} CT — stale plan` };
+  }
+  if (args.recorderSessionTradingDay && plan.date !== args.recorderSessionTradingDay) {
+    return {
+      usable: false,
+      kind: "wrong_session",
+      reason: `plan dated ${plan.date} but recorder session trading day is ${args.recorderSessionTradingDay} — wrong session`,
+    };
+  }
+  const m = typeof args.recorderLevelsSource === "string" ? args.recorderLevelsSource.match(PLAN_DATE_RE) : null;
+  if (m && m[1] !== plan.date) {
+    return {
+      usable: false,
+      kind: "conflict",
+      reason: `recorder serves plan dated ${m[1]} while dashboard plan is dated ${plan.date} — conflicting plan sources, not auto-resolved`,
+    };
+  }
+  return { usable: true, kind: "ok", reason: "plan date matches today and the recorder's plan of record" };
+}
+
 /** Build the one-line bias and the two evaluated sides. */
 export function triggerPanel(snap: TapeSnapshot, plan: TapePlan): TriggerPanel {
   const long = plan.long ? evaluateTrigger("long", plan.long, snap, plan.nqRef, plan.lookbackMin, plan.failedExpiryMin) : null;

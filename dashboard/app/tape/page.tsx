@@ -26,12 +26,15 @@ import {
   chartModel,
   mergeLevels,
   normalizePlan,
+  planAvailability,
   triggerPanel,
   type ChartModel,
+  type PlanAvailability,
   type TapePlan,
   type TriggerEval,
   type TriggerPanel,
 } from "@/lib/tapePlan";
+import type { MarketStateInfo } from "@/lib/marketSession";
 
 import TapeExtras from "@/components/tape/TapeExtras";
 import { liveBias, todayCT, type LiveBias } from "@/lib/liveBias";
@@ -39,15 +42,19 @@ import { liveBias, todayCT, type LiveBias } from "@/lib/liveBias";
 const POLL_MS = 5000;
 
 interface Fetched {
-  snap: TapeSnapshot;
+  /** Null = the flow file was readable but carried no usable snapshot (e.g. recorder idle). */
+  snap: TapeSnapshot | null;
   /** Age of the snapshot at the moment it was fetched, measured on the server clock. */
   ageAtFetchS: number | null;
   fetchedAtLocal: number;
   plan: TapePlan | null;
   planError: string | null;
+  planAvail: PlanAvailability | null;
+  recorder: { state: string | null; heartbeatAgeS: number | null; lastTickAgeS: number | null } | null;
+  marketState: MarketStateInfo | null;
   gex: GexInfo | null;
   gexError: string | null;
-  live: LiveBias;
+  live: LiveBias | null;
 }
 
 const dCls = (n: number) => (n > 0 ? "text-emerald-400" : n < 0 ? "text-red-400" : "text-zinc-400");
@@ -65,13 +72,41 @@ export default function TapePage() {
       const body = await res.json();
       setMeta({ source: body?.source ?? null, sourceBars: body?.sourceBars ?? null, file: body?.file ?? null, fileAgeS: typeof body?.fileAgeS === "number" ? body.fileAgeS : null, stale10m: !!body?.stale10m, gexSource: body?.gex?.source ?? null, gexAgeS: typeof body?.gex?.file_age_s === "number" ? body.gex.file_age_s : null, gexStale: !!body?.gex?.stale });
       if (!body?.ok) throw new Error(typeof body?.error === "string" ? body.error : "feed unavailable");
+      // A null snapshot (recorder idle, prices null) is NOT an error: keep the recorder/market/plan
+      // context so the page can say why there is no data instead of throwing it away.
       const snap = normalizeSnapshot(body.snapshot);
-      if (!snap) throw new Error("snapshot unusable");
       if (!alive.current) return;
       const serverMs = typeof body.serverEpochMs === "number" ? body.serverEpochMs : Date.now();
       const plan = normalizePlan(body.plan);
       const planError = plan ? null : typeof body.planError === "string" ? body.planError : "plan missing or invalid";
-      setData({ snap, ageAtFetchS: ageSeconds(snap.asOfEpoch, serverMs), fetchedAtLocal: Date.now(), plan, planError, gex: normalizeGex(body.gex, serverMs), gexError: typeof body.gexError === "string" ? body.gexError : null, live: liveBias({ last: snap.price.last ?? null, vwap: snap.price.vwap ?? null, gateCvd: body.snapshot?.gate_cvd, nqRel: body.snapshot?.nq?.rel, netGex: body.gex?.net_gex }) });
+      const rec = body.recorder && typeof body.recorder === "object" ? body.recorder : null;
+      const planAvail = planAvailability(plan, {
+        todayCt: typeof body.todayCt === "string" ? body.todayCt : null,
+        globexTradingDate: typeof body.globexTradingDate === "string" ? body.globexTradingDate : null,
+        recorderSessionTradingDay: typeof rec?.sessionTradingDay === "string" ? rec.sessionTradingDay : null,
+        recorderLevelsSource: typeof rec?.levelsSource === "string" ? rec.levelsSource : null,
+      });
+      setData({
+        snap,
+        ageAtFetchS: snap ? ageSeconds(snap.asOfEpoch, serverMs) : null,
+        fetchedAtLocal: Date.now(),
+        plan,
+        planError,
+        planAvail,
+        recorder: rec
+          ? {
+              state: typeof rec.state === "string" ? rec.state : null,
+              heartbeatAgeS: typeof rec.heartbeatAgeS === "number" ? rec.heartbeatAgeS : null,
+              lastTickAgeS: typeof rec.lastTickAgeS === "number" ? rec.lastTickAgeS : null,
+            }
+          : null,
+        marketState: body.marketState && typeof body.marketState === "object" ? body.marketState : null,
+        gex: normalizeGex(body.gex, serverMs),
+        gexError: typeof body.gexError === "string" ? body.gexError : null,
+        live: snap
+          ? liveBias({ last: snap.price.last ?? null, vwap: snap.price.vwap ?? null, gateCvd: body.snapshot?.gate_cvd, nqRel: body.snapshot?.nq?.rel, netGex: body.gex?.net_gex })
+          : null,
+      });
       setFetchError(null);
     } catch (e) {
       if (alive.current) setFetchError(e instanceof Error ? e.message : "fetch failed");
@@ -97,8 +132,17 @@ export default function TapePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, tick]);
 
+  // Age of the last ACTUAL tick (not the 5s heartbeat write). Null = no tick recorded this window;
+  // a ticking heartbeat must never make an absent tick look current.
+  const tickAge = useMemo(() => {
+    if (!data?.recorder || data.recorder.lastTickAgeS === null) return null;
+    return data.recorder.lastTickAgeS + Math.floor((Date.now() - data.fetchedAtLocal) / 1000);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, tick]);
+
   const snap = data?.snap ?? null;
   const plan = data?.plan ?? null;
+  const planAvail = data?.planAvail ?? null;
   const gex = data?.gex ?? null;
   const stale = !snap || isTapeStale(age) || fetchError !== null;
 
@@ -116,7 +160,8 @@ export default function TapePage() {
     return {
       merged,
       ladder,
-      panel: plan ? triggerPanel(snap, plan) : null,
+      // Trigger evaluation only against a plan of record that passed the availability gate.
+      panel: plan && planAvail?.usable ? triggerPanel(snap, plan) : null,
       chart: chartModel({ snap, levels: merged, plan }),
       bars: recentBars(snap.bars, 60).reverse(),
       blocks: blocks15(snap.bars).reverse(),
@@ -127,10 +172,20 @@ export default function TapePage() {
       sr: nearestSupportResistance(lv),
       alerts: tapeAlerts(snap),
     };
-  }, [snap, plan, gex]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snap, plan, planAvail, gex]);
 
   const vwapDist = snap && snap.price.vwap !== null ? snap.price.last - snap.price.vwap : null;
   const nq30 = snap?.nq.windows["30m"] ?? null;
+  const rec = data?.recorder ?? null;
+  const marketState = data?.marketState ?? null;
+  // Closure is asserted ONLY from the schedule contract; recorder idleness alone never implies it.
+  const marketLabel = (() => {
+    if (!marketState || marketState.state === "unknown") return "market state unknown (not asserted)";
+    if (marketState.state === "scheduled_closed") return `closed per schedule — ${marketState.detail}`;
+    const idle = !rec?.state || rec.state.toLowerCase().includes("idle");
+    return idle ? `recorder idle — schedule says OPEN window (${marketState.detail})` : `open per schedule (${marketState.detail})`;
+  })();
 
   return (
     <main className="min-h-screen bg-black p-3 font-mono text-[12px] text-zinc-200">
@@ -153,9 +208,22 @@ export default function TapePage() {
         <span>| GEX source: <b className="text-zinc-200">{meta?.gexSource ?? "unknown"}</b>{meta && meta.gexAgeS !== null ? ` (${fmtAge(meta.gexAgeS)})` : ""}{meta?.gexStale && <span className="ml-1 rounded bg-red-600 px-1 font-bold text-white">STALE</span>}</span>
       </div>
 
+      {/* Recorder liveness + market state: heartbeat (file writes) and last actual tick are
+          deliberately reported separately, so a ticking heartbeat cannot masquerade as a live tick. */}
+      <div data-testid="tape-recorder-market" className="mb-2 flex flex-wrap items-center gap-2 text-[11px] text-zinc-400">
+        <span data-testid="tape-recorder-state">
+          Recorder: <b className="text-zinc-200">{rec?.state ?? "unknown"}</b>
+          {rec?.heartbeatAgeS !== null && rec?.heartbeatAgeS !== undefined ? ` | heartbeat ${fmtAge(rec.heartbeatAgeS)}` : ""}
+          {rec?.lastTickAgeS !== null && rec?.lastTickAgeS !== undefined ? ` | last tick ${fmtAge(rec.lastTickAgeS)}` : " | last tick: none this window"}
+        </span>
+        <span data-testid="tape-market-state">| Market: {marketLabel}</span>
+      </div>
+
       <TapeExtras />
 
-      {snap && <TriggerBox panel={derived?.panel ?? null} plan={plan} planError={data?.planError ?? null} stale={stale} live={data?.live ?? null} />}
+      {/* Render the plan box even without a usable snapshot: a stale/wrong-session/conflicting
+          plan must be visible while the market is closed, not only once data returns. */}
+      {(snap || plan) && <TriggerBox panel={derived?.panel ?? null} plan={plan} planError={data?.planError ?? null} planAvail={planAvail} stale={stale} live={data?.live ?? null} />}
 
       {/* Header */}
       <div data-testid="tape-header" className="mb-2 grid grid-cols-2 gap-2 rounded border border-zinc-800 bg-zinc-950 p-2 sm:grid-cols-4 lg:grid-cols-8">
@@ -166,12 +234,23 @@ export default function TapePage() {
         <Stat label="NQ last" value={snap ? fmtNum(snap.nq.last) : "--"} />
         <Stat label="NQ lead" value={snap?.nq.lead ?? "--"} sub={nq30 && nq30.rs !== null ? `30m RS ${fmtSigned(nq30.rs, 3)}` : undefined} />
         <Stat label="As of (CT)" value={snap?.asOfCt ? snap.asOfCt.slice(11, 19) : "--"} />
-        <Stat label="Age" value={fmtAge(age)} cls={stale ? "text-red-400" : "text-emerald-400"} />
+        <Stat
+          label="Last tick age"
+          value={tickAge !== null ? fmtAge(tickAge) : "no tick"}
+          sub={rec ? `heartbeat ${rec.heartbeatAgeS !== null ? fmtAge(rec.heartbeatAgeS) : "?"} / file ${meta?.fileAgeS !== null && meta?.fileAgeS !== undefined ? fmtAge(meta.fileAgeS) : "?"}` : undefined}
+          cls={tickAge === null || tickAge > TAPE_STALE_AFTER_S ? "text-red-400" : "text-emerald-400"}
+        />
       </div>
 
       {/* Alerts */}
       <div data-testid="tape-alerts" className="mb-2 rounded border border-zinc-800 bg-zinc-950 px-3 py-1.5">
-        {derived && derived.alerts.length > 0 ? (
+        {!derived ? (
+          // With no usable snapshot there is no basis to evaluate divergence — never render the
+          // "no divergence" all-clear line (it reads as an analytical conclusion on zero data).
+          <div data-testid="tape-alerts-unevaluated" className="text-zinc-500">
+            No data — divergence not evaluated.
+          </div>
+        ) : derived.alerts.length > 0 ? (
           derived.alerts.map((a) => (
             <div key={a.kind} className="text-amber-300">
               ! {a.text}
@@ -421,8 +500,8 @@ function LiveBiasLine({ live, stale }: { live: LiveBias | null; stale: boolean }
   );
 }
 
-function TriggerBox({ panel, plan, planError, stale, live }: { panel: TriggerPanel | null; plan: TapePlan | null; planError: string | null; stale: boolean; live: LiveBias | null }) {
-  if (!panel || !plan) {
+function TriggerBox({ panel, plan, planError, planAvail, stale, live }: { panel: TriggerPanel | null; plan: TapePlan | null; planError: string | null; planAvail: PlanAvailability | null; stale: boolean; live: LiveBias | null }) {
+  if (!plan) {
     return (
       <section data-testid="tape-triggers" className="mb-2 rounded border border-amber-600 bg-zinc-950 p-2 text-amber-300">
         <LiveBiasLine live={live} stale={stale} />
@@ -430,7 +509,38 @@ function TriggerBox({ panel, plan, planError, stale, live }: { panel: TriggerPan
       </section>
     );
   }
+  // A stale, wrong-session, or plan-source-conflicting plan is NEVER evaluated for actionable
+  // triggers: statuses are withheld and the plan is shown as historical reference only. The
+  // dashboard does not auto-pick between the dashboard config plan and the recorder's plan of record.
+  if (planAvail && !planAvail.usable) {
+    return (
+      <section data-testid="tape-triggers" className="mb-2 rounded border border-red-600 bg-zinc-950 p-2 text-red-200">
+        <LiveBiasLine live={live} stale={stale} />
+        <div data-testid="tape-plan-unavailable" className="text-xs font-bold">
+          PLAN UNAVAILABLE FOR TRIGGERS: {planAvail.reason}
+        </div>
+        <div className="mt-1 text-[10px] text-zinc-400">
+          No ARMED/TRIGGERED/FAILED status is evaluated against a stale, wrong-session, or conflicting plan. Resolve the plan of record at the source; the dashboard will not choose one for you.
+        </div>
+        <div data-testid="tape-plan-historical" className="mt-1 text-[11px] text-zinc-400">
+          Historical reference only — not actionable. Plan dated {plan.date ?? "(no date)"}
+          {plan.note ? `, ${plan.note}` : ""}
+          {plan.long ? `; long trigger ${plan.long.trigger}${plan.long.targets.length ? `, targets ${plan.long.targets.join("/")}` : ""}` : ""}
+          {plan.short ? `; short trigger ${plan.short.trigger}${plan.short.targets.length ? `, targets ${plan.short.targets.join("/")}` : ""}` : ""}
+          {plan.extraLevels.length ? `; ${plan.extraLevels.length} plan level(s)` : ""}.
+        </div>
+      </section>
+    );
+  }
   const planToday = plan.date === todayCT();
+  if (!panel) {
+    return (
+      <section data-testid="tape-triggers" className="mb-2 rounded border border-amber-600 bg-zinc-950 p-2 text-amber-300">
+        <LiveBiasLine live={live} stale={stale} />
+        Plan present but no trigger evaluation available (plan check unavailable). Triggers are off until evaluation succeeds.
+      </section>
+    );
+  }
   return (
     <section data-testid="tape-triggers" className={`mb-2 rounded border border-zinc-700 bg-zinc-950 p-2 ${stale ? "opacity-60" : ""}`}>
       <LiveBiasLine live={live} stale={stale} />
