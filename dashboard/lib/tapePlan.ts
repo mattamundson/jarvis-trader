@@ -111,8 +111,10 @@ export function completed5m(bars: Bar1m[], asOfEpoch: number): Bar5m[] {
         h: Math.max(...arr.map((x) => x.h)),
         l: Math.min(...arr.map((x) => x.l)),
         c: arr[arr.length - 1].c,
-        vol: arr.reduce((s, x) => s + x.vol, 0),
-        delta: arr.reduce((s, x) => s + x.delta, 0),
+        // A bucket containing an unknown value is itself unknown (NaN): it can never
+        // confirm or deny a trigger gate downstream. Genuine zeros stay zeros.
+        vol: arr.reduce((s, x) => s + (x.vol ?? NaN), 0),
+        delta: arr.reduce((s, x) => s + (x.delta ?? NaN), 0),
       };
     });
 }
@@ -158,7 +160,7 @@ export function evaluateTrigger(sideName: "long" | "short", p: SidePlan, snap: T
   const asOf = snap.asOfEpoch ?? (snap.bars.length ? snap.bars[snap.bars.length - 1].t + 60 : 0);
   const from = asOf - lookbackMin * 60;
   const five = completed5m(snap.bars, asOf).filter((b) => b.start >= from);
-  const confirmedIn = (a: number, z: number) => snap.bars.some((b) => b.t >= a && b.t < z && sg * b.delta >= p.minDelta);
+  const confirmedIn = (a: number, z: number) => snap.bars.some((b) => b.t >= a && b.t < z && b.delta !== null && sg * b.delta >= p.minDelta);
 
   let breakStart: number | null = null;
   let failedReason: string | null = null;
@@ -207,8 +209,10 @@ export function evaluateTrigger(sideName: "long" | "short", p: SidePlan, snap: T
   const recentFrom = asOf - 300;
   const deltaFrom = breakStart ?? recentFrom;
   const deltaBars = snap.bars.filter((b) => b.t >= deltaFrom);
-  const bestDelta = deltaBars.reduce((m, b) => (sg * b.delta > sg * m ? b.delta : m), 0);
-  const deltaOk = sg * bestDelta >= p.minDelta;
+  // Unknown deltas cannot satisfy the gate (fail closed); a genuine 0 delta is known but insufficient.
+  const knownDeltaBars = deltaBars.filter(b => b.delta !== null && Number.isFinite(b.delta));
+  const bestDelta = knownDeltaBars.reduce<number | null>((m, b) => m === null || sg * b.delta! > sg * m ? b.delta : m, null);
+  const deltaOk = bestDelta !== null && sg * bestDelta >= p.minDelta;
   const checks: TriggerCheck[] = [
     {
       label: `5m close ${sideName === "long" ? "above" : "below"} ${p.trigger}`,
@@ -218,7 +222,7 @@ export function evaluateTrigger(sideName: "long" | "short", p: SidePlan, snap: T
     {
       label: `1m delta ${sg === 1 ? ">=" : "<="} ${sg === 1 ? "+" : "-"}${p.minDelta}`,
       ok: deltaOk,
-      detail: `best ${fmtSigned(bestDelta)} ${breakStart !== null ? "since break" : "last 5m"}`,
+      detail: bestDelta === null ? "delta unavailable" : `best ${fmtSigned(bestDelta)} ${breakStart !== null ? "since break" : "last 5m"}`,
     },
     { label: `NQ ${sg === 1 ? "above" : "below"} ${nqRef ?? "--"}`, ok: nqOk, detail: nqDetail },
   ];
@@ -328,9 +332,15 @@ export function triggerPanel(snap: TapeSnapshot, plan: TapePlan): TriggerPanel {
     notes.push(`${d >= 0 ? "above" : "below"} VWAP ${fmtSigned(d, 2)}`);
   }
   if (snap.bars.length > 10) {
-    const d = snap.bars[snap.bars.length - 1].cvd - snap.bars[snap.bars.length - 11].cvd;
-    votes.push(Math.sign(d));
-    notes.push(`CVD 10m ${fmtSigned(d)}`);
+    const nowCvd = snap.bars[snap.bars.length - 1].cvd;
+    const thenCvd = snap.bars[snap.bars.length - 11].cvd;
+    // The CVD vote is asserted only from known values on both ends; a missing CVD is
+    // withheld (no vote), never read as zero.
+    if (nowCvd !== null && thenCvd !== null) {
+      const d = nowCvd - thenCvd;
+      votes.push(Math.sign(d));
+      notes.push(`CVD 10m ${fmtSigned(d)}`);
+    }
   }
   if (snap.nq.last !== null && plan.nqRef !== null) {
     const d = snap.nq.last - plan.nqRef;
@@ -439,19 +449,22 @@ export function chartModel(input: ChartInput): ChartModel | null {
     absorb: absorptionOf(b) !== null,
   }));
 
-  const maxAbs = Math.max(1, ...bars.map((b) => Math.abs(b.delta)));
+  // Unknown-delta bars are withheld from the histogram (a gap), never drawn as a zero-height bar.
+  const knownDeltas = bars.map((b) => b.delta).filter((d): d is number => d !== null && Number.isFinite(d));
+  const maxAbs = Math.max(1, ...knownDeltas.map((d) => Math.abs(d)));
   const zeroY = priceH + 6 + (deltaH - 6) / 2;
   const half = (deltaH - 6) / 2;
-  const deltaBars = bars.map((b, i) => {
+  const deltaBars = bars.flatMap((b, i) => {
+    if (b.delta === null) return [];
     const h = (Math.abs(b.delta) / maxAbs) * half;
-    return {
+    return [{
       x: r2(4 + i * step + step / 2),
       w: r2(bw),
       y: r2(b.delta >= 0 ? zeroY - h : zeroY),
       h: r2(Math.max(0.5, h)),
       pos: b.delta >= 0,
       big: Math.abs(b.delta) >= 150,
-    };
+    }];
   });
 
   const lines: ChartLine[] = [];

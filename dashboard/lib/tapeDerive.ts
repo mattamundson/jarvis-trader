@@ -20,9 +20,12 @@ export interface Bar1m {
   h: number;
   l: number;
   c: number;
-  vol: number;
-  delta: number;
-  cvd: number;
+  /** null = missing/unknown in the source. NEVER fabricated to 0; analytics that need it are withheld. */
+  vol: number | null;
+  /** null = missing/unknown in the source. A genuine 0 stays 0. */
+  delta: number | null;
+  /** null = missing/unknown in the source. A genuine 0 stays 0. */
+  cvd: number | null;
 }
 
 export interface TapeLevel {
@@ -75,7 +78,9 @@ export function normalizeSnapshot(raw: unknown): TapeSnapshot | null {
       for (const b of r.series_1m) {
         const t = num(b?.t), o = num(b?.o), h = num(b?.h), l = num(b?.l), c = num(b?.c);
         if (t === null || o === null || h === null || l === null || c === null) continue;
-        bars.push({ t, o, h, l, c, vol: num(b.vol) ?? 0, delta: num(b.delta) ?? 0, cvd: num(b.cvd) ?? 0 });
+        // Unknown vol/delta/cvd stay unknown (null) — never coerced to 0. Valid price
+        // bars are kept even when their flow values are missing.
+        bars.push({ t, o, h, l, c, vol: num(b.vol), delta: num(b.delta), cvd: num(b.cvd) });
       }
       bars.sort((a, b) => a.t - b.t);
     }
@@ -199,9 +204,9 @@ export interface BarRow {
   absorb: "up" | "down" | null;
 }
 
-/** |delta| >= BIG_DELTA while the bar closed against the delta sign. */
+/** |delta| >= BIG_DELTA while the bar closed against the delta sign. Unknown delta → withheld (null). */
 export function absorptionOf(b: Pick<Bar1m, "o" | "c" | "delta">): "up" | "down" | null {
-  if (Math.abs(b.delta) < BIG_DELTA) return null;
+  if (b.delta === null || Math.abs(b.delta) < BIG_DELTA) return null;
   const move = b.c - b.o;
   if (b.delta > 0 && move < 0) return "up";
   if (b.delta < 0 && move > 0) return "down";
@@ -214,17 +219,20 @@ export function recentBars(bars: Bar1m[], n = 15): BarRow[] {
   for (let i = start; i < bars.length; i++) {
     const b = bars[i];
     const prior = bars.slice(Math.max(0, i - VOL_AVG_BARS), i);
-    const avgVol = prior.length ? prior.reduce((s, x) => s + x.vol, 0) / prior.length : null;
+    // Average volume over KNOWN prior bars only; unknown values neither fabricate nor dilute it.
+    const knownVols = prior.filter((x) => x.vol !== null).map((x) => x.vol as number);
+    const avgVol = knownVols.length ? knownVols.reduce((s, x) => s + x, 0) / knownVols.length : null;
     rows.push({
       t: b.t,
       time: fmtCt(b.t),
       close: b.c,
       range: Math.round((b.h - b.l) * 100) / 100,
-      vol: b.vol,
-      delta: b.delta,
-      cvd: b.cvd,
-      bigDelta: Math.abs(b.delta) >= BIG_DELTA,
-      volSpike: avgVol !== null && avgVol > 0 && b.vol >= VOL_SPIKE_MULT * avgVol,
+      // Unknown flow values render as NaN → "--" via fmtSigned / neutral colour; never a fake 0.
+      vol: b.vol ?? NaN,
+      delta: b.delta ?? NaN,
+      cvd: b.cvd ?? NaN,
+      bigDelta: b.delta !== null && Math.abs(b.delta) >= BIG_DELTA,
+      volSpike: b.vol !== null && avgVol !== null && avgVol > 0 && b.vol >= VOL_SPIKE_MULT * avgVol,
       avgVol,
       move: Math.round((b.c - b.o) * 100) / 100,
       absorb: absorptionOf(b),
@@ -260,8 +268,9 @@ export function blocks15(bars: Bar1m[]): Block15[] {
       return {
         start: k,
         label: fmtCt(k),
-        vol: arr.reduce((s, x) => s + x.vol, 0),
-        delta: arr.reduce((s, x) => s + x.delta, 0),
+        // A block containing an unknown value reports unknown (NaN → "--" on render), never 0.
+        vol: arr.reduce((s, x) => s + (x.vol ?? NaN), 0),
+        delta: arr.reduce((s, x) => s + (x.delta ?? NaN), 0),
         open: arr[0].o,
         close: arr[arr.length - 1].c,
         bars: arr.length,
@@ -284,8 +293,9 @@ export function profileAtPrice(bars: Bar1m[], sinceEpoch: number): PriceRow[] {
     if (b.t < sinceEpoch) continue;
     const p = Math.round(b.c);
     const row = map.get(p) ?? { price: p, vol: 0, delta: 0, bars: 0 };
-    row.vol += b.vol;
-    row.delta += b.delta;
+    // Unknown vol/delta poison the whole price row to NaN (withheld), never a silent 0.
+    row.vol += b.vol ?? NaN;
+    row.delta += b.delta ?? NaN;
     row.bars += 1;
     map.set(p, row);
   }
@@ -355,17 +365,21 @@ export function tapeAlerts(snap: TapeSnapshot, minutes: number = DIVERGENCE_MINU
     const now = bars[bars.length - 1];
     const then = bars[bars.length - 1 - minutes];
     const dp = Math.round((now.c - then.c) * 100) / 100;
-    const dc = now.cvd - then.cvd;
-    if (dp >= DIVERGENCE_MIN_PRICE_PTS && dc <= -DIVERGENCE_MIN_CVD) {
-      out.push({
-        kind: "divergence",
-        text: `Bearish divergence: ES up ${sgn(dp)}${dp} over ${minutes}m while CVD fell ${dc}. Lift on no buying.`,
-      });
-    } else if (dp <= -DIVERGENCE_MIN_PRICE_PTS && dc >= DIVERGENCE_MIN_CVD) {
-      out.push({
-        kind: "divergence",
-        text: `Bullish divergence: ES down ${dp} over ${minutes}m while CVD rose ${sgn(dc)}${dc}. Selling is being absorbed.`,
-      });
+    // Divergence is asserted only from KNOWN CVD values on both ends. A missing CVD must
+    // never be coerced to 0 — that fabricated bearish divergences out of missing data.
+    if (now.cvd !== null && then.cvd !== null) {
+      const dc = now.cvd - then.cvd;
+      if (dp >= DIVERGENCE_MIN_PRICE_PTS && dc <= -DIVERGENCE_MIN_CVD) {
+        out.push({
+          kind: "divergence",
+          text: `Bearish divergence: ES up ${sgn(dp)}${dp} over ${minutes}m while CVD fell ${dc}. Lift on no buying.`,
+        });
+      } else if (dp <= -DIVERGENCE_MIN_PRICE_PTS && dc >= DIVERGENCE_MIN_CVD) {
+        out.push({
+          kind: "divergence",
+          text: `Bullish divergence: ES down ${dp} over ${minutes}m while CVD rose ${sgn(dc)}${dc}. Selling is being absorbed.`,
+        });
+      }
     }
   }
   const w = snap.nq.windows["30m"];
@@ -379,14 +393,15 @@ export function tapeAlerts(snap: TapeSnapshot, minutes: number = DIVERGENCE_MINU
   for (let i = bars.length - 1; i >= Math.max(0, bars.length - ABSORB_LOOKBACK_BARS); i--) {
     const b = bars[i];
     const a = absorptionOf(b);
-    if (!a) continue;
+    if (!a || b.delta === null) continue; // a !== null already implies a known delta; the guard narrows it for TS
+    const delta = b.delta;
     const mv = Math.round((b.c - b.o) * 100) / 100;
     out.push({
       kind: "absorption",
       text:
         a === "up"
-          ? `Absorption ${fmtCt(b.t)}: delta ${sgn(b.delta)}${b.delta} but ES closed lower (${mv}). Buying absorbed by sellers.`
-          : `Absorption ${fmtCt(b.t)}: delta ${b.delta} but ES closed higher (${sgn(mv)}${mv}). Selling absorbed by buyers.`,
+          ? `Absorption ${fmtCt(b.t)}: delta ${sgn(delta)}${delta} but ES closed lower (${mv}). Buying absorbed by sellers.`
+          : `Absorption ${fmtCt(b.t)}: delta ${delta} but ES closed higher (${sgn(mv)}${mv}). Selling absorbed by buyers.`,
     });
     break;
   }

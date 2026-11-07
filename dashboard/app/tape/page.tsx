@@ -168,8 +168,8 @@ export default function TapePage() {
       bars: recentBars(snap.bars, 60).reverse(),
       blocks: blocks15(snap.bars).reverse(),
       profile,
-      maxVol: Math.max(1, ...profile.map((r) => r.vol)),
-      maxAbsDelta: Math.max(1, ...profile.map((r) => Math.abs(r.delta))),
+      maxVol: Math.max(1, ...profile.map((r) => r.vol).filter(Number.isFinite)),
+      maxAbsDelta: Math.max(1, ...profile.map((r) => Math.abs(r.delta)).filter(Number.isFinite)),
       levels: lv,
       sr: nearestSupportResistance(lv),
       alerts: tapeAlerts(snap),
@@ -294,7 +294,7 @@ export default function TapePage() {
                     <td>{fmtNum(b.close)}</td>
                     <td>{fmtNum(b.range)}</td>
                     <td className={dCls(b.move)}>{fmtSigned(b.move, 2)}</td>
-                    <td className={b.volSpike ? "font-bold text-amber-300" : ""}>{b.vol}</td>
+                    <td className={b.volSpike ? "font-bold text-amber-300" : ""}>{fmtNum(b.vol, 0)}</td>
                     <td className={`${dCls(b.delta)} ${b.bigDelta ? "font-bold" : ""}`}>{fmtSigned(b.delta)}</td>
                     <td className={dCls(b.cvd)}>{fmtSigned(b.cvd)}</td>
                     <td className="pl-2 text-left text-amber-300">
@@ -324,13 +324,13 @@ export default function TapePage() {
                   <div key={r.price} data-price-row={isLast ? "true" : undefined} className={`flex items-center gap-2 ${isLast ? "border-y border-sky-500 bg-sky-950" : ""}`}>
                     <span className={`w-12 text-right ${isLast ? "font-bold text-white" : "text-zinc-400"}`}>{r.price}</span>
                     <div className="relative h-3 flex-1 bg-zinc-900">
-                      <div className="absolute inset-y-0 left-0 bg-sky-700" style={{ width: `${(r.vol / derived.maxVol) * 100}%` }} />
+                      <div className="absolute inset-y-0 left-0 bg-sky-700" style={{ width: `${Number.isFinite(r.vol) ? (r.vol / derived.maxVol) * 100 : 0}%` }} />
                       <div
                         className={`absolute inset-y-1 left-0 ${r.delta >= 0 ? "bg-emerald-400" : "bg-red-400"}`}
-                        style={{ width: `${(Math.abs(r.delta) / derived.maxAbsDelta) * 100}%` }}
+                        style={{ width: `${Number.isFinite(r.delta) ? (Math.abs(r.delta) / derived.maxAbsDelta) * 100 : 0}%` }}
                       />
                     </div>
-                    <span className="w-14 text-right text-zinc-300">{r.vol}</span>
+                    <span className="w-14 text-right text-zinc-300">{fmtNum(r.vol, 0)}</span>
                     <span className={`w-12 text-right ${dCls(r.delta)}`}>{fmtSigned(r.delta)}</span>
                     <span className="w-28 truncate text-[10px] text-sky-300">
                       {isLast ? `<< ES ${fmtNum(snap.price.last)}` : tags.length ? tags.join(", ") : ""}
@@ -430,7 +430,7 @@ export default function TapePage() {
                           {b.label}
                           {b.partial ? "*" : ""}
                         </td>
-                        <td>{b.vol}</td>
+                        <td>{fmtNum(b.vol, 0)}</td>
                         <td className={dCls(b.delta)}>{fmtSigned(b.delta)}</td>
                         <td>{fmtNum(b.close)}</td>
                       </tr>

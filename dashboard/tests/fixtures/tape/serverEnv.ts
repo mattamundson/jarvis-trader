@@ -9,12 +9,14 @@ export function tapeFixtureEnv(): Record<string, string> {
   const raw = { ...fixture.snapshot,
     recorder: {state: 'idle (fixture)', heartbeat_age_s: 2, last_tick_age_s: null},
     session: {trading_day: '2026-11-07'}, levels_source: 'tape-plan dated 2026-11-03'};
-  for (const [file, data] of Object.entries({'flow.json': raw, 'plan.json': fixture.plan, 'gex.json': fixture.gex})) {
+  for (const [file, data] of Object.entries({'flow.json': raw, 'flow-latest.json': raw, 'plan.json': fixture.plan, 'gex.json': fixture.gex, 'gex-latest.json': fixture.gex})) {
     fs.writeFileSync(path.join(dir, file), JSON.stringify(data));
   }
   return {
     TAPE_FLOW_FILE: path.join(dir, 'flow.json'), TAPE_FLOW_FALLBACK_FILE: path.join(dir, 'flow.json'),
     TAPE_GEX_FILE: path.join(dir, 'gex.json'), TAPE_GEX_FALLBACK_FILE: path.join(dir, 'gex.json'),
     TAPE_PLAN_FILE: path.join(dir, 'plan.json'),
+    TAPE_STATE_DIR: dir, TAPE_TICK_DIR: dir,
+    TAPE_PROOF_FILE: path.join(dir, 'absent-proof.json'),
   };
 }

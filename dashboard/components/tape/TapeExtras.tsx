@@ -60,15 +60,26 @@ function PlanCard({ p, src }: { p: any; src: any }) {
   if (!p?.ok) return <div className={box}><H id="plan-card" t="Plan card" s={src?.source} />{p?.error ?? "unavailable"}</div>;
   return (
     <div className={box}>
-      <H id="plan-card" t={`Plan card ${p.date ?? ""}${p.planIsToday ? "" : " (NOT today's plan)"}${p.pastVoid ? " · new legs void after 2:00 PM CT" : ""}`} s={src?.source} age={src?.ageS} />
+      <H id="plan-card" t={`Plan card ${p.date ?? ""}${p.pastVoid ? " · new legs void after 2:00 PM CT" : ""}`} s={src?.source} age={src?.ageS} />
+      {p.unavailable && (
+        <div data-testid="plan-card-unavailable" className="mb-2 rounded border border-amber-600 bg-amber-950 px-2 py-1 text-amber-200">
+          PLAN UNAVAILABLE FOR TRIGGERS: {p.reason} — historical reference only; no trigger state evaluated without fresh-tick evidence.
+        </div>
+      )}
       <div className="grid gap-2 sm:grid-cols-2">
         {p.legs.map((l: any) => {
-          const lit = l.state === "TRIGGERED" ? "border-emerald-500 bg-emerald-950" : l.state === "TARGET" ? "border-sky-500 bg-sky-950" : l.state === "STOPPED" ? "border-red-600 bg-red-950" : l.state.startsWith("VOID") ? "border-zinc-700 opacity-60" : "border-zinc-700";
+          const lit = p.unavailable
+            ? "border-zinc-700 opacity-60"
+            : l.state === "TRIGGERED" ? "border-emerald-500 bg-emerald-950"
+            : l.state === "FAILED" ? "border-red-600 bg-red-950"
+            : "border-zinc-700";
           return (
             <div key={l.side} data-testid={`plan-leg-${l.side}`} className={`rounded border p-2 ${lit}`}>
-              <div className="font-bold">{l.side.toUpperCase()} · {l.state}{l.triggeredAt ? ` @ ${ct(l.triggeredAt)} CT` : ""}</div>
-              <div>trigger {l.trigger} · stop {l.stop} · targets {l.targets.join(", ")} · dist {l.distance}</div>
-              <ul>{l.gates.map((g: any) => <li key={g.name} className={g.ok ? "text-emerald-300" : "text-zinc-500"}>{g.ok ? "●" : "○"} {g.name}{g.value != null ? ` (${g.value})` : ""}</li>)}</ul>
+              <div className="font-bold">{l.side.toUpperCase()} · {l.state}{l.historical ? " (historical)" : ""}</div>
+              <div>trigger {l.trigger} · stop {l.stop ?? "--"} · targets {l.targets.join(", ") || "none"} · dist {l.distance ?? "--"}</div>
+              {l.reason && <div className="text-zinc-400">{l.reason}</div>}
+              {l.ifThen && <div className="text-zinc-500">{l.ifThen}</div>}
+              <ul>{(l.checks ?? []).map((g: any) => <li key={g.label} className={g.ok ? "text-emerald-300" : "text-zinc-500"}>{g.ok ? "●" : "○"} {g.label} — {g.detail}</li>)}</ul>
             </div>
           );
         })}
@@ -130,7 +141,14 @@ export default function TapeExtras() {
     const go = async () => { try { const j = await fetchDashboardApi<any>("/api/tape/extras"); if (on) { setD(j); setErr(null); } } catch (e) { if (on) setErr(String(e)); } };
     go(); const id = setInterval(go, 15000); return () => { on = false; clearInterval(id); };
   }, []);
-  if (!d) return <div className={box} data-testid="tape-extras">Loading extras…{err ? ` (${err})` : ""}</div>;
+  if (err) return <div className={box} data-testid="tape-extras">Extras UNAVAILABLE — fetch failed; cached trigger state withheld.</div>;
+  if (!d) return <div className={box} data-testid="tape-extras">Loading extras…</div>;
+  const displayPlan = d.snapshotMode && d.plan ? {
+    ...d.plan, unavailable: true, reason: "published snapshot — current tick and plan availability not verified",
+    legs: (d.plan.legs ?? []).map((leg: any) => ({...leg, historical: true,
+      state: "HISTORICAL — NOT EVALUATED", checks: [], reason: null, ifThen: null})),
+  } : d.plan;
+  const displayLevels = displayPlan?.unavailable ? [] : chartLevels(d.chart);
   return (
     <section data-testid="tape-extras">
       {d.snapshotMode && <div data-testid="snapshot-mode" className="mb-2 rounded border border-amber-600 bg-amber-950 px-2 py-1 text-amber-200">Snapshot mode: last published snapshot{d.publishedAt ? ` from ${new Date(d.publishedAt).toLocaleString("en-US", { timeZone: "America/Chicago" })} CT` : ""}. Read-only.</div>}
@@ -141,9 +159,9 @@ export default function TapeExtras() {
         <span className="text-zinc-500">· labels: {d.sources?.labels ? Object.values(d.sources.labels).join(" / ") : ""}</span>
       </div>
       <IbLight ib={d.ib} />
-      <PlanCard p={d.plan} src={d.sources?.plan ? { ...d.sources.plan, ageS: d.sources.tape?.ageS } : null} />
+      <PlanCard p={displayPlan} src={d.sources?.plan ? { ...d.sources.plan, ageS: d.sources.tape?.ageS } : null} />
       <Proof p={d.proof} src={d.sources?.proof} />
-      <ChartOrTable id="footprint" chart={<div className="mb-2"><FootprintChart f={d.footprintWide ?? d.footprint} vwap={d.chart?.vwap} last={d.chart?.last} levels={chartLevels(d.chart)} profile={d.profile} priceSrc={d.chart?.priceSource} priceAgeS={d.chart?.priceAgeS} /></div>} table={<Footprint f={d.footprint} />} />
+      <ChartOrTable id="footprint" chart={<div className="mb-2"><FootprintChart f={d.footprintWide ?? d.footprint} vwap={d.chart?.vwap} last={d.chart?.last} levels={displayLevels} profile={d.profile} priceSrc={d.chart?.priceSource} priceAgeS={d.chart?.priceAgeS} /></div>} table={<Footprint f={d.footprint} />} />
       <ChartOrTable id="profile" chart={<div className="mb-2"><ProfilePair composite={d.profile} today={d.profileToday} last={d.chart?.last} vwap={d.chart?.vwap} ageS={d.footprint?.fileAgeS} /></div>} table={<Profile p={d.profile} />} />
     </section>
   );

@@ -1,5 +1,11 @@
 # JARVIS Dashboard State
 
+## 2026-11-07 — review corrections, release still blocked
+
+- Parent accepted footprint single-flight/TPO-union/rollover ordering and shared extras/lean freshness/confirmation after synthetic counterexamples. Additional parent zero-threshold delta, stale overlays, cached failure and nullable chart gaps corrected.
+- Latest focused acceptance: app+test tsc and static guards pass,406Nodepass/2skip,133componentpass,22freshfocusedbrowserpass,productionbuildpass. Full default browser run173pass/4hydrationfail/2skip;not globallygreen. Remote engineLint and two fast tests still block merge. See evidence/TAPE_MASTER_INTEGRATION_20261107.md.
+- No production merge/deployment/restart;master protected engine/auth/operator/journal/proof-record unchanged. Source work remains isolated for review.
+
 ## 2026-11-07 — current-master tape integration candidate
 
 - Current-master branch `fix/tape-master-integration-20261107`, base `c35fdafb`; integrates tape without overwriting newer master auth/operator/WS/journal/proof-record behavior.
