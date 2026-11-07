@@ -1,4 +1,5 @@
 "use client";
+import { fetchDashboardApi } from "@/lib/api";
 // /tape extras panels (items 2-6). Read-only display; no order buttons.
 import { useEffect, useState } from "react";
 import { ChartOrTable, FootprintChart, ProfilePair, chartLevels } from "./TapeCharts";
@@ -19,7 +20,7 @@ function IbLight({ ib }: { ib: any }) {
   const c = ib?.light === "green" ? "bg-emerald-500" : ib?.light === "amber" ? "bg-amber-400" : "bg-red-600";
   return (
     <div className={box}>
-      <H id="ib-status-panel" t="IB paper status" s="local read-only checks" />
+      <H id="ib-status-panel" t="IB status — not checked" s="no broker/host probes" />
       <div className="flex flex-wrap items-center gap-3">
         <span className={`inline-block h-3 w-3 rounded-full ${c}`} data-testid="ib-light" title={ib?.light} />
         {(ib?.checks ?? []).map((k: any) => (
@@ -126,7 +127,7 @@ export default function TapeExtras() {
   const [d, setD] = useState<any>(null); const [err, setErr] = useState<string | null>(null);
   useEffect(() => {
     let on = true;
-    const go = async () => { try { const r = await fetch("/api/tape/extras", { cache: "no-store" }); const j = await r.json(); if (on) { setD(j); setErr(null); } } catch (e) { if (on) setErr(String(e)); } };
+    const go = async () => { try { const j = await fetchDashboardApi<any>("/api/tape/extras"); if (on) { setD(j); setErr(null); } } catch (e) { if (on) setErr(String(e)); } };
     go(); const id = setInterval(go, 15000); return () => { on = false; clearInterval(id); };
   }, []);
   if (!d) return <div className={box} data-testid="tape-extras">Loading extras…{err ? ` (${err})` : ""}</div>;

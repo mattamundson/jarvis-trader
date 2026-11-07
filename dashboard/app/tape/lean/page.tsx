@@ -1,4 +1,5 @@
 "use client";
+import { fetchDashboardApi } from "@/lib/api";
 /**
  * Lean Tape screen (screen 1 of the lean dashboard). Read-only readout.
  * Reads only /api/flow/tape (flow-latest.json + gex-latest.json + config/tape-plan.json).
@@ -88,7 +89,7 @@ export default function LeanTape() {
   useEffect(() => {
     let live = true;
     const load = async () => {
-      try { const r = await fetch("/api/flow/tape", { cache: "no-store" }); const j = await r.json(); if (live) { setD(j); setErr(null); } }
+      try { const j = await fetchDashboardApi<any>("/api/flow/tape"); if (live) { setD(j); setErr(null); } }
       catch (e) { if (live) setErr("readout unreachable"); }
     };
     load();

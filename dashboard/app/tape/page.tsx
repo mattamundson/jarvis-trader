@@ -1,4 +1,5 @@
 "use client";
+import { fetchDashboardApi } from "@/lib/api";
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fmtAge } from "@/lib/flowFreshness";
@@ -69,8 +70,7 @@ export default function TapePage() {
 
   const poll = useCallback(async () => {
     try {
-      const res = await fetch("/api/flow/tape", { cache: "no-store" });
-      const body = await res.json();
+      const body = await fetchDashboardApi<any>("/api/flow/tape");
       setMeta({ source: body?.source ?? null, sourceBars: body?.sourceBars ?? null, file: body?.file ?? null, fileAgeS: typeof body?.fileAgeS === "number" ? body.fileAgeS : null, stale10m: !!body?.stale10m, gexSource: body?.gex?.source ?? null, gexAgeS: typeof body?.gex?.file_age_s === "number" ? body.gex.file_age_s : null, gexStale: !!body?.gex?.stale });
       if (!body?.ok) throw new Error(typeof body?.error === "string" ? body.error : "feed unavailable");
       // A null snapshot (recorder idle, prices null) is NOT an error: keep the recorder/market/plan
