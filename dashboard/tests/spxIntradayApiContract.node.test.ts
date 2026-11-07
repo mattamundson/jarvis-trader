@@ -52,8 +52,15 @@ test("hook polls the dashboard's own read-only route via localFetch", () => {
   assert.ok(!hook.includes("fetchEngine("), "hook must not bypass the local route");
 });
 
-test("mission control mounts the card inside an error boundary", () => {
+test("mission control routes locally and mounts the card inside an error boundary", () => {
   const page = read("app/mission-control/page.tsx");
-  assert.match(page, /SpxIntradayAnalysisCard/);
-  assert.match(page, /WidgetErrorBoundary name="SPX Intraday Decision"/);
+  assert.match(page, /import\("\.\/MissionControlLocal"\)/);
+  assert.match(page, /return <MissionControlLocal\s*\/>/);
+  assert.match(page, /isVercelDeployment\(\)/);
+  assert.match(page, /return <VercelGatesOnly\s*\/>/);
+  const local = read("app/mission-control/MissionControlLocal.tsx");
+  assert.match(local, /import \{ SpxIntradayAnalysisCard \} from "@\/components\/SpxIntradayAnalysisCard"/);
+  assert.match(local, /<WidgetErrorBoundary name="SPX Intraday Decision">\s*<SpxIntradayAnalysisCard\s*\/>\s*<\/WidgetErrorBoundary>/);
+  const publicView = read("app/mission-control/VercelGatesOnly.tsx");
+  assert.doesNotMatch(publicView, /SpxIntradayAnalysisCard|MissionControlLocal/);
 });
