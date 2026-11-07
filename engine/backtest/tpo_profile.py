@@ -20,9 +20,9 @@ Value area algorithm mirrors the TOS TimeProfile logic:
   3. Expand outward from VPOC, adding the larger adjacent bin first,
      until the cumulative volume >= value_area_pct of session total.
 
-Sessions are RTH only, 08:30-15:00 CT. Every bar of trade date D (from the
-prior RTH close through D's RTH close) carries the last completed RTH
-session before D.
+Sessions are RTH only on weekdays, 08:30-15:00 CT. A bar carries the most
+recent session completed at or before that bar; later sessions cannot change
+earlier values.
 """
 
 from __future__ import annotations
@@ -148,8 +148,8 @@ def compute_tpo_profile(
     DataFrame
         Original df plus columns: vpoc, va_high, va_low, profile_high,
         profile_low, price_vs_va, buyer_control_signal, seller_control_signal.
-        All level columns carry the *prior* session's values (forward-filled,
-        no look-ahead within the current session).
+        All level columns carry the latest completed RTH session's values,
+        never a profile requiring bars after the current timestamp.
     """
     out = df.copy()
 
@@ -162,18 +162,14 @@ def compute_tpo_profile(
         idx = idx.tz_localize("UTC")
     idx_local = idx.tz_convert(tz)
 
-    # RTH-only profiles. Each bar is mapped to its trade date (bars at or
-    # after the RTH close roll to the next business day) and carries the last
-    # completed RTH session strictly before that trade date.
+    # A session becomes available only at its actual RTH close. Mapping via
+    # the next business date can select a *future* weekend/holiday profile
+    # when a synthetic or malformed input includes those dates.
     minute = idx_local.hour * 60 + idx_local.minute
     rth_open = session_start_hour * 60 + session_start_minute
     rth_close = session_end_hour * 60 + session_end_minute
     day = idx_local.normalize().tz_localize(None)
-    in_rth = (minute >= rth_open) & (minute < rth_close)
-    after_close = minute >= rth_close
-    trade_date = pd.DatetimeIndex(
-        np.where(after_close, day + pd.offsets.BDay(1), day)
-    )
+    in_rth = (minute >= rth_open) & (minute < rth_close) & (idx_local.weekday < 5)
 
     rth = out[np.asarray(in_rth)].copy()
     rth["_session_date"] = day[np.asarray(in_rth)]
@@ -188,7 +184,8 @@ def compute_tpo_profile(
         )
 
     sessions = pd.DatetimeIndex(tpo.index)
-    pos = sessions.searchsorted(trade_date, side="left") - 1
+    completed_at = sessions.tz_localize(tz) + pd.Timedelta(minutes=rth_close)
+    pos = completed_at.searchsorted(idx_local, side="right") - 1
     for col in level_cols:
         vals = tpo[col].to_numpy(dtype=float) if len(tpo) else np.array([])
         out[col] = np.where(pos >= 0, vals[np.clip(pos, 0, None)] if len(vals) else np.nan, np.nan)
