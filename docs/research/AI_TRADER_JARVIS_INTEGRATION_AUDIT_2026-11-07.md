@@ -28,7 +28,7 @@
 `engine/agents/agent_evidence_research.py` provides a **pure, read-only paired comparison** for already-collected observation records:
 
 - Same event identity and forward-return horizon for deterministic baseline and agent action.
-- Records bull/bear disagreement frequency, participation, directional accuracy and mean signed *underlying* return.
+- Records final-agent versus baseline disagreement frequency, participation, directional accuracy and mean signed *underlying* return. Bull/bear are JARVIS's deliberate advocacy stances, not independently calibrated directional predictions.
 - Rejects invalid directions, duplicate event identity, naive timestamps, data available only after decision time, future outcomes and nonfinite returns.
 - Does not import execution, broker or safety modules.
 - Does **not** feed its score back into trade approval or order sizing.
@@ -54,3 +54,14 @@ It deliberately does not claim a profitable edge. Return increment is descriptiv
 ## Licensing
 
 The upstream README displays an MIT badge, but repository metadata did not expose a detected license during inspection. **No AI-Trader source code is copied**. Confirm actual license file and applicable obligations before code reuse.
+
+## Phase 2 — Persisted-decision adapter (added to this research PR)
+
+- `engine/agents/jarvis_decision_evidence.py` consumes an actual stored `decisions` table row (obtained through `DatabaseManager.get_decision_by_id`) with full `full_pipeline_json`, including real `debate_result`, bull and bear reports, and exact final action.
+- `HistoricalEvidence` must be supplied by a separately audited point-in-time data/baseline process; it contains input and baseline availability timestamps, immutable data identifiers, fixed horizon, future underlying return, and the outcome availability timestamp. This adapter **does not** fabricate missing fields, read a broker, or query live prices.
+- The source `decisions` table does not independently certify when every feature/news item originally became available. `input_available_at` is an **external attestation**, not proof provided by the decisions log. Until the input lineage and market data can be certified from immutable receipts, research remains NOT EVALUATED.
+- Only exact `buy` / `sell` / `hold` final actions can participate; missing/inconsistent pipeline final action and degraded or partial debate records are rejected. This is intentionally narrower than all possible existing JARVIS action strings.
+- The initial comparator uses *signed underlying returns*, not executable options trades, and cannot establish net expectancy for ES futures or SPX 0DTE.
+- Validation: `engine/tests/test_jarvis_decision_evidence.py` includes positive and negative temporal/provenance cases. CI status must be verified after the final commit.
+
+**Note on CI:** the first PR run failed Ruff on an import-order issue in the initial research test plus an unrelated pre-existing `backtest/tpo_profile.py` B905 finding. The research test was adjusted. The baseline B905 remains outside this PR's scope and may continue to block whole-repository CI; do not silently modify unrelated trading calculations to make the status green.
