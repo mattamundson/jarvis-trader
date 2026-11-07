@@ -65,3 +65,50 @@ The upstream README displays an MIT badge, but repository metadata did not expos
 - Validation: `engine/tests/test_jarvis_decision_evidence.py` includes positive and negative temporal/provenance cases. CI status must be verified after the final commit.
 
 **Note on CI:** the first PR run failed Ruff on an import-order issue in the initial research test plus an unrelated pre-existing `backtest/tpo_profile.py` B905 finding. The research test was adjusted. The baseline B905 remains outside this PR's scope and may continue to block whole-repository CI; do not silently modify unrelated trading calculations to make the status green.
+
+## Phase 3 — Offline historical replay command
+
+Implemented `engine/agents/agent_evidence_cli.py` for externally prepared JSONL. This is a **research-only, no-network** adapter; it does not query JARVIS's live database or any market provider.
+
+Example command (from `engine/`):
+
+```bash
+python -m agents.agent_evidence_cli --input path/to/attested_decisions.jsonl --evaluation-at 2026-11-07T18:00:00+00:00
+```
+
+Each JSONL line contains one object with `decision` (the exact row returned by `DatabaseManager.get_decision_by_id`, including full `full_pipeline_json`) and `evidence`:
+
+```json
+{
+  "decision": {
+    "id": 42,
+    "symbol": "MES",
+    "timestamp": "2026-10-01T14:00:00+00:00",
+    "action": "buy",
+    "full_pipeline_json": {
+      "final_action": "buy",
+      "debate_result": {
+        "timestamp": "2026-10-01T13:59:00+00:00",
+        "verdict": "BULL_WINS",
+        "bull_report": {"symbol": "MES", "timestamp": "2026-10-01T13:58:00+00:00"},
+        "bear_report": {"symbol": "MES", "timestamp": "2026-10-01T13:58:00+00:00"}
+      }
+    }
+  },
+  "evidence": {
+    "symbol": "MES",
+    "input_available_at": "2026-10-01T13:57:00+00:00",
+    "baseline_action": "hold",
+    "baseline_available_at": "2026-10-01T13:56:00+00:00",
+    "baseline_identity": "frozen-baseline-version-hash",
+    "forward_return": 0.015,
+    "outcome_available_at": "2026-10-01T15:00:00+00:00",
+    "outcome_identity": "certified-market-receipt-hash",
+    "horizon": "1h"
+  }
+}
+```
+
+**Example only; the values above are synthetic, not actual JARVIS market/trade results.** This document's example must never be counted as evidence or supplied to the backtest as if observed. The runner rejects mixed horizons and records with absent required data. It returns `NOT_EVALUATED` (exit 2) on invalid or empty samples; even successful descriptive output is labeled `DESCRIPTIVE_ONLY_UNVERIFIED_INPUT_ATTESTATIONS`.
+
+The remaining substantive blocker is real historical observation certification: extract stored records without mutating them, prove original information availability, construct a versioned deterministic baseline using only prior data, and acquire independently attested forward market bars and execution-cost data. Do not compute post-hoc agent opinions from future data or infer missing source fields.
