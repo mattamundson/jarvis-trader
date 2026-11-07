@@ -280,8 +280,15 @@ export function planAvailability(
   if (!plan.date) {
     return { usable: false, kind: "missing_date", reason: "plan file has no date field" };
   }
-  if (args.todayCt && plan.date !== args.todayCt) {
-    return { usable: false, kind: "stale_date", reason: `plan dated ${plan.date}, today is ${args.todayCt} CT — stale plan` };
+  // Evening Globex belongs to the NEXT trading date, not the calendar date.
+  const expectedDate = args.globexTradingDate ?? args.todayCt;
+  if (!expectedDate) {
+    return { usable: false, kind: "missing_date", reason: "current trading-session date unavailable" };
+  }
+  if (plan.date !== expectedDate) {
+    const wrongSession = plan.date === args.todayCt && expectedDate !== args.todayCt;
+    return { usable: false, kind: wrongSession ? "wrong_session" : "stale_date",
+      reason: `plan dated ${plan.date}, current trading session is ${expectedDate} — ${wrongSession ? "wrong session" : "stale plan"}` };
   }
   if (args.recorderSessionTradingDay && plan.date !== args.recorderSessionTradingDay) {
     return {

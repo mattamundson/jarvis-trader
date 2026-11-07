@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { currentGlobexTradingDate, esMarketState } from "@/lib/marketSession";
+import { recorderContext } from "@/lib/tapeFreshnessContract";
 
 /**
  * Read-only local readout of the recorder snapshot for the /tape screen.
@@ -49,27 +50,6 @@ async function readPlan(): Promise<{ plan: unknown; planError: string | null }> 
   }
 }
 
-/**
- * Recorder liveness block passed through verbatim from the flow snapshot. `lastTickAgeS` is the
- * age of the last ACTUAL tick (recorder's own last_tick_age_s plus the file's age since it was
- * written) — deliberately separate from heartbeat/file age, so a 5s heartbeat write can never
- * make an absent or stale tick look current.
- */
-function recorderBlock(raw: any, fileAgeS: number | null) {
-  const r = raw?.recorder && typeof raw.recorder === "object" ? raw.recorder : {};
-  const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
-  const lastTickAgeS = num(r.last_tick_age_s) === null ? null : num(r.last_tick_age_s)! + (fileAgeS ?? 0);
-  return {
-    state: typeof r.state === "string" ? r.state : null,
-    heartbeatAgeS: num(r.heartbeat_age_s),
-    lastTickAgeS: lastTickAgeS === null ? null : Math.round(lastTickAgeS * 10) / 10,
-    reconnects: num(r.reconnects),
-    connectedPort: num(r.connected_port),
-    sessionTradingDay: typeof raw?.session?.trading_day === "string" ? raw.session.trading_day : null,
-    levelsSource: typeof raw?.levels_source === "string" ? raw.levels_source : null,
-  };
-}
-
 function flowSource(raw: any, which: string): string {
   if (typeof raw?.source === "string" && raw.source) return which === "box-fallback" ? `${raw.source} (box fallback)` : raw.source;
   const port = Number(raw?.recorder?.connected_port);
@@ -103,7 +83,7 @@ export async function GET() {
       marketState,
       plan,
       planError,
-      recorder: recorderBlock(raw, fileAgeS),
+      recorder: recorderContext(raw, serverEpochMs),
       gex,
       gexError,
       source: flowSource(raw, f.file),
