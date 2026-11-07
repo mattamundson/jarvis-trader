@@ -42,6 +42,8 @@ const SHAPES: Array<[RegExp, unknown]> = [
   [/\/prices\/snapshot/, { MES: { symbol: "MES", ...NULL_PRICE }, MGC: { symbol: "MGC", ...NULL_PRICE } }],
   [/\/decisions\/recent/, []],
   [/\/portfolio\/history\/trades/, []],
+  // trades_router.get_trades_journal returns a list; singular journal evades the plural heuristic.
+  [/\/trades\/journal$/, []],
   [/\/scheduler\/status/, { jobs: [] }],
   [
     // `diagnosis` is required and non-nullable; the page guards on `!journalStats`

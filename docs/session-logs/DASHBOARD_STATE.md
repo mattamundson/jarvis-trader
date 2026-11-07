@@ -1,5 +1,35 @@
 # JARVIS Dashboard State
 
+## 2026-11-07 — review corrections, release still blocked
+
+- Parent accepted footprint single-flight/TPO-union/rollover ordering and shared extras/lean freshness/confirmation after synthetic counterexamples. Additional parent zero-threshold delta, stale overlays, cached failure and nullable chart gaps corrected.
+- Latest focused acceptance: app+test tsc and static guards pass,406Nodepass/2skip,133componentpass,22freshfocusedbrowserpass,productionbuildpass. Full default browser run173pass/4hydrationfail/2skip;not globallygreen. Remote engineLint and two fast tests still block merge. See evidence/TAPE_MASTER_INTEGRATION_20261107.md.
+- No production merge/deployment/restart;master protected engine/auth/operator/journal/proof-record unchanged. Source work remains isolated for review.
+
+## 2026-11-07 — current-master tape integration candidate
+
+- Current-master branch `fix/tape-master-integration-20261107`, base `c35fdafb`; integrates tape without overwriting newer master auth/operator/WS/journal/proof-record behavior.
+- Parent verified app+test TypeScript, production build,383 Node tests passed/2skipped,133 component tests passed,12 fresh fixture browser cases passed. Earlier failures and review corrections preserved in `docs/evidence/TAPE_MASTER_INTEGRATION_20261107.md`.
+- Missing/stale/future data cannot generate home analytical all-clears or LIVE badge. Tape ticks/session plans fail closed. Retired standalone control tests archived intact;no executable controls restored.
+- No engine/risk/kill-switch/runtime env/serving source changes; not merged or deployed. Full exact-head remote CI pending publication. Source PR1011 remains draft81e6efd with separate feature-base proof.
+
+Historical candidate records below are superseded by this entry, not current test/runtime claims.
+
+
+## 2026-11-07 — isolated tape truthfulness candidate (not deployed)
+
+- Candidate branch `fix/tape-truth-review-20261107`, stacked on published `dashboard/tape-20261103` (`b26d24bd`), not master: the current master does not contain `/tape`.
+- Missing/stale actual ticks now withhold analytical conclusions and trigger statuses even when heartbeat writes are fresh. Source snapshot time, not copied-file mtime, ages the tick evidence.
+- Evening Globex plans compare against trading-session date, not the calendar date. Conflicting plans remain historical reference only; no source is silently selected.
+- Parent verification: `tsc --noEmit` exit0; production `next build` exit0; hermetic fresh-server Playwright on3014 **8 passed**, exit0; focused Node tests **26 passed**, exit0.
+- Full Node suite: **357 tests,353 passed,2 failed,2 skipped**, exit1. Both failures reproduced by running their exact base blobs from `b26d24bd`: Hermes gates candidate discovery and SPX card source-mount contract. This is NOT globally green.
+- No serving-tree/PM2/env/engine/risk/kill-switch changes; no orders. Draft review only; no automatic merge/deploy.
+- Evidence retained in recovery reports `dashboard-parent-verification/20261107T181053Z` and `dashboard-base-unit-probe/unit-baseline.log`. Parent independent reviewer still required before publication.
+
+---
+Historical entries below are historical snapshots, not current runtime claims.
+
+
 _Last updated: 2026-09-03 04:38 CDT_
 
 **Incident severity:** `AMBER` — runtime is currently healthy and authenticated on `:3010`, but canonical dashboard Git authority remains drifted. A clean master-based authority candidate now exists and is verified; serving cutover is not yet executed.

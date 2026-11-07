@@ -14,7 +14,7 @@ import { useLLMHealth } from "@/hooks/useLLMHealth";
  * /health/full has no signal and this badge is hidden.
  */
 export function LLMProviderBadge() {
-  const { provider, fallbackActive, status, healthy, singleLegWarning, hasSignal } =
+  const { provider, primaryProvider, fallbackActive, status, healthy, singleLegWarning, hasSignal, lastChecked } =
     useLLMHealth();
 
   if (!hasSignal) return null;
@@ -41,7 +41,7 @@ export function LLMProviderBadge() {
   const title = unhealthy
     ? "LLM path unhealthy — see /health"
     : fallbackActive
-      ? `Serving on fallback leg (${label}); primary is degraded`
+      ? `Engine AI text/review pipeline is serving on its fallback LLM leg (${label}); primary${primaryProvider ? ` (${primaryProvider.toUpperCase()})` : ""} is degraded. Not a market-data source: prices, footprint and GEX are unaffected.`
       : singleLegWarning
         ? "One provider failure from going dark"
         : `LLM primary serving (${label})`;
@@ -59,10 +59,11 @@ export function LLMProviderBadge() {
         style={{ backgroundColor: palette.dot }}
       />
       <span className="font-mono text-[11px] font-semibold leading-none" style={{ color: palette.fg }}>
-        LLM {label}
+        Engine AI: {label}
         {suffix && (
           <span className="font-normal opacity-80">{` · ${suffix}`}</span>
         )}
+        <span className="font-normal opacity-70">{`${fallbackActive && primaryProvider ? ` (primary ${primaryProvider.toUpperCase()} down)` : ""} · not market data${lastChecked ? ` · checked ${Math.max(0, Math.round((Date.now() - lastChecked.getTime()) / 1000))}s ago` : ""}`}</span>
       </span>
     </div>
   );
