@@ -27,6 +27,19 @@ test("tape state dir gates.md is a candidate and the bridge format parses", asyn
   assert.equal(report.fileLockout, null);
 });
 
+test("explicit gates path precedes tape bridge and blank tape path adds no cwd lookup", () => {
+  const home = path.join(os.tmpdir(), "fake-home");
+  const explicit = path.join(home, "explicit", "gates.md");
+  const tape = path.join(home, "tape");
+  const candidates = hermesGatesCandidates({ HERMES_GATES_PATH: explicit, TAPE_STATE_DIR: ` ${tape} `, HOME: home });
+  assert.deepEqual(candidates.slice(0, 2), [explicit, path.join(tape, "gates.md")]);
+  for (const value of [undefined, "", "   "]) {
+    const paths = hermesGatesCandidates({ TAPE_STATE_DIR: value, HOME: home });
+    assert.ok(!paths.includes("gates.md"));
+    assert.equal(paths.length, 3);
+  }
+});
+
 test("a fresh-report bridge file carries the lockout line", () => {
   const p = parseHermesGates("- Premarket readiness 15 of 15 (today): pass\nlockout: off\n");
   assert.equal(p.gates[0].status, "pass");

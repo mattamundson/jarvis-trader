@@ -80,8 +80,10 @@ export function parseHermesGates(markdown: string): Pick<HermesGatesReport, "gat
 export function hermesGatesCandidates(env: NodeJS.ProcessEnv = process.env): string[] {
   const home = env.USERPROFILE || env.HOME || os.homedir();
   const configured = (env.HERMES_GATES_PATH ?? "").trim();
+  const tapeStateDir = (env.TAPE_STATE_DIR ?? "").trim();
   return [
     configured,
+    tapeStateDir ? path.join(tapeStateDir, "gates.md") : "",
     path.join(home, ".hermes", "gates.md"),
     path.join(home, "AppData", "Local", "hermes", "gates.md"),
     path.join(home, "AppData", "Local", "hermes", "profiles", "default", "gates.md"),
