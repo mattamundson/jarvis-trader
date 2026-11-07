@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from backtest.tpo_profile import compute_tpo_profile
+from backtest.tpo_profile import _session_tpo, compute_tpo_profile
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -247,3 +247,15 @@ def test_rth_window_excludes_overnight_and_covers_first_hour():
     day2 = result.loc["2024-01-03"]
     assert (day2["vpoc"] == 100.0).all()
     assert (day2["profile_high"] == 100.0).all()
+
+
+def test_inconsistent_bar_volume_lengths_fail_instead_of_silent_truncation():
+    """Malformed bar adapters must not silently discard the final price bar."""
+    group = {
+        "close": pd.Series([100.0, 101.0]),
+        "high": pd.Series([100.0, 101.0]),
+        "low": pd.Series([100.0, 101.0]),
+        "volume": pd.Series([1.0]),
+    }
+    with pytest.raises(ValueError, match=r"zip\(\) argument 3 is shorter"):
+        _session_tpo(group, tick_size=0.25, value_area_pct=0.70)
