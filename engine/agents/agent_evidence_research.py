@@ -42,7 +42,7 @@ class ArmMetrics:
 @dataclass(frozen=True)
 class ResearchComparison:
     count: int
-    disagreement_count: int
+    disagreement_count: int  # final agent versus independent baseline
     baseline: ArmMetrics
     agent: ArmMetrics
     signed_return_increment: float
@@ -113,7 +113,7 @@ def compare_agent_to_baseline(
     agent = _metrics("agent", rows)
     return ResearchComparison(
         count=len(rows),
-        disagreement_count=sum(row.bull != row.bear for row in rows),
+        disagreement_count=sum(row.agent != row.baseline for row in rows),
         baseline=baseline,
         agent=agent,
         signed_return_increment=agent.mean_signed_return - baseline.mean_signed_return,
