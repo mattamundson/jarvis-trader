@@ -35,6 +35,7 @@ import {
   type TriggerPanel,
 } from "@/lib/tapePlan";
 import type { MarketStateInfo } from "@/lib/marketSession";
+import { tapeEvaluationAllowed } from "@/lib/tapeFreshnessContract";
 
 import TapeExtras from "@/components/tape/TapeExtras";
 import { liveBias, todayCT, type LiveBias } from "@/lib/liveBias";
@@ -144,14 +145,15 @@ export default function TapePage() {
   const plan = data?.plan ?? null;
   const planAvail = data?.planAvail ?? null;
   const gex = data?.gex ?? null;
-  const stale = !snap || isTapeStale(age) || fetchError !== null;
+  const stale = !tapeEvaluationAllowed(!!snap, age, tickAge, fetchError !== null, TAPE_STALE_AFTER_S);
 
   const derived = useMemo(() => {
     if (!snap) return null;
     const last = snap.price.last;
     const since = lastChicagoWallTime(snap.asOfEpoch ?? snap.bars[snap.bars.length - 1]?.t ?? Math.floor(Date.now() / 1000), 5, 30);
     const profile = profileAtPrice(snap.bars, since);
-    const merged = mergeLevels(mergeLevels(snap.levels, gex?.levels ?? []), plan?.extraLevels ?? []);
+    const eligiblePlan = !stale && planAvail?.usable ? plan : null;
+    const merged = mergeLevels(mergeLevels(snap.levels, gex?.levels ?? []), eligiblePlan?.extraLevels ?? []);
     const lv = levelRows(merged, last);
     const lastP = Math.round(last);
     const ladder = profile.some((r) => r.price === lastP)
@@ -161,8 +163,8 @@ export default function TapePage() {
       merged,
       ladder,
       // Trigger evaluation only against a plan of record that passed the availability gate.
-      panel: plan && planAvail?.usable ? triggerPanel(snap, plan) : null,
-      chart: chartModel({ snap, levels: merged, plan }),
+      panel: eligiblePlan ? triggerPanel(snap, eligiblePlan) : null,
+      chart: chartModel({ snap, levels: merged, plan: eligiblePlan }),
       bars: recentBars(snap.bars, 60).reverse(),
       blocks: blocks15(snap.bars).reverse(),
       profile,
@@ -173,7 +175,7 @@ export default function TapePage() {
       alerts: tapeAlerts(snap),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [snap, plan, planAvail, gex]);
+  }, [snap, plan, planAvail, gex, stale]);
 
   const vwapDist = snap && snap.price.vwap !== null ? snap.price.last - snap.price.vwap : null;
   const nq30 = snap?.nq.windows["30m"] ?? null;
@@ -196,7 +198,7 @@ export default function TapePage() {
             ? `- no data yet${fetchError ? ` (${fetchError})` : ""}`
             : fetchError
               ? `- feed error: ${fetchError}. Showing last good snapshot (${fmtAge(age)}).`
-              : `- snapshot is ${fmtAge(age)} (limit ${TAPE_STALE_AFTER_S}s). Do not read these numbers as live.`}
+              : `- snapshot ${fmtAge(age)}, last tick ${fmtAge(tickAge)} (limit ${TAPE_STALE_AFTER_S}s). Do not read these numbers as live.`}
         </div>
       )}
 
@@ -244,11 +246,11 @@ export default function TapePage() {
 
       {/* Alerts */}
       <div data-testid="tape-alerts" className="mb-2 rounded border border-zinc-800 bg-zinc-950 px-3 py-1.5">
-        {!derived ? (
+        {!derived || stale ? (
           // With no usable snapshot there is no basis to evaluate divergence — never render the
           // "no divergence" all-clear line (it reads as an analytical conclusion on zero data).
           <div data-testid="tape-alerts-unevaluated" className="text-zinc-500">
-            No data — divergence not evaluated.
+            No data — divergence not evaluated. Fresh tick and snapshot evidence required.
           </div>
         ) : derived.alerts.length > 0 ? (
           derived.alerts.map((a) => (
@@ -257,7 +259,7 @@ export default function TapePage() {
             </div>
           ))
         ) : (
-          <div className="text-zinc-500">No divergence. CVD and price agree over 10m, and NQ is not lagging while ES rises.</div>
+          <div className="text-zinc-500">No alert thresholds detected in the available inputs; this does not establish complete CVD/NQ agreement.</div>
         )}
       </div>
 
@@ -537,7 +539,7 @@ function TriggerBox({ panel, plan, planError, planAvail, stale, live }: { panel:
     return (
       <section data-testid="tape-triggers" className="mb-2 rounded border border-amber-600 bg-zinc-950 p-2 text-amber-300">
         <LiveBiasLine live={live} stale={stale} />
-        Plan present but no trigger evaluation available (plan check unavailable). Triggers are off until evaluation succeeds.
+        Plan present but evaluation unavailable: tick/snapshot evidence or plan checks are not current. Triggers remain off.
       </section>
     );
   }

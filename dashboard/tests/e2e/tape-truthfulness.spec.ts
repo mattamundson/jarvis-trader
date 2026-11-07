@@ -19,6 +19,12 @@ function loadFixture(name: string): string {
   return readFileSync(join(FIXTURE_DIR, name), "utf8");
 }
 
+test.beforeEach(async ({ page }) => {
+  // Block unrelated API/WebSocket traffic so isolated UI tests never contact brokers/engine.
+  await page.route('**/api/**', route => route.fulfill({status:503,contentType:'application/json',body:'{"error":"isolated fixture: unavailable"}'}));
+  await page.routeWebSocket('**/*', socket => socket.close());
+});
+
 async function mockTapeApi(page: Page, fixture: string) {
   const body = loadFixture(fixture);
   await page.route("**/api/flow/tape", async (route) => {
@@ -90,12 +96,14 @@ test("conflicting plan sources: explicit unavailable reason, never auto-resolved
 });
 
 test("unmocked API contract: recorder + schedule fields exist on the real endpoint", async ({ request }) => {
-  // Real fresh-server response against local state files (Saturday/idle at authoring time).
-  // Type/contract assertions only — no live values are pinned.
+  // Real fresh-server transformation against fixture paths set by playwright.tape.config.ts.
+  // No personal state files or running engine are read.
   const res = await request.get("/api/flow/tape");
   expect(res.status()).toBe(200);
   const body = await res.json();
-  expect(body.ok).toBeDefined();
+  expect(body.ok).toBe(true);
+  expect(body.recorder.state).toBe("idle (fixture)");
+  expect(body.recorder.lastTickAgeS).toBeNull();
   if (body.ok) {
     expect(body.recorder).not.toBeNull();
     expect(typeof body.recorder.state === "string" || body.recorder.state === null).toBe(true);
@@ -107,6 +115,27 @@ test("unmocked API contract: recorder + schedule fields exist on the real endpoi
     expect(body.marketState).toBeDefined();
     expect(body.recorder).toBeNull();
   }
+});
+
+for (const age of [null, 300, -1]) {
+  test(`fresh heartbeat with actual tick age ${age}: no analytical all-clear or trigger`, async ({page}) => {
+    const body=JSON.parse(loadFixture('tape-live-plan-current-ok.json'));
+    body.recorder.lastTickAgeS=age;
+    await page.route('**/api/flow/tape', route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(body)}));
+    await page.goto('/tape');
+    await expect(page.getByTestId('stale-banner')).toBeVisible();
+    await expect(page.getByTestId('tape-alerts-unevaluated')).toBeVisible();
+    await expect(page.getByTestId('tape-trigger-long')).toHaveCount(0);
+  });
+}
+
+test('Sunday calendar date with Monday session plan is eligible', async ({page})=>{
+ const body=JSON.parse(loadFixture('tape-live-plan-current-ok.json'));
+ body.todayCt='2026-11-08';
+ await page.route('**/api/flow/tape', route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(body)}));
+ await page.goto('/tape');
+ await expect(page.getByTestId('tape-plan-unavailable')).toHaveCount(0);
+ await expect(page.getByTestId('tape-trigger-long')).toBeVisible();
 });
 
 function assertIsoDate(v: unknown) {
