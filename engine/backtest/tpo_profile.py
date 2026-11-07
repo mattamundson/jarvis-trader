@@ -51,7 +51,7 @@ def _session_tpo(
     lo_t = np.round(np.minimum(low, high) / tick_size).astype(np.int64)
     hi_t = np.round(np.maximum(low, high) / tick_size).astype(np.int64)
     acc: dict[int, float] = {}
-    for lo_i, hi_i, v in zip(lo_t, hi_t, vol):
+    for lo_i, hi_i, v in zip(lo_t, hi_t, vol, strict=True):
         if not np.isfinite(v) or v <= 0:
             continue
         n = hi_i - lo_i + 1
