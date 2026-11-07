@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, TrendingUp, TrendingDown, Activity } from "lucide-react";
 import type { FlowSnapshot } from "@/lib/flowTypes";
-import { isStale, biasLabel, analyzeGateAction, volumePaceRatio } from "@/lib/flowTypes";
+import { isStale, biasLabel, analyzeGateAction, volumePaceRatio, fmtNum, fmtAsOf } from "@/lib/flowTypes";
 import { fetchDashboardApi } from "@/lib/api";
 
 const CvdChart = dynamic(
@@ -102,12 +102,12 @@ export default function Home() {
                 </div>
                 <div>
                   <span className="text-slate-500">VWAP:</span>{" "}
-                  <span className="text-cyan-400">{flow.es.vwap.toFixed(2)}</span>
+                  <span className="text-cyan-400">{fmtNum(flow.es.vwap)}</span>
                 </div>
                 <div>
                   <span className="text-slate-500">ON H/L:</span>{" "}
                   <span className="text-slate-300">
-                    {flow.es.onHigh.toFixed(2)} / {flow.es.onLow.toFixed(2)}
+                    {fmtNum(flow.es.onHigh)} / {fmtNum(flow.es.onLow)}
                   </span>
                 </div>
                 <div>
@@ -139,15 +139,19 @@ export default function Home() {
                   <div className="space-y-4">
                     <div>
                       <div className="text-xs text-slate-500 mb-2">
-                        CVD: {flow.es.cvd} (low: {flow.es.cvdLow}) | 1m Price + CVD Line
+                        CVD: {fmtNum(flow.es.cvd)} (low: {fmtNum(flow.es.cvdLow)}) | 1m Price + CVD Line
                       </div>
                       <div className="bg-slate-950/60 border border-slate-800 rounded p-2">
-                        <CvdChart
-                          bars={flow.es.bars1m}
-                          gates={flow.gates}
-                          cvdLow={flow.es.cvdLow}
-                          currentCvd={flow.es.cvd}
-                        />
+                        {flow.es.cvd == null || flow.es.cvdLow == null ? (
+                          <div className="text-xs text-slate-500 py-8 text-center">CVD UNAVAILABLE</div>
+                        ) : (
+                          <CvdChart
+                            bars={flow.es.bars1m}
+                            gates={flow.gates}
+                            cvdLow={flow.es.cvdLow}
+                            currentCvd={flow.es.cvd}
+                          />
+                        )}
                       </div>
                     </div>
 
@@ -155,7 +159,7 @@ export default function Home() {
                       <div>
                         <div className="text-xs text-slate-500 mb-2">Delta-at-Price Ladder</div>
                         <div className="bg-slate-950/60 border border-slate-800 rounded p-2 space-y-1">
-                          {flow.es.deltaAtPrice.map((d) => {
+                          {(flow.es.deltaAtPrice ?? []).map((d) => {
                             const netDelta = d.bidLots - d.askLots;
                             const maxLots = Math.max(d.bidLots, d.askLots);
                             const bidWidth = (d.bidLots / maxLots) * 100;
@@ -200,7 +204,11 @@ export default function Home() {
                       <div>
                         <div className="text-xs text-slate-500 mb-2">Big Print Tape (≥20 lots)</div>
                         <div className="bg-slate-950/60 border border-slate-800 rounded p-2 space-y-1 max-h-32 overflow-y-auto">
-                          {flow.es.bigPrints.length === 0 ? (
+                          {flow.es.bigPrints == null ? (
+                            <div className="text-xs text-slate-600 py-8 text-center">
+                              UNAVAILABLE
+                            </div>
+                          ) : flow.es.bigPrints.length === 0 ? (
                             <div className="text-xs text-slate-600 py-8 text-center">
                               No big prints
                             </div>
@@ -319,34 +327,30 @@ export default function Home() {
                         <div className="flex justify-between">
                           <span className="text-slate-500">Call Wall:</span>
                           <span className="text-green-400 font-bold">
-                            {flow.gex.callWall.toFixed(0)}
+                            {fmtNum(flow.gex.callWall, 0)}
                           </span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-slate-500">Put Wall:</span>
                           <span className="text-red-400 font-bold">
-                            {flow.gex.putWall.toFixed(0)}
+                            {fmtNum(flow.gex.putWall, 0)}
                           </span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-slate-500">Flip:</span>
                           <span className="text-cyan-400 font-bold">
-                            {flow.gex.flip.toFixed(0)}
+                            {fmtNum(flow.gex.flip, 0)}
                           </span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-slate-500">Pin:</span>
                           <span className="text-yellow-400 font-bold">
-                            {flow.gex.pin.toFixed(0)}
+                            {fmtNum(flow.gex.pin, 0)}
                           </span>
                         </div>
                         <div className="text-[10px] text-slate-600 mt-1">
                           As of:{" "}
-                          {new Date(flow.gex.asOf).toLocaleTimeString("en-US", {
-                            hour12: false,
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
+                          {fmtAsOf(flow.gex.asOf)}
                         </div>
                       </div>
                     </div>
@@ -367,24 +371,26 @@ export default function Home() {
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-slate-500">NQ Last:</span>
-                    <span className="text-white font-bold">{flow.nq.last.toFixed(2)}</span>
+                    <span className="text-white font-bold">{fmtNum(flow.nq.last)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">NQ VWAP:</span>
-                    <span className="text-cyan-400">{flow.nq.vwap.toFixed(2)}</span>
+                    <span className="text-cyan-400">{fmtNum(flow.nq.vwap)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">NQ vs VWAP:</span>
                     <Badge
                       variant={
-                        flow.nq.last > flow.nq.vwap
-                          ? "bull"
-                          : flow.nq.last < flow.nq.vwap
-                            ? "bear"
-                            : "neutral"
+                        flow.nq.last == null || flow.nq.vwap == null
+                          ? "neutral"
+                          : flow.nq.last > flow.nq.vwap
+                            ? "bull"
+                            : flow.nq.last < flow.nq.vwap
+                              ? "bear"
+                              : "neutral"
                       }
                     >
-                      {flow.nq.last > flow.nq.vwap ? "ABOVE" : flow.nq.last < flow.nq.vwap ? "BELOW" : "AT"}
+                      {flow.nq.last == null || flow.nq.vwap == null ? "UNAVAILABLE" : flow.nq.last > flow.nq.vwap ? "ABOVE" : flow.nq.last < flow.nq.vwap ? "BELOW" : "AT"}
                     </Badge>
                   </div>
                 </div>
