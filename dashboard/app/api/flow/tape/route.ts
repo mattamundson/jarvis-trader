@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import { currentGlobexTradingDate, esMarketState } from "@/lib/marketSession";
 
 /**
  * Read-only local readout of the recorder snapshot for the /tape screen.
@@ -48,6 +49,27 @@ async function readPlan(): Promise<{ plan: unknown; planError: string | null }> 
   }
 }
 
+/**
+ * Recorder liveness block passed through verbatim from the flow snapshot. `lastTickAgeS` is the
+ * age of the last ACTUAL tick (recorder's own last_tick_age_s plus the file's age since it was
+ * written) — deliberately separate from heartbeat/file age, so a 5s heartbeat write can never
+ * make an absent or stale tick look current.
+ */
+function recorderBlock(raw: any, fileAgeS: number | null) {
+  const r = raw?.recorder && typeof raw.recorder === "object" ? raw.recorder : {};
+  const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  const lastTickAgeS = num(r.last_tick_age_s) === null ? null : num(r.last_tick_age_s)! + (fileAgeS ?? 0);
+  return {
+    state: typeof r.state === "string" ? r.state : null,
+    heartbeatAgeS: num(r.heartbeat_age_s),
+    lastTickAgeS: lastTickAgeS === null ? null : Math.round(lastTickAgeS * 10) / 10,
+    reconnects: num(r.reconnects),
+    connectedPort: num(r.connected_port),
+    sessionTradingDay: typeof raw?.session?.trading_day === "string" ? raw.session.trading_day : null,
+    levelsSource: typeof raw?.levels_source === "string" ? raw.levels_source : null,
+  };
+}
+
 function flowSource(raw: any, which: string): string {
   if (typeof raw?.source === "string" && raw.source) return which === "box-fallback" ? `${raw.source} (box fallback)` : raw.source;
   const port = Number(raw?.recorder?.connected_port);
@@ -57,6 +79,9 @@ function flowSource(raw: any, which: string): string {
 export async function GET() {
   const serverEpochMs = Date.now();
   const { plan, planError } = await readPlan();
+  const marketState = esMarketState(serverEpochMs);
+  const globexTradingDate = currentGlobexTradingDate(serverEpochMs);
+  const todayCt = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(serverEpochMs));
   const g = await pick(process.env.TAPE_GEX_FILE || DEFAULT_GEX_FILE, process.env.TAPE_GEX_FALLBACK_FILE || DEFAULT_GEX_FALLBACK, serverEpochMs);
   const gex = g
     ? { asof_ct: g.raw.asof_ct ?? null, pulled_ct: g.raw.pulled_ct ?? null, flip: g.raw.flip ?? null, call_wall: g.raw.call_wall ?? null, put_wall: g.raw.put_wall ?? null, max_pain: g.raw.max_pain ?? null, net_gex: g.raw.net_gex ?? null, source: g.raw.source ?? "ZeroGEX", fetch_ok: g.raw.fetch_ok ?? null, file: g.file, file_age_s: Math.round((serverEpochMs - g.mtimeMs) / 1000), stale: serverEpochMs - g.mtimeMs > STALE_AFTER_MS }
@@ -64,7 +89,7 @@ export async function GET() {
   const gexError = g ? null : "gex file unreadable";
   const f = await pick(process.env.TAPE_FLOW_FILE || DEFAULT_FILE, process.env.TAPE_FLOW_FALLBACK_FILE || DEFAULT_FALLBACK, serverEpochMs);
   if (!f) {
-    return NextResponse.json({ ok: false, serverEpochMs, gex, gexError, error: "flow file unreadable" }, { status: 200, headers: HEADERS });
+    return NextResponse.json({ ok: false, serverEpochMs, todayCt, globexTradingDate, marketState, recorder: null, gex, gexError, error: "flow file unreadable" }, { status: 200, headers: HEADERS });
   }
   const raw = f.raw;
   const nq = raw?.nq ? { rel: raw.nq.rel ?? null, status: raw.nq.status ?? null } : null;
@@ -73,8 +98,12 @@ export async function GET() {
     {
       ok: true,
       serverEpochMs,
+      todayCt,
+      globexTradingDate,
+      marketState,
       plan,
       planError,
+      recorder: recorderBlock(raw, fileAgeS),
       gex,
       gexError,
       source: flowSource(raw, f.file),
