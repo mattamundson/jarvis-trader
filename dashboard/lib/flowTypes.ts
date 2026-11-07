@@ -92,17 +92,18 @@ export function fmtAsOf(iso: string | null | undefined): string {
 }
 
 export function isStale(ts: string, thresholdMs = 60_000): boolean {
-  return Date.now() - new Date(ts).getTime() > thresholdMs;
+  const age = Date.now() - new Date(ts).getTime();
+  return !Number.isFinite(age) || age < 0 || age > thresholdMs;
 }
 
 export function biasLabel(last: number, vwap: number | null): string {
-  if (vwap === null) return UNAVAILABLE;
+  if (vwap == null || !Number.isFinite(vwap) || !Number.isFinite(last)) return UNAVAILABLE;
   const diff = last - vwap;
   if (Math.abs(diff) < 1) return "NEUTRAL";
   return diff > 0 ? "BULL" : "BEAR";
 }
 
-export type GateAction = "BREAK" | "ABSORB" | "NEUTRAL";
+export type GateAction = "BREAK" | "ABSORB" | "NEUTRAL" | "UNAVAILABLE";
 
 export interface GateAnalysis {
   level: number;
@@ -117,8 +118,10 @@ export function analyzeGateAction(
   cvdLow: number | null,
   deltaAtPrice: DeltaAtPrice[] | null,
 ): GateAnalysis {
-  if (currentCvd === null && deltaAtPrice === null) {
-    return { level: gate.level, action: "NEUTRAL", reason: "CVD and delta-at-price unavailable" };
+  if (!Number.isFinite(currentPrice) || !Number.isFinite(gate.level) ||
+      currentCvd == null || cvdLow == null || !Number.isFinite(currentCvd) ||
+      !Number.isFinite(cvdLow) || deltaAtPrice == null) {
+    return { level: gate.level, action: "UNAVAILABLE", reason: "Required CVD/price/delta evidence unavailable" };
   }
   const priceAtGate = deltaAtPrice?.find((d) => Math.abs(d.price - gate.level) < 0.5);
   const priceBeyondGate = currentPrice > gate.level ? currentPrice - gate.level > 1 : gate.level - currentPrice > 1;
@@ -155,14 +158,14 @@ export function analyzeGateAction(
   };
 }
 
-export function volumePaceRatio(bars: Bar1m[]): { ratio: number; color: string } {
-  if (bars.length < 2) return { ratio: 1.0, color: "text-slate-400" };
+export function volumePaceRatio(bars: Bar1m[]): { ratio: number; color: string } | null {
+  if (bars.length < 2 || bars.some(b => !Number.isFinite(b.volume) || b.volume < 0)) return null;
   
   const currentVol = bars[bars.length - 1].volume;
   const priorBars = bars.slice(0, -1);
   const avgVol = priorBars.reduce((sum, b) => sum + b.volume, 0) / priorBars.length;
   
-  if (avgVol === 0) return { ratio: 1.0, color: "text-slate-400" };
+  if (avgVol === 0) return null;
   
   const ratio = currentVol / avgVol;
   

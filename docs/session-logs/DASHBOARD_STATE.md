@@ -1,5 +1,15 @@
 # JARVIS Dashboard State
 
+## 2026-11-07 — current-master tape integration candidate
+
+- Current-master branch `fix/tape-master-integration-20261107`, base `c35fdafb`; integrates tape without overwriting newer master auth/operator/WS/journal/proof-record behavior.
+- Parent verified app+test TypeScript, production build,383 Node tests passed/2skipped,133 component tests passed,12 fresh fixture browser cases passed. Earlier failures and review corrections preserved in `docs/evidence/TAPE_MASTER_INTEGRATION_20261107.md`.
+- Missing/stale/future data cannot generate home analytical all-clears or LIVE badge. Tape ticks/session plans fail closed. Retired standalone control tests archived intact;no executable controls restored.
+- No engine/risk/kill-switch/runtime env/serving source changes; not merged or deployed. Full exact-head remote CI pending publication. Source PR1011 remains draft81e6efd with separate feature-base proof.
+
+Historical candidate records below are superseded by this entry, not current test/runtime claims.
+
+
 ## 2026-11-07 — isolated tape truthfulness candidate (not deployed)
 
 - Candidate branch `fix/tape-truth-review-20261107`, stacked on published `dashboard/tape-20261103` (`b26d24bd`), not master: the current master does not contain `/tape`.

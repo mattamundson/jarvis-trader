@@ -15,6 +15,24 @@ vi.mock("@/hooks/useEngineStatus", () => ({
 vi.mock("@/lib/engine-websocket-context", () => ({
   useEngineWebSocketContext: vi.fn(),
 }));
+// Network-adjacent hooks the strip also consumes — mocked so no fetch/WS/SWR
+// poll ever leaves the test.
+vi.mock("swr", () => ({
+  default: vi.fn(() => ({
+    data: undefined,
+    error: undefined,
+    isLoading: false,
+    isValidating: false,
+    mutate: vi.fn(),
+  })),
+}));
+vi.mock("@/lib/masterApi", () => ({
+  fetchMasterStatus: vi.fn(),
+  aggregationBannerState: vi.fn(() => ({ degraded: false, reason: "healthy" })),
+}));
+vi.mock("@/hooks/useVercelDeployHealth", () => ({
+  useVercelDeployHealth: vi.fn(() => ({ data: undefined })),
+}));
 
 import { useEngineStatus } from "@/hooks/useEngineStatus";
 import { useEngineWebSocketContext } from "@/lib/engine-websocket-context";
@@ -23,9 +41,10 @@ import { SystemFreshnessStrip } from "@/components/SystemFreshnessStrip";
 const mockedUseEngineStatus = vi.mocked(useEngineStatus);
 const mockedUseEngineWebSocketContext = vi.mocked(useEngineWebSocketContext);
 
-function mockWs(isConnected: boolean) {
+function mockWs(isConnected: boolean, isPolling = false) {
   mockedUseEngineWebSocketContext.mockReturnValue({
     isConnected,
+    isPolling,
     lastEvent: null,
     subscribe: vi.fn(() => () => {}),
     connect: vi.fn(),
@@ -73,5 +92,18 @@ describe("SystemFreshnessStrip", () => {
 
     expect(screen.queryByText(/Engine online/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/^WS connected/i)).not.toBeInTheDocument();
+  });
+
+  it("renders a polling state: WS disconnected but the strip says 'polling', never 'connected'", () => {
+    mockedUseEngineStatus.mockReturnValue({
+      isOnline: true,
+      lastChecked: new Date(),
+    });
+    mockWs(false, true);
+
+    render(<SystemFreshnessStrip />);
+
+    expect(screen.getByText(/polling/i)).toBeInTheDocument();
+    expect(screen.queryByText(/WS connected/i)).not.toBeInTheDocument();
   });
 });

@@ -1,4 +1,6 @@
-# Tape truthfulness — local verification and review receipt
+# Tape truthfulness — historical feature-base verification
+
+Current-master acceptance and deviations: see `TAPE_MASTER_INTEGRATION_20261107.md`. This document preserves original PR1011 evidence only; its branch/override/test counts are not the current-master integration contract.
 
 ## Scope and ancestry
 Stacked review candidate against published `dashboard/tape-20261103` at `b26d24bdefe3de7dbf173f0c194146aedbad951e`. Master `c35fdafbb26382076fae078eb5792f626aef8678` does not contain `/tape`; this is not a master-based integration or production deployment. Child implementation commit `a90e05932b8a1501103801813fcc3f0f23751131` plus parent correction is the review scope.
