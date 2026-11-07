@@ -41,9 +41,15 @@ def _detect_tick_size(close: pd.Series) -> float:
 
 def _session_tpo(
     group: pd.DataFrame,
-    tick_size: float,
+    tick_size: float | None,
     value_area_pct: float,
 ) -> pd.Series:
+    if tick_size is None:
+        # Inferring from the whole input frame uses future close differences.
+        # A session is selected only once it has completed, so this group is
+        # the earliest causally available window for its price bins.
+        tick_size = _detect_tick_size(group["close"])
+    tick_size = max(tick_size, 1e-8)
     close = group["close"].to_numpy(dtype=float)
     high = group["high"].to_numpy(dtype=float) if "high" in group else close
     low = group["low"].to_numpy(dtype=float) if "low" in group else close
@@ -141,7 +147,7 @@ def compute_tpo_profile(
     tz : str
         Timezone for session detection.
     tick_size : float | None
-        Price bin size. Auto-detected from df['close'] diffs when None.
+        Price bin size. Auto-detected within each completed RTH session when None.
 
     Returns
     -------
@@ -152,10 +158,6 @@ def compute_tpo_profile(
         never a profile requiring bars after the current timestamp.
     """
     out = df.copy()
-
-    if tick_size is None:
-        tick_size = _detect_tick_size(out["close"])
-    tick_size = max(tick_size, 1e-8)
 
     idx = out.index
     if idx.tz is None:
