@@ -33,6 +33,44 @@ def _rth_bars(date_str: str, prices: list[float], tz: str = "America/Chicago") -
     )
 
 
+def test_weekend_profile_cannot_leak_backward_across_friday_close():
+    """A future synthetic weekend RTH bar must not alter Friday's known profile."""
+    df = _make_df([
+        ("2025-01-09 09:30", 90.0),
+        ("2025-01-10 09:30", 100.0),
+        ("2025-01-10 15:00", 100.0),
+        ("2025-01-11 09:30", 175.0),
+        ("2025-01-12 09:30", 200.0),
+        ("2025-01-13 09:30", 300.0),
+    ])
+    full = compute_tpo_profile(df, tick_size=0.25)
+    prefix = compute_tpo_profile(df.iloc[:3], tick_size=0.25)
+    assert full["vpoc"].iloc[1] == 90.0  # Friday RTH is not complete yet.
+    assert prefix["vpoc"].iloc[2] == 100.0
+    assert full["vpoc"].iloc[2] == prefix["vpoc"].iloc[2]
+    assert full["vpoc"].iloc[-1] == 100.0  # Weekend is not an RTH day.
+
+
+def test_auto_tick_uses_only_completed_session_bars():
+    """Later close differences cannot change a previously completed profile."""
+    rng = np.random.default_rng(0)
+    closes = 100 + np.cumsum(rng.normal(0, 1, 500))
+    df = pd.DataFrame(
+        {
+            "close": closes, "high": closes + 1, "low": closes - 1,
+            "volume": np.full(len(closes), 1000.0),
+        },
+        index=pd.date_range("2025-01-02 08:00", periods=500, freq="h", tz="UTC"),
+    )
+    full = compute_tpo_profile(df)
+    prefix = compute_tpo_profile(df.iloc[:401])
+    a = full["vpoc"].iloc[:401].to_numpy()
+    b = prefix["vpoc"].to_numpy()
+    both = ~(np.isnan(a) | np.isnan(b))
+    assert both.sum() > 300
+    assert np.allclose(a[both], b[both], atol=1e-9)
+
+
 # ── Test 1: single-day happy path ────────────────────────────────────────────
 
 def test_single_day_columns_present():
