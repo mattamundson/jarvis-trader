@@ -62,6 +62,37 @@ def _clock_reason(row: sqlite3.Row) -> str:
     return "clocks_structurally_ready_not_certified"
 
 
+def _nested_clock_counts(row: sqlite3.Row, counts: Counter[str]) -> None:
+    """Count independent nested blockers even when the decision clock is naive."""
+    try:
+        pipeline: Any = json.loads(row["full_pipeline_json"])
+    except (ValueError, TypeError):
+        return
+    if not isinstance(pipeline, dict):
+        return
+    counts["pipeline_dict"] += 1
+    debate = pipeline.get("debate_result")
+    if not isinstance(debate, dict):
+        return
+    counts["debate_dict"] += 1
+    for role in ("bull", "bear"):
+        report = debate.get(f"{role}_report")
+        if isinstance(report, dict):
+            counts[f"{role}_report_dict"] += 1
+            try:
+                _clock(report.get("timestamp"), f"{role}_report.timestamp")
+            except ValueError:
+                pass
+            else:
+                counts[f"{role}_report_aware"] += 1
+    try:
+        _clock(debate.get("timestamp"), "debate.timestamp")
+    except ValueError:
+        pass
+    else:
+        counts["debate_aware"] += 1
+
+
 def inventory(db_path: Path) -> dict[str, Any]:
     """Count every in-scope row once, reporting the first clock blocker only.
 
@@ -82,11 +113,13 @@ def inventory(db_path: Path) -> dict[str, Any]:
             "SELECT COUNT(*) FROM decisions WHERE symbol IN (?, ?, ?, ?)", _SYMBOLS
         ).fetchone()[0]
         reasons: Counter[str] = Counter()
+        nested: Counter[str] = Counter()
         for row in connection.execute(
             "SELECT id, timestamp, full_pipeline_json FROM decisions "
             "WHERE symbol IN (?, ?, ?, ?) ORDER BY id", _SYMBOLS
         ):
             reasons[_clock_reason(row)] += 1
+            _nested_clock_counts(row, nested)
     assert sum(reasons.values()) == scoped
     return {
         "status": "CLOCK_INVENTORY_ONLY_NOT_CERTIFIED",
@@ -94,6 +127,12 @@ def inventory(db_path: Path) -> dict[str, Any]:
         "scoped_decisions": scoped,
         "symbols_in_scope": list(_SYMBOLS),
         "first_blocker_counts": dict(sorted(reasons.items())),
+        "independent_nested_counts": {
+            key: nested[key] for key in (
+                "pipeline_dict", "debate_dict", "bull_report_dict", "bear_report_dict",
+                "bull_report_aware", "bear_report_aware", "debate_aware",
+            )
+        },
         "comparison_eligible_certified": 0,
         "limitations": [
             "No input-vintage, independent baseline, or forward-outcome attestation read",

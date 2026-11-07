@@ -59,6 +59,15 @@ def test_inventory_counts_every_scoped_row_once_and_never_certifies(tmp_path):
         "decision.timestamp must have timezone": 1,
         "missing_or_invalid_pipeline_json": 1,
     }
+    assert result["independent_nested_counts"] == {
+        "pipeline_dict": 3,
+        "debate_dict": 3,
+        "bull_report_dict": 3,
+        "bear_report_dict": 3,
+        "bull_report_aware": 1,
+        "bear_report_aware": 1,
+        "debate_aware": 1,
+    }
     assert result["comparison_eligible_certified"] == 0
 
 
