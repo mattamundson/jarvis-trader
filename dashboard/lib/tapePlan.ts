@@ -174,7 +174,10 @@ export function evaluateTrigger(sideName: "long" | "short", p: SidePlan, snap: T
   const hitStop = (b: { h: number; l: number }) => p.stop !== null && (sg === 1 ? b.l <= p.stop : b.h >= p.stop);
   const asOf = snap.asOfEpoch ?? (snap.bars.length ? snap.bars[snap.bars.length - 1].t + 60 : 0);
   const from = asOf - lookbackMin * 60;
-  const five = completed5m(snap.bars, asOf).filter((b) => b.start >= from);
+  // Keep a bar whose close falls inside the lookback. Filtering on the bar's
+  // open drops the first of two consecutive closes at the exact moment the
+  // second one completes when lookbackMin is 10, the minimum allowed.
+  const five = completed5m(snap.bars, asOf).filter((b) => b.start + 300 >= from);
   const confirmedIn = (a: number, z: number) => snap.bars.some((b) => b.t >= a && b.t < z && b.delta !== null && sg * b.delta >= p.minDelta);
 
   // breakStart is the open of the FIRST of the two confirming closes. The confirming bar is +300s.
