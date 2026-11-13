@@ -88,6 +88,16 @@ test("a close back through the level after two confirming closes is a failure, n
 test("the confirming bar cannot wick through the stop and still signal", () => {
   const bars = [...minutes(T0, 101), ...minutes(T0 + 300, 102, 200, 89)];
   const ev = longEval(bars, T0 + 600);
-  assert.notEqual(ev.status, "TRIGGERED");
+  assert.equal(ev.status, "ARMED");
   assert.equal(ev.checks[0].ok, false);
+});
+
+test("a stop wick on the unconfirmed second close does not seed the next pair", () => {
+  const bars = [...minutes(T0, 101), ...minutes(T0 + 300, 102, 200, 89), ...minutes(T0 + 600, 103)];
+  const ev = longEval(bars, T0 + 900);
+  assert.equal(ev.status, "ARMED");
+  assert.equal(ev.checks[0].ok, false);
+  assert.match(ev.checks[0].detail, /1 of 2/);
+  const resumed = longEval([...bars, ...minutes(T0 + 900, 104)], T0 + 1200);
+  assert.equal(resumed.status, "TRIGGERED");
 });
