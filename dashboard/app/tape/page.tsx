@@ -38,7 +38,9 @@ import {
 import type { MarketStateInfo } from "@/lib/marketSession";
 import { tapeEvaluationAllowed } from "@/lib/tapeFreshnessContract";
 
+import ClaudeReadPanel from "@/components/tape/ClaudeReadPanel";
 import TapeExtras from "@/components/tape/TapeExtras";
+import { SIGNAL_NOT_A_FILL } from "@/lib/tape/claudeRead";
 import { liveBias, todayCT, type LiveBias } from "@/lib/liveBias";
 
 const POLL_MS = 5000;
@@ -220,6 +222,8 @@ export default function TapePage() {
         </span>
         <span data-testid="tape-market-state">| Market: {marketLabel}</span>
       </div>
+
+      <ClaudeReadPanel />
 
       <TapeExtras />
 
@@ -531,6 +535,7 @@ function TriggerBox({ panel, plan, planError, planAvail, stale, live }: { panel:
           {plan.short ? `; short trigger ${plan.short.trigger}${plan.short.targets.length ? `, targets ${plan.short.targets.join("/")}` : ""}` : ""}
           {plan.extraLevels.length ? `; ${plan.extraLevels.length} plan level(s)` : ""}.
         </div>
+        <div className="mt-1 text-[11px] font-bold text-amber-200">{SIGNAL_NOT_A_FILL}</div>
       </section>
     );
   }
@@ -569,6 +574,7 @@ function TriggerCard({ ev, testid }: { ev: TriggerEval; testid: string }) {
         <span className={`rounded border px-2 py-0.5 text-xs font-bold ${STATUS_CLS[ev.status]}`}>{ev.status}</span>
         <span className="text-zinc-500">{ev.reason}</span>
       </div>
+      <div data-testid={`${testid}-signal-label`} className="mb-1 text-[11px] font-bold text-amber-200">{SIGNAL_NOT_A_FILL}</div>
       {ev.reArmedNote && (
         <div data-testid={`${testid}-rearmed`} className="mb-1 text-[10px] text-zinc-500">
           {ev.reArmedNote}
