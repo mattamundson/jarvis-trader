@@ -1,5 +1,6 @@
 "use client";
 import { fetchDashboardApi } from "@/lib/api";
+import { SIGNAL_NOT_A_FILL } from "@/lib/tape/claudeRead";
 /**
  * Lean Tape screen (screen 1 of the lean dashboard). Read-only readout.
  * Reads only /api/flow/tape (flow-latest.json + gex-latest.json + config/tape-plan.json).
@@ -202,6 +203,7 @@ export default function LeanTape() {
               </tbody>
             </table>
             <div style={{ color: "#5d6b80", fontSize: 11, marginTop: 6 }}>Gamma ~15–20 min delayed. Plan date {plan?.date ?? "--"}{!planUsable ? ` · PLAN UNAVAILABLE FOR TRIGGERS: ${!evalAllowed ? "fresh tick/snapshot evidence unavailable" : planAvail.reason}` : ""}{d?.planError ? ` · ${d.planError}` : ""}{plan?.long?.targets?.length ? ` · long targets ${plan.long.targets.join(" / ")}` : ""}</div>
+            <div style={{ color: "#f5b82e", fontSize: 12, fontWeight: 700, marginTop: 6 }}>{SIGNAL_NOT_A_FILL}</div>
           </Panel>
         </div>
         <Panel title="Footprint" style={{ gridColumn: "1 / -1", minHeight: 120 }}>

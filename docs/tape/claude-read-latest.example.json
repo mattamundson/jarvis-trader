@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "written_at": "2026-11-12T08:05:00-06:00",
+  "source": "claude",
+  "kind": "plan",
+  "context": {
+    "prior_sessions": [
+      {
+        "date": "2026-11-11",
+        "close": 7640.5,
+        "low": 7600.0,
+        "close_note": "IB close stand-in, not CME settle"
+      }
+    ],
+    "vix_regime": "elevated",
+    "event_implied_move": "CPI day, about 40 pts",
+    "gamma": {
+      "regime": "short",
+      "flip": 7660.75,
+      "pin": 7676,
+      "as_of": "2026-11-12T07:50:00-06:00"
+    },
+    "stale": ["gex vendor print"]
+  },
+  "bias": "lean long above 7629",
+  "plan": "Two consecutive 5m closes above 7635.5. Paper readout only.",
+  "levels": [
+    { "price": 7629, "label": "prior shelf" }
+  ],
+  "triggers": [
+    {
+      "name": "long shelf",
+      "level": 7635.5,
+      "direction": "above",
+      "closes_needed": 2,
+      "closes_seen": 0,
+      "status": "armed"
+    }
+  ],
+  "note": "paper readout only",
+  "live_legal": "NO, size 0"
+}
