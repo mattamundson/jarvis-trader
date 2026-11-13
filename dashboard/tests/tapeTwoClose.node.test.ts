@@ -56,6 +56,20 @@ test("two consecutive 5m closes beyond the level confirm the long and the short"
   assert.match(short.checks[0].label, /two consecutive 5m closes below 100/);
 });
 
+test("a 10-minute lookback still holds both closes after the second bar completes", () => {
+  const bars = [...minutes(T0, 101), ...minutes(T0 + 300, 102)];
+  const atClose = evaluateTrigger("long", LONG, snap(bars, T0 + 600, 102), 21000, 10, 15);
+  const oneSecondLater = evaluateTrigger("long", LONG, snap(bars, T0 + 601, 102), 21000, 10, 15);
+  assert.equal(atClose.status, "TRIGGERED");
+  assert.equal(oneSecondLater.status, "TRIGGERED");
+  assert.equal(oneSecondLater.checks[0].ok, true);
+  const stillInside = evaluateTrigger("long", LONG, snap(bars, T0 + 900, 102), 21000, 10, 15);
+  assert.equal(stillInside.status, "TRIGGERED");
+  const firstCloseAgedOut = evaluateTrigger("long", LONG, snap(bars, T0 + 901, 102), 21000, 10, 15);
+  assert.equal(firstCloseAgedOut.status, "ARMED");
+  assert.match(firstCloseAgedOut.checks[0].detail, /1 of 2/);
+});
+
 test("two beyond closes with a gap between them do not confirm", () => {
   const bars = [...minutes(T0, 101), ...minutes(T0 + 600, 102)];
   const ev = longEval(bars, T0 + 900);

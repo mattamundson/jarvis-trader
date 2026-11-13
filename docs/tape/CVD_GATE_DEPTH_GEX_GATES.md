@@ -92,4 +92,4 @@ Stale badge:
 - Gamma `as_of` is shown with its age and flagged when that age is more than 60 minutes, the timestamp is missing, or it is unparseable. That flag is independent of the written_at badge.
 - The panel recomputes both ages from the timestamps on each poll, including a failed poll. A failed poll never leaves the badge on CURRENT: the read is STALE when the rule above says so, and otherwise the badge is REFRESH FAILED until a poll succeeds.
 
-The plan trigger on the same page (long and short in `config/tape-plan.json`) confirms only after two consecutive completed 5-minute closes beyond the level. One close leaves the side ARMED. That status is a signal, not a fill.
+The plan trigger on the same page (long and short in `config/tape-plan.json`) confirms only after two consecutive completed 5-minute closes beyond the level. One close leaves the side ARMED. That status is a signal, not a fill. The lookback keeps a 5-minute bar until its close is older than `lookbackMin` (minimum 10). Filtering on the bar's open dropped the first close at the instant the second one completed.
