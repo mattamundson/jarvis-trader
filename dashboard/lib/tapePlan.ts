@@ -152,11 +152,11 @@ export function ifThenText(sideName: "long" | "short", p: SidePlan, nqRef: numbe
   return `IF two consecutive 5m closes ${dir} ${p.trigger} AND 1m delta ${long ? ">=" : "<="} ${dsign}${p.minDelta}${nqTxt} THEN ${tg}, ${stop}`;
 }
 
-/** Count the trailing run of time-consecutive 5m closes beyond the level. A gap breaks the run. */
-function consecutiveBeyond(bars: Bar5m[], beyond: (px: number) => boolean): number {
+/** Count the trailing run of time-consecutive 5m closes beyond the level. A gap or a bar that does not count breaks the run. */
+function consecutiveBeyond(bars: Bar5m[], beyond: (px: number) => boolean, counts: (b: Bar5m) => boolean): number {
   let n = 0;
   for (let i = bars.length - 1; i >= 0; i--) {
-    if (!beyond(bars[i].c)) break;
+    if (!beyond(bars[i].c) || !counts(bars[i])) break;
     if (n > 0 && bars[i + 1].start !== bars[i].start + 300) break;
     n += 1;
   }
@@ -197,10 +197,11 @@ export function evaluateTrigger(sideName: "long" | "short", p: SidePlan, snap: T
         pendingStart = null;
       } else if (pendingStart !== null && b.start === pendingStart + 300) {
         if (hitStop(b)) {
-          failedReason = `stop ${p.stop} touched at ${fmtCt(b.start)} after the break`;
-          failedAt = b.start;
+          // The second close traded through the stop before the pair confirmed.
+          // That is not a signal and not a failed break, and this bar must not
+          // become the first close of the next pair.
           breakStart = null;
-          pendingStart = b.start;
+          pendingStart = null;
         } else {
           breakStart = pendingStart;
           pendingStart = null;
@@ -208,7 +209,7 @@ export function evaluateTrigger(sideName: "long" | "short", p: SidePlan, snap: T
           failedAt = null;
         }
       } else {
-        pendingStart = b.start;
+        pendingStart = hitStop(b) ? null : b.start;
       }
     } else if (breakStart !== null) {
       if (confirmedIn(breakStart, b.start + 300)) {
@@ -247,7 +248,7 @@ export function evaluateTrigger(sideName: "long" | "short", p: SidePlan, snap: T
   const knownDeltaBars = deltaBars.filter(b => b.delta !== null && Number.isFinite(b.delta));
   const bestDelta = knownDeltaBars.reduce<number | null>((m, b) => m === null || sg * b.delta! > sg * m ? b.delta : m, null);
   const deltaOk = bestDelta !== null && sg * bestDelta >= p.minDelta;
-  const streak = consecutiveBeyond(five, beyond);
+  const streak = consecutiveBeyond(five, beyond, (b) => !hitStop(b));
   const checks: TriggerCheck[] = [
     {
       label: `two consecutive 5m closes ${sideName === "long" ? "above" : "below"} ${p.trigger}`,
