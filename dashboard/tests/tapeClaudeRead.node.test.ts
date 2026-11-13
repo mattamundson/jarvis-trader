@@ -7,6 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   SIGNAL_NOT_A_FILL,
+  claudeReadBadge,
   claudeReadFreshness,
   findPrivateKeys,
   gammaFreshness,
@@ -189,6 +190,22 @@ test("loader reports a missing or malformed file and strips leaks from a real fi
 test("state directory is TAPE_STATE_DIR, else ~/tape/state", () => {
   assert.equal(tapeStateDir({ TAPE_STATE_DIR: "/var/tape-state" } as NodeJS.ProcessEnv), "/var/tape-state");
   assert.equal(tapeStateDir({ HOME: "/tmp/tapehome", USERPROFILE: "" } as NodeJS.ProcessEnv), path.join("/tmp/tapehome", "tape", "state"));
+});
+
+test("a failed poll cannot leave a read labeled current", () => {
+  const fresh = claudeReadFreshness("2026-11-12T09:00:00-06:00", at("2026-11-12T09:10:00-06:00"));
+  assert.equal(fresh.stale, false);
+  assert.equal(claudeReadBadge(false, fresh), "current");
+  assert.equal(claudeReadBadge(true, fresh), "refresh-failed");
+  const aged = claudeReadFreshness("2026-11-12T09:00:00-06:00", at("2026-11-12T10:05:00-06:00"));
+  assert.equal(aged.stale, true);
+  assert.equal(claudeReadBadge(true, aged), "stale");
+  assert.equal(claudeReadBadge(false, null), null);
+  const panel = readFileSync(path.join(HERE, "../components/tape/ClaudeReadPanel.tsx"), "utf8");
+  assert.equal(panel.includes("claudeReadFreshness(read.written_at, now)"), true);
+  assert.equal(panel.includes("claudeReadBadge(failed, fresh)"), true);
+  assert.equal(panel.includes("claude-read-refresh-failed"), true);
+  assert.equal(panel.includes("body?.freshness"), false);
 });
 
 test("trigger surfaces use the exact signal label", () => {

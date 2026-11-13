@@ -3,7 +3,15 @@
 import { useEffect, useState } from "react";
 import { fetchDashboardApi } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
-import { SIGNAL_NOT_A_FILL, type ClaudeReadPayload, type ClaudeReadTrigger, type ClaudeTriggerStatus } from "@/lib/tape/claudeRead";
+import {
+  SIGNAL_NOT_A_FILL,
+  claudeReadBadge,
+  claudeReadFreshness,
+  gammaFreshness,
+  type ClaudeReadPayload,
+  type ClaudeReadTrigger,
+  type ClaudeTriggerStatus,
+} from "@/lib/tape/claudeRead";
 
 const POLL_MS = 5000;
 
@@ -44,10 +52,13 @@ function TriggerRow({ trigger }: { trigger: ClaudeReadTrigger }) {
 export default function ClaudeReadPanel() {
   const [body, setBody] = useState<ClaudeReadPayload | null>(null);
   const [failed, setFailed] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     let alive = true;
     const pull = async () => {
+      // Advance the clock even when the request fails, so a held read can age out of CURRENT.
+      setNow(Date.now());
       try {
         const next = await fetchDashboardApi<ClaudeReadPayload>("/api/tape/claude-read");
         if (alive) {
@@ -67,35 +78,44 @@ export default function ClaudeReadPanel() {
   }, []);
 
   const read = body?.read ?? null;
-  const fresh = body?.freshness ?? null;
-  const gamma = body?.gamma ?? null;
-  const stale = fresh?.stale === true;
+  const fresh = read ? claudeReadFreshness(read.written_at, now) : null;
+  const gamma = read?.context.gamma
+    ? { ...gammaFreshness(read.context.gamma.as_of, now), present: true }
+    : null;
+  const badge = claudeReadBadge(failed, fresh);
+  const frame = badge === "stale"
+    ? "border-red-600 bg-red-950"
+    : badge === "refresh-failed"
+      ? "border-amber-500 bg-amber-950"
+      : "border-zinc-700 bg-zinc-950";
 
   return (
-    <section data-testid="claude-read-panel" className={`mb-2 rounded border p-2 ${stale ? "border-red-600 bg-red-950" : "border-zinc-700 bg-zinc-950"}`}>
+    <section data-testid="claude-read-panel" className={`mb-2 rounded border p-2 ${frame}`}>
       <div className="mb-1 flex flex-wrap items-center gap-2">
         <h2 className="text-sm font-bold tracking-wide text-zinc-100">Claude read</h2>
-        {fresh && (
-          stale
-            ? <Badge variant="bear" data-testid="claude-read-stale">STALE</Badge>
-            : <Badge variant="info" data-testid="claude-read-fresh">CURRENT</Badge>
-        )}
+        {badge === "stale" && <Badge variant="bear" data-testid="claude-read-stale">STALE</Badge>}
+        {badge === "current" && <Badge variant="info" data-testid="claude-read-fresh">CURRENT</Badge>}
+        {badge === "refresh-failed" && <Badge variant="warn" data-testid="claude-read-refresh-failed">REFRESH FAILED</Badge>}
         <span className="text-[10px] text-zinc-500">read-only · {SIGNAL_NOT_A_FILL}</span>
       </div>
 
-      {failed && <p data-testid="claude-read-error">Claude read could not be loaded.</p>}
+      {failed && (
+        <p data-testid="claude-read-error">
+          {read ? "Claude read could not be refreshed. Not confirmed current." : "Claude read could not be loaded."}
+        </p>
+      )}
       {!failed && !body && <p className="text-zinc-400">Reading claude-read-latest.json…</p>}
       {body?.missing && <p data-testid="claude-read-missing">{body.error}</p>}
       {body?.malformed && <p data-testid="claude-read-malformed">{body.error}</p>}
 
       {read && fresh && (
         <div className="space-y-2">
-          {stale && (
+          {badge === "stale" && (
             <div role="alert" className="rounded border border-red-500 bg-red-900 px-2 py-1 text-sm font-bold text-red-100">
               STALE — {fresh.reason}
             </div>
           )}
-          {!stale && <p className="text-[11px] text-zinc-400">{fresh.reason}</p>}
+          {badge !== "stale" && <p className="text-[11px] text-zinc-400">{fresh.reason}</p>}
           <p data-testid="claude-read-written-at">
             written {fresh.writtenAtCt ?? read.written_at} · kind {read.kind}{read.source ? ` · source ${read.source}` : ""}
           </p>

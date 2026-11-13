@@ -90,5 +90,6 @@ Stale badge:
 - During RTH, Monday–Friday 08:30–15:00 America/Chicago inclusive, the read is stale when `written_at` is more than 60 minutes before the server clock, or when it is in the future.
 - Outside that window, including the weekday overnight session and the weekend, the read is stale when its Globex trading day is not the current Globex trading day. That day is the Chicago calendar date, rolled forward at 17:00 CT (Sunday 17:00 already belongs to Monday). Age alone does not stale the file outside RTH.
 - Gamma `as_of` is shown with its age and flagged when that age is more than 60 minutes, the timestamp is missing, or it is unparseable. That flag is independent of the written_at badge.
+- The panel recomputes both ages from the timestamps on each poll, including a failed poll. A failed poll never leaves the badge on CURRENT: the read is STALE when the rule above says so, and otherwise the badge is REFRESH FAILED until a poll succeeds.
 
 The plan trigger on the same page (long and short in `config/tape-plan.json`) confirms only after two consecutive completed 5-minute closes beyond the level. One close leaves the side ARMED. That status is a signal, not a fill.
