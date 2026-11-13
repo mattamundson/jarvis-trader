@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "written_at": "2026-11-12T08:05:00-06:00",
+  "source": "claude",
+  "kind": "plan",
+  "r": "SENTINEL_R_TOP",
+  "R": "SENTINEL_R_UPPER",
+  "pnl": "SENTINEL_PNL_1234",
+  "pl": "SENTINEL_PL",
+  "fill": "SENTINEL_FILL_BUY_1_MES",
+  "position": "SENTINEL_POSITION_LONG_2",
+  "account": "SENTINEL_ACCOUNT_DU",
+  "secret_note": "SENTINEL_UNKNOWN_KEY",
+  "context": {
+    "prior_sessions": [
+      {
+        "date": "2026-11-11",
+        "close": 7640.5,
+        "low": 7600.0,
+        "close_note": "IB close stand-in, not CME settle",
+        "r": "SENTINEL_R_PRIOR"
+      }
+    ],
+    "vix_regime": "elevated",
+    "event_implied_move": "CPI day, about 40 pts",
+    "gamma": {
+      "regime": "short",
+      "flip": 7660.75,
+      "pin": 7676,
+      "as_of": "2026-11-12T07:50:00-06:00",
+      "pnl": "SENTINEL_PNL_GAMMA"
+    },
+    "stale": ["gex vendor print"],
+    "account": "SENTINEL_ACCOUNT_NESTED"
+  },
+  "bias": "lean long above 7629",
+  "plan": "Two consecutive 5m closes above 7635.5. Paper readout only.",
+  "levels": [
+    { "price": 7629, "label": "prior shelf", "fill": "SENTINEL_FILL_LEVEL" }
+  ],
+  "triggers": [
+    {
+      "name": "long shelf",
+      "level": 7635.5,
+      "direction": "above",
+      "closes_needed": 2,
+      "closes_seen": 0,
+      "status": "armed",
+      "R": "SENTINEL_R_VALUE",
+      "pl": "SENTINEL_PL_TRIGGER",
+      "pnl": "SENTINEL_PNL_TRIGGER"
+    }
+  ],
+  "note": "paper readout only",
+  "live_legal": "NO, size 0"
+}
