@@ -97,6 +97,9 @@ export interface GammaFreshness {
   reason: string;
 }
 
+/** Header badge. A failed poll never stays "current" on the last server snapshot. */
+export type ClaudeReadBadge = "current" | "stale" | "refresh-failed";
+
 export type ParseClaudeRead = { ok: true; read: ClaudeRead } | { ok: false; error: string };
 
 export interface ClaudeReadPayload {
@@ -195,6 +198,18 @@ export function claudeReadFreshness(writtenAtIso: string, nowMs: number): Claude
     ? `written trading day ${writtenTradingDay ?? "unknown"}, current trading day ${currentTradingDay ?? "unknown"}`
     : `written on trading day ${writtenTradingDay} (outside RTH)`;
   return { stale, duringRth, ageMs, ageMinutes, writtenAtCt, writtenTradingDay, currentTradingDay, reason };
+}
+
+/**
+ * Badge from a freshness result recomputed at `now`. Poll failure does not
+ * keep a prior "current" result: the read is stale when the rule says so,
+ * otherwise the badge is refresh-failed until a poll succeeds.
+ */
+export function claudeReadBadge(failed: boolean, freshness: ClaudeReadFreshness | null): ClaudeReadBadge | null {
+  if (!freshness) return null;
+  if (freshness.stale) return "stale";
+  if (failed) return "refresh-failed";
+  return "current";
 }
 
 /** Gamma as-of is flagged when it is missing, unparseable, in the future, or older than 60 minutes. */
