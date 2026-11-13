@@ -149,10 +149,25 @@ export function ifThenText(sideName: "long" | "short", p: SidePlan, nqRef: numbe
   const nqTxt = nqRef === null ? "" : ` AND NQ ${dir} ${nqRef}`;
   const tg = p.targets.length ? `targets ${p.targets.join(" / ")}` : "no targets set";
   const stop = p.stop === null ? "no stop set" : `stop ${long ? "under" : "over"} ${p.stop}`;
-  return `IF 5m closes ${dir} ${p.trigger} AND 1m delta ${long ? ">=" : "<="} ${dsign}${p.minDelta}${nqTxt} THEN ${tg}, ${stop}`;
+  return `IF two consecutive 5m closes ${dir} ${p.trigger} AND 1m delta ${long ? ">=" : "<="} ${dsign}${p.minDelta}${nqTxt} THEN ${tg}, ${stop}`;
 }
 
-/** Evaluate one side of the plan against the snapshot. ARMED, TRIGGERED or FAILED, with the check list. */
+/** Count the trailing run of time-consecutive 5m closes beyond the level. A gap breaks the run. */
+function consecutiveBeyond(bars: Bar5m[], beyond: (px: number) => boolean): number {
+  let n = 0;
+  for (let i = bars.length - 1; i >= 0; i--) {
+    if (!beyond(bars[i].c)) break;
+    if (n > 0 && bars[i + 1].start !== bars[i].start + 300) break;
+    n += 1;
+  }
+  return n;
+}
+
+/**
+ * Evaluate one side of the plan against the snapshot. ARMED, TRIGGERED or FAILED.
+ * The price gate arms only after two consecutive completed 5m closes beyond the level.
+ * A single close is not a signal. Status is a signal, not a fill.
+ */
 export function evaluateTrigger(sideName: "long" | "short", p: SidePlan, snap: TapeSnapshot, nqRef: number | null, lookbackMin: number, failedExpiryMin: number = DEFAULT_FAILED_EXPIRY_MIN): TriggerEval {
   const sg = sideName === "long" ? 1 : -1;
   const beyond = (px: number) => sg * (px - p.trigger) > 0;
@@ -162,36 +177,52 @@ export function evaluateTrigger(sideName: "long" | "short", p: SidePlan, snap: T
   const five = completed5m(snap.bars, asOf).filter((b) => b.start >= from);
   const confirmedIn = (a: number, z: number) => snap.bars.some((b) => b.t >= a && b.t < z && b.delta !== null && sg * b.delta >= p.minDelta);
 
+  // breakStart is the open of the FIRST of the two confirming closes. The confirming bar is +300s.
   let breakStart: number | null = null;
+  let pendingStart: number | null = null;
   let failedReason: string | null = null;
   let failedAt: number | null = null;
   for (const b of five) {
-    if (breakStart !== null) {
-      // Stop touched on any bar after the break bar closed.
-      if (b.start >= breakStart + 300 && hitStop(b)) {
-        failedReason = `stop ${p.stop} touched at ${fmtCt(b.start)} after the break`;
-        failedAt = b.start;
-        breakStart = null;
-      }
+    if (breakStart !== null && b.start >= breakStart + 600 && hitStop(b)) {
+      failedReason = `stop ${p.stop} touched at ${fmtCt(b.start)} after the break`;
+      failedAt = b.start;
+      breakStart = null;
+      pendingStart = null;
     }
     if (beyond(b.c)) {
-      if (breakStart === null) {
-        breakStart = b.start;
-        failedReason = null;
-        failedAt = null;
+      if (breakStart !== null) {
+        pendingStart = null;
+      } else if (pendingStart !== null && b.start === pendingStart + 300) {
+        if (hitStop(b)) {
+          failedReason = `stop ${p.stop} touched at ${fmtCt(b.start)} after the break`;
+          failedAt = b.start;
+          breakStart = null;
+          pendingStart = b.start;
+        } else {
+          breakStart = pendingStart;
+          pendingStart = null;
+          failedReason = null;
+          failedAt = null;
+        }
+      } else {
+        pendingStart = b.start;
       }
     } else if (breakStart !== null) {
       if (confirmedIn(breakStart, b.start + 300)) {
-        failedReason = `5m close ${fmtNum(b.c)} back through ${p.trigger} at ${fmtCt(b.start)} after a confirmed break`;
+        failedReason = `5m close ${fmtNum(b.c)} back through ${p.trigger} at ${fmtCt(b.start)} after two confirming closes`;
         failedAt = b.start + 300;
       }
       breakStart = null;
+      pendingStart = null;
+    } else {
+      pendingStart = null;
     }
   }
   // Partial bars after the last completed 5m bar: stop check on 1m highs/lows.
+  // A confirmed break's second close ends at breakStart+600, so the tail starts there.
   const lastDone = five.length ? five[five.length - 1].start + 300 : from;
   if (breakStart !== null) {
-    const tail = snap.bars.filter((b) => b.t >= lastDone && b.t >= breakStart! + 300);
+    const tail = snap.bars.filter((b) => b.t >= lastDone && b.t >= breakStart! + 600);
     const hit = tail.find(hitStop);
     if (hit || (p.stop !== null && (sg === 1 ? snap.price.last <= p.stop : snap.price.last >= p.stop))) {
       failedReason = `stop ${p.stop} touched after the break`;
@@ -213,11 +244,14 @@ export function evaluateTrigger(sideName: "long" | "short", p: SidePlan, snap: T
   const knownDeltaBars = deltaBars.filter(b => b.delta !== null && Number.isFinite(b.delta));
   const bestDelta = knownDeltaBars.reduce<number | null>((m, b) => m === null || sg * b.delta! > sg * m ? b.delta : m, null);
   const deltaOk = bestDelta !== null && sg * bestDelta >= p.minDelta;
+  const streak = consecutiveBeyond(five, beyond);
   const checks: TriggerCheck[] = [
     {
-      label: `5m close ${sideName === "long" ? "above" : "below"} ${p.trigger}`,
+      label: `two consecutive 5m closes ${sideName === "long" ? "above" : "below"} ${p.trigger}`,
       ok: breakStart !== null,
-      detail: lastClose === null ? "no completed 5m bar" : `last 5m close ${fmtNum(lastClose)} (${fmtSigned(lastClose - p.trigger, 2)})`,
+      detail: lastClose === null
+        ? "no completed 5m bar"
+        : `${breakStart !== null ? "two-close break active; " : ""}trailing consecutive closes beyond: ${streak} of 2; last 5m close ${fmtNum(lastClose)} (${fmtSigned(lastClose - p.trigger, 2)})`,
     },
     {
       label: `1m delta ${sg === 1 ? ">=" : "<="} ${sg === 1 ? "+" : "-"}${p.minDelta}`,
@@ -239,7 +273,7 @@ export function evaluateTrigger(sideName: "long" | "short", p: SidePlan, snap: T
     reason = failedReason;
   } else if (checks.every((c) => c.ok)) {
     status = "TRIGGERED";
-    reason = `all three met, break bar ${fmtCt(breakStart ?? 0)}`;
+    reason = `all three met, two-close break ${fmtCt(breakStart ?? 0)}`;
   } else {
     const missing = checks.filter((c) => !c.ok).map((c) => c.label);
     reason = `waiting on: ${missing.join("; ")}`;
