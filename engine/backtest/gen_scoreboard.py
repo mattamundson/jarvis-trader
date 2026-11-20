@@ -3,26 +3,27 @@
 Strategy-portfolio scoreboard generator — P3-6.
 
 Reads all gate_v2_verdicts/*.json files and writes a human-readable
-Markdown table to engine/data/_README.md.
+Markdown table to engine/data/SCOREBOARD.md.
 
 Run (from engine/ directory):
     .venv/Scripts/python backtest/gen_scoreboard.py
 
-Output: engine/data/_README.md (overwritten on every run)
+Output: engine/data/SCOREBOARD.md (overwritten on every run)
 
 Designed to be fast (<1s) and safe to run at any time — it is read-only
-on the verdict files and write-only on _README.md.
+on the verdict files and write-only on SCOREBOARD.md.
 """
 from __future__ import annotations
 
 import json
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 engine_root = Path(__file__).parent.parent
 verdicts_dir = engine_root / "data" / "gate_v2_verdicts"
-output_path = engine_root / "data" / "_README.md"
+output_path = engine_root / "data" / "SCOREBOARD.md"
 
 
 def _load_verdict(path: Path) -> dict:
@@ -42,6 +43,40 @@ def _fmt(val, fmt=".4f") -> str:
         return format(float(val), fmt)
     except (TypeError, ValueError):
         return str(val)
+
+
+def _md_cell(value: str) -> str:
+    return str(value).replace("|", "\\|")
+
+
+def _reason_metric(reasons: list[str], pattern: str) -> float | None:
+    for reason in reasons:
+        match = re.search(pattern, reason)
+        if match:
+            return float(match.group(1))
+    return None
+
+
+def _reason_value(reasons: list[str], pattern: str) -> str | None:
+    for reason in reasons:
+        match = re.search(pattern, reason)
+        if match:
+            return match.group(1)
+    return None
+
+
+def _gate_reasons(d: dict) -> list[str]:
+    gate = d.get("gate_v2") or {}
+    reasons = []
+    for key in ("reasons", "core_reasons", "alt_reasons"):
+        values = gate.get(key) or []
+        if isinstance(values, list):
+            reasons.extend(str(value) for value in values)
+    return reasons
+
+
+def _is_verdict_doc(d: dict) -> bool:
+    return all(key in d for key in ("symbol", "family", "rank", "verdict"))
 
 
 def _champion_summary(d: dict) -> str:
@@ -82,6 +117,8 @@ def generate() -> str:
         d = _load_verdict(f)
         if not d:
             continue
+        if not _is_verdict_doc(d):
+            continue
 
         symbol = d.get("symbol", "?")
         family = d.get("family", "?")
@@ -91,13 +128,14 @@ def generate() -> str:
 
         m = d.get("gate_v2_metrics", {}) or {}
         wfo = d.get("wfo_config", {}) or {}
+        reasons = _gate_reasons(d)
 
-        pf_ci = _fmt(m.get("pf_ci_lower"))
-        p_edge = _fmt(m.get("p_edge"))
-        dd_pct = _fmt(m.get("mc_95th_dd_pct"), ".2f")
-        dsr = _fmt(m.get("dsr"), ".3f")
-        wfo_cons = m.get("wfo_consistency") or "—"
-        n_oos = wfo.get("total_oos_trades")
+        pf_ci = _fmt(m.get("pf_ci_lower", _reason_metric(reasons, r"(?:mbb_)?pf_ci_lower=([0-9.]+)")))
+        p_edge = _fmt(m.get("p_edge", _reason_metric(reasons, r"p_positive_edge=([0-9.]+)")))
+        dd_pct = _fmt(m.get("mc_95th_dd_pct", _reason_metric(reasons, r"mc_95th_dd_pct=([0-9.]+)")), ".2f")
+        dsr = _fmt(m.get("dsr", _reason_metric(reasons, r"dsr=([0-9.]+)")), ".3f")
+        wfo_cons = m.get("wfo_consistency") or _reason_value(reasons, r"rolling_wfo=([^ ]+)") or "—"
+        n_oos = m.get("total_oos_trades") or wfo.get("total_oos_trades")
         n_oos_str = str(n_oos) if n_oos is not None else "—"
         n_win = wfo.get("n_oos_windows_with_trades")
         n_win_total = wfo.get("n_windows") or wfo.get("n_oos_windows", "?")
@@ -131,6 +169,9 @@ def generate() -> str:
 
     now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
+    pass_rows = [r for r in rows if "PASS" in r["verdict_badge"]]
+    fail_rows = [r for r in rows if "FAIL" in r["verdict_badge"]]
+
     lines = [
         "# JARVIS TRADER — Strategy Portfolio Scoreboard",
         "",
@@ -140,34 +181,35 @@ def generate() -> str:
         "> **PASS-alt** = ALT path ($50K+ account): DSR≥0.30, WFO∈[MOD,STR], fixed_pf≥1.20, cost≥realistic, mc_dd≤4%  ",
         "> **DO NOT TRADE** = engine routing blocks MCL and MNQ regardless of verdict",
         "",
-        "## Active Strategies",
+        f"> **Current rendered verdict files:** {len(rows)} total = {len(pass_rows)} PASS / {len(fail_rows)} FAIL  ",
+        "> Verdict PASS is research evidence only; engine routing gates and DO_NOT_TRADE/HALTED status still override it.",
+        "",
+        "## Passing Verdicts (not routing authorization)",
         "",
         "| Symbol | Family | Rank | Verdict | PF CI₅ | p_edge | DD₉₅% | DSR | WFO | OOS Trades | Windows | Champion Params | Date |",
         "|--------|--------|------|---------|--------|--------|-------|-----|-----|-----------|---------|----------------|------|",
     ]
 
-    pass_rows = [r for r in rows if "PASS" in r["verdict_badge"]]
-    fail_rows = [r for r in rows if "FAIL" in r["verdict_badge"]]
-
     for r in pass_rows:
         lines.append(
             f"| {r['symbol']} | {r['family']} | {r['rank']} | {r['verdict_badge']} "
             f"| {r['pf_ci']} | {r['p_edge']} | {r['dd_pct']} | {r['dsr']} "
-            f"| {r['wfo_cons']} | {r['n_oos']} | {r['windows']} | {r['champion']} | {r['created']} |"
+            f"| {r['wfo_cons']} | {r['n_oos']} | {r['windows']} | {_md_cell(r['champion'])} | {r['created']} |"
         )
 
     if fail_rows:
         lines += [
             "",
-            "## Failed / Blocked Hypotheses",
+            "## Failed / Rejected Hypotheses",
             "",
-            "| Symbol | Family | Rank | Verdict | File | Date |",
-            "|--------|--------|------|---------|------|------|",
+            "| Symbol | Family | Rank | Verdict | PF CI₅ | p_edge | DD₉₅% | DSR | WFO | OOS Trades | File | Date |",
+            "|--------|--------|------|---------|--------|--------|-------|-----|-----|-----------|------|------|",
         ]
         for r in fail_rows:
             lines.append(
                 f"| {r['symbol']} | {r['family']} | {r['rank']} "
-                f"| {r['verdict_badge']} | `{r['file']}` | {r['created']} |"
+                f"| {r['verdict_badge']} | {r['pf_ci']} | {r['p_edge']} | {r['dd_pct']} | {r['dsr']} "
+                f"| {r['wfo_cons']} | {r['n_oos']} | `{r['file']}` | {r['created']} |"
             )
 
     lines += [
