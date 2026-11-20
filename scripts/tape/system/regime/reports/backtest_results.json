@@ -1,0 +1,1326 @@
+{
+  "n": 992,
+  "span": [
+    "2022-12-30",
+    "2026-11-05"
+  ],
+  "base_trend_rate": 0.421,
+  "base_balance_rate": 0.292,
+  "sensitivity": {
+    "primary": {
+      "params": {
+        "outer_frac": 0.2,
+        "trend_range_mult": 1.2,
+        "balance_mid_frac": 0.5,
+        "balance_range_mult": 1.0
+      },
+      "rates": {
+        "trend": 0.421,
+        "balance": 0.292,
+        "ambiguous": 0.286
+      },
+      "n": 992
+    },
+    "strict_trend": {
+      "params": {
+        "outer_frac": 0.15,
+        "trend_range_mult": 1.3,
+        "balance_mid_frac": 0.5,
+        "balance_range_mult": 1.0
+      },
+      "rates": {
+        "trend": 0.393,
+        "ambiguous": 0.315,
+        "balance": 0.292
+      },
+      "n": 992
+    },
+    "loose_trend": {
+      "params": {
+        "outer_frac": 0.25,
+        "trend_range_mult": 1.1,
+        "balance_mid_frac": 0.5,
+        "balance_range_mult": 1.0
+      },
+      "rates": {
+        "trend": 0.458,
+        "balance": 0.292,
+        "ambiguous": 0.25
+      },
+      "n": 992
+    },
+    "strict_balance": {
+      "params": {
+        "outer_frac": 0.2,
+        "trend_range_mult": 1.2,
+        "balance_mid_frac": 0.6,
+        "balance_range_mult": 0.9
+      },
+      "rates": {
+        "trend": 0.421,
+        "ambiguous": 0.299,
+        "balance": 0.279
+      },
+      "n": 992
+    },
+    "loose_balance": {
+      "params": {
+        "outer_frac": 0.2,
+        "trend_range_mult": 1.2,
+        "balance_mid_frac": 0.4,
+        "balance_range_mult": 1.1
+      },
+      "rates": {
+        "trend": 0.421,
+        "balance": 0.303,
+        "ambiguous": 0.275
+      },
+      "n": 992
+    }
+  },
+  "univariate": {
+    "ovn_atr": [
+      {
+        "bucket": "(-0.001, 0.5]",
+        "n": 292,
+        "trend_rate": 0.38,
+        "balance_rate": 0.363,
+        "mean_range_atr": 0.787
+      },
+      {
+        "bucket": "(0.5, 0.75]",
+        "n": 302,
+        "trend_rate": 0.474,
+        "balance_rate": 0.291,
+        "mean_range_atr": 0.986
+      },
+      {
+        "bucket": "(0.75, 1.0]",
+        "n": 201,
+        "trend_rate": 0.418,
+        "balance_rate": 0.239,
+        "mean_range_atr": 1.137
+      },
+      {
+        "bucket": "(1.0, 1.5]",
+        "n": 148,
+        "trend_rate": 0.412,
+        "balance_rate": 0.25,
+        "mean_range_atr": 1.271
+      },
+      {
+        "bucket": "(1.5, 10.0]",
+        "n": 49,
+        "trend_rate": 0.388,
+        "balance_rate": 0.224,
+        "mean_range_atr": 1.627
+      }
+    ],
+    "ib_atr": [
+      {
+        "bucket": "(-0.001, 0.35]",
+        "n": 258,
+        "trend_rate": 0.5,
+        "balance_rate": 0.314,
+        "mean_range_atr": 0.681
+      },
+      {
+        "bucket": "(0.35, 0.5]",
+        "n": 279,
+        "trend_rate": 0.441,
+        "balance_rate": 0.369,
+        "mean_range_atr": 0.938
+      },
+      {
+        "bucket": "(0.5, 0.7]",
+        "n": 257,
+        "trend_rate": 0.342,
+        "balance_rate": 0.276,
+        "mean_range_atr": 1.137
+      },
+      {
+        "bucket": "(0.7, 1.0]",
+        "n": 143,
+        "trend_rate": 0.406,
+        "balance_rate": 0.245,
+        "mean_range_atr": 1.34
+      },
+      {
+        "bucket": "(1.0, 3.0]",
+        "n": 53,
+        "trend_rate": 0.358,
+        "balance_rate": 0.0,
+        "mean_range_atr": 1.77
+      }
+    ],
+    "gap_prior_range": [
+      {
+        "bucket": "(-0.001, 0.15]",
+        "n": 240,
+        "trend_rate": 0.433,
+        "balance_rate": 0.292,
+        "mean_range_atr": 0.962
+      },
+      {
+        "bucket": "(0.15, 0.3]",
+        "n": 237,
+        "trend_rate": 0.43,
+        "balance_rate": 0.304,
+        "mean_range_atr": 0.991
+      },
+      {
+        "bucket": "(0.3, 0.5]",
+        "n": 188,
+        "trend_rate": 0.41,
+        "balance_rate": 0.298,
+        "mean_range_atr": 1.038
+      },
+      {
+        "bucket": "(0.5, 1.0]",
+        "n": 217,
+        "trend_rate": 0.424,
+        "balance_rate": 0.249,
+        "mean_range_atr": 1.07
+      },
+      {
+        "bucket": "(1.0, 5.0]",
+        "n": 108,
+        "trend_rate": 0.389,
+        "balance_rate": 0.343,
+        "mean_range_atr": 1.196
+      }
+    ],
+    "vix_prior": [
+      {
+        "bucket": "(-0.001, 15.0]",
+        "n": 289,
+        "trend_rate": 0.37,
+        "balance_rate": 0.332,
+        "mean_range_atr": 0.922
+      },
+      {
+        "bucket": "(15.0, 20.0]",
+        "n": 528,
+        "trend_rate": 0.455,
+        "balance_rate": 0.277,
+        "mean_range_atr": 1.062
+      },
+      {
+        "bucket": "(20.0, 25.0]",
+        "n": 134,
+        "trend_rate": 0.381,
+        "balance_rate": 0.306,
+        "mean_range_atr": 1.063
+      },
+      {
+        "bucket": "(25.0, 35.0]",
+        "n": 35,
+        "trend_rate": 0.486,
+        "balance_rate": 0.2,
+        "mean_range_atr": 1.107
+      },
+      {
+        "bucket": "(35.0, 100.0]",
+        "n": 6,
+        "trend_rate": 0.5,
+        "balance_rate": 0.0,
+        "mean_range_atr": 2.59
+      }
+    ],
+    "vix9_ratio": [
+      {
+        "bucket": "(-0.001, 0.9]",
+        "n": 399,
+        "trend_rate": 0.388,
+        "balance_rate": 0.353,
+        "mean_range_atr": 0.919
+      },
+      {
+        "bucket": "(0.9, 1.0]",
+        "n": 393,
+        "trend_rate": 0.435,
+        "balance_rate": 0.254,
+        "mean_range_atr": 1.057
+      },
+      {
+        "bucket": "(1.0, 1.05]",
+        "n": 110,
+        "trend_rate": 0.455,
+        "balance_rate": 0.291,
+        "mean_range_atr": 1.149
+      },
+      {
+        "bucket": "(1.05, 1.2]",
+        "n": 84,
+        "trend_rate": 0.452,
+        "balance_rate": 0.202,
+        "mean_range_atr": 1.184
+      },
+      {
+        "bucket": "(1.2, 3.0]",
+        "n": 6,
+        "trend_rate": 0.667,
+        "balance_rate": 0.0,
+        "mean_range_atr": 2.713
+      }
+    ],
+    "vix_chg": [
+      {
+        "bucket": "(-20.001, -2.0]",
+        "n": 51,
+        "trend_rate": 0.412,
+        "balance_rate": 0.275,
+        "mean_range_atr": 1.147
+      },
+      {
+        "bucket": "(-2.0, 0.0]",
+        "n": 504,
+        "trend_rate": 0.423,
+        "balance_rate": 0.325,
+        "mean_range_atr": 0.947
+      },
+      {
+        "bucket": "(0.0, 2.0]",
+        "n": 366,
+        "trend_rate": 0.432,
+        "balance_rate": 0.257,
+        "mean_range_atr": 1.068
+      },
+      {
+        "bucket": "(2.0, 5.0]",
+        "n": 61,
+        "trend_rate": 0.361,
+        "balance_rate": 0.262,
+        "mean_range_atr": 1.256
+      },
+      {
+        "bucket": "(5.0, 30.0]",
+        "n": 10,
+        "trend_rate": 0.4,
+        "balance_rate": 0.2,
+        "mean_range_atr": 2.078
+      }
+    ],
+    "open_drive_atr": [
+      {
+        "bucket": "(-0.001, 0.15]",
+        "n": 507,
+        "trend_rate": 0.454,
+        "balance_rate": 0.312,
+        "mean_range_atr": 0.914
+      },
+      {
+        "bucket": "(0.15, 0.3]",
+        "n": 274,
+        "trend_rate": 0.405,
+        "balance_rate": 0.288,
+        "mean_range_atr": 1.054
+      },
+      {
+        "bucket": "(0.3, 0.5]",
+        "n": 161,
+        "trend_rate": 0.342,
+        "balance_rate": 0.311,
+        "mean_range_atr": 1.142
+      },
+      {
+        "bucket": "(0.5, 1.0]",
+        "n": 47,
+        "trend_rate": 0.447,
+        "balance_rate": 0.064,
+        "mean_range_atr": 1.713
+      },
+      {
+        "bucket": "(1.0, 3.0]",
+        "n": 3,
+        "trend_rate": 0.333,
+        "balance_rate": 0.0,
+        "mean_range_atr": 2.537
+      }
+    ],
+    "otf_count": [
+      {
+        "value": 0,
+        "n": 586,
+        "trend_rate": 0.411,
+        "balance_rate": 0.314,
+        "mean_range_atr": 0.994
+      },
+      {
+        "value": 1,
+        "n": 406,
+        "trend_rate": 0.436,
+        "balance_rate": 0.261,
+        "mean_range_atr": 1.088
+      }
+    ],
+    "gap_in_range": [
+      {
+        "value": 0,
+        "n": 400,
+        "trend_rate": 0.417,
+        "balance_rate": 0.305,
+        "mean_range_atr": 1.052
+      },
+      {
+        "value": 1,
+        "n": 592,
+        "trend_rate": 0.424,
+        "balance_rate": 0.284,
+        "mean_range_atr": 1.019
+      }
+    ],
+    "is_event": [
+      {
+        "value": 0,
+        "n": 874,
+        "trend_rate": 0.411,
+        "balance_rate": 0.297,
+        "mean_range_atr": 0.998
+      },
+      {
+        "value": 1,
+        "n": 118,
+        "trend_rate": 0.5,
+        "balance_rate": 0.254,
+        "mean_range_atr": 1.286
+      }
+    ],
+    "is_nfp": [
+      {
+        "value": 0,
+        "n": 948,
+        "trend_rate": 0.421,
+        "balance_rate": 0.295,
+        "mean_range_atr": 1.02
+      },
+      {
+        "value": 1,
+        "n": 44,
+        "trend_rate": 0.432,
+        "balance_rate": 0.227,
+        "mean_range_atr": 1.294
+      }
+    ],
+    "opex": [
+      {
+        "value": 0,
+        "n": 947,
+        "trend_rate": 0.423,
+        "balance_rate": 0.288,
+        "mean_range_atr": 1.032
+      },
+      {
+        "value": 1,
+        "n": 45,
+        "trend_rate": 0.378,
+        "balance_rate": 0.378,
+        "mean_range_atr": 1.036
+      }
+    ],
+    "prior_was_trend": [
+      {
+        "value": 0,
+        "n": 574,
+        "trend_rate": 0.427,
+        "balance_rate": 0.286,
+        "mean_range_atr": 1.014
+      },
+      {
+        "value": 1,
+        "n": 417,
+        "trend_rate": 0.415,
+        "balance_rate": 0.302,
+        "mean_range_atr": 1.059
+      }
+    ],
+    "prior_was_balance": [
+      {
+        "value": 0,
+        "n": 701,
+        "trend_rate": 0.427,
+        "balance_rate": 0.288,
+        "mean_range_atr": 1.061
+      },
+      {
+        "value": 1,
+        "n": 290,
+        "trend_rate": 0.41,
+        "balance_rate": 0.303,
+        "mean_range_atr": 0.963
+      }
+    ],
+    "prior_nr4": [
+      {
+        "value": 0,
+        "n": 717,
+        "trend_rate": 0.428,
+        "balance_rate": 0.29,
+        "mean_range_atr": 1.063
+      },
+      {
+        "value": 1,
+        "n": 275,
+        "trend_rate": 0.404,
+        "balance_rate": 0.298,
+        "mean_range_atr": 0.953
+      }
+    ],
+    "prior_nr7": [
+      {
+        "value": 0,
+        "n": 832,
+        "trend_rate": 0.422,
+        "balance_rate": 0.291,
+        "mean_range_atr": 1.055
+      },
+      {
+        "value": 1,
+        "n": 160,
+        "trend_rate": 0.419,
+        "balance_rate": 0.3,
+        "mean_range_atr": 0.915
+      }
+    ],
+    "prior_inside": [
+      {
+        "value": 0,
+        "n": 883,
+        "trend_rate": 0.427,
+        "balance_rate": 0.296,
+        "mean_range_atr": 1.033
+      },
+      {
+        "value": 1,
+        "n": 109,
+        "trend_rate": 0.376,
+        "balance_rate": 0.266,
+        "mean_range_atr": 1.028
+      }
+    ],
+    "dow": [
+      {
+        "value": 0,
+        "n": 198,
+        "trend_rate": 0.338,
+        "balance_rate": 0.343,
+        "mean_range_atr": 0.888
+      },
+      {
+        "value": 1,
+        "n": 201,
+        "trend_rate": 0.403,
+        "balance_rate": 0.289,
+        "mean_range_atr": 0.971
+      },
+      {
+        "value": 2,
+        "n": 198,
+        "trend_rate": 0.49,
+        "balance_rate": 0.273,
+        "mean_range_atr": 1.083
+      },
+      {
+        "value": 3,
+        "n": 198,
+        "trend_rate": 0.475,
+        "balance_rate": 0.242,
+        "mean_range_atr": 1.125
+      },
+      {
+        "value": 4,
+        "n": 197,
+        "trend_rate": 0.401,
+        "balance_rate": 0.315,
+        "mean_range_atr": 1.096
+      }
+    ],
+    "open_type": [
+      {
+        "value": "open_auction",
+        "n": 231,
+        "trend_rate": 0.476,
+        "balance_rate": 0.281,
+        "mean_range_atr": 0.989
+      },
+      {
+        "value": "open_drive",
+        "n": 288,
+        "trend_rate": 0.337,
+        "balance_rate": 0.323,
+        "mean_range_atr": 1.047
+      },
+      {
+        "value": "open_rejection_reverse",
+        "n": 155,
+        "trend_rate": 0.413,
+        "balance_rate": 0.316,
+        "mean_range_atr": 1.092
+      },
+      {
+        "value": "open_test_drive",
+        "n": 318,
+        "trend_rate": 0.462,
+        "balance_rate": 0.261,
+        "mean_range_atr": 1.021
+      }
+    ],
+    "gex_sign": [
+      {
+        "value": -1,
+        "n": 5,
+        "trend_rate": 0.2,
+        "balance_rate": 0.4,
+        "mean_range_atr": 2.115
+      },
+      {
+        "value": 1,
+        "n": 1,
+        "trend_rate": 0.0,
+        "balance_rate": 1.0,
+        "mean_range_atr": 0.675
+      }
+    ],
+    "gex_note": "n=6 overnight-carry snapshots only \u2014 too thin for OOS gate"
+  },
+  "top_lifts": [
+    {
+      "feature": "open_type",
+      "bucket": "open_drive",
+      "n": 288,
+      "trend_rate": 0.337,
+      "balance_rate": 0.323,
+      "mean_range_atr": 1.047,
+      "lift": -0.084
+    },
+    {
+      "feature": "dow",
+      "bucket": 0,
+      "n": 198,
+      "trend_rate": 0.338,
+      "balance_rate": 0.343,
+      "mean_range_atr": 0.888,
+      "lift": -0.083
+    },
+    {
+      "feature": "ib_atr",
+      "bucket": "(-0.001, 0.35]",
+      "n": 258,
+      "trend_rate": 0.5,
+      "balance_rate": 0.314,
+      "mean_range_atr": 0.681,
+      "lift": 0.079
+    },
+    {
+      "feature": "ib_atr",
+      "bucket": "(0.5, 0.7]",
+      "n": 257,
+      "trend_rate": 0.342,
+      "balance_rate": 0.276,
+      "mean_range_atr": 1.137,
+      "lift": -0.079
+    },
+    {
+      "feature": "open_drive_atr",
+      "bucket": "(0.3, 0.5]",
+      "n": 161,
+      "trend_rate": 0.342,
+      "balance_rate": 0.311,
+      "mean_range_atr": 1.142,
+      "lift": -0.079
+    },
+    {
+      "feature": "is_event",
+      "bucket": 1,
+      "n": 118,
+      "trend_rate": 0.5,
+      "balance_rate": 0.254,
+      "mean_range_atr": 1.286,
+      "lift": 0.079
+    },
+    {
+      "feature": "dow",
+      "bucket": 2,
+      "n": 198,
+      "trend_rate": 0.49,
+      "balance_rate": 0.273,
+      "mean_range_atr": 1.083,
+      "lift": 0.069
+    },
+    {
+      "feature": "ib_atr",
+      "bucket": "(1.0, 3.0]",
+      "n": 53,
+      "trend_rate": 0.358,
+      "balance_rate": 0.0,
+      "mean_range_atr": 1.77,
+      "lift": -0.063
+    },
+    {
+      "feature": "vix_chg",
+      "bucket": "(2.0, 5.0]",
+      "n": 61,
+      "trend_rate": 0.361,
+      "balance_rate": 0.262,
+      "mean_range_atr": 1.256,
+      "lift": -0.06
+    },
+    {
+      "feature": "open_type",
+      "bucket": "open_auction",
+      "n": 231,
+      "trend_rate": 0.476,
+      "balance_rate": 0.281,
+      "mean_range_atr": 0.989,
+      "lift": 0.055
+    },
+    {
+      "feature": "dow",
+      "bucket": 3,
+      "n": 198,
+      "trend_rate": 0.475,
+      "balance_rate": 0.242,
+      "mean_range_atr": 1.125,
+      "lift": 0.054
+    },
+    {
+      "feature": "ovn_atr",
+      "bucket": "(0.5, 0.75]",
+      "n": 302,
+      "trend_rate": 0.474,
+      "balance_rate": 0.291,
+      "mean_range_atr": 0.986,
+      "lift": 0.053
+    },
+    {
+      "feature": "vix_prior",
+      "bucket": "(-0.001, 15.0]",
+      "n": 289,
+      "trend_rate": 0.37,
+      "balance_rate": 0.332,
+      "mean_range_atr": 0.922,
+      "lift": -0.051
+    },
+    {
+      "feature": "prior_inside",
+      "bucket": 1,
+      "n": 109,
+      "trend_rate": 0.376,
+      "balance_rate": 0.266,
+      "mean_range_atr": 1.028,
+      "lift": -0.045
+    },
+    {
+      "feature": "opex",
+      "bucket": 1,
+      "n": 45,
+      "trend_rate": 0.378,
+      "balance_rate": 0.378,
+      "mean_range_atr": 1.036,
+      "lift": -0.043
+    },
+    {
+      "feature": "ovn_atr",
+      "bucket": "(-0.001, 0.5]",
+      "n": 292,
+      "trend_rate": 0.38,
+      "balance_rate": 0.363,
+      "mean_range_atr": 0.787,
+      "lift": -0.041
+    },
+    {
+      "feature": "open_type",
+      "bucket": "open_test_drive",
+      "n": 318,
+      "trend_rate": 0.462,
+      "balance_rate": 0.261,
+      "mean_range_atr": 1.021,
+      "lift": 0.041
+    },
+    {
+      "feature": "vix_prior",
+      "bucket": "(20.0, 25.0]",
+      "n": 134,
+      "trend_rate": 0.381,
+      "balance_rate": 0.306,
+      "mean_range_atr": 1.063,
+      "lift": -0.04
+    },
+    {
+      "feature": "vix_prior",
+      "bucket": "(15.0, 20.0]",
+      "n": 528,
+      "trend_rate": 0.455,
+      "balance_rate": 0.277,
+      "mean_range_atr": 1.062,
+      "lift": 0.034
+    },
+    {
+      "feature": "vix9_ratio",
+      "bucket": "(1.0, 1.05]",
+      "n": 110,
+      "trend_rate": 0.455,
+      "balance_rate": 0.291,
+      "mean_range_atr": 1.149,
+      "lift": 0.034
+    }
+  ],
+  "walk_forward_preopen": {
+    "n_oos": 396,
+    "oos_trend_rate": 0.379,
+    "majority_baseline_acc": 0.621,
+    "logistic_oos_acc": 0.583,
+    "tree_oos_acc": 0.475,
+    "logistic_lift_vs_majority": -0.038,
+    "tree_lift_vs_majority": -0.146,
+    "folds": [
+      {
+        "fold": 0,
+        "train_n": 595,
+        "test_n": 99,
+        "test_span": [
+          "2025-04-24",
+          "2025-09-09"
+        ],
+        "base_rate_train": 0.449,
+        "base_rate_test": 0.424,
+        "lr_acc": 0.455,
+        "tree_acc": 0.475
+      },
+      {
+        "fold": 1,
+        "train_n": 694,
+        "test_n": 99,
+        "test_span": [
+          "2025-09-10",
+          "2026-01-28"
+        ],
+        "base_rate_train": 0.445,
+        "base_rate_test": 0.374,
+        "lr_acc": 0.636,
+        "tree_acc": 0.515
+      },
+      {
+        "fold": 2,
+        "train_n": 793,
+        "test_n": 99,
+        "test_span": [
+          "2026-01-29",
+          "2026-06-17"
+        ],
+        "base_rate_train": 0.436,
+        "base_rate_test": 0.434,
+        "lr_acc": 0.535,
+        "tree_acc": 0.485
+      },
+      {
+        "fold": 3,
+        "train_n": 892,
+        "test_n": 99,
+        "test_span": [
+          "2026-06-18",
+          "2026-11-04"
+        ],
+        "base_rate_train": 0.436,
+        "base_rate_test": 0.283,
+        "lr_acc": 0.707,
+        "tree_acc": 0.424
+      }
+    ],
+    "final_tree": {
+      "n": 892,
+      "trend_rate": 0.436,
+      "depth": 0,
+      "leaf": false,
+      "feature": "vix9_ratio",
+      "threshold": 0.8431,
+      "left": {
+        "n": 129,
+        "trend_rate": 0.302,
+        "depth": 1,
+        "leaf": false,
+        "feature": "dow",
+        "threshold": 3.5,
+        "left": {
+          "n": 104,
+          "trend_rate": 0.356,
+          "depth": 2,
+          "leaf": false,
+          "feature": "vix_prior",
+          "threshold": 15.2954,
+          "left": {
+            "n": 45,
+            "trend_rate": 0.222,
+            "depth": 3,
+            "leaf": true,
+            "pred": 0.2222222222222222
+          },
+          "right": {
+            "n": 59,
+            "trend_rate": 0.458,
+            "depth": 3,
+            "leaf": true,
+            "pred": 0.4576271186440678
+          }
+        },
+        "right": {
+          "n": 25,
+          "trend_rate": 0.08,
+          "depth": 2,
+          "leaf": true,
+          "pred": 0.08
+        }
+      },
+      "right": {
+        "n": 763,
+        "trend_rate": 0.459,
+        "depth": 1,
+        "leaf": false,
+        "feature": "dow",
+        "threshold": 0.5,
+        "left": {
+          "n": 132,
+          "trend_rate": 0.356,
+          "depth": 2,
+          "leaf": false,
+          "feature": "vix9_ratio",
+          "threshold": 0.9097,
+          "left": {
+            "n": 57,
+            "trend_rate": 0.474,
+            "depth": 3,
+            "leaf": true,
+            "pred": 0.47368421052631576
+          },
+          "right": {
+            "n": 75,
+            "trend_rate": 0.267,
+            "depth": 3,
+            "leaf": true,
+            "pred": 0.26666666666666666
+          }
+        },
+        "right": {
+          "n": 631,
+          "trend_rate": 0.48,
+          "depth": 2,
+          "leaf": false,
+          "feature": "vix_prior",
+          "threshold": 14.91,
+          "left": {
+            "n": 182,
+            "trend_rate": 0.401,
+            "depth": 3,
+            "leaf": true,
+            "pred": 0.4010989010989011
+          },
+          "right": {
+            "n": 449,
+            "trend_rate": 0.512,
+            "depth": 3,
+            "leaf": true,
+            "pred": 0.512249443207127
+          }
+        }
+      }
+    },
+    "calibration_deciles": [
+      {
+        "decile": "(0.204, 0.347]",
+        "n": 40,
+        "mean_p": 0.309,
+        "realized_trend_rate": 0.4
+      },
+      {
+        "decile": "(0.347, 0.372]",
+        "n": 40,
+        "mean_p": 0.359,
+        "realized_trend_rate": 0.3
+      },
+      {
+        "decile": "(0.372, 0.394]",
+        "n": 39,
+        "mean_p": 0.382,
+        "realized_trend_rate": 0.487
+      },
+      {
+        "decile": "(0.394, 0.412]",
+        "n": 40,
+        "mean_p": 0.402,
+        "realized_trend_rate": 0.425
+      },
+      {
+        "decile": "(0.412, 0.427]",
+        "n": 39,
+        "mean_p": 0.42,
+        "realized_trend_rate": 0.256
+      },
+      {
+        "decile": "(0.427, 0.445]",
+        "n": 40,
+        "mean_p": 0.436,
+        "realized_trend_rate": 0.375
+      },
+      {
+        "decile": "(0.445, 0.466]",
+        "n": 39,
+        "mean_p": 0.456,
+        "realized_trend_rate": 0.359
+      },
+      {
+        "decile": "(0.466, 0.494]",
+        "n": 40,
+        "mean_p": 0.479,
+        "realized_trend_rate": 0.3
+      },
+      {
+        "decile": "(0.494, 0.529]",
+        "n": 39,
+        "mean_p": 0.509,
+        "realized_trend_rate": 0.538
+      },
+      {
+        "decile": "(0.529, 0.69]",
+        "n": 40,
+        "mean_p": 0.57,
+        "realized_trend_rate": 0.35
+      }
+    ]
+  },
+  "walk_forward_stage2_ib": {
+    "n_oos": 396,
+    "oos_trend_rate": 0.379,
+    "majority_baseline_acc": 0.621,
+    "logistic_oos_acc": 0.571,
+    "tree_oos_acc": 0.596,
+    "logistic_lift_vs_majority": -0.051,
+    "tree_lift_vs_majority": -0.025,
+    "folds": [
+      {
+        "fold": 0,
+        "train_n": 595,
+        "test_n": 99,
+        "test_span": [
+          "2025-04-24",
+          "2025-09-09"
+        ],
+        "base_rate_train": 0.449,
+        "base_rate_test": 0.424,
+        "lr_acc": 0.495,
+        "tree_acc": 0.444
+      },
+      {
+        "fold": 1,
+        "train_n": 694,
+        "test_n": 99,
+        "test_span": [
+          "2025-09-10",
+          "2026-01-28"
+        ],
+        "base_rate_train": 0.445,
+        "base_rate_test": 0.374,
+        "lr_acc": 0.657,
+        "tree_acc": 0.667
+      },
+      {
+        "fold": 2,
+        "train_n": 793,
+        "test_n": 99,
+        "test_span": [
+          "2026-01-29",
+          "2026-06-17"
+        ],
+        "base_rate_train": 0.436,
+        "base_rate_test": 0.434,
+        "lr_acc": 0.545,
+        "tree_acc": 0.545
+      },
+      {
+        "fold": 3,
+        "train_n": 892,
+        "test_n": 99,
+        "test_span": [
+          "2026-06-18",
+          "2026-11-04"
+        ],
+        "base_rate_train": 0.436,
+        "base_rate_test": 0.283,
+        "lr_acc": 0.586,
+        "tree_acc": 0.727
+      }
+    ],
+    "calibration_deciles": [
+      {
+        "decile": "(0.111, 0.247]",
+        "n": 40,
+        "mean_p": 0.201,
+        "realized_trend_rate": 0.225
+      },
+      {
+        "decile": "(0.247, 0.307]",
+        "n": 40,
+        "mean_p": 0.278,
+        "realized_trend_rate": 0.3
+      },
+      {
+        "decile": "(0.307, 0.339]",
+        "n": 39,
+        "mean_p": 0.324,
+        "realized_trend_rate": 0.256
+      },
+      {
+        "decile": "(0.339, 0.369]",
+        "n": 40,
+        "mean_p": 0.355,
+        "realized_trend_rate": 0.45
+      },
+      {
+        "decile": "(0.369, 0.408]",
+        "n": 39,
+        "mean_p": 0.39,
+        "realized_trend_rate": 0.385
+      },
+      {
+        "decile": "(0.408, 0.45]",
+        "n": 40,
+        "mean_p": 0.431,
+        "realized_trend_rate": 0.525
+      },
+      {
+        "decile": "(0.45, 0.484]",
+        "n": 39,
+        "mean_p": 0.467,
+        "realized_trend_rate": 0.462
+      },
+      {
+        "decile": "(0.484, 0.523]",
+        "n": 40,
+        "mean_p": 0.504,
+        "realized_trend_rate": 0.425
+      },
+      {
+        "decile": "(0.523, 0.586]",
+        "n": 39,
+        "mean_p": 0.555,
+        "realized_trend_rate": 0.333
+      },
+      {
+        "decile": "(0.586, 0.739]",
+        "n": 40,
+        "mean_p": 0.639,
+        "realized_trend_rate": 0.425
+      }
+    ]
+  },
+  "oos_score_preopen": {
+    "train_n": 595,
+    "oos_n": 397,
+    "oos_base_trend": 0.38,
+    "oos_base_balance": 0.325,
+    "buckets": [
+      {
+        "bucket": "low",
+        "display": "0-3",
+        "raw_range": [
+          -99,
+          0
+        ],
+        "n": 153,
+        "trend_rate": 0.359,
+        "balance_rate": 0.32,
+        "mean_range_atr": 0.95
+      },
+      {
+        "bucket": "mid",
+        "display": "4-6",
+        "raw_range": [
+          1,
+          2
+        ],
+        "n": 149,
+        "trend_rate": 0.342,
+        "balance_rate": 0.376,
+        "mean_range_atr": 0.982
+      },
+      {
+        "bucket": "high",
+        "display": "7-10",
+        "raw_range": [
+          3,
+          99
+        ],
+        "n": 95,
+        "trend_rate": 0.474,
+        "balance_rate": 0.253,
+        "mean_range_atr": 1.162
+      }
+    ],
+    "stage2": false
+  },
+  "oos_score_stage2": {
+    "train_n": 595,
+    "oos_n": 397,
+    "oos_base_trend": 0.38,
+    "oos_base_balance": 0.325,
+    "buckets": [
+      {
+        "bucket": "low",
+        "display": "0-3",
+        "raw_range": [
+          -99,
+          0
+        ],
+        "n": 115,
+        "trend_rate": 0.322,
+        "balance_rate": 0.33,
+        "mean_range_atr": 1.075
+      },
+      {
+        "bucket": "mid",
+        "display": "4-6",
+        "raw_range": [
+          1,
+          2
+        ],
+        "n": 126,
+        "trend_rate": 0.341,
+        "balance_rate": 0.357,
+        "mean_range_atr": 0.958
+      },
+      {
+        "bucket": "high",
+        "display": "7-10",
+        "raw_range": [
+          3,
+          99
+        ],
+        "n": 156,
+        "trend_rate": 0.455,
+        "balance_rate": 0.295,
+        "mean_range_atr": 1.011
+      }
+    ],
+    "stage2": true
+  },
+  "vix_holdout": {
+    "protocol": "a priori buckets [0,15,20,25,100]; no searched thresholds",
+    "mechaniq_warning": "Searched VIX>=17/20 IC gates overfit (Mechaniq Lab PBO 0.43). We only report fixed buckets.",
+    "buckets": [
+      {
+        "bucket": "<15",
+        "train": {
+          "n": 247,
+          "trend_rate": 0.385,
+          "balance_rate": 0.324
+        },
+        "oos": {
+          "n": 40,
+          "trend_rate": 0.275,
+          "balance_rate": 0.4
+        },
+        "lift_train": -0.064,
+        "lift_oos": -0.105,
+        "holdout_confirmed": true,
+        "note": null
+      },
+      {
+        "bucket": "15-20",
+        "train": {
+          "n": 248,
+          "trend_rate": 0.516,
+          "balance_rate": 0.234
+        },
+        "oos": {
+          "n": 281,
+          "trend_rate": 0.402,
+          "balance_rate": 0.313
+        },
+        "lift_train": 0.067,
+        "lift_oos": 0.022,
+        "holdout_confirmed": true,
+        "note": null
+      },
+      {
+        "bucket": "20-25",
+        "train": {
+          "n": 78,
+          "trend_rate": 0.397,
+          "balance_rate": 0.282
+        },
+        "oos": {
+          "n": 57,
+          "trend_rate": 0.351,
+          "balance_rate": 0.333
+        },
+        "lift_train": -0.052,
+        "lift_oos": -0.029,
+        "holdout_confirmed": true,
+        "note": null
+      },
+      {
+        "bucket": ">=25",
+        "train": {
+          "n": 22,
+          "trend_rate": 0.591,
+          "balance_rate": 0.045
+        },
+        "oos": {
+          "n": 19,
+          "trend_rate": 0.368,
+          "balance_rate": 0.316
+        },
+        "lift_train": 0.142,
+        "lift_oos": -0.012,
+        "holdout_confirmed": false,
+        "note": "FAILED holdout or thin OOS \u2014 do not gate selling on this cut alone"
+      }
+    ]
+  },
+  "features_preopen": [
+    "ovn_atr",
+    "gap_prior_range",
+    "gap_in_range",
+    "vix_prior",
+    "vix_chg",
+    "vix9_ratio",
+    "is_event",
+    "is_nfp",
+    "opex",
+    "dow",
+    "prior_was_trend",
+    "prior_was_balance",
+    "prior_nr4",
+    "prior_nr7",
+    "prior_inside",
+    "prior_range_atr"
+  ],
+  "features_stage2": [
+    "ovn_atr",
+    "gap_prior_range",
+    "gap_in_range",
+    "vix_prior",
+    "vix_chg",
+    "vix9_ratio",
+    "is_event",
+    "is_nfp",
+    "opex",
+    "dow",
+    "prior_was_trend",
+    "prior_was_balance",
+    "prior_nr4",
+    "prior_nr7",
+    "prior_inside",
+    "prior_range_atr",
+    "ib_atr",
+    "ib_ovn",
+    "f30_range",
+    "open_drive_atr",
+    "otf_count",
+    "is_open_drive",
+    "is_open_test_drive",
+    "is_open_rejection_reverse",
+    "is_open_auction"
+  ],
+  "cost_caveat_vilkov": "Vilkov 0DTE study (SSRN 4641356 / github.com/vilkovgr/0dte-strategies): iron condors/butterflies can show positive GROSS Sharpe but after the Aug 2026 bid-ask cost correction, no strategy retains positive NET Sharpe. Day-type skill \u2260 automatic premium-selling edge. Paper only until options P&L exists.",
+  "gex_caveat": "Only 6 sessions have overnight GEX carry; treat gex_sign as live overlay when fresh (<60m), not as fitted historical weight."
+}
