@@ -31,6 +31,7 @@ pandas>=3.0,<4.0          # converged to 3.x 2026-06-26 (kept in sync with requi
 numpy>=2.2.6
 scipy==1.15.2
 statsmodels>=0.14.0        # Ljung-Box + ADF tests. Used by engine/backtest/rigor_gates.py.
+pyarrow>=17.0.0             # Morning Alpha point-in-time Parquet research store
 
 # Backtesting
 vectorbt==0.26.2          # Fast vectorized backtesting
@@ -40,6 +41,7 @@ nautilus_trader==1.231.0  # Production-grade event-driven backtesting (parity ha
 psycopg2-binary==2.9.10   # PostgreSQL
 redis==5.2.1              # Redis
 questdb==1.2.1            # QuestDB client
+duckdb>=1.1.0              # Morning Alpha predicate-pushdown historical queries
 
 # HTTP & WebSockets
 httpx==0.28.1
