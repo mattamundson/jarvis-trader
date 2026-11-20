@@ -682,11 +682,21 @@ async def lifespan(app: FastAPI):
 
     # P&L Monitor — wires SQLite + IB Gateway data to circuit breakers
     # IB gateway is not available yet at this point; it is injected after data_manager is ready
+    from risk.equity_basis import broker_confirmed_equity_state
+
+    def _broker_equity_state():
+        return broker_confirmed_equity_state(
+            str(db_manager._db_path), float(settings.INITIAL_CAPITAL)
+        )
+
     pnl_monitor = PnLMonitor(
         db_manager=db_manager,
         ib_gateway=None,  # updated below once data_manager is initialised
         paper_tracker=paper_tracker,
         starting_balance=settings.INITIAL_CAPITAL,
+        # Drawdown halt measures broker-confirmed P&L only (2026-10-27): the
+        # simulated-fill ledger history is excluded from both equity and peak.
+        equity_basis=_broker_equity_state,
     )
     logger.info("✅ PnL Monitor initialised (SQLite + paper tracker sources active)")
 
@@ -2597,6 +2607,23 @@ async def lifespan(app: FastAPI):
                         )
                 config_equity = float(getattr(settings, "INITIAL_CAPITAL", 10_000.0))
                 current_equity = config_equity + total_realized_pnl
+                # Broker-confirmed basis (2026-10-27): simulated-fill rows are
+                # excluded so the daily-loss and drawdown gates guard money the
+                # IB paper account actually carried. Legacy all-rows figures
+                # above remain the fallback if the basis read fails.
+                try:
+                    _basis = broker_confirmed_equity_state(
+                        str(db_manager._db_path), config_equity, today=today_str
+                    )
+                    current_equity = _basis.equity
+                    total_realized_pnl = _basis.equity - config_equity
+                    paper_daily_pnl = _basis.daily_pnl
+                except Exception as _basis_exc:
+                    logger.error(
+                        "[sync_safety_equity] broker-confirmed basis failed, using "
+                        "all-rows ledger equity: %s",
+                        _basis_exc,
+                    )
                 safety_layer.sync_from_broker(current_equity, paper_daily_pnl)
                 logger.debug(
                     "[sync_safety_equity] equity=%.2f (initial=%.2f + "
