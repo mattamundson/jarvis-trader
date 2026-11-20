@@ -3309,7 +3309,14 @@ export interface AuctionBiasSaty {
   plus_1_atr: number;
   minus_1_atr: number;
   bias: "long" | "short" | "neutral";
+  trigger_state?: "upside_trigger" | "downside_trigger" | "inside_trigger_band" | "neutral";
+  range_state?: string;
+  chase_risk?: boolean;
+  atr_displacement?: number;
+  gap_atr?: number | null;
   day_range_pct_of_atr: number | null;
+  context_score?: { up: number; down: number };
+  next_levels?: { up: number | null; down: number | null };
 }
 
 export interface AuctionBiasSynthesis {

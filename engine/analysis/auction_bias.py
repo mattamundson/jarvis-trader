@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from backtest.indicators import saty_atr_levels, saty_bias, saty_nearest_target
+from backtest.indicators import saty_atr_context, saty_atr_levels, saty_bias, saty_nearest_target
 
 __all__ = ["synthesize_auction_bias", "RANGE_EXHAUSTED_PCT"]
 
@@ -92,6 +92,12 @@ def synthesize_auction_bias(
         ``atr``, ``price`` and the passed structural levels — never hardcoded.
     """
     saty = saty_atr_levels(prior_close, atr)
+    saty_context = saty_atr_context(
+        price=price,
+        prior_close=prior_close,
+        atr=atr,
+        day_range=day_range,
+    )
     bias = saty_bias(price, saty)
 
     range_pct = (day_range / atr) if (day_range and atr > 0) else None
@@ -123,7 +129,21 @@ def synthesize_auction_bias(
             "plus_1_atr": round(saty["upper"][1.0], 2),
             "minus_1_atr": round(saty["lower"][1.0], 2),
             "bias": bias,
+            "trigger_state": saty_context["state"]["trigger_state"],
+            "range_state": saty_context["state"]["range_state"],
+            "chase_risk": saty_context["state"]["chase_risk"],
+            "atr_displacement": saty_context["metrics"]["atr_displacement"],
+            "gap_atr": saty_context["metrics"]["gap_atr"],
             "day_range_pct_of_atr": round(range_pct, 4) if range_pct is not None else None,
+            "context_score": saty_context["context_score"],
+            "next_levels": {
+                "up": round(saty_context["next_levels"]["up"], 2)
+                if saty_context["next_levels"]["up"] is not None
+                else None,
+                "down": round(saty_context["next_levels"]["down"], 2)
+                if saty_context["next_levels"]["down"] is not None
+                else None,
+            },
         },
         "tpo": tpo,
         "corey": corey,
