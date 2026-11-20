@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, TrendingUp, TrendingDown, Activity } from "lucide-react";
 import type { FlowSnapshot } from "@/lib/flowTypes";
-import { isStale, biasLabel, analyzeGateAction, volumePaceRatio } from "@/lib/flowTypes";
+import { isStale, biasLabel, analyzeGateAction, volumePaceRatio, fmtNum, fmtAsOf } from "@/lib/flowTypes";
 import { fetchDashboardApi } from "@/lib/api";
 
 const CvdChart = dynamic(
@@ -33,26 +33,27 @@ export default function Home() {
     return () => clearInterval(timer);
   }, []);
 
-  const stale = flow && isStale(flow.ts);
-  const bias = flow ? biasLabel(flow.es.last, flow.es.vwap) : "NEUTRAL";
+  const stale = !flow || isStale(flow.ts) || !!error;
+  const bias = flow && !stale ? biasLabel(flow.es.last, flow.es.vwap) : "UNAVAILABLE";
   
   const dataAge = flow && now 
     ? (now.getTime() - new Date(flow.ts).getTime()) / 1000 
     : null;
-  const isLive = dataAge !== null && dataAge < 5;
+  const isLive = !stale && dataAge !== null && Number.isFinite(dataAge) && dataAge >= 0 && dataAge < 5;
   const isFixture = flow?.fixture === true;
 
   const gateAnalyses = useMemo(() => {
     if (!flow) return [];
     return flow.gates.map((gate) =>
-      analyzeGateAction(gate, flow.es.last, flow.es.cvd, flow.es.cvdLow, flow.es.deltaAtPrice)
+      stale ? {level:gate.level, action:"UNAVAILABLE" as const, reason:"Source stale, invalid, or fetch failed"}
+        : analyzeGateAction(gate, flow.es.last, flow.es.cvd, flow.es.cvdLow, flow.es.deltaAtPrice)
     );
-  }, [flow]);
+  }, [flow, stale]);
 
   const volPace = useMemo(() => {
-    if (!flow || flow.es.bars1m.length === 0) return null;
+    if (!flow || stale || flow.es.bars1m.length === 0) return null;
     return volumePaceRatio(flow.es.bars1m);
-  }, [flow]);
+  }, [flow, stale]);
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100 p-4 font-mono">
@@ -79,7 +80,7 @@ export default function Home() {
           )}
           {!isFixture && !isLive && stale && (
             <Badge variant="bear" className="font-mono text-xs">
-              STALE ({Math.floor(dataAge || 0)}s)
+              UNAVAILABLE ({dataAge !== null && Number.isFinite(dataAge) && dataAge >= 0 ? `${Math.floor(dataAge)}s old` : "invalid source time"})
             </Badge>
           )}
         </div>
@@ -87,7 +88,7 @@ export default function Home() {
 
       {!flow && (
         <div className="flex items-center justify-center py-20">
-          <div className="text-slate-500 font-mono animate-pulse">Loading flow data...</div>
+          <div className="text-slate-500 font-mono animate-pulse">{error ? "Flow data UNAVAILABLE — request failed" : "Loading flow data..."}</div>
         </div>
       )}
 
@@ -102,12 +103,12 @@ export default function Home() {
                 </div>
                 <div>
                   <span className="text-slate-500">VWAP:</span>{" "}
-                  <span className="text-cyan-400">{flow.es.vwap.toFixed(2)}</span>
+                  <span className="text-cyan-400">{fmtNum(flow.es.vwap)}</span>
                 </div>
                 <div>
                   <span className="text-slate-500">ON H/L:</span>{" "}
                   <span className="text-slate-300">
-                    {flow.es.onHigh.toFixed(2)} / {flow.es.onLow.toFixed(2)}
+                    {fmtNum(flow.es.onHigh)} / {fmtNum(flow.es.onLow)}
                   </span>
                 </div>
                 <div>
@@ -139,27 +140,32 @@ export default function Home() {
                   <div className="space-y-4">
                     <div>
                       <div className="text-xs text-slate-500 mb-2">
-                        CVD: {flow.es.cvd} (low: {flow.es.cvdLow}) | 1m Price + CVD Line
+                        CVD: {fmtNum(flow.es.cvd)} (low: {fmtNum(flow.es.cvdLow)}) | 1m Price + CVD Line
                       </div>
                       <div className="bg-slate-950/60 border border-slate-800 rounded p-2">
-                        <CvdChart
-                          bars={flow.es.bars1m}
-                          gates={flow.gates}
-                          cvdLow={flow.es.cvdLow}
-                          currentCvd={flow.es.cvd}
-                        />
+                        {stale || flow.es.cvd == null || flow.es.cvdLow == null || !Number.isFinite(flow.es.cvd) || !Number.isFinite(flow.es.cvdLow) ? (
+                          <div className="text-xs text-slate-500 py-8 text-center">CVD UNAVAILABLE</div>
+                        ) : (
+                          <CvdChart
+                            bars={flow.es.bars1m}
+                            gates={flow.gates}
+                            cvdLow={flow.es.cvdLow}
+                            currentCvd={flow.es.cvd}
+                          />
+                        )}
                       </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <div className="text-xs text-slate-500 mb-2">Delta-at-Price Ladder</div>
-                        <div className="bg-slate-950/60 border border-slate-800 rounded p-2 space-y-1">
-                          {flow.es.deltaAtPrice.map((d) => {
+                        <div data-testid="flow-delta-ladder" className="bg-slate-950/60 border border-slate-800 rounded p-2 space-y-1">
+                          {flow.es.deltaAtPrice == null && <div>UNAVAILABLE</div>}
+                          {(flow.es.deltaAtPrice ?? []).map((d) => {
                             const netDelta = d.bidLots - d.askLots;
                             const maxLots = Math.max(d.bidLots, d.askLots);
-                            const bidWidth = (d.bidLots / maxLots) * 100;
-                            const askWidth = (d.askLots / maxLots) * 100;
+                            const bidWidth = maxLots > 0 ? (d.bidLots / maxLots) * 100 : 0;
+                            const askWidth = maxLots > 0 ? (d.askLots / maxLots) * 100 : 0;
                             return (
                               <div key={d.price} className="flex items-center gap-2 text-xs">
                                 <div className="w-16 text-right text-slate-400">
@@ -200,7 +206,11 @@ export default function Home() {
                       <div>
                         <div className="text-xs text-slate-500 mb-2">Big Print Tape (≥20 lots)</div>
                         <div className="bg-slate-950/60 border border-slate-800 rounded p-2 space-y-1 max-h-32 overflow-y-auto">
-                          {flow.es.bigPrints.length === 0 ? (
+                          {flow.es.bigPrints == null ? (
+                            <div className="text-xs text-slate-600 py-8 text-center">
+                              UNAVAILABLE
+                            </div>
+                          ) : flow.es.bigPrints.length === 0 ? (
                             <div className="text-xs text-slate-600 py-8 text-center">
                               No big prints
                             </div>
@@ -270,7 +280,7 @@ export default function Home() {
                   <div className="space-y-3">
                     <div>
                       <div className="text-xs text-slate-500 mb-2">Gate Levels</div>
-                      <div className="space-y-1">
+                      <div className="space-y-1" data-testid="flow-gate-levels">
                         {flow.gates.map((g, i) => {
                           const analysis = gateAnalyses[i];
                           return (
@@ -286,13 +296,13 @@ export default function Home() {
                                       ? "neutral"
                                       : g.status === "testing"
                                         ? "warn"
-                                        : "bear"
+                                        : g.status === "broken" ? "bear" : "neutral"
                                   }
                                   className="text-[10px] py-0"
                                 >
                                   {g.status.toUpperCase()}
                                 </Badge>
-                                {analysis && analysis.action !== "NEUTRAL" && (
+                                {analysis && (analysis.action === "BREAK" || analysis.action === "ABSORB") && (
                                   <Badge
                                     variant={analysis.action === "ABSORB" ? "bull" : "bear"}
                                     className="text-[10px] py-0"
@@ -301,7 +311,7 @@ export default function Home() {
                                   </Badge>
                                 )}
                               </div>
-                              <span className="text-slate-500">{g.closeCount}/2</span>
+                              <span className="text-slate-500">{g.closeCount == null ? "closes UNAVAILABLE" : `${g.closeCount}/2`}</span>
                             </div>
                           );
                         })}
@@ -319,34 +329,30 @@ export default function Home() {
                         <div className="flex justify-between">
                           <span className="text-slate-500">Call Wall:</span>
                           <span className="text-green-400 font-bold">
-                            {flow.gex.callWall.toFixed(0)}
+                            {fmtNum(flow.gex.callWall, 0)}
                           </span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-slate-500">Put Wall:</span>
                           <span className="text-red-400 font-bold">
-                            {flow.gex.putWall.toFixed(0)}
+                            {fmtNum(flow.gex.putWall, 0)}
                           </span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-slate-500">Flip:</span>
                           <span className="text-cyan-400 font-bold">
-                            {flow.gex.flip.toFixed(0)}
+                            {fmtNum(flow.gex.flip, 0)}
                           </span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-slate-500">Pin:</span>
                           <span className="text-yellow-400 font-bold">
-                            {flow.gex.pin.toFixed(0)}
+                            {fmtNum(flow.gex.pin, 0)}
                           </span>
                         </div>
                         <div className="text-[10px] text-slate-600 mt-1">
                           As of:{" "}
-                          {new Date(flow.gex.asOf).toLocaleTimeString("en-US", {
-                            hour12: false,
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
+                          {fmtAsOf(flow.gex.asOf)}
                         </div>
                       </div>
                     </div>
@@ -367,24 +373,26 @@ export default function Home() {
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-slate-500">NQ Last:</span>
-                    <span className="text-white font-bold">{flow.nq.last.toFixed(2)}</span>
+                    <span className="text-white font-bold">{fmtNum(flow.nq.last)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">NQ VWAP:</span>
-                    <span className="text-cyan-400">{flow.nq.vwap.toFixed(2)}</span>
+                    <span className="text-cyan-400">{fmtNum(flow.nq.vwap)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">NQ vs VWAP:</span>
                     <Badge
                       variant={
-                        flow.nq.last > flow.nq.vwap
-                          ? "bull"
-                          : flow.nq.last < flow.nq.vwap
-                            ? "bear"
-                            : "neutral"
+                        flow.nq.last == null || flow.nq.vwap == null
+                          ? "neutral"
+                          : flow.nq.last > flow.nq.vwap
+                            ? "bull"
+                            : flow.nq.last < flow.nq.vwap
+                              ? "bear"
+                              : "neutral"
                       }
                     >
-                      {flow.nq.last > flow.nq.vwap ? "ABOVE" : flow.nq.last < flow.nq.vwap ? "BELOW" : "AT"}
+                      {flow.nq.last == null || flow.nq.vwap == null ? "UNAVAILABLE" : flow.nq.last > flow.nq.vwap ? "ABOVE" : flow.nq.last < flow.nq.vwap ? "BELOW" : "AT"}
                     </Badge>
                   </div>
                 </div>

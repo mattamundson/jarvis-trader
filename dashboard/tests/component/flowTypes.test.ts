@@ -120,14 +120,24 @@ describe("flowTypes", () => {
   });
 
   describe("volumePaceRatio", () => {
-    it("returns 1.0 and neutral color for insufficient data", () => {
+    it("returns null for insufficient data (fewer than 2 bars) — callers handle the null", () => {
       const bars: Bar1m[] = [
         { ts: "2024-01-01T12:00:00Z", open: 7710, high: 7712, low: 7709, close: 7711, volume: 100 },
       ];
-      
-      const result = volumePaceRatio(bars);
-      expect(result.ratio).toBe(1.0);
-      expect(result.color).toBe("text-slate-400");
+
+      // Contract from the parent missing-data correction:
+      // volumePaceRatio signals "not enough data" by returning null rather
+      // than a fabricated neutral 1.0.
+      expect(volumePaceRatio(bars)).toBeNull();
+    });
+
+    it("returns null for a bar with invalid (non-finite or negative) volume", () => {
+      const bars: Bar1m[] = [
+        { ts: "2024-01-01T12:00:00Z", open: 7710, high: 7712, low: 7709, close: 7711, volume: 100 },
+        { ts: "2024-01-01T12:01:00Z", open: 7711, high: 7713, low: 7710, close: 7712, volume: Number.NaN },
+      ];
+
+      expect(volumePaceRatio(bars)).toBeNull();
     });
 
     it("returns green for volume 1.5x+ above average", () => {
@@ -138,6 +148,7 @@ describe("flowTypes", () => {
       ];
       
       const result = volumePaceRatio(bars);
+      if (result === null) throw new Error("Expected measured volume pace for valid multi-bar input");
       expect(result.ratio).toBe(1.5);
       expect(result.color).toBe("text-green-400");
     });
@@ -150,6 +161,7 @@ describe("flowTypes", () => {
       ];
       
       const result = volumePaceRatio(bars);
+      if (result === null) throw new Error("Expected measured volume pace for valid multi-bar input");
       expect(result.ratio).toBe(1.25);
       expect(result.color).toBe("text-cyan-400");
     });
@@ -162,6 +174,7 @@ describe("flowTypes", () => {
       ];
       
       const result = volumePaceRatio(bars);
+      if (result === null) throw new Error("Expected measured volume pace for valid multi-bar input");
       expect(result.ratio).toBe(0.7);
       expect(result.color).toBe("text-red-400");
     });
@@ -174,6 +187,7 @@ describe("flowTypes", () => {
       ];
       
       const result = volumePaceRatio(bars);
+      if (result === null) throw new Error("Expected measured volume pace for valid multi-bar input");
       expect(result.ratio).toBe(0.8);
       expect(result.color).toBe("text-yellow-400");
     });
@@ -186,6 +200,7 @@ describe("flowTypes", () => {
       ];
       
       const result = volumePaceRatio(bars);
+      if (result === null) throw new Error("Expected measured volume pace for valid multi-bar input");
       expect(result.ratio).toBe(1.0);
       expect(result.color).toBe("text-slate-400");
     });

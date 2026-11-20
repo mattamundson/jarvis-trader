@@ -86,6 +86,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Dashboard", href: "/", icon: <LayoutDashboard className="h-3.5 w-3.5" /> },
       { label: "Today at a Glance", href: "/today", icon: <SunMedium className="h-3.5 w-3.5" /> },
+      { label: "Tape", href: "/tape", icon: <Activity className="h-3.5 w-3.5" /> },
       { label: "Pending Approvals", href: "/trades/pending-approvals", icon: <Zap className="h-3.5 w-3.5" /> },
       { label: "Trade History", href: "/trades", icon: <History className="h-3.5 w-3.5" /> },
       { label: "Paper Trading", href: "/paper", icon: <Layers className="h-3.5 w-3.5" /> },

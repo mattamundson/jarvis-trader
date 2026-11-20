@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { defineConfig } from "@playwright/test";
+import { tapeFixtureEnv } from "./tests/fixtures/tape/serverEnv";
 
 function loadDashboardBasicAuthEnv(): void {
   const envPath = path.join(__dirname, ".env.local");
@@ -119,6 +120,7 @@ export default defineConfig({
     // working tree; see the PORT note above for why that matters on this machine.
     reuseExistingServer: process.env.PW_REUSE_SERVER === "1",
     env: {
+      ...tapeFixtureEnv(),
       OPS_ENABLED: "true",
     },
   },
