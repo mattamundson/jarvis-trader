@@ -2,6 +2,7 @@
 import { fetchDashboardApi } from "@/lib/api";
 // /tape extras panels (items 2-6). Read-only display; no order buttons.
 import { useEffect, useState } from "react";
+import { SIGNAL_NOT_A_FILL } from "@/lib/tape/claudeRead";
 import { ChartOrTable, FootprintChart, ProfilePair, chartLevels } from "./TapeCharts";
 
 const box = "mb-2 rounded border border-zinc-800 bg-zinc-950 p-2";
@@ -76,6 +77,7 @@ function PlanCard({ p, src }: { p: any; src: any }) {
           return (
             <div key={l.side} data-testid={`plan-leg-${l.side}`} className={`rounded border p-2 ${lit}`}>
               <div className="font-bold">{l.side.toUpperCase()} · {l.state}{l.historical ? " (historical)" : ""}</div>
+              <div data-testid={`plan-leg-${l.side}-signal-label`} className="text-[11px] font-bold text-amber-200">{SIGNAL_NOT_A_FILL}</div>
               <div>trigger {l.trigger} · stop {l.stop ?? "--"} · targets {l.targets.join(", ") || "none"} · dist {l.distance ?? "--"}</div>
               {l.reason && <div className="text-zinc-400">{l.reason}</div>}
               {l.ifThen && <div className="text-zinc-500">{l.ifThen}</div>}

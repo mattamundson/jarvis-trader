@@ -35,3 +35,61 @@ Scheduled task "Tape GEX Producer (ZeroGEX, delayed)": Mon-Fri every 10 minutes 
 
 Hermes writes no `gates.md`. The bridge reads Hermes's pre-market readiness report and approved safety record (read-only) and writes a sanitised `<tape state>/gates.md` with allow-listed names and a pass / warn / fail word only. A report that is not from today shows as WARN with its age, and no lockout line is written. `readHermesGates` now also looks in the tape state dir.
 Scheduled task "Tape Hermes Gates Bridge": Mon-Fri every 30 minutes from 06:30 CT.
+
+## 5. Claude read (`claude-read-latest.json`)
+
+The `/tape` page polls `GET /api/tape/claude-read` and shows a read-only Claude read panel.
+The route reads one file, `claude-read-latest.json`, from the tape state folder:
+
+- `TAPE_STATE_DIR` when that environment variable is set
+- otherwise `~/tape/state`
+- on the trading PC that folder is `C:\Users\mattm\tape\state`
+
+A missing file or malformed JSON is reported on the panel. The route does not throw, and it does not write.
+
+The parser is an allow-list. Only the fields below are kept. Any other key is dropped, including `r`, `R`, `pnl`, `pl`, `fill`, `position`, and `account`. A string that contains `$`, `P&L`, `pnl`, `unrealized`, `realized`, `buying power`, or `net liq` is dropped. Prices in the file are index levels, not dollar amounts, and the panel does not render a dollar sign. Every trigger on the panel, and every `/tape` plan trigger, is labeled `signal, not a fill`.
+
+`kind`, `direction`, `status`, and `gamma.regime` are lowercase enums.
+
+```json
+{
+  "version": 1,
+  "written_at": "2026-11-12T08:05:00-06:00",
+  "source": "claude",
+  "kind": "plan",
+  "context": {
+    "prior_sessions": [
+      {"date": "2026-11-11", "close": 7640.5, "low": 7600.0, "close_note": "IB close stand-in, not CME settle"}
+    ],
+    "vix_regime": "string",
+    "event_implied_move": "string",
+    "gamma": {"regime": "short", "flip": 7660.75, "pin": 7676, "as_of": "2026-11-12T07:50:00-06:00"},
+    "stale": ["string"]
+  },
+  "bias": "string",
+  "plan": "string",
+  "levels": [{"price": 7629, "label": "string"}],
+  "triggers": [
+    {"name": "string", "level": 7635.5, "direction": "above", "closes_needed": 2, "closes_seen": 0, "status": "armed"}
+  ],
+  "note": "string",
+  "live_legal": "NO, size 0"
+}
+```
+
+- `version` must be `1`.
+- `written_at` is an ISO-8601 timestamp with an offset. The panel prints it in America/Chicago.
+- `kind` is `plan`, `read`, or `close`.
+- `direction` is `above` or `below`.
+- `status` is `armed`, `signal`, or `invalidated`.
+- `gamma.regime` is `long`, `short`, or `neutral`.
+- A copy-paste example lives at `docs/tape/claude-read-latest.example.json`.
+
+Stale badge:
+
+- During RTH, Monday–Friday 08:30–15:00 America/Chicago inclusive, the read is stale when `written_at` is more than 60 minutes before the server clock, or when it is in the future.
+- Outside that window, including the weekday overnight session and the weekend, the read is stale when its Globex trading day is not the current Globex trading day. That day is the Chicago calendar date, rolled forward at 17:00 CT (Sunday 17:00 already belongs to Monday). Age alone does not stale the file outside RTH.
+- Gamma `as_of` is shown with its age and flagged when that age is more than 60 minutes, the timestamp is missing, or it is unparseable. That flag is independent of the written_at badge.
+- The panel recomputes both ages from the timestamps on each poll, including a failed poll. A failed poll never leaves the badge on CURRENT: the read is STALE when the rule above says so, and otherwise the badge is REFRESH FAILED until a poll succeeds.
+
+The plan trigger on the same page (long and short in `config/tape-plan.json`) confirms only after two consecutive completed 5-minute closes beyond the level. One close leaves the side ARMED. That status is a signal, not a fill. The lookback keeps a 5-minute bar until its close is older than `lookbackMin` (minimum 10). Filtering on the bar's open dropped the first close at the instant the second one completed.

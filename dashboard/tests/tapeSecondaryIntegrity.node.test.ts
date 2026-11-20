@@ -176,9 +176,15 @@ test("Sunday evening: the Monday Globex plan evaluates normally on the extras ca
 });
 
 test("extras plan card TRIGGERED state matches the main evaluator exactly when all gates fire", () => {
-  // Same rising series but with a strong delta inside the break window and NQ above ref.
+  // Two completed 5m buckets, both closing above 7725.75, with delta that clears minDelta.
+  // asOf is NOW_S-5, so a bucket is complete only when start+300 <= that clock.
+  const bucket = (start: number, close: number) => {
+    const bars: Record<string, unknown>[] = [];
+    for (let i = 0; i < 5; i++) bars.push(bar(start + i * 60, close, { delta: 200 }));
+    return bars;
+  };
   const raw = flowRaw({
-    series_1m: risingSeries().map((b, i) => (i >= 12 ? { ...b, delta: 200 } : b)),
+    series_1m: [...bucket(1794246300, 7728), ...bucket(1794246600, 7731)],
   });
   const gate = routeGate(raw);
   const card = readPlanCard(PLAN_RAW, raw, NOW_S, gate);
