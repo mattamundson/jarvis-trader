@@ -1,0 +1,75 @@
+{
+  "generated_at": "2026-09-27T20:18:11.453002+00:00",
+  "safety": {
+    "mode": "ANALYSIS_ONLY",
+    "paper_only": true,
+    "orders_enabled": false,
+    "risk_config_touched": false,
+    "live_engine_touched": false,
+    "symbols": [
+      "MES"
+    ],
+    "do_not_trade_symbols_excluded": [
+      "MCL",
+      "MNQ"
+    ]
+  },
+  "data_provenance": {
+    "primary_5m": {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\engine\\backtest\\cache\\MES_2024-09-22_2026-05-29_5m_cont.csv",
+      "bytes": 7376942,
+      "sha256": "516beb11568f3270e595035b1dada669654c6b337f87b81b35fc386dff092a12",
+      "rows": 119096,
+      "first_utc": "2024-09-22T22:00:00+00:00",
+      "last_utc": "2026-05-29T20:55:00+00:00",
+      "span_years": 1.680917,
+      "rth_rows": 33213,
+      "rth_sessions": 433,
+      "rth_first_date": "2024-09-23",
+      "rth_last_date": "2026-05-29",
+      "duplicate_timestamps": 0,
+      "nan_cells": 0,
+      "session_policy": "RTH 08:30<=bar_start<15:00 America/Chicago; IB 08:30<=bar_start<09:30; overnight prior 17:00<=bar_start<08:30"
+    },
+    "sensitivity_15m": {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\engine\\backtest\\cache\\MES_2024-09-22_2026-06-29_15m.csv",
+      "bytes": 2596021,
+      "sha256": "0add75b184cacc87b78b43ec3febb3c9a4e5cc985d07fe1b84c1f8806f6e7427",
+      "rows": 41619,
+      "first_utc": "2024-09-22T22:00:00+00:00",
+      "last_utc": "2026-06-29T20:45:00+00:00",
+      "span_years": 1.765771,
+      "rth_rows": 11605,
+      "rth_sessions": 454,
+      "rth_first_date": "2024-09-23",
+      "rth_last_date": "2026-06-29",
+      "duplicate_timestamps": 0,
+      "nan_cells": 0,
+      "session_policy": "RTH 08:30<=bar_start<15:00 America/Chicago; IB 08:30<=bar_start<09:30; overnight prior 17:00<=bar_start<08:30"
+    },
+    "unsafe_merge_rejected": "overlapping 5m cache candidates disagreed on tens of thousands of OHLCV rows; no splice performed"
+  },
+  "phase_verdicts": {
+    "phase1": "REJECT",
+    "phase2": "REJECT",
+    "phase3": "ACCEPT"
+  },
+  "artifacts": [
+    "artifact_hashes.json",
+    "audit_cache_candidates.py",
+    "cache_candidate_audit.json",
+    "cache_candidate_audit.log",
+    "data_provenance.json",
+    "manifest.json",
+    "phase1_is_trades.csv",
+    "phase1_ladder_events.csv",
+    "phase1_mes_ib_ladder.json",
+    "phase1_oos_trades_all_costs.csv",
+    "phase2_acceptance_records.csv",
+    "phase2_walkforward_rows.jsonl",
+    "phase2_weekly_vwap_acceptance.json",
+    "phase3_spx_es_basis.json",
+    "run.log",
+    "verification.log"
+  ]
+}

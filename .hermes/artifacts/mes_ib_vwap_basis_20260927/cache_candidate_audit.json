@@ -1,0 +1,406 @@
+{
+  "candidates": [
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\engine\\backtest\\cache\\MES_2024-09-22_2026-05-29_5m_cont.csv",
+      "bytes": 7376942,
+      "sha256": "516beb11568f3270e595035b1dada669654c6b337f87b81b35fc386dff092a12",
+      "columns": [
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "rows": 119096,
+      "first_utc": "2024-09-22T22:00:00+00:00",
+      "last_utc": "2026-05-29T20:55:00+00:00",
+      "span_years": 1.680917,
+      "duplicate_timestamps": 0,
+      "nat_timestamps": 0,
+      "nan_by_column": {
+        "open": 0,
+        "high": 0,
+        "low": 0,
+        "close": 0,
+        "volume": 0
+      },
+      "nonpositive_ohlc_rows": 0,
+      "ohlc_invariant_violations": 0,
+      "median_interval_seconds": 300.0,
+      "mode_interval_seconds": 300.0,
+      "large_gap_count_gt_6h": 92,
+      "rth_rows": 33213,
+      "rth_sessions": 433,
+      "rth_first_date": "2024-09-23",
+      "rth_last_date": "2026-05-29"
+    },
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\engine\\backtest\\cache\\MES_2025-04-09_2026-06-29_5m.csv",
+      "bytes": 3358710,
+      "sha256": "3cca1e6effe25f3838639ee761490db7cd26c7a18e2ff91fc7d3e992a55e6964",
+      "columns": [
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "rows": 55414,
+      "first_utc": "2025-04-09T05:35:00+00:00",
+      "last_utc": "2026-06-29T20:55:00+00:00",
+      "span_years": 1.222831,
+      "duplicate_timestamps": 0,
+      "nat_timestamps": 0,
+      "nan_by_column": {
+        "open": 0,
+        "high": 0,
+        "low": 0,
+        "close": 0,
+        "volume": 0
+      },
+      "nonpositive_ohlc_rows": 0,
+      "ohlc_invariant_violations": 0,
+      "median_interval_seconds": 300.0,
+      "mode_interval_seconds": 300.0,
+      "large_gap_count_gt_6h": 70,
+      "rth_rows": 16690,
+      "rth_sessions": 218,
+      "rth_first_date": "2025-04-09",
+      "rth_last_date": "2026-06-29"
+    },
+    {
+      "path": "C:\\Users\\mattm\\master-jarvis\\backtest\\cache\\MES_2025-07-24_2026-07-27_5m_cont.csv",
+      "bytes": 2564010,
+      "sha256": "9fddf29ee243c6532abea666c9da8d2e39b813374294c5d173140171ccd867d8",
+      "columns": [
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "rows": 41874,
+      "first_utc": "2025-07-24T13:20:00+00:00",
+      "last_utc": "2026-07-27T01:10:00+00:00",
+      "span_years": 1.006141,
+      "duplicate_timestamps": 0,
+      "nat_timestamps": 0,
+      "nan_by_column": {
+        "open": 0,
+        "high": 0,
+        "low": 0,
+        "close": 0,
+        "volume": 0
+      },
+      "nonpositive_ohlc_rows": 0,
+      "ohlc_invariant_violations": 0,
+      "median_interval_seconds": 300.0,
+      "mode_interval_seconds": 300.0,
+      "large_gap_count_gt_6h": 56,
+      "rth_rows": 12696,
+      "rth_sessions": 169,
+      "rth_first_date": "2025-07-24",
+      "rth_last_date": "2026-07-24"
+    },
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\engine\\backtest\\cache\\MES_2024-09-22_2026-06-29_15m.csv",
+      "bytes": 2596021,
+      "sha256": "0add75b184cacc87b78b43ec3febb3c9a4e5cc985d07fe1b84c1f8806f6e7427",
+      "columns": [
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "rows": 41619,
+      "first_utc": "2024-09-22T22:00:00+00:00",
+      "last_utc": "2026-06-29T20:45:00+00:00",
+      "span_years": 1.765771,
+      "duplicate_timestamps": 0,
+      "nat_timestamps": 0,
+      "nan_by_column": {
+        "open": 0,
+        "high": 0,
+        "low": 0,
+        "close": 0,
+        "volume": 0
+      },
+      "nonpositive_ohlc_rows": 0,
+      "ohlc_invariant_violations": 0,
+      "median_interval_seconds": 900.0,
+      "mode_interval_seconds": 900.0,
+      "large_gap_count_gt_6h": 97,
+      "rth_rows": 11605,
+      "rth_sessions": 454,
+      "rth_first_date": "2024-09-23",
+      "rth_last_date": "2026-06-29"
+    }
+  ],
+  "pairwise_overlap": [
+    {
+      "a": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\engine\\backtest\\cache\\MES_2024-09-22_2026-05-29_5m_cont.csv",
+      "b": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\engine\\backtest\\cache\\MES_2025-04-09_2026-06-29_5m.csv",
+      "overlap_rows": 49666,
+      "overlap_first": "2025-04-09T05:35:00+00:00",
+      "overlap_last": "2026-05-29T20:55:00+00:00",
+      "columns_compared": [
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "open": {
+        "exact_matches": 29633,
+        "mismatches": 20033,
+        "max_abs_diff": 500.5,
+        "median_abs_diff": 0.0
+      },
+      "high": {
+        "exact_matches": 29633,
+        "mismatches": 20033,
+        "max_abs_diff": 504.75,
+        "median_abs_diff": 0.0
+      },
+      "low": {
+        "exact_matches": 29634,
+        "mismatches": 20032,
+        "max_abs_diff": 497.5,
+        "median_abs_diff": 0.0
+      },
+      "close": {
+        "exact_matches": 29633,
+        "mismatches": 20033,
+        "max_abs_diff": 501.0,
+        "median_abs_diff": 0.0
+      },
+      "volume": {
+        "exact_matches": 29762,
+        "mismatches": 19904,
+        "max_abs_diff": 88104.0,
+        "median_abs_diff": 0.0
+      }
+    },
+    {
+      "a": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\engine\\backtest\\cache\\MES_2024-09-22_2026-05-29_5m_cont.csv",
+      "b": "C:\\Users\\mattm\\master-jarvis\\backtest\\cache\\MES_2025-07-24_2026-07-27_5m_cont.csv",
+      "overlap_rows": 30882,
+      "overlap_first": "2025-07-24T13:20:00+00:00",
+      "overlap_last": "2026-05-29T20:55:00+00:00",
+      "columns_compared": [
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "open": {
+        "exact_matches": 0,
+        "mismatches": 30882,
+        "max_abs_diff": 322.75,
+        "median_abs_diff": 53.5
+      },
+      "high": {
+        "exact_matches": 0,
+        "mismatches": 30882,
+        "max_abs_diff": 312.5,
+        "median_abs_diff": 52.0
+      },
+      "low": {
+        "exact_matches": 0,
+        "mismatches": 30882,
+        "max_abs_diff": 327.75,
+        "median_abs_diff": 54.75
+      },
+      "close": {
+        "exact_matches": 0,
+        "mismatches": 30882,
+        "max_abs_diff": 322.5,
+        "median_abs_diff": 53.5
+      },
+      "volume": {
+        "exact_matches": 2513,
+        "mismatches": 28369,
+        "max_abs_diff": 84021.0,
+        "median_abs_diff": 543.0
+      }
+    },
+    {
+      "a": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\engine\\backtest\\cache\\MES_2024-09-22_2026-05-29_5m_cont.csv",
+      "b": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\engine\\backtest\\cache\\MES_2024-09-22_2026-06-29_15m.csv",
+      "overlap_rows": 39693,
+      "overlap_first": "2024-09-22T22:00:00+00:00",
+      "overlap_last": "2026-05-29T20:45:00+00:00",
+      "columns_compared": [
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "open": {
+        "exact_matches": 39199,
+        "mismatches": 494,
+        "max_abs_diff": 67.0,
+        "median_abs_diff": 0.0
+      },
+      "high": {
+        "exact_matches": 18581,
+        "mismatches": 21112,
+        "max_abs_diff": 235.0,
+        "median_abs_diff": 0.25
+      },
+      "low": {
+        "exact_matches": 19288,
+        "mismatches": 20405,
+        "max_abs_diff": 160.5,
+        "median_abs_diff": 0.25
+      },
+      "close": {
+        "exact_matches": 3202,
+        "mismatches": 36491,
+        "max_abs_diff": 227.75,
+        "median_abs_diff": 1.75
+      },
+      "volume": {
+        "exact_matches": 1529,
+        "mismatches": 38164,
+        "max_abs_diff": 145068.0,
+        "median_abs_diff": 1409.0
+      }
+    },
+    {
+      "a": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\engine\\backtest\\cache\\MES_2025-04-09_2026-06-29_5m.csv",
+      "b": "C:\\Users\\mattm\\master-jarvis\\backtest\\cache\\MES_2025-07-24_2026-07-27_5m_cont.csv",
+      "overlap_rows": 35857,
+      "overlap_first": "2025-07-28T13:25:00+00:00",
+      "overlap_last": "2026-06-29T20:55:00+00:00",
+      "columns_compared": [
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "open": {
+        "exact_matches": 7237,
+        "mismatches": 28620,
+        "max_abs_diff": 215.0,
+        "median_abs_diff": 50.25
+      },
+      "high": {
+        "exact_matches": 7265,
+        "mismatches": 28592,
+        "max_abs_diff": 212.25,
+        "median_abs_diff": 48.75
+      },
+      "low": {
+        "exact_matches": 7267,
+        "mismatches": 28590,
+        "max_abs_diff": 217.25,
+        "median_abs_diff": 51.75
+      },
+      "close": {
+        "exact_matches": 7225,
+        "mismatches": 28632,
+        "max_abs_diff": 217.25,
+        "median_abs_diff": 50.25
+      },
+      "volume": {
+        "exact_matches": 10592,
+        "mismatches": 25265,
+        "max_abs_diff": 84021.0,
+        "median_abs_diff": 12.0
+      }
+    },
+    {
+      "a": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\engine\\backtest\\cache\\MES_2025-04-09_2026-06-29_5m.csv",
+      "b": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\engine\\backtest\\cache\\MES_2024-09-22_2026-06-29_15m.csv",
+      "overlap_rows": 18448,
+      "overlap_first": "2025-04-09T05:45:00+00:00",
+      "overlap_last": "2026-06-29T20:45:00+00:00",
+      "columns_compared": [
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "open": {
+        "exact_matches": 11758,
+        "mismatches": 6690,
+        "max_abs_diff": 493.5,
+        "median_abs_diff": 0.0
+      },
+      "high": {
+        "exact_matches": 5688,
+        "mismatches": 12760,
+        "max_abs_diff": 504.75,
+        "median_abs_diff": 2.75
+      },
+      "low": {
+        "exact_matches": 5698,
+        "mismatches": 12750,
+        "max_abs_diff": 491.5,
+        "median_abs_diff": 2.75
+      },
+      "close": {
+        "exact_matches": 1028,
+        "mismatches": 17420,
+        "max_abs_diff": 499.5,
+        "median_abs_diff": 4.75
+      },
+      "volume": {
+        "exact_matches": 674,
+        "mismatches": 17774,
+        "max_abs_diff": 184163.0,
+        "median_abs_diff": 1825.0
+      }
+    },
+    {
+      "a": "C:\\Users\\mattm\\master-jarvis\\backtest\\cache\\MES_2025-07-24_2026-07-27_5m_cont.csv",
+      "b": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\engine\\backtest\\cache\\MES_2024-09-22_2026-06-29_15m.csv",
+      "overlap_rows": 12188,
+      "overlap_first": "2025-07-24T13:30:00+00:00",
+      "overlap_last": "2026-06-29T20:45:00+00:00",
+      "columns_compared": [
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "open": {
+        "exact_matches": 2346,
+        "mismatches": 9842,
+        "max_abs_diff": 315.75,
+        "median_abs_diff": 50.75
+      },
+      "high": {
+        "exact_matches": 1055,
+        "mismatches": 11133,
+        "max_abs_diff": 307.5,
+        "median_abs_diff": 47.75
+      },
+      "low": {
+        "exact_matches": 1069,
+        "mismatches": 11119,
+        "max_abs_diff": 327.75,
+        "median_abs_diff": 54.0
+      },
+      "close": {
+        "exact_matches": 95,
+        "mismatches": 12093,
+        "max_abs_diff": 316.0,
+        "median_abs_diff": 50.75
+      },
+      "volume": {
+        "exact_matches": 214,
+        "mismatches": 11974,
+        "max_abs_diff": 173038.0,
+        "median_abs_diff": 1129.5
+      }
+    }
+  ]
+}
