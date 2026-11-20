@@ -1,10 +1,15 @@
-export function isPublicReadOnlyPath(pathname: string): boolean {
-  return (
-    pathname === "/market-brief-public" ||
-    pathname.startsWith("/market-brief-public/") ||
-    pathname === "/api/public-market-brief/latest" ||
-    pathname.startsWith("/api/public-market-brief/latest/")
-  );
+/** No dashboard pages or data APIs allow anonymous reads. */
+export function isPublicReadOnlyPath(_pathname: string): boolean {
+  return false;
+}
+
+/**
+ * Flow ingest endpoint has its own Bearer token auth (FLOW_INGEST_TOKEN).
+ * Exempt POST /api/flow/ingest from Basic auth so pushers can authenticate
+ * with their Bearer token directly. GET is not exempt.
+ */
+export function isFlowIngestPath(pathname: string, method: string): boolean {
+  return pathname === "/api/flow/ingest" && method === "POST";
 }
 
 /**
@@ -23,4 +28,9 @@ export function isWebSocketPath(pathname: string): boolean {
 /** A real WebSocket handshake sends `Upgrade: websocket`. An ordinary GET does not. */
 export function isWebSocketUpgrade(upgradeHeader: string | null): boolean {
   return (upgradeHeader ?? "").trim().toLowerCase() === "websocket";
+}
+
+/** Public display routes cannot be used for server actions or other writes. */
+export function isPublicReadOnlyRequest(pathname: string, method: string): boolean {
+  return (method === "GET" || method === "HEAD") && isPublicReadOnlyPath(pathname);
 }

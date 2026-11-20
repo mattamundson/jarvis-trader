@@ -32,6 +32,7 @@ import { EngineUptimeCard } from "@/components/EngineUptimeCard";
 import { IbGatewayDetailCard } from "@/components/IbGatewayDetailCard";
 import { SystemLivenessCard } from "@/components/SystemLivenessCard";
 import { CacheStatsCard } from "@/components/CacheStatsCard";
+import { VercelDeployHealthCard } from "@/components/VercelDeployHealthCard";
 import { useWebSocket } from "@/hooks/useWebSocket";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -651,6 +652,11 @@ export default function HealthPage() {
         {/* Both-systems liveness (C5) — engine + data + watchdog + LLM at a glance */}
         <WidgetErrorBoundary name="System Liveness">
           <SystemLivenessCard />
+        </WidgetErrorBoundary>
+
+        {/* Vercel production deploy health */}
+        <WidgetErrorBoundary name="Vercel Deploy Health">
+          <VercelDeployHealthCard />
         </WidgetErrorBoundary>
 
         {/* Connection health — most critical info at the top */}

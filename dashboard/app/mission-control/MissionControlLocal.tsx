@@ -20,6 +20,7 @@ import { DrawdownProjectionCard } from "@/components/DrawdownProjectionCard";
 import { OptionsChainCard } from "@/components/OptionsChainCard";
 import { PnLAttributionCard } from "@/components/PnLAttributionCard";
 import { TradeRecommendationsCard } from "@/components/TradeRecommendationsCard";
+import { TradeExecutionCard } from "@/components/TradeExecutionCard";
 import { OperatorScoreboard } from "./components/OperatorScoreboard";
 
 /**
@@ -78,6 +79,10 @@ export function MissionControlLocal() {
 
         <WidgetErrorBoundary name="Gateway Watchdog">
           <GatewayWatchdogCard />
+        </WidgetErrorBoundary>
+
+        <WidgetErrorBoundary name="Trade Execution">
+          <TradeExecutionCard />
         </WidgetErrorBoundary>
 
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">

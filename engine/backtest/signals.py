@@ -222,11 +222,9 @@ def generate_instrument_signals(df, symbol: str, **kwargs):
                         "slow",
                         "atr_trail_mult",
                         "min_rv_annualized",
-                        # VIX-adjustment kwargs (certified 2026-08-17 — MES VIX
-                        # percentile-tier gate v2 PASS-ALT, DSR 0.975, PF CI 2.26,
-                        # 82-window deep run). Passed through from paper_config
-                        # sma_params so the live paper path can suppress trend
-                        # entries during high-VIX regimes.
+                        # VIX-adjustment kwargs, passed through from paper_config
+                        # sma_params. Not certified: the 2026-08-17 VIX gate
+                        # result was voided by the 2026-10-30 prior-day VIX re-run.
                         "vix_df",
                         "vix_min",
                         "vix_max",

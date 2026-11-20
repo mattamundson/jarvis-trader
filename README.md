@@ -858,6 +858,163 @@ See **[PAPER_TRADING_RUNBOOK.md](PAPER_TRADING_RUNBOOK.md)** for detailed instru
 
 ---
 
+## Live Order Flow Feed
+
+**Real-time ES micro-structure feed with self-monitoring and auto-recovery**
+
+### Architecture
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ Windows PC (ThinkorSwim)                                     │
+│   └─ Tape Aggregation → flow_snapshot.json                  │
+│        └─ Pusher Script (push_flow.py) every 5s             │
+│             └─ HTTP POST → Vercel Dashboard                  │
+└──────────────────────────────────────────────────────────────┘
+                              ↓
+┌──────────────────────────────────────────────────────────────┐
+│ Vercel Dashboard (/api/flow/ingest)                         │
+│   ├─ Quality Validation Gates                               │
+│   ├─ Vercel Blob Storage (flow/latest.json)                 │
+│   └─ Health Check Endpoint (/api/flow/health)               │
+└──────────────────────────────────────────────────────────────┘
+                              ↓
+┌──────────────────────────────────────────────────────────────┐
+│ Public Dashboard (/)                                         │
+│   ├─ ● LIVE badge (data < 5s old)                           │
+│   ├─ STALE (Xs) badge (data > 60s old)                      │
+│   ├─ CVD + VWAP charts                                       │
+│   ├─ Price gate visualization                                │
+│   └─ Real-time 1m bars                                       │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Monitoring Stack
+
+| Layer | Tool | Purpose | Alert Channel |
+|-------|------|---------|---------------|
+| **External** | UptimeRobot | 5-min health check pings | Discord + Email |
+| **Proactive** | Vercel Cron | 5-min data freshness checks | Discord |
+| **Auto-Recovery** | Windows Watchdog | 5-min process + health checks, auto-restart | Logs |
+| **Quality Gates** | Dashboard validation | Rejects unrealistic data at ingest | 400 response |
+
+### Health Endpoint
+
+```bash
+curl https://jarvis-trader-dashboard.vercel.app/api/flow/health
+
+# Response:
+{
+  "status": "live",          // "live" | "stale" | "offline"
+  "age_seconds": 3,           // seconds since last update
+  "last_update": "2026-10-27T03:15:42Z",
+  "size_bytes": 2847
+}
+```
+
+**Status thresholds:**
+- **Live:** < 10 seconds
+- **Stale:** 10-120 seconds
+- **Offline:** > 120 seconds or blob unreachable
+
+### Auto-Recovery (Watchdog)
+
+**Script:** `scripts/tape/watchdog_flow_pusher.py`
+
+Runs every 5 minutes via Windows Task Scheduler. Auto-restarts pusher if:
+- Process (`pythonw.exe`) not running
+- Data age > 120 seconds (via health endpoint check)
+
+**Setup:**
+```powershell
+# PowerShell as Admin
+$action = New-ScheduledTaskAction -Execute "python" `
+  -Argument "C:\Users\mattm\ThinkorSwim\jarvis-trader\scripts\tape\watchdog_flow_pusher.py"
+$trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) `
+  -RepetitionInterval (New-TimeSpan -Minutes 5) `
+  -RepetitionDuration ([TimeSpan]::MaxValue)
+$settings = New-ScheduledTaskSettingsSet `
+  -AllowStartIfOnBatteries `
+  -DontStopIfGoingOnBatteries `
+  -StartWhenAvailable
+Register-ScheduledTask `
+  -TaskName "JARVIS Flow Watchdog" `
+  -Action $action `
+  -Trigger $trigger `
+  -Settings $settings
+Start-ScheduledTask -TaskName "JARVIS Flow Watchdog"
+```
+
+### Data Quality Gates
+
+Every ingest payload is validated before storage. Rejected if:
+
+| Check | Threshold | Why |
+|-------|-----------|-----|
+| ES price range | 1000-10000 | Unrealistic price = data corruption |
+| CVD magnitude | abs(CVD) < 10000 | Implausibly large cumulative delta |
+| Price/VWAP divergence | abs(price - vwap) < 100 | Calculation error or stale VWAP |
+| Bar integrity | volume >= 0, high >= low | Malformed OHLCV bars |
+| Timestamp age | -60s to +300s | Clock skew or stale snapshot |
+| Bars present | len(bars) > 0 | Missing aggregation data |
+
+Validation failures return `400 Bad Request` with hint.
+
+### Troubleshooting
+
+See **[docs/runbooks/flow-feed-troubleshooting.md](docs/runbooks/flow-feed-troubleshooting.md)** for:
+- Common issues (STALE DATA, FIXTURE DATA, 401/400 errors)
+- Diagnosis commands
+- Fix procedures
+- Command reference
+- Escalation path
+
+**Quick checks:**
+```bash
+# Is pusher running?
+tasklist | findstr pythonw
+
+# Check health endpoint
+curl https://jarvis-trader-dashboard.vercel.app/api/flow/health
+
+# Watchdog status
+Get-ScheduledTask -TaskName "JARVIS Flow Watchdog"
+
+# Recent logs
+cat $env:USERPROFILE\tape\logs\watchdog.log | tail -20
+cat $env:USERPROFILE\tape\logs\push_flow.log | tail -50
+```
+
+### Success Metrics
+
+After Phase 1-2 deployment (monitoring + auto-recovery):
+
+| Metric | Target | How to Measure |
+|--------|--------|----------------|
+| Uptime | >99% | UptimeRobot dashboard |
+| Data Freshness (P95) | <10s | Health endpoint `age_seconds` |
+| Alert MTTD | <5 min | Discord timestamp - pusher crash time |
+| Alert MTTR | <10 min | Watchdog auto-restart duration |
+| Manual Interventions | 0/week | Count manual pusher restarts |
+
+### Configuration
+
+**Required env vars (Vercel):**
+```bash
+BLOB_READ_WRITE_TOKEN=<Vercel Blob token>
+FLOW_INGEST_TOKEN=<same as pusher .env FLOW_INGEST_TOKEN>
+CRON_SECRET=<openssl rand -base64 32>
+DISCORD_WEBHOOK_FLOW_ALERTS=<Discord webhook URL>
+```
+
+**Pusher env vars (Windows `~/tape/.env`):**
+```bash
+FLOW_PUSH_URL=https://jarvis-trader-dashboard.vercel.app/api/flow/ingest
+FLOW_INGEST_TOKEN=<same as Vercel FLOW_INGEST_TOKEN>
+```
+
+---
+
 ## Support
 
 ### Common Issues

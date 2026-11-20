@@ -25,6 +25,7 @@ from __future__ import annotations
 
 from typing import Optional
 
+import numpy as np
 import pandas as pd
 
 __all__ = [
@@ -57,33 +58,28 @@ def derive_tpo_failed(imbalance: str, close: float, fail_target: float) -> bool:
 
 def _bar_session_dates(
     profile_df: pd.DataFrame,
-    session_start_hour: int = 9,
+    session_start_hour: int = 8,
     session_start_minute: int = 30,
     tz: str = "America/Chicago",
+    session_end_hour: int = 15,
+    session_end_minute: int = 0,
 ) -> pd.Series:
-    """Per-bar trading-session date, using the IDENTICAL bucketing rule as
-    backtest.tpo_profile.compute_tpo_profile's internal _session_tpo grouping
-    (bars before the session open belong to the previous calendar date's
-    session). Duplicated verbatim here rather than exporting a new public
-    helper from tpo_profile.py, which is a shared, heavily-used module with
-    many other callers -- MUST be kept in sync with that function's
-    session_start_hour/session_start_minute/tz defaults if either changes.
+    """Per-bar trade date, using the same rule as
+    backtest.tpo_profile.compute_tpo_profile: bars at or after the RTH close
+    (15:00 CT) roll to the next business day. Keep in sync with that function.
+    session_start_* is kept for call compatibility and does not affect the date.
 
-    Requires profile_df to have a tz-aware (or naive-as-UTC) DatetimeIndex,
-    which compute_tpo_profile's output always does (it operates on and
-    preserves its input's index).
+    Requires profile_df to have a tz-aware (or naive-as-UTC) DatetimeIndex.
     """
     idx = profile_df.index
     if idx.tz is None:
         idx = idx.tz_localize("UTC")
     idx_local = idx.tz_convert(tz)
-    session_open = idx_local.hour * 60 + idx_local.minute
-    open_cutoff = session_start_hour * 60 + session_start_minute
-    session_date = idx_local.normalize()
-    pre_open_mask = session_open < open_cutoff
-    return pd.Series(
-        session_date - pd.to_timedelta(pre_open_mask.astype(int), unit="D"), index=profile_df.index
-    )
+    minute = idx_local.hour * 60 + idx_local.minute
+    after_close = minute >= session_end_hour * 60 + session_end_minute
+    day = idx_local.normalize().tz_localize(None)
+    trade_date = pd.DatetimeIndex(np.where(after_close, day + pd.offsets.BDay(1), day))
+    return pd.Series(trade_date, index=profile_df.index)
 
 
 def current_session_block(profile_df: pd.DataFrame) -> pd.DataFrame:

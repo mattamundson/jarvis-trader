@@ -20,7 +20,7 @@ def _make_df(dates_prices: list[tuple], tz: str = "America/Chicago") -> pd.DataF
 
 
 def _rth_bars(date_str: str, prices: list[float], tz: str = "America/Chicago") -> pd.DataFrame:
-    """Generate RTH minute bars (09:30–16:00 CT) for one session date."""
+    """Generate minute bars from 09:30 CT (inside RTH 08:30-15:00 CT) for one date."""
     times = pd.date_range(
         start=f"{date_str} 09:30",
         periods=len(prices),
@@ -194,3 +194,38 @@ def test_vpoc_is_mode_price_bin():
     s2_rows = result.loc["2024-01-03"].dropna(subset=["vpoc"])
     assert not s2_rows.empty
     assert abs(s2_rows.iloc[0]["vpoc"] - 101.0) < 0.01
+
+
+# ── RTH window and volume-at-price ───────────────────────────────────────────
+
+def test_vpoc_uses_volume_not_bar_count():
+    """One heavy bar at 101 outweighs many light bars at 100."""
+    t1 = pd.date_range("2024-01-02 09:00", periods=11, freq="1min", tz="America/Chicago")
+    s1 = pd.DataFrame(
+        {"close": [100.0] * 10 + [101.0], "high": [100.0] * 10 + [101.0],
+         "low": [100.0] * 10 + [101.0], "volume": [1] * 10 + [500]},
+        index=t1,
+    )
+    s2 = _rth_bars("2024-01-03", [100.0])
+    result = compute_tpo_profile(pd.concat([s1, s2]), tick_size=0.25)
+    assert result.loc["2024-01-03"].iloc[0]["vpoc"] == 101.0
+
+
+def test_rth_window_excludes_overnight_and_covers_first_hour():
+    """Overnight bars stay out of the profile, and the 09:00 CT bar of the
+    next day already carries the prior RTH session's levels."""
+    def bars(start, n, price, vol):
+        return pd.DataFrame(
+            {"close": price, "high": price, "low": price, "volume": vol},
+            index=pd.date_range(start, periods=n, freq="1min", tz="America/Chicago"),
+        )
+    df = pd.concat([
+        bars("2024-01-02 09:30", 5, 100.0, 1),   # RTH day 1
+        bars("2024-01-02 18:00", 50, 150.0, 100),  # overnight
+        bars("2024-01-03 09:00", 1, 100.0, 1),   # first RTH hour day 2
+        bars("2024-01-03 09:30", 1, 100.0, 1),
+    ])
+    result = compute_tpo_profile(df, tick_size=0.25)
+    day2 = result.loc["2024-01-03"]
+    assert (day2["vpoc"] == 100.0).all()
+    assert (day2["profile_high"] == 100.0).all()
