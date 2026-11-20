@@ -194,7 +194,13 @@ def test_flag_on_mes_trend_path_also_enforced(
     emits all NO_TRADE on this short data, so this is a weak assertion by
     itself, but combined with the FAIL test below it pins down wiring."""
     monkeypatch.setenv("GATE_V2_ENFORCE_ROUTING", "1")
-    out = generate_instrument_signals(bullish_ohlcv_df, symbol="MES")
+    # MES is exempt from the verdict layer (Amo directive, mirrors
+    # gate_v2_policy.is_strategy_authorized), so PRB-02 family scoping is
+    # pinned on MGC, the other TREND_INSTRUMENTS member, with the static
+    # blocklist patched out so the call reaches is_ungate_eligible.
+    import backtest.signals as signals_mod
+    monkeypatch.setattr(signals_mod, "DO_NOT_TRADE_SYMBOLS", frozenset())
+    out = generate_instrument_signals(bullish_ohlcv_df, symbol="MGC")
     assert (out["entry_signal"] == "NO_TRADE").all()
 
 
@@ -209,7 +215,7 @@ def test_prb02_mes_unrelated_family_pass_no_longer_authorizes(
     """The literal PRB-02 live bug: MES_stark_gapfill_long_rank1.json PASSes
     (an unrelated signal-generator family MES's trend path never invokes),
     while no trend-family verdict exists at all. Before the fix,
-    is_ungate_eligible("MES") was symbol-wide and returned True off that
+    is_ungate_eligible("MGC") was symbol-wide and returned True off that
     unrelated PASS. After the fix, generate_instrument_signals must call
     is_ungate_eligible with family_prefixes scoped to "trend" for MES, so an
     unrelated-family PASS must NOT authorize it — MES stays gated (would be
@@ -217,10 +223,16 @@ def test_prb02_mes_unrelated_family_pass_no_longer_authorizes(
     call-arguments assertion below proves the WIRING, not just the outcome).
     """
     _write_verdict_family(
-        tmp_verdicts_dir, "MES", family="stark_gapfill_long", rank=1,
+        tmp_verdicts_dir, "MGC", family="stark_gapfill_long", rank=1,
         verdict="PASS", passed_via="core",
     )
     monkeypatch.setenv("GATE_V2_ENFORCE_ROUTING", "1")
+    # MES is exempt from the verdict layer (Amo directive, mirrors
+    # gate_v2_policy.is_strategy_authorized), so PRB-02 family scoping is
+    # pinned on MGC, the other TREND_INSTRUMENTS member, with the static
+    # blocklist patched out so the call reaches is_ungate_eligible.
+    import backtest.signals as signals_mod
+    monkeypatch.setattr(signals_mod, "DO_NOT_TRADE_SYMBOLS", frozenset())
 
     from backtest import gate_v2_policy as policy
 
@@ -229,9 +241,9 @@ def test_prb02_mes_unrelated_family_pass_no_longer_authorizes(
         # import is_ungate_eligible` at call time (lazy import) — patch the
         # source module's attribute since the lazy `from ... import` binds
         # fresh from the module each call.
-        out = generate_instrument_signals(bullish_ohlcv_df, symbol="MES")
+        out = generate_instrument_signals(bullish_ohlcv_df, symbol="MGC")
 
-    assert spy.called, "is_ungate_eligible must be invoked for MES under enforcement"
+    assert spy.called, "is_ungate_eligible must be invoked for MGC under enforcement"
     _, kwargs = spy.call_args
     assert kwargs.get("family_prefixes") == TREND_GATE_V2_FAMILY_PREFIXES, (
         "MES must be checked with family_prefixes scoped to 'trend' -- an "
@@ -260,15 +272,21 @@ def test_prb02_trend_family_pass_still_authorizes(
     the other TREND_INSTRUMENTS member and is not blocked, so it still
     isolates the routing behavior this test exists to prove."""
     _write_verdict_family(
-        tmp_verdicts_dir, "MES", family="trend_baseline", rank=1,
+        tmp_verdicts_dir, "MGC", family="trend_baseline", rank=1,
         verdict="PASS", passed_via="alt",
     )
     monkeypatch.setenv("GATE_V2_ENFORCE_ROUTING", "1")
+    # MES is exempt from the verdict layer (Amo directive, mirrors
+    # gate_v2_policy.is_strategy_authorized), so PRB-02 family scoping is
+    # pinned on MGC, the other TREND_INSTRUMENTS member, with the static
+    # blocklist patched out so the call reaches is_ungate_eligible.
+    import backtest.signals as signals_mod
+    monkeypatch.setattr(signals_mod, "DO_NOT_TRADE_SYMBOLS", frozenset())
 
     from backtest import gate_v2_policy as policy
 
     with patch.object(policy, "is_ungate_eligible", wraps=policy.is_ungate_eligible) as spy:
-        generate_instrument_signals(bullish_ohlcv_df, symbol="MES")
+        generate_instrument_signals(bullish_ohlcv_df, symbol="MGC")
 
     assert spy.called
     _, kwargs = spy.call_args
@@ -277,7 +295,7 @@ def test_prb02_trend_family_pass_still_authorizes(
     # is accepted under the family scope (the fixture's own crossover may or
     # may not fire on this short synthetic series, so assert on the gate's
     # own answer directly rather than on entry_signal output).
-    assert policy.is_ungate_eligible("MES", family_prefixes=TREND_GATE_V2_FAMILY_PREFIXES) is True
+    assert policy.is_ungate_eligible("MGC", family_prefixes=TREND_GATE_V2_FAMILY_PREFIXES) is True
 
 
 def test_prb02_non_trend_symbol_keeps_symbol_wide_check(
@@ -374,3 +392,17 @@ def test_enforcement_also_clears_exit_signal_when_present(
     out = generate_instrument_signals(bullish_ohlcv_df, symbol="SPY")
     if "exit_signal" in out.columns:
         assert (out["exit_signal"] == "NO_EXIT").all()
+
+
+def test_mes_exempt_from_verdict_layer_under_enforcement(
+    bullish_ohlcv_df, tmp_verdicts_dir, monkeypatch
+):
+    """MES never consults is_ungate_eligible under enforcement: its standing
+    exemption mirrors gate_v2_policy.is_strategy_authorized()."""
+    monkeypatch.setenv("GATE_V2_ENFORCE_ROUTING", "1")
+    from backtest import gate_v2_policy as policy
+
+    with patch.object(policy, "is_ungate_eligible", wraps=policy.is_ungate_eligible) as spy:
+        generate_instrument_signals(bullish_ohlcv_df, symbol="MES")
+
+    assert not spy.called
