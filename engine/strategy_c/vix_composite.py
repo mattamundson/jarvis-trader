@@ -165,6 +165,26 @@ class VIXComposite:
 
         result["position_multiplier"] = result.apply(score_to_multiplier, axis=1)
 
+        # ── Composite Regime Label ─────────────────────────────────────────────
+        # Derived from the composite score (all 4 components), NOT the raw VIX level.
+        # This is what drives the actual position multiplier decision.
+        # Distinct from vix_regime which is purely the VIX level band.
+        def score_to_composite_regime(score: float) -> str:
+            if score >= 0.60:
+                return "RISK_ON"
+            elif score >= 0.45:
+                return "MILD_CAUTION"
+            elif score >= 0.35:
+                return "MODERATE_CAUTION"
+            elif score >= 0.20:
+                return "SIGNIFICANT_CAUTION"
+            else:
+                return "RISK_OFF"
+
+        result["composite_regime"] = result["composite_score"].apply(score_to_composite_regime)
+        # Mirror the position_multiplier hard override: EXTREME VIX is fully risk-off.
+        result.loc[result["vix_regime"] == "EXTREME", "composite_regime"] = "RISK_OFF"
+
         return result
 
     def get_current_signal(
@@ -179,14 +199,26 @@ class VIXComposite:
         """
         df = self.compute(weekly_vix, weekly_realized_vol)
         last = df.iloc[-1]
+        vix_val = round(float(last["vix"]), 2)
+        rv = weekly_realized_vol.reindex(df.index).ffill().iloc[-1] if weekly_realized_vol is not None else None
+        fear_spread = round(vix_val - float(rv), 2) if rv is not None else None
+        fear_context = (
+            "implied > realized (fear premium, mean-reverting bullish)" if (fear_spread or 0) > 0
+            else "realized > implied (complacency, bearish lean)"
+        ) if fear_spread is not None else "no realized vol data"
         return {
-            "vix": round(float(last["vix"]), 2),
+            "vix": vix_val,
+            # vix_regime = raw VIX level band (CALM/NORMAL/CAUTION/ELEVATED/EXTREME)
             "vix_regime": last["vix_regime"],
+            # composite_regime = position decision from all 4 components
+            "composite_regime": last["composite_regime"],
             "composite_score": round(float(last["composite_score"]), 4),
             "position_multiplier": round(float(last["position_multiplier"]), 4),
             "level_score": round(float(last["level_score"]), 4),
             "mom_score": round(float(last["mom_score"]), 4),
             "ma_score": round(float(last["ma_score"]), 4),
             "fear_score": round(float(last["fear_score"]), 4),
+            "fear_spread": fear_spread,
+            "fear_context": fear_context,
             "date": str(df.index[-1].date()),
         }

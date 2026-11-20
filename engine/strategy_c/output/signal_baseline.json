@@ -1,0 +1,56 @@
+{
+  "source": "engine.py v1, production live_signal config; same-Friday signal values (overlay_lag_weeks=0 \u2014 lag affects returns, not signal values)",
+  "window": "2017-03-17 to 2026-09-25 (498w); recent_2y from 2024-09-27",
+  "note": "combined_scale p97.5 equals the 1.1 cap, so T6 is effectively a low-side check",
+  "priors": {
+    "combined_scale": {
+      "mean": 0.5677,
+      "sd": 0.2877,
+      "p2_5": 0.0829,
+      "p5": 0.1536,
+      "p50": 0.5148,
+      "p95": 1.1,
+      "p97_5": 1.1
+    },
+    "combined_scale_recent_2y": {
+      "mean": 0.5639,
+      "sd": 0.2231,
+      "p2_5": 0.1284,
+      "p5": 0.275,
+      "p50": 0.5569,
+      "p95": 0.9894,
+      "p97_5": 1.0
+    },
+    "vol_scale": {
+      "mean": 0.5801,
+      "sd": 0.2485,
+      "p2_5": 0.1936,
+      "p5": 0.2295,
+      "p50": 0.544,
+      "p95": 1.0,
+      "p97_5": 1.0
+    }
+  },
+  "wow_abs_threshold": 0.4506,
+  "dscale_abs": {
+    "mean": 0.1257,
+    "sd": 0.1207,
+    "p2_5": 0.0033,
+    "p5": 0.0091,
+    "p50": 0.0995,
+    "p95": 0.3368,
+    "p97_5": 0.4228
+  },
+  "trigger_fire_counts_full_history": {
+    "T1 RISK_ON & VIX>=30": 16,
+    "T2 CRISIS & vol scale NOT compressed (critical)": 0,
+    "T2 CRISIS & vol scale compressed (info)": 24,
+    "T5 v1 rule rel>30%": 154,
+    "T5 v2 rule |d|>=0.20 & rel>30%": 80,
+    "T6 outside p2.5/p97.5 (2y prior)": 65,
+    "T6 outside p2.5/p97.5 (full history)": 13,
+    "T5 |d|>=p97.5": 13,
+    "T5 |d|>=0.30": 55
+  },
+  "weeks_full_history": 498
+}
