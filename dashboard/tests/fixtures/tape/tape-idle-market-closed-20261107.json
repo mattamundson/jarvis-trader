@@ -1,0 +1,217 @@
+{
+  "ok": true,
+  "serverEpochMs": 1794035508617,
+  "plan": {
+    "_help": "Edit this each session. Saved changes show on /tape within ~5s, no restart. long.trigger: 5m close above it; short.trigger: 5m close below it. minDelta: 1m delta needed (sign is applied for the side). nqRef: NQ must be above (long) or below (short) this. lookbackMin: only 5m bars this recent can arm or fail a trigger. failedExpiryMin: a FAILED status goes back to ARMED this many minutes after the failure if there is no new break. extraLevels are merged with the recorder levels. long or short may be null (side not in plan).",
+    "date": "2026-11-03",
+    "note": "Re-plan 11:21 CT. IB/engine down all morning (ES 404), so levels built from Yahoo ES=F 5m (~10 min delayed); GEX stale since 11/2 14:59 (net -46B short gamma, far under flip). 8am short (two closes < ONL 7546) obsolete: ONL never broke and RTH rallied to 7618.25. Triggers need TWO 5m closes (panel checks one close; two-close rule is manual). Long: two 5m closes above 7618.5 (session high / 9:55-10:15 rejections), stop 7611, T 7627 (1x IB extension). Short: two 5m closes below 7597 (VWAP 7599 + 10:30-10:50 shelf), stop 7604.5, T 7588 (prior close / 11/2 late shelf). Fade blocked (short gamma). nqRef from Yahoo NQ=F (flow-latest NQ down). Paper only, live NO, size 0.",
+    "nqRef": 28387,
+    "lookbackMin": 90,
+    "failedExpiryMin": 15,
+    "long": {
+      "trigger": 7618.5,
+      "minDelta": 150,
+      "targets": [
+        7627
+      ],
+      "stop": 7611
+    },
+    "short": {
+      "trigger": 7597,
+      "minDelta": 150,
+      "targets": [
+        7588
+      ],
+      "stop": 7604.5
+    },
+    "extraLevels": [
+      {
+        "name": "Gamma flip (GEX stale 11/2)",
+        "px": 7757
+      },
+      {
+        "name": "Call wall / max pain (GEX stale 11/2)",
+        "px": 7732
+      },
+      {
+        "name": "Pin (GEX stale 11/2)",
+        "px": 7707
+      },
+      {
+        "name": "Projection: 1.5x IB extension",
+        "px": 7639.5
+      },
+      {
+        "name": "Projection: 1x IB extension (long T)",
+        "px": 7627
+      },
+      {
+        "name": "Session high 10:15 / 9:55-10:15 rejections",
+        "px": 7618.25
+      },
+      {
+        "name": "9:40-10:55 highs 7608-7609.5",
+        "px": 7608.75
+      },
+      {
+        "name": "ONH 07:30",
+        "px": 7604.75
+      },
+      {
+        "name": "RTH VWAP (Yahoo, ~11:10)",
+        "px": 7599
+      },
+      {
+        "name": "10:30-10:50 shelf lows 7597-7598.25",
+        "px": 7597.5
+      },
+      {
+        "name": "Prior close / 11/2 late shelf 7585-7590 (short T)",
+        "px": 7588
+      },
+      {
+        "name": "RTH low 08:30",
+        "px": 7576.5
+      },
+      {
+        "name": "Overnight 03:00-07:20 shelf 7560-7570",
+        "px": 7565
+      },
+      {
+        "name": "ONL 01:05",
+        "px": 7546
+      },
+      {
+        "name": "Put wall (GEX stale 11/2)",
+        "px": 7531
+      }
+    ]
+  },
+  "planError": null,
+  "gex": {
+    "asof_ct": "2026-11-06 10:53",
+    "pulled_ct": "2026-11-06 17:00",
+    "flip": 7817.5,
+    "call_wall": 7729.75,
+    "put_wall": 7428.75,
+    "max_pain": 7599.25,
+    "net_gex": "-52.15B",
+    "source": "ZeroGEX ES free (~15m delayed)",
+    "fetch_ok": false,
+    "file": "primary",
+    "file_age_s": 29505,
+    "stale": true
+  },
+  "gexError": null,
+  "source": "unknown",
+  "sourceBars": null,
+  "file": "primary",
+  "fileAgeS": 1,
+  "stale10m": false,
+  "snapshot": {
+    "as_of_epoch": 1794035508,
+    "as_of_ct": "2026-11-07T01:11:47-06:00",
+    "price": {
+      "last": null,
+      "bid": null,
+      "ask": null,
+      "vwap": null,
+      "hi": null,
+      "lo": null
+    },
+    "cvd": {
+      "value": 0,
+      "since_ct": null
+    },
+    "gate_cvd": null,
+    "nq": {
+      "rel": null,
+      "status": "down"
+    },
+    "levels": [
+      {
+        "name": "Target 3",
+        "px": 7730,
+        "kind": "target",
+        "dir": "above",
+        "bias": "bull",
+        "note": "7729-7731",
+        "status": "pending",
+        "price_vs": "at",
+        "dist": null
+      },
+      {
+        "name": "Target 2",
+        "px": 7727.4,
+        "kind": "target",
+        "dir": "above",
+        "bias": "bull",
+        "note": null,
+        "status": "pending",
+        "price_vs": "at",
+        "dist": null
+      },
+      {
+        "name": "Trigger",
+        "px": 7725.75,
+        "kind": "trigger",
+        "dir": "above",
+        "bias": "bull",
+        "note": null,
+        "status": "pending",
+        "price_vs": "at",
+        "dist": null
+      },
+      {
+        "name": "Overnight VWAP",
+        "px": 7723,
+        "kind": "support",
+        "dir": "below",
+        "bias": "bear",
+        "note": "5m close under = fade",
+        "status": "pending",
+        "price_vs": "at",
+        "dist": null
+      },
+      {
+        "name": "Down 1",
+        "px": 7721,
+        "kind": "target",
+        "dir": "below",
+        "bias": "bear",
+        "note": null,
+        "status": "pending",
+        "price_vs": "at",
+        "dist": null
+      },
+      {
+        "name": "Bear invalidation",
+        "px": 7719.25,
+        "kind": "invalid",
+        "dir": "below",
+        "bias": "bear",
+        "note": null,
+        "status": "pending",
+        "price_vs": "at",
+        "dist": null
+      }
+    ],
+    "series_1m": []
+  },
+  "todayCt": "2026-11-07",
+  "globexTradingDate": "2026-11-07",
+  "marketState": {
+    "state": "scheduled_closed",
+    "detail": "Saturday - weekend (weekly close Fri 16:00 CT)",
+    "basis": "cme-globex-schedule"
+  },
+  "recorder": {
+    "state": "idle (outside window)",
+    "heartbeatAgeS": 5.5,
+    "lastTickAgeS": null,
+    "reconnects": 0,
+    "connectedPort": null,
+    "sessionTradingDay": "2026-11-07",
+    "levelsSource": "tape-config (tape-plan dated 2026-11-06, not today 2026-11-07 CT)"
+  }
+}

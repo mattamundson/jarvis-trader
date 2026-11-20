@@ -14,9 +14,16 @@ describe("flow ingest endpoint", () => {
     process.env.FLOW_INGEST_TOKEN = "test-token-12345";
     process.env.BLOB_READ_WRITE_TOKEN = "blob-token-67890";
     vi.clearAllMocks();
+    // The inherited master sanitizer enforces a source-clock freshness gate in sanitizeFlowData; freeze
+    // Date.now just after the fixture ts so valid fixtures still reach the
+    // storage branch while the freshness contract stays tested (stale negative
+    // in the data-validation describe below).
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2024-01-01T12:02:00Z"));
   });
-  
+
   afterEach(() => {
+    vi.useRealTimers();
     process.env = originalEnv;
   });
   
@@ -191,7 +198,7 @@ describe("flow ingest endpoint", () => {
       
       expect(res.status).toBe(400);
       const body = await res.json();
-      expect(body.error).toBe("Invalid flow data schema");
+      expect(body.error).toBe("Data failed validation");
     });
     
     it("rejects missing nq data", async () => {
@@ -206,7 +213,7 @@ describe("flow ingest endpoint", () => {
       
       expect(res.status).toBe(400);
       const body = await res.json();
-      expect(body.error).toBe("Invalid flow data schema");
+      expect(body.error).toBe("Data failed validation");
     });
     
     it("rejects missing gex data", async () => {
@@ -221,7 +228,7 @@ describe("flow ingest endpoint", () => {
       
       expect(res.status).toBe(400);
       const body = await res.json();
-      expect(body.error).toBe("Invalid flow data schema");
+      expect(body.error).toBe("Data failed validation");
     });
     
     it("rejects non-array gates", async () => {
@@ -236,9 +243,18 @@ describe("flow ingest endpoint", () => {
       
       expect(res.status).toBe(400);
       const body = await res.json();
-      expect(body.error).toBe("Invalid flow data schema");
+      expect(body.error).toBe("Data failed validation");
     });
     
+    it("rejects stale timestamp beyond the freshness window", async () => {
+      const stale = { ...validFlowData, ts: "2024-01-01T11:50:00Z" };
+      const req = createRequest(stale, "test-token-12345");
+      const res = await POST(req);
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toBe("Data failed validation");
+    });
+
     it("sanitizes and strips extra fields", async () => {
       const { put } = await import("@vercel/blob");
       const putMock = vi.mocked(put);

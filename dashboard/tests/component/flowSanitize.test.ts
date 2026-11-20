@@ -1,7 +1,20 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { sanitizeFlowData } from "@/lib/flowSanitize";
 
 describe("flowSanitize", () => {
+  // The inherited master sanitizer enforces a source-clock freshness gate (ts may be at most 5 min old
+  // and at most 60 s in the future). Freeze Date.now just after the fixture
+  // timestamp so the still-valid fixtures pass while the freshness contract
+  // stays genuinely tested (stale/future negatives at the bottom).
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2024-01-01T12:02:00Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   const validData = {
     ts: "2024-01-01T12:00:00Z",
     es: {
@@ -128,5 +141,15 @@ describe("flowSanitize", () => {
     expect(sanitizeFlowData("not an object")).toBeNull();
     expect(sanitizeFlowData(42)).toBeNull();
     expect(sanitizeFlowData([])).toBeNull();
+  });
+
+  it("rejects stale timestamp beyond the freshness window", () => {
+    const stale = { ...validData, ts: "2024-01-01T11:50:00Z" };
+    expect(sanitizeFlowData(stale)).toBeNull();
+  });
+
+  it("rejects timestamp too far in the future", () => {
+    const future = { ...validData, ts: "2024-01-01T12:05:00Z" };
+    expect(sanitizeFlowData(future)).toBeNull();
   });
 });

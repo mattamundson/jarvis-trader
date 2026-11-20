@@ -1,0 +1,271 @@
+{
+  "ok": true,
+  "serverEpochMs": 1794247200000,
+  "todayCt": "2026-11-09",
+  "globexTradingDate": "2026-11-09",
+  "marketState": {
+    "state": "scheduled_open",
+    "detail": "weekday Globex session (CME ES Globex schedule: Sun 17:00 - Fri 16:00 CT, daily break 16:00-17:00 CT; holidays not accounted)",
+    "basis": "cme-globex-schedule"
+  },
+  "plan": {
+    "date": "2026-11-09",
+    "note": "synthetic test plan",
+    "nqRef": 21050,
+    "lookbackMin": 90,
+    "failedExpiryMin": 15,
+    "long": {
+      "trigger": 7725.75,
+      "minDelta": 150,
+      "targets": [
+        7740,
+        7752
+      ],
+      "stop": 7709.75
+    },
+    "short": {
+      "trigger": 7697.0,
+      "minDelta": 150,
+      "targets": [
+        7685
+      ],
+      "stop": 7713.0
+    },
+    "extraLevels": [
+      {
+        "px": 7710.0,
+        "name": "HOD ref",
+        "status": "plan"
+      }
+    ]
+  },
+  "planError": null,
+  "recorder": {
+    "state": "recording",
+    "heartbeatAgeS": 5.0,
+    "lastTickAgeS": 1.2,
+    "reconnects": 0,
+    "connectedPort": 4002,
+    "sessionTradingDay": "2026-11-09",
+    "levelsSource": "tape-config (tape-plan dated 2026-11-10, not today 2026-11-09 CT)"
+  },
+  "gex": {
+    "asof_ct": "2026-11-09 11:42",
+    "pulled_ct": "2026-11-09 11:45",
+    "flip": 7715.25,
+    "call_wall": 7760,
+    "put_wall": 7680,
+    "max_pain": null,
+    "net_gex": "-2.06B",
+    "source": "ZeroGEX",
+    "fetch_ok": true,
+    "file": "primary",
+    "file_age_s": 200,
+    "stale": false
+  },
+  "gexError": null,
+  "source": "IB paper 4002",
+  "sourceBars": "5m/tick resample",
+  "file": "primary",
+  "fileAgeS": 4,
+  "stale10m": false,
+  "snapshot": {
+    "as_of_epoch": 1794247195.0,
+    "as_of_ct": "2026-11-09T11:59:55-06:00",
+    "price": {
+      "last": 7730.25,
+      "bid": 7730.0,
+      "ask": 7730.25,
+      "vwap": 7727.8,
+      "hi": 7734.5,
+      "lo": 7718.0
+    },
+    "cvd": {
+      "value": 1240
+    },
+    "gate_cvd": null,
+    "levels": [
+      {
+        "px": 7760.0,
+        "name": "Call wall",
+        "kind": "gex"
+      },
+      {
+        "px": 7715.25,
+        "name": "Gamma flip",
+        "kind": "gex"
+      },
+      {
+        "px": 7680.0,
+        "name": "Put wall",
+        "kind": "gex"
+      }
+    ],
+    "series_1m": [
+      {
+        "t": 1773306295,
+        "o": 7728.0,
+        "h": 7729.0,
+        "l": 7727.25,
+        "c": 7728.5,
+        "vol": 900,
+        "delta": 40,
+        "cvd": 600
+      },
+      {
+        "t": 1773306355,
+        "o": 7728.25,
+        "h": 7729.25,
+        "l": 7727.5,
+        "c": 7728.75,
+        "vol": 907,
+        "delta": 43,
+        "cvd": 645
+      },
+      {
+        "t": 1773306415,
+        "o": 7728.5,
+        "h": 7729.5,
+        "l": 7727.75,
+        "c": 7729.0,
+        "vol": 914,
+        "delta": 46,
+        "cvd": 690
+      },
+      {
+        "t": 1773306475,
+        "o": 7728.75,
+        "h": 7729.75,
+        "l": 7728.0,
+        "c": 7729.25,
+        "vol": 921,
+        "delta": 49,
+        "cvd": 735
+      },
+      {
+        "t": 1773306535,
+        "o": 7729.0,
+        "h": 7730.0,
+        "l": 7728.25,
+        "c": 7729.5,
+        "vol": 928,
+        "delta": 52,
+        "cvd": 780
+      },
+      {
+        "t": 1773306595,
+        "o": 7729.25,
+        "h": 7730.25,
+        "l": 7728.5,
+        "c": 7729.75,
+        "vol": 935,
+        "delta": 55,
+        "cvd": 825
+      },
+      {
+        "t": 1773306655,
+        "o": 7729.5,
+        "h": 7730.5,
+        "l": 7728.75,
+        "c": 7730.0,
+        "vol": 942,
+        "delta": 58,
+        "cvd": 870
+      },
+      {
+        "t": 1773306715,
+        "o": 7729.75,
+        "h": 7730.75,
+        "l": 7729.0,
+        "c": 7730.25,
+        "vol": 949,
+        "delta": 61,
+        "cvd": 915
+      },
+      {
+        "t": 1773306775,
+        "o": 7730.0,
+        "h": 7731.0,
+        "l": 7729.25,
+        "c": 7730.5,
+        "vol": 956,
+        "delta": 64,
+        "cvd": 960
+      },
+      {
+        "t": 1773306835,
+        "o": 7730.25,
+        "h": 7731.25,
+        "l": 7729.5,
+        "c": 7730.75,
+        "vol": 963,
+        "delta": 67,
+        "cvd": 1005
+      },
+      {
+        "t": 1773306895,
+        "o": 7730.5,
+        "h": 7731.5,
+        "l": 7729.75,
+        "c": 7731.0,
+        "vol": 970,
+        "delta": 70,
+        "cvd": 1050
+      },
+      {
+        "t": 1773306955,
+        "o": 7730.75,
+        "h": 7731.75,
+        "l": 7730.0,
+        "c": 7731.25,
+        "vol": 977,
+        "delta": 73,
+        "cvd": 1095
+      },
+      {
+        "t": 1773307015,
+        "o": 7731.0,
+        "h": 7732.0,
+        "l": 7730.25,
+        "c": 7731.5,
+        "vol": 984,
+        "delta": 76,
+        "cvd": 1140
+      },
+      {
+        "t": 1773307075,
+        "o": 7731.25,
+        "h": 7732.25,
+        "l": 7730.5,
+        "c": 7731.75,
+        "vol": 991,
+        "delta": 79,
+        "cvd": 1185
+      },
+      {
+        "t": 1773307135,
+        "o": 7731.5,
+        "h": 7732.5,
+        "l": 7730.75,
+        "c": 7732.0,
+        "vol": 998,
+        "delta": 82,
+        "cvd": 1230
+      }
+    ],
+    "nq": {
+      "rel": {
+        "last": 21061.25,
+        "lead": "NQ +11.25",
+        "windows": {
+          "30m": {
+            "nq_pct": 0.21,
+            "es_pct": 0.18,
+            "rs": 0.03
+          }
+        }
+      },
+      "status": "ok"
+    }
+  }
+}
