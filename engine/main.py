@@ -1518,6 +1518,34 @@ async def lifespan(app: FastAPI):
                             symbol,
                             _db_exc,
                         )
+                # Local paper ledger only. Does not call check_order / IBKR /
+                # ALLOW_PAPER_SIMULATED_ORDERS. BUY/SELL with a stop becomes a
+                # paper_trades row so the 14-day clock can start; hold and
+                # incomplete results stay log-only.
+                try:
+                    from paper.local_ledger import maybe_log_local_paper_fill
+
+                    _live = False
+                    try:
+                        from config import settings as _cfg_live
+
+                        _live = bool(getattr(_cfg_live, "LIVE_TRADING_ENABLED", False))
+                    except Exception:
+                        _live = False
+                    maybe_log_local_paper_fill(
+                        symbol=symbol,
+                        result=result,
+                        paper_tracker=paper_tracker,
+                        safety_layer=safety_layer,
+                        live_trading_enabled=_live,
+                        source="market_open_1h",
+                    )
+                except Exception as _ledger_exc:
+                    logger.warning(
+                        "[MARKET_OPEN] local paper ledger skipped for %s: %s",
+                        symbol,
+                        _ledger_exc,
+                    )
             except Exception as e:
                 logger.error(f"[MARKET_OPEN] 1h pipeline failed for {symbol}: {e}")
 
