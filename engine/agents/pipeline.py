@@ -83,6 +83,26 @@ from agents.kronos_classifier import KronosClassifier, is_kronos_enabled
 
 logger = logging.getLogger(__name__)
 
+
+def _is_do_not_trade_symbol(symbol: str) -> bool:
+    """Return True when ``symbol`` is permanently blocked from trade actions.
+
+    DO_NOT_TRADE symbols may still be shadow-logged below for research, but they
+    must not emit production trade alerts. On 2026-09-21 the running engine
+    broadcast ``MNQ SHORT`` even though MNQ is blocklisted. The downstream order
+    layer held, but the alert was still misleading and burned LLM/broadcast
+    budget.
+    """
+    try:
+        from backtest.signals import DO_NOT_TRADE_SYMBOLS
+
+        return symbol.upper() in DO_NOT_TRADE_SYMBOLS
+    except Exception:
+        # Import failures should not suppress alerts for tradeable symbols.
+        # Execution/risk layers still enforce the hard blocklist.
+        return False
+
+
 # ── Time-of-Day Filter Config ──────────────────────────────────────────────────
 TIME_OF_DAY_FILTER_ENABLED: bool = True
 _TIME_OF_DAY_MIN_CONVICTION: float = 0.35  # hours below this win_rate are skipped
@@ -1296,10 +1316,18 @@ class TradingPipeline:
             try:
                 from notifications.signal_broadcast import broadcast_signal
 
-                asyncio.create_task(broadcast_signal(symbol, pipeline_result, source="pipeline"))
-                logger.info(
-                    f"[Pipeline] Signal broadcast queued for {symbol} {final_action.upper()}"
-                )
+                if _is_do_not_trade_symbol(symbol):
+                    logger.warning(
+                        "[Pipeline] Suppressing signal broadcast for %s %s — symbol is in "
+                        "DO_NOT_TRADE_SYMBOLS (shadow logging may still run)",
+                        symbol,
+                        final_action.upper(),
+                    )
+                else:
+                    asyncio.create_task(broadcast_signal(symbol, pipeline_result, source="pipeline"))
+                    logger.info(
+                        f"[Pipeline] Signal broadcast queued for {symbol} {final_action.upper()}"
+                    )
             except Exception as _bc_err:
                 logger.warning(f"[Pipeline] Signal broadcast failed (non-fatal): {_bc_err}")
 
