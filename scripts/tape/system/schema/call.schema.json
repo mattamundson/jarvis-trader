@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "es-read-call",
+  "title": "ES overnight/read call",
+  "type": "object",
+  "required": ["ts_ct", "bias", "lean_pct", "named_levels", "triggers", "invalidation", "data_freshness", "setup_type"],
+  "properties": {
+    "id": {"type": "string"},
+    "ts_ct": {"type": "string", "description": "YYYY-MM-DD HH:MM America/Chicago"},
+    "bias": {"type": "string", "enum": ["bullish", "bearish", "neutral", "watch"]},
+    "lean_pct": {"type": "object", "properties": {"up": {"type": "number"}, "down": {"type": "number"}}, "required": ["up", "down"]},
+    "named_levels": {"type": "object", "additionalProperties": {"type": ["number", "null"]}},
+    "triggers": {"type": "array", "items": {"type": "object", "required": ["side", "level", "confirm"], "properties": {
+      "side": {"type": "string", "enum": ["long", "short"]},
+      "level": {"type": "number"},
+      "confirm": {"type": "string", "description": "e.g. 5m_close, 15m_close"}
+    }}},
+    "invalidation": {"type": "object", "properties": {
+      "level": {"type": ["number", "null"]},
+      "rule": {"type": "string"}
+    }},
+    "data_freshness": {"type": "object", "properties": {
+      "gamma_age_min": {"type": ["number", "null"]},
+      "gamma_stale": {"type": "boolean"},
+      "price_src": {"type": "string"},
+      "vix_age_min": {"type": ["number", "null"]},
+      "missing": {"type": "array", "items": {"type": "string"}}
+    }},
+    "setup_type": {"type": "string"},
+    "notes": {"type": "string"},
+    "source": {"type": "string"},
+    "price_at_call": {"type": ["number", "null"]}
+  }
+}

@@ -1,0 +1,165 @@
+{
+  "asof_ct": "2026-11-05 22:56",
+  "query": {
+    "session_date": "2026-11-06",
+    "on_high": 7417.0,
+    "on_low": 7322.25,
+    "on_range": 94.75,
+    "retrace_pct": 0.288,
+    "vix": 28.18,
+    "pre_event": 1,
+    "gamma_regime": "short"
+  },
+  "library_n": 400,
+  "library_span": {
+    "first": "2025-04-23",
+    "last": "2026-11-05"
+  },
+  "result": {
+    "n_analogs": 10,
+    "analogs": [
+      {
+        "session_date": "2026-09-16",
+        "dist": 0.6785,
+        "on_range": 94.75,
+        "retrace_pct": 0.135,
+        "vix": 17.71,
+        "pre_event": 1,
+        "ret_1h": 4.5,
+        "ret_3h": 4.75,
+        "ret_to_rth": 8.0
+      },
+      {
+        "session_date": "2026-06-17",
+        "dist": 0.791,
+        "on_range": 98.0,
+        "retrace_pct": 0.171,
+        "vix": null,
+        "pre_event": 1,
+        "ret_1h": 2.5,
+        "ret_3h": 0.0,
+        "ret_to_rth": -11.25
+      },
+      {
+        "session_date": "2026-09-11",
+        "dist": 0.7926,
+        "on_range": 89.25,
+        "retrace_pct": 0.207,
+        "vix": 15.84,
+        "pre_event": 1,
+        "ret_1h": -3.25,
+        "ret_3h": 22.5,
+        "ret_to_rth": 60.5
+      },
+      {
+        "session_date": "2025-05-02",
+        "dist": 0.7991,
+        "on_range": 98.0,
+        "retrace_pct": 0.125,
+        "vix": null,
+        "pre_event": 1,
+        "ret_1h": 1.5,
+        "ret_3h": -9.5,
+        "ret_to_rth": 20.5
+      },
+      {
+        "session_date": "2026-06-10",
+        "dist": 0.8095,
+        "on_range": 87.5,
+        "retrace_pct": 0.437,
+        "vix": null,
+        "pre_event": 1,
+        "ret_1h": 0.75,
+        "ret_3h": -2.75,
+        "ret_to_rth": -16.25
+      },
+      {
+        "session_date": "2026-07-14",
+        "dist": 0.8375,
+        "on_range": 82.25,
+        "retrace_pct": 0.419,
+        "vix": null,
+        "pre_event": 1,
+        "ret_1h": 6.0,
+        "ret_3h": 31.0,
+        "ret_to_rth": 37.0
+      },
+      {
+        "session_date": "2026-03-18",
+        "dist": 0.8791,
+        "on_range": 100.75,
+        "retrace_pct": 0.672,
+        "vix": null,
+        "pre_event": 1,
+        "ret_1h": 5.25,
+        "ret_3h": 13.25,
+        "ret_to_rth": -49.5
+      },
+      {
+        "session_date": "2026-10-02",
+        "dist": 0.8886,
+        "on_range": 79.5,
+        "retrace_pct": 0.167,
+        "vix": 15.31,
+        "pre_event": 1,
+        "ret_1h": 2.75,
+        "ret_3h": 4.5,
+        "ret_to_rth": 44.75
+      },
+      {
+        "session_date": "2025-06-06",
+        "dist": 0.9036,
+        "on_range": 77.0,
+        "retrace_pct": 0.055,
+        "vix": null,
+        "pre_event": 1,
+        "ret_1h": 3.75,
+        "ret_3h": 11.25,
+        "ret_to_rth": 45.75
+      },
+      {
+        "session_date": "2026-02-06",
+        "dist": 0.9565,
+        "on_range": 118.5,
+        "retrace_pct": 0.116,
+        "vix": null,
+        "pre_event": 1,
+        "ret_1h": -13.25,
+        "ret_3h": 5.75,
+        "ret_to_rth": 58.5
+      }
+    ],
+    "outcome_1h": {
+      "n": 10,
+      "pct_up": 0.8,
+      "pct_down": 0.2,
+      "median_pts": 2.75,
+      "p25": 0.75,
+      "p75": 4.5,
+      "mean_pts": 1.05
+    },
+    "outcome_3h": {
+      "n": 10,
+      "pct_up": 0.7,
+      "pct_down": 0.2,
+      "median_pts": 5.75,
+      "p25": 0.0,
+      "p75": 13.25,
+      "mean_pts": 8.07
+    },
+    "outcome_to_rth_open": {
+      "n": 10,
+      "pct_up": 0.7,
+      "pct_down": 0.3,
+      "median_pts": 37.0,
+      "p25": -11.25,
+      "p75": 45.75,
+      "mean_pts": 19.8
+    }
+  },
+  "notes": [
+    "Gamma regime mostly unavailable historically \u2014 distance ignores it when null.",
+    "Reference timestamp standardized at 22:00 CT prior evening.",
+    "Uses Databento parquet + Yahoo recent; Databento live overnight not yet available for 11/5."
+  ]
+}

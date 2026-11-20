@@ -1,0 +1,28 @@
+{
+  "n": 992,
+  "first": "2022-12-30",
+  "last": "2026-11-05",
+  "label_counts": {
+    "trend": 418,
+    "balance": 290,
+    "ambiguous": 284
+  },
+  "trend_rate": 0.4213709677419355,
+  "balance_rate": 0.2923387096774194,
+  "gex_coverage_n": 6,
+  "vix_coverage_n": 992,
+  "unavailable": [
+    "historical implied move (straddle) \u2014 not on disk; ovn_atr used as overnight-stress proxy",
+    "NQ vs ES divergence \u2014 NQ 1m history only ~7d on disk",
+    "GEX sign/size/age \u2014 only 6 sessions have usable pre-08:30 snapshots",
+    "VIX1D series \u2014 not on disk; VIX9D/VIX used as front-vol proxy",
+    "0DTE option quotes \u2014 day-type score only; Vilkov warns gross IC edge may not survive costs"
+  ],
+  "sources": {
+    "es_1m": "/workspace/tape/ovn/es_1m_dbn.parquet",
+    "es_yahoo": "/workspace/tape/system/data/es_yahoo_7d_1m.json",
+    "vix": "/workspace/tape/system/regime/data/vix_daily_yahoo.json",
+    "vix9d": "/workspace/tape/system/regime/data/vix9d_daily_yahoo.json",
+    "events": "/workspace/tape/system/regime/data/event_calendar.json"
+  }
+}

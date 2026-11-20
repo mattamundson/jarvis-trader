@@ -1,0 +1,75 @@
+{
+  "session_date": "2026-11-06",
+  "stage": "preopen",
+  "inputs": {
+    "session_date": "2026-11-06",
+    "dow": 4,
+    "vix_prior": 28.18,
+    "vix9": 32.66,
+    "vix_chg": 11.57,
+    "ovn_range": 94.75,
+    "avg_range_20": 143.0,
+    "gap_in_range": 1,
+    "gap_prior_range": 0.015006821282401092,
+    "is_event": 1,
+    "is_nfp": 1,
+    "opex": 0,
+    "prior_was_trend": 1,
+    "prior_was_balance": 0,
+    "prior_nr4": null,
+    "prior_inside": null,
+    "gex_sign": -1,
+    "gex_net_b": -51.72,
+    "gex_age_min": 548,
+    "gex_stale": true,
+    "implied_move": 111.0,
+    "ib_range": null,
+    "open_type": null,
+    "otf_count": null
+  },
+  "derived": {
+    "ovn_atr": 0.663,
+    "vix9_ratio": 1.159
+  },
+  "raw_score": 2,
+  "display_score_0_10": 5,
+  "fired_rules": [
+    {
+      "rule": "event_day",
+      "pts": 2
+    },
+    {
+      "rule": "mod_overnight",
+      "pts": 1,
+      "value": 0.66
+    },
+    {
+      "rule": "vix_spike",
+      "pts": -1,
+      "value": 11.57
+    }
+  ],
+  "trend_probability": 0.342,
+  "balance_probability": 0.376,
+  "mean_range_atr_lookup": 0.982,
+  "prob_source": "oos_score_preopen",
+  "prob_n": 149,
+  "caveats": [
+    "avg_range_20 proxied from last 5 RTH sessions in context (not full 20d)",
+    "GEX age 548 min; STALE \u2014 overlay only, not in fitted points",
+    "prior heuristic range=366.5 avg=143.0 close_pos=0.10 trend=1 bal=0",
+    "VIX>=25: holdout FAILED on our sample \u2014 no score points from this cut (Mechaniq: searched VIX gates overfit). Still a live risk flag for short premium.",
+    "VIX>=25 contributes 0 points (holdout failed)",
+    "GEX -51.72B age=548m ignored in points (stale)",
+    "implied_move \u00b1111.0 vs avg_range~143 (ratio 0.78) \u2014 not in point score (no hist straddles)",
+    "Vilkov 0DTE: iron condors can be +gross / \u2212net after realistic bid-ask. Day-type lean \u2260 license to sell premium."
+  ],
+  "advice": [
+    "MIXED: no strong pre-open edge. Prefer waiting for IB (09:30 CT stage-2) or staying flat.",
+    "Event day: practitioner consensus is skip short 0DTE through the print.",
+    "VIX 28.18: selling premium here carries fat left-tail risk even if the day balances.",
+    "Stale short GEX: mechanistic trend bias, but age too high to count as a score input.",
+    "Live legal? NO, size 0"
+  ],
+  "Live legal?": "NO, size 0"
+}
