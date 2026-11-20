@@ -5,6 +5,7 @@ API endpoints for trade history, journal, and attribution data.
 
 Provides:
   GET  /trades/journal                   - Paper trades with signal provenance
+  GET  /trades/scored-setups             - Read-only proof record (scored setups)
   GET  /trades/reviews                   - Paginated trade reviews with filters
   GET  /trades/{trade_id}/review         - Single trade + its review
   POST /trades/{trade_id}/review/regenerate - Re-run LLM analysis (Tier 3)
@@ -137,10 +138,26 @@ def get_trades_journal(
     # bull/bear_score, debate_confidence, timeframe) are intentionally omitted —
     # they were never populated under SELECT * either, so they stay None.
     _JOURNAL_COLUMNS = (
-        "id", "trade_id", "symbol", "side", "quantity", "entry_price",
-        "exit_price", "entry_time", "exit_time", "pnl", "status",
-        "strategy_params", "notes", "regime", "structure_position", "bias",
-        "composite_score", "stc_contrib", "orb_contrib", "vwap_contrib",
+        "id",
+        "trade_id",
+        "symbol",
+        "side",
+        "quantity",
+        "entry_price",
+        "exit_price",
+        "entry_time",
+        "exit_time",
+        "pnl",
+        "status",
+        "strategy_params",
+        "notes",
+        "regime",
+        "structure_position",
+        "bias",
+        "composite_score",
+        "stc_contrib",
+        "orb_contrib",
+        "vwap_contrib",
     )
     cache_key = (symbol, regime, limit)
     now = _time.monotonic()
@@ -183,6 +200,133 @@ def get_trades_journal(
     except Exception as exc:
         logger.error("Unexpected error in get_trades_journal: %s", exc)
         raise HTTPException(status_code=500, detail="Internal server error") from exc
+
+
+# ── Scored setups (read-only proof record) ───────────────────────────────────
+# The tape proof record (proof-record.json, written by the tape journal jobs)
+# is the source of truth for the 20-setup proof bar on /journal. This endpoint
+# only READS that file; it never writes, routes orders, or touches the engine.
+
+DEFAULT_PROOF_RECORD_PATH = r"C:\Users\mattm\tape\state\proof-record.json"
+DEFAULT_PROOF_GOAL = 20
+
+
+def _proof_record_path() -> str:
+    import os
+
+    return os.environ.get("JARVIS_PROOF_RECORD_PATH") or DEFAULT_PROOF_RECORD_PATH
+
+
+def _as_float(value: Any) -> Optional[float]:
+    try:
+        if value is None or value == "":
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+class ScoredSetup(BaseModel):
+    date: str
+    setup: str
+    side: str
+    trigger: Optional[str] = None
+    entry_time: Optional[str] = None
+    entry: Optional[float] = None
+    stop: Optional[float] = None
+    target: Optional[float] = None
+    exit_time: Optional[str] = None
+    exit: Optional[float] = None
+    exit_reason: Optional[str] = None
+    r_multiple: Optional[float] = None
+    rule_breaks: Optional[int] = None
+    status: Optional[str] = None
+    counted: bool = False
+
+
+class ScoredSetupsResponse(BaseModel):
+    available: bool
+    source: str
+    generated_ct: Optional[str] = None
+    r_basis: Optional[str] = None
+    goal_setups: int = DEFAULT_PROOF_GOAL
+    counted: int = 0
+    wins: int = 0
+    losses: int = 0
+    avg_r: Optional[float] = None
+    total_r: Optional[float] = None
+    setups: List[ScoredSetup] = []
+    error: Optional[str] = None
+
+
+def build_scored_setups(raw: Dict[str, Any], source: str) -> ScoredSetupsResponse:
+    """Normalize a proof-record.json payload. Aggregates are recomputed from
+    counted setups so the response can't drift from its own rows."""
+    setups: List[ScoredSetup] = []
+    for row in raw.get("setups") or []:
+        if not isinstance(row, dict):
+            continue
+        rb = row.get("rule_breaks")
+        setups.append(
+            ScoredSetup(
+                date=str(row.get("date") or ""),
+                setup=str(row.get("setup") or "Unknown"),
+                side=str(row.get("side") or ""),
+                trigger=row.get("trigger") or None,
+                entry_time=row.get("entry_time") or None,
+                entry=_as_float(row.get("entry")),
+                stop=_as_float(row.get("stop")),
+                target=_as_float(row.get("target")),
+                exit_time=row.get("exit_time") or None,
+                exit=_as_float(row.get("exit")),
+                exit_reason=row.get("exit_reason") or None,
+                r_multiple=_as_float(row.get("R")),
+                rule_breaks=int(rb) if isinstance(rb, (int, float)) else None,
+                status=row.get("status") or None,
+                counted=bool(row.get("counted")),
+            )
+        )
+    rs = [s.r_multiple for s in setups if s.counted and s.r_multiple is not None]
+    goal = raw.get("goal_setups")
+    return ScoredSetupsResponse(
+        available=True,
+        source=source,
+        generated_ct=raw.get("generated_ct"),
+        r_basis=raw.get("r_basis"),
+        goal_setups=int(goal)
+        if isinstance(goal, (int, float)) and goal > 0
+        else DEFAULT_PROOF_GOAL,
+        counted=len(rs),
+        wins=sum(1 for r in rs if r > 0),
+        losses=sum(1 for r in rs if r <= 0),
+        avg_r=round(sum(rs) / len(rs), 2) if rs else None,
+        total_r=round(sum(rs), 2) if rs else None,
+        setups=setups,
+    )
+
+
+@router.get(
+    "/scored-setups",
+    response_model=ScoredSetupsResponse,
+    summary="Read-only scored setups from the tape proof record",
+)
+def get_scored_setups() -> ScoredSetupsResponse:
+    import json
+    import os
+
+    path = _proof_record_path()
+    source = os.path.basename(path)
+    try:
+        with open(path, "r", encoding="utf-8-sig") as fh:
+            raw = json.load(fh)
+    except FileNotFoundError:
+        return ScoredSetupsResponse(available=False, source=source, error="proof record not found")
+    except (OSError, ValueError) as exc:
+        logger.warning("scored-setups: could not read proof record: %s", exc)
+        return ScoredSetupsResponse(available=False, source=source, error="proof record unreadable")
+    if not isinstance(raw, dict):
+        return ScoredSetupsResponse(available=False, source=source, error="proof record malformed")
+    return build_scored_setups(raw, source)
 
 
 @router.get(
@@ -354,9 +498,7 @@ def get_trade_full_review(trade_id: str) -> FullReviewResponse:
     if _db_manager is None:
         raise HTTPException(status_code=503, detail="Database not ready")
 
-    trade = _db_manager.fetch_one(
-        "SELECT * FROM paper_trades WHERE trade_id = ?", (trade_id,)
-    )
+    trade = _db_manager.fetch_one("SELECT * FROM paper_trades WHERE trade_id = ?", (trade_id,))
     if not trade:
         raise HTTPException(status_code=404, detail=f"Trade {trade_id} not found")
 
@@ -374,8 +516,13 @@ def get_trade_full_review(trade_id: str) -> FullReviewResponse:
             attribution = {"_raw": str(raw_sp)}
     # surface the structured attribution columns too (US-2130 provenance)
     for col in (
-        "regime", "bias", "structure_position", "composite_score",
-        "stc_contrib", "orb_contrib", "vwap_contrib",
+        "regime",
+        "bias",
+        "structure_position",
+        "composite_score",
+        "stc_contrib",
+        "orb_contrib",
+        "vwap_contrib",
     ):
         if trade.get(col) is not None:
             attribution.setdefault(col, trade.get(col))

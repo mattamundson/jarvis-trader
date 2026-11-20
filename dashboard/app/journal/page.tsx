@@ -4,76 +4,32 @@ import React from "react";
 import useSWR from "swr";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { fetchTradeJournal, type TradeJournalEntry } from "@/lib/api";
+import { fetchScoredSetups, type ScoredSetup } from "@/lib/api";
 import { Calendar, TrendingUp, AlertCircle, Info } from "lucide-react";
 
 const REFRESH_MS = 30_000;
-const PROOF_BAR_TARGET = 20;
-
-interface Setup {
-  date: string;
-  symbol: string;
-  setup: string;
-  rResult: number | null;
-  pnl: number | null;
-  ruleBreakStatus: "unknown";
-  side: string;
-  hasValidR: boolean;
-}
+const DEFAULT_PROOF_BAR_TARGET = 20;
 
 export default function JournalPage() {
   const { data, error, isLoading } = useSWR(
-    "trade-journal-scored",
-    () => fetchTradeJournal(undefined, undefined, 100),
-    { refreshInterval: REFRESH_MS }
+    "trade-scored-setups",
+    () => fetchScoredSetups(),
+    { refreshInterval: REFRESH_MS },
   );
 
-  const setups = React.useMemo<Setup[]>(() => {
-    if (!data) return [];
-    return data
-      .filter((t) => t.exit_time && t.pnl !== null)
-      .map((t) => {
-        let setupType = "Unknown";
-        if (t.strategy_params) {
-          try {
-            const params = typeof t.strategy_params === "string" 
-              ? JSON.parse(t.strategy_params) 
-              : t.strategy_params;
-            setupType = params?.setup || t.bias || "Unknown";
-          } catch {
-            setupType = t.bias || "Unknown";
-          }
-        } else {
-          setupType = t.bias || "Unknown";
-        }
+  const setups: ScoredSetup[] = React.useMemo(
+    () => (data?.available ? [...data.setups].reverse() : []),
+    [data],
+  );
 
-        return {
-          date: new Date(t.exit_time!).toLocaleDateString(),
-          symbol: t.symbol,
-          setup: setupType,
-          rResult: null,
-          pnl: t.pnl,
-          ruleBreakStatus: "unknown" as const,
-          side: t.side,
-          hasValidR: false,
-        };
-      });
-  }, [data]);
+  const target = data?.goal_setups || DEFAULT_PROOF_BAR_TARGET;
+  const progress = data?.available ? data.counted : 0;
+  const avgR = data?.available ? data.avg_r : null;
+  const progressPct = Math.min((progress / target) * 100, 100);
 
-  const validSetups = React.useMemo(() => {
-    return setups.filter((s) => s.hasValidR);
-  }, [setups]);
-
-  const avgR = React.useMemo(() => {
-    const validRs = validSetups.filter((s) => s.rResult !== null).map((s) => s.rResult!);
-    return validRs.length > 0 ? validRs.reduce((a, b) => a + b, 0) / validRs.length : null;
-  }, [validSetups]);
-
-  const progress = validSetups.length;
-  const progressPct = Math.min((progress / PROOF_BAR_TARGET) * 100, 100);
-
-  const formatR = (hasValidR: boolean): string => {
-    return hasValidR ? "—" : "R n/a";
+  const formatR = (r: number | null): string => {
+    if (r === null) return "R n/a";
+    return `${r >= 0 ? "+" : ""}${r.toFixed(2)}R`;
   };
 
   const formatAvgR = (r: number | null): string => {
@@ -98,7 +54,9 @@ export default function JournalPage() {
             <CardContent className="pt-8 pb-8">
               <div className="flex items-center justify-center">
                 <div className="h-8 w-8 animate-spin rounded-full border-4 border-border border-t-foreground" />
-                <span className="ml-4 text-muted-foreground">Loading journal...</span>
+                <span className="ml-4 text-muted-foreground">
+                  Loading journal...
+                </span>
               </div>
             </CardContent>
           </Card>
@@ -107,7 +65,9 @@ export default function JournalPage() {
         {error && (
           <Card className="mb-6 border-bear/30 bg-bear/5">
             <CardContent className="pt-6">
-              <p className="text-bear">Error loading journal: {String(error)}</p>
+              <p className="text-bear">
+                Error loading journal: {String(error)}
+              </p>
             </CardContent>
           </Card>
         )}
@@ -126,7 +86,7 @@ export default function JournalPage() {
                   <div className="text-3xl font-bold">
                     {progress}
                     <span className="text-lg text-muted-foreground ml-1">
-                      / {PROOF_BAR_TARGET}
+                      / {target}
                     </span>
                   </div>
                   <div className="mt-2 h-2 bg-muted rounded-full overflow-hidden">
@@ -146,9 +106,7 @@ export default function JournalPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-muted-foreground">
-                    {formatAvgR(avgR)}
-                  </div>
+                  <div className="text-2xl font-bold">{formatAvgR(avgR)}</div>
                   <div className="text-xs text-muted-foreground mt-2">
                     Target: +1.0R minimum
                   </div>
@@ -163,7 +121,9 @@ export default function JournalPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-muted-foreground">n/a</div>
+                  <div className="text-2xl font-bold text-muted-foreground">
+                    n/a
+                  </div>
                   <div className="text-xs text-muted-foreground mt-2">
                     Session-level stat (not available)
                   </div>
@@ -179,8 +139,9 @@ export default function JournalPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-xs text-muted-foreground mt-1">
-                    R-multiples require stop loss data not present in current trade records.
-                    Scored setups from Hermes tracker are not exposed via API.
+                    {data.available
+                      ? `Tape proof record (${data.source}), as of ${data.generated_ct ?? "unknown"}. ${data.r_basis ?? ""}`
+                      : `Proof record unavailable: ${data.error ?? "unknown error"}`}
                   </div>
                 </CardContent>
               </Card>
@@ -195,7 +156,7 @@ export default function JournalPage() {
                       No scored setups yet
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      Closed trades with completed exits will appear here
+                      Scored setups from the tape proof record will appear here
                     </p>
                   </div>
                 </CardContent>
@@ -216,7 +177,7 @@ export default function JournalPage() {
                             Date
                           </th>
                           <th className="px-4 py-3 text-left font-semibold text-muted-foreground">
-                            Symbol
+                            Trigger
                           </th>
                           <th className="px-4 py-3 text-left font-semibold text-muted-foreground">
                             Setup
@@ -234,17 +195,24 @@ export default function JournalPage() {
                       </thead>
                       <tbody className="divide-y divide-border">
                         {setups.map((setup, idx) => (
-                          <tr key={idx} className="hover:bg-muted/20">
-                            <td className="px-4 py-3 text-foreground">{setup.date}</td>
-                            <td className="px-4 py-3 font-semibold">{setup.symbol}</td>
+                          <tr
+                            key={`${setup.date}-${idx}`}
+                            className="hover:bg-muted/20"
+                          >
+                            <td className="px-4 py-3 text-foreground">
+                              {setup.date}
+                            </td>
+                            <td className="px-4 py-3 text-xs text-muted-foreground">
+                              {setup.trigger ?? "—"}
+                            </td>
                             <td className="px-4 py-3 text-muted-foreground">
                               {setup.setup}
                             </td>
                             <td className="px-4 py-3">
                               <Badge
                                 variant={
-                                  setup.side.toLowerCase().includes("buy") ||
-                                  setup.side.toLowerCase().includes("long")
+                                  setup.side.toLowerCase().includes("long") ||
+                                  setup.side.toLowerCase().includes("buy")
                                     ? "bull"
                                     : "bear"
                                 }
@@ -253,13 +221,34 @@ export default function JournalPage() {
                               </Badge>
                             </td>
                             <td className="px-4 py-3 text-right">
-                              <span className="text-muted-foreground text-xs">
-                                {formatR(setup.hasValidR)}
+                              <span
+                                className={
+                                  setup.r_multiple === null
+                                    ? "text-muted-foreground text-xs"
+                                    : setup.r_multiple >= 0
+                                      ? "text-bull font-semibold"
+                                      : "text-bear font-semibold"
+                                }
+                              >
+                                {formatR(setup.r_multiple)}
                               </span>
                             </td>
                             <td className="px-4 py-3 text-center">
-                              <Badge variant="neutral" className="text-xs">
-                                unknown
+                              <Badge
+                                variant={
+                                  setup.counted
+                                    ? setup.rule_breaks
+                                      ? "warn"
+                                      : "info"
+                                    : "neutral"
+                                }
+                                className="text-xs"
+                              >
+                                {setup.counted
+                                  ? setup.rule_breaks
+                                    ? `${setup.rule_breaks} rule break${setup.rule_breaks > 1 ? "s" : ""}`
+                                    : "counted"
+                                  : "not counted"}
                               </Badge>
                             </td>
                           </tr>

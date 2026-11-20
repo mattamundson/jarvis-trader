@@ -274,6 +274,7 @@ const ENGINE_READ_ROUTES = [
   "/trade-intents/{intent_id}",
   "/trades/journal",
   "/trades/reviews",
+  "/trades/scored-setups",
   "/trades/{trade_id}/full-review",
   "/trades/{trade_id}/review",
   "/trading-status",
@@ -300,14 +301,19 @@ const ENGINE_READ_ROUTES = [
   "/watchlist",
   "/webhook/dedup-stats",
   "/wfe/snapshots",
-  "/ws/status"
+  "/ws/status",
 ] as const;
 
 export function isPublicEngineRead(pathname: string): boolean {
   return ENGINE_READ_ROUTES.some((route) => {
-    const pattern = route.split("/").map((part) =>
-      part.startsWith("{") ? "[A-Za-z0-9_:=.^-]+" : part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-    ).join("/");
+    const pattern = route
+      .split("/")
+      .map((part) =>
+        part.startsWith("{")
+          ? "[A-Za-z0-9_:=.^-]+"
+          : part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+      )
+      .join("/");
     return new RegExp(`^${pattern}/?$`).test(pathname);
   });
 }

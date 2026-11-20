@@ -33,7 +33,7 @@ class EngineHttpError extends Error {
 
 async function fetchWithTimeout<T>(
   url: string,
-  options?: RequestInit
+  options?: RequestInit,
 ): Promise<T> {
   const controller = new AbortController();
   const timeoutId = setTimeout(
@@ -41,7 +41,12 @@ async function fetchWithTimeout<T>(
     // see a readable "request timed out" message instead of the browser's
     // default "signal is aborted without reason" DOMException text (what
     // abort() produces when called with no argument). Mirrors fetchEngineRaw.
-    () => controller.abort(new Error(`Request timed out after ${FETCH_TIMEOUT_MS / 1000}s: ${url}`)),
+    () =>
+      controller.abort(
+        new Error(
+          `Request timed out after ${FETCH_TIMEOUT_MS / 1000}s: ${url}`,
+        ),
+      ),
     FETCH_TIMEOUT_MS,
   );
 
@@ -60,8 +65,14 @@ async function fetchWithTimeout<T>(
     // Fall back to a friendly message if the runtime doesn't propagate the
     // AbortSignal reason as the rejection value (older engines reject with a
     // generic AbortError regardless of the reason passed to abort()).
-    if (e instanceof Error && /abort/i.test(e.name) && /aborted without reason/i.test(e.message)) {
-      throw new Error(`Request timed out after ${FETCH_TIMEOUT_MS / 1000}s: ${url}`);
+    if (
+      e instanceof Error &&
+      /abort/i.test(e.name) &&
+      /aborted without reason/i.test(e.message)
+    ) {
+      throw new Error(
+        `Request timed out after ${FETCH_TIMEOUT_MS / 1000}s: ${url}`,
+      );
     }
     throw e;
   } finally {
@@ -72,7 +83,7 @@ async function fetchWithTimeout<T>(
 async function fetchWithRetry<T>(
   url: string,
   options?: RequestInit,
-  attempt: number = 1
+  attempt: number = 1,
 ): Promise<T> {
   try {
     return await fetchWithTimeout<T>(url, options);
@@ -99,7 +110,9 @@ async function fetchWithRetry<T>(
     // fetchEngine() caller uniformly instead of per-widget. 4xx errors are
     // NOT retried -- they are not transient.
     const isTransientServerError =
-      error instanceof EngineHttpError && error.status >= 500 && error.status < 600;
+      error instanceof EngineHttpError &&
+      error.status >= 500 &&
+      error.status < 600;
 
     if ((isNetworkError || isTransientServerError) && attempt < 2) {
       // Single retry with 2s delay
@@ -111,14 +124,20 @@ async function fetchWithRetry<T>(
   }
 }
 
-export async function fetchEngine<T = any>(path: string, options?: RequestInit): Promise<T> {
+export async function fetchEngine<T = any>(
+  path: string,
+  options?: RequestInit,
+): Promise<T> {
   return fetchWithRetry<T>(`${ENGINE}${path}`, {
     cache: "no-store",
     ...options,
   });
 }
 
-export async function fetchDashboardApi<T = any>(path: string, options?: RequestInit): Promise<T> {
+export async function fetchDashboardApi<T = any>(
+  path: string,
+  options?: RequestInit,
+): Promise<T> {
   return fetchWithRetry<T>(path, {
     cache: "no-store",
     ...options,
@@ -133,14 +152,20 @@ export async function fetchDashboardApi<T = any>(path: string, options?: Request
  * flip immediately, not after fetchWithRetry's 2s retry window. All data
  * fetches keep using fetchEngine (retry is right for them).
  */
-export async function fetchEngineNoRetry<T = any>(path: string, options?: RequestInit): Promise<T> {
+export async function fetchEngineNoRetry<T = any>(
+  path: string,
+  options?: RequestInit,
+): Promise<T> {
   return fetchWithTimeout<T>(`${ENGINE}${path}`, {
     cache: "no-store",
     ...options,
   });
 }
 
-export async function postEngine<T = any>(path: string, body?: unknown): Promise<T> {
+export async function postEngine<T = any>(
+  path: string,
+  body?: unknown,
+): Promise<T> {
   return fetchWithRetry<T>(`${ENGINE}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -183,14 +208,20 @@ export interface DomflowHistoryResponse {
   snapshots: DomflowSnapshot[];
 }
 
-export async function fetchDomflow<T = any>(path: string, options?: RequestInit): Promise<T> {
+export async function fetchDomflow<T = any>(
+  path: string,
+  options?: RequestInit,
+): Promise<T> {
   return fetchWithRetry<T>(`${DOMFLOW}${path}`, {
     cache: "no-store",
     ...options,
   });
 }
 
-export async function postDomflow<T = any>(path: string, body?: unknown): Promise<T> {
+export async function postDomflow<T = any>(
+  path: string,
+  body?: unknown,
+): Promise<T> {
   return fetchWithRetry<T>(`${DOMFLOW}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -202,14 +233,22 @@ export async function postDomflow<T = any>(path: string, body?: unknown): Promis
  * Fetch a binary/non-JSON response from the engine (e.g. CSV downloads).
  * Returns the raw Response so the caller can call .blob(), .text(), etc.
  */
-export async function fetchEngineRaw(path: string, options?: RequestInit): Promise<Response> {
+export async function fetchEngineRaw(
+  path: string,
+  options?: RequestInit,
+): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = setTimeout(
     // Pass an explicit reason so a caller's catch block sees a readable
     // "request timed out" message instead of the browser's default
     // "signal is aborted without reason" DOMException text (what abort()
     // produces when called with no argument).
-    () => controller.abort(new Error(`Request timed out after ${FETCH_TIMEOUT_MS / 1000}s: ${path}`)),
+    () =>
+      controller.abort(
+        new Error(
+          `Request timed out after ${FETCH_TIMEOUT_MS / 1000}s: ${path}`,
+        ),
+      ),
     FETCH_TIMEOUT_MS,
   );
   try {
@@ -223,8 +262,14 @@ export async function fetchEngineRaw(path: string, options?: RequestInit): Promi
     // Fall back to a friendly message if the runtime doesn't propagate the
     // AbortSignal reason as the rejection value (older engines reject with a
     // generic AbortError regardless of the reason passed to abort()).
-    if (e instanceof Error && /abort/i.test(e.name) && /aborted without reason/i.test(e.message)) {
-      throw new Error(`Request timed out after ${FETCH_TIMEOUT_MS / 1000}s: ${path}`);
+    if (
+      e instanceof Error &&
+      /abort/i.test(e.name) &&
+      /aborted without reason/i.test(e.message)
+    ) {
+      throw new Error(
+        `Request timed out after ${FETCH_TIMEOUT_MS / 1000}s: ${path}`,
+      );
     }
     throw e;
   } finally {
@@ -287,7 +332,12 @@ export interface LLMProviderSummary {
 // ib_gateway data-leg observability fields shipped in PR #68 (auto-reconnect
 // watchdog + silent-degrade visibility). All optional — older engines omit them,
 // so every consumer must guard.
-export type DataSourceTier = "ibkr" | "sqlite_cache" | "polygon" | "csv_cache" | "none";
+export type DataSourceTier =
+  | "ibkr"
+  | "sqlite_cache"
+  | "polygon"
+  | "csv_cache"
+  | "none";
 
 export interface IBDataWatchdogStatus {
   enabled?: boolean | null;
@@ -567,10 +617,10 @@ export interface ForwardTestStatusResponse {
 }
 
 export async function fetchForwardTestStatus(
-  symbol: string
+  symbol: string,
 ): Promise<ForwardTestStatusResponse> {
   return fetchEngine<ForwardTestStatusResponse>(
-    `/forward-test/status?symbol=${encodeURIComponent(symbol)}`
+    `/forward-test/status?symbol=${encodeURIComponent(symbol)}`,
   );
 }
 
@@ -607,9 +657,15 @@ export interface TechnicalReport {
   timestamp: string;
 }
 
-export const JARVIS_QUICK_ANALYSIS_PERIODS = ["5d", "1mo", "3mo", "6mo"] as const;
+export const JARVIS_QUICK_ANALYSIS_PERIODS = [
+  "5d",
+  "1mo",
+  "3mo",
+  "6mo",
+] as const;
 
-export type JarvisQuickAnalysisPeriod = (typeof JARVIS_QUICK_ANALYSIS_PERIODS)[number];
+export type JarvisQuickAnalysisPeriod =
+  (typeof JARVIS_QUICK_ANALYSIS_PERIODS)[number];
 
 export interface JarvisQuickAnalysisRequest {
   symbol: string;
@@ -629,7 +685,7 @@ export function normalizeJarvisSymbolInput(symbol: string): string {
 }
 
 export async function analyzeJarvisSymbol(
-  body: JarvisQuickAnalysisRequest
+  body: JarvisQuickAnalysisRequest,
 ): Promise<JarvisQuickAnalysisResponse> {
   return postEngine<JarvisQuickAnalysisResponse>("/jarvis/analyze", {
     symbol: normalizeJarvisSymbolInput(body.symbol),
@@ -659,13 +715,20 @@ export interface OHLCVBar {
  * state). */
 export async function fetchBars(
   symbol: string,
-  opts: { timeframe?: string; days?: number; limit?: number; futures?: boolean } = {}
+  opts: {
+    timeframe?: string;
+    days?: number;
+    limit?: number;
+    futures?: boolean;
+  } = {},
 ): Promise<OHLCVBar[]> {
   const { timeframe = "5m", days = 7, limit = 500, futures = true } = opts;
   const qs = `timeframe=${encodeURIComponent(timeframe)}&days=${days}&limit=${limit}&futures=${futures}`;
   let raw: unknown;
   try {
-    raw = await fetchEngine<unknown>(`/analyze/bars/${encodeURIComponent(symbol)}?${qs}`);
+    raw = await fetchEngine<unknown>(
+      `/analyze/bars/${encodeURIComponent(symbol)}?${qs}`,
+    );
   } catch {
     return [];
   }
@@ -820,10 +883,10 @@ export interface HPScanResponse {
 /** Fetch the HiddenPivots scan for a given timeframe. */
 export async function fetchHiddenPivotsScan(
   timeframe = "1d",
-  benchmark = "SPY"
+  benchmark = "SPY",
 ): Promise<HPScanResponse> {
   return fetchEngine<HPScanResponse>(
-    `/hidden-pivots/scan?timeframe=${encodeURIComponent(timeframe)}&benchmark=${encodeURIComponent(benchmark)}`
+    `/hidden-pivots/scan?timeframe=${encodeURIComponent(timeframe)}&benchmark=${encodeURIComponent(benchmark)}`,
   );
 }
 
@@ -852,7 +915,9 @@ export async function fetchPriceCoverage(): Promise<PriceCoverageResponse> {
  * values refresh roughly once a minute during market hours. Reuses the shared
  * `PriceSnapshot` map type (see below / WatchlistBar).
  */
-export async function fetchPriceSnapshot(symbols: string[]): Promise<PriceSnapshot> {
+export async function fetchPriceSnapshot(
+  symbols: string[],
+): Promise<PriceSnapshot> {
   if (symbols.length === 0) return {};
   const q = encodeURIComponent(symbols.join(","));
   return fetchEngine<PriceSnapshot>(`/prices/snapshot?symbols=${q}`);
@@ -1076,7 +1141,8 @@ export function normalizeDailyPnlRows(rows: DailyPnlRow[]): DailyPnlRecord[] {
     return {
       date: String(r.date).slice(0, 10),
       realized_pnl: realized,
-      cumulative_pnl: typeof r.cumulative_pnl === "number" ? r.cumulative_pnl : cum,
+      cumulative_pnl:
+        typeof r.cumulative_pnl === "number" ? r.cumulative_pnl : cum,
       num_trades: num,
     };
   });
@@ -1095,7 +1161,9 @@ export async function fetchDailyPnLHistory(options?: {
   const q = new URLSearchParams();
   if (options?.days != null) q.set("days", String(options.days));
   const suffix = q.toString() ? `?${q.toString()}` : "";
-  return fetchEngine<DailyPnLHistoryResponse>(`/portfolio/history/daily-pnl${suffix}`);
+  return fetchEngine<DailyPnLHistoryResponse>(
+    `/portfolio/history/daily-pnl${suffix}`,
+  );
 }
 
 /** Fetch daily PnL history and normalize rows for charts / tables. */
@@ -1346,7 +1414,9 @@ export interface ClosedPaperTradesResponse {
 
 /** Canonical: GET /paper/validation/trades/closed */
 export async function fetchClosedPaperTrades(): Promise<ClosedPaperTradesResponse> {
-  return fetchEngine<ClosedPaperTradesResponse>("/paper/validation/trades/closed");
+  return fetchEngine<ClosedPaperTradesResponse>(
+    "/paper/validation/trades/closed",
+  );
 }
 
 // ── Strategy ledger (gate-v2 backtest verdicts) ──────────────────────────────
@@ -1414,7 +1484,9 @@ export interface ResearchCandidatesResponse {
 
 /** GET /strategy/research-candidates — X-bookmark edge-scan research candidates. */
 export async function fetchResearchCandidates(): Promise<ResearchCandidatesResponse> {
-  return fetchEngine<ResearchCandidatesResponse>("/strategy/research-candidates");
+  return fetchEngine<ResearchCandidatesResponse>(
+    "/strategy/research-candidates",
+  );
 }
 
 // ── Equity SMA-trend certification + forward evidence (GET /strategy/equity-research) ────
@@ -1521,8 +1593,12 @@ export interface GatesResponse {
 }
 
 /** GET /strategy/gates/{symbol} — 6-gate production scorecard for one symbol. */
-export async function fetchStrategyGates(symbol: string): Promise<GatesResponse> {
-  return fetchEngine<GatesResponse>(`/strategy/gates/${encodeURIComponent(symbol)}`);
+export async function fetchStrategyGates(
+  symbol: string,
+): Promise<GatesResponse> {
+  return fetchEngine<GatesResponse>(
+    `/strategy/gates/${encodeURIComponent(symbol)}`,
+  );
 }
 
 // ── Per-trade full review (closed loop) ──────────────────────────────────────
@@ -1558,8 +1634,12 @@ export interface TradeFullReview {
 }
 
 /** GET /trades/{id}/full-review — the closed-loop join for one placed trade. */
-export async function fetchTradeFullReview(tradeId: string): Promise<TradeFullReview> {
-  return fetchEngine<TradeFullReview>(`/trades/${encodeURIComponent(tradeId)}/full-review`);
+export async function fetchTradeFullReview(
+  tradeId: string,
+): Promise<TradeFullReview> {
+  return fetchEngine<TradeFullReview>(
+    `/trades/${encodeURIComponent(tradeId)}/full-review`,
+  );
 }
 
 // ── Approval / Trade Gating API ──────────────────────────────────────────────
@@ -1624,22 +1704,32 @@ export interface ApprovalActionResult {
   reason?: string;
 }
 
-export async function getPendingApprovals(limit: number = 50): Promise<PendingApprovalsResponse> {
-  return fetchEngine<PendingApprovalsResponse>(`/pipeline/pending-approvals?limit=${limit}`);
+export async function getPendingApprovals(
+  limit: number = 50,
+): Promise<PendingApprovalsResponse> {
+  return fetchEngine<PendingApprovalsResponse>(
+    `/pipeline/pending-approvals?limit=${limit}`,
+  );
 }
 
 export async function postApprovePending(
   approvalId: string,
-  body?: { entry_price?: number }
+  body?: { entry_price?: number },
 ): Promise<ApprovalActionResult> {
-  return postEngine<ApprovalActionResult>(`/pipeline/pending-approvals/${approvalId}/approve`, body || {});
+  return postEngine<ApprovalActionResult>(
+    `/pipeline/pending-approvals/${approvalId}/approve`,
+    body || {},
+  );
 }
 
 export async function postRejectPending(
   approvalId: string,
-  reason?: string
+  reason?: string,
 ): Promise<ApprovalActionResult> {
-  return postEngine<ApprovalActionResult>(`/pipeline/pending-approvals/${approvalId}/reject`, { reason: reason || "rejected_by_trader" });
+  return postEngine<ApprovalActionResult>(
+    `/pipeline/pending-approvals/${approvalId}/reject`,
+    { reason: reason || "rejected_by_trader" },
+  );
 }
 
 // ── Kill Switch API ──────────────────────────────────────────────────────────
@@ -1664,7 +1754,7 @@ export async function fetchKillSwitchStatus(): Promise<KillSwitchStatus> {
 
 export async function toggleKillSwitch(
   action: "activate" | "deactivate",
-  reason?: string
+  reason?: string,
 ): Promise<KillSwitchStatus> {
   if (action === "activate") {
     const qs = reason ? `?reason=${encodeURIComponent(reason)}` : "";
@@ -1765,13 +1855,7 @@ export interface SignalOutcome {
   stop_loss: number | null;
   target_1: number | null;
   target_2: number | null;
-  hit:
-    | "target1_hit"
-    | "target2_hit"
-    | "stop_hit"
-    | "expired"
-    | "open"
-    | string;
+  hit: "target1_hit" | "target2_hit" | "stop_hit" | "expired" | "open" | string;
   mfe_pct: number | null;
   mae_pct: number | null;
   hypothetical_pnl_pct: number | null;
@@ -1997,7 +2081,7 @@ export interface TradeJournalEntry {
 export async function fetchTradeJournal(
   symbol?: string,
   regime?: string,
-  limit?: number
+  limit?: number,
 ): Promise<TradeJournalEntry[]> {
   const params = new URLSearchParams();
   if (symbol) params.append("symbol", symbol);
@@ -2005,8 +2089,49 @@ export async function fetchTradeJournal(
   if (limit) params.append("limit", String(limit));
 
   const queryString = params.toString();
-  const path = queryString ? `/trades/journal?${queryString}` : "/trades/journal";
+  const path = queryString
+    ? `/trades/journal?${queryString}`
+    : "/trades/journal";
   return fetchEngine<TradeJournalEntry[]>(path);
+}
+
+// ── Scored setups (read-only tape proof record) ─────────────────────────────
+
+export interface ScoredSetup {
+  date: string;
+  setup: string;
+  side: string;
+  trigger: string | null;
+  entry_time: string | null;
+  entry: number | null;
+  stop: number | null;
+  target: number | null;
+  exit_time: string | null;
+  exit: number | null;
+  exit_reason: string | null;
+  r_multiple: number | null;
+  rule_breaks: number | null;
+  status: string | null;
+  counted: boolean;
+}
+
+export interface ScoredSetupsResponse {
+  available: boolean;
+  source: string;
+  generated_ct: string | null;
+  r_basis: string | null;
+  goal_setups: number;
+  counted: number;
+  wins: number;
+  losses: number;
+  avg_r: number | null;
+  total_r: number | null;
+  setups: ScoredSetup[];
+  error: string | null;
+}
+
+export async function fetchScoredSetups(): Promise<ScoredSetupsResponse> {
+  return fetchEngine<ScoredSetupsResponse>("/trades/scored-setups");
 }
 
 // ── EOD Summary (US-1504) ────────────────────────────────────────────────────
@@ -2065,7 +2190,7 @@ export interface ApprovedPaperGatesResponse {
 
 export async function fetchApprovedPaperGates(): Promise<ApprovedPaperGatesResponse> {
   return fetchEngine<ApprovedPaperGatesResponse>(
-    "/paper/validation/approved-paper-gates"
+    "/paper/validation/approved-paper-gates",
   );
 }
 
@@ -2108,7 +2233,9 @@ export interface ValidationCheckpointResponse {
 }
 
 export async function fetchValidationCheckpoint(): Promise<ValidationCheckpointResponse> {
-  return fetchEngine<ValidationCheckpointResponse>("/paper/validation/checkpoint");
+  return fetchEngine<ValidationCheckpointResponse>(
+    "/paper/validation/checkpoint",
+  );
 }
 
 export interface JarvisEvent {
@@ -2248,8 +2375,16 @@ export interface TradeDecisionSnapshot {
 
 export interface PipelineDecisionSnapshot {
   trade_decision?: TradeDecisionSnapshot;
-  risk_decision?: { approved?: boolean; reasoning?: string; checks_passed?: number };
-  fund_decision?: { approved?: boolean; final_conviction?: number; reasoning?: string };
+  risk_decision?: {
+    approved?: boolean;
+    reasoning?: string;
+    checks_passed?: number;
+  };
+  fund_decision?: {
+    approved?: boolean;
+    final_conviction?: number;
+    reasoning?: string;
+  };
   debate_result?: DebateResult;
   analyst_reports?: {
     technical?: AgentAnalystReport;
@@ -2301,9 +2436,11 @@ export interface TVBridgeHealth {
   cdp_connected: boolean;
 }
 
-export async function fetchTVSnapshot(symbol: string): Promise<TVBridgeSnapshot> {
+export async function fetchTVSnapshot(
+  symbol: string,
+): Promise<TVBridgeSnapshot> {
   return fetchEngine<TVBridgeSnapshot>(
-    `/tv/snapshot?symbol=${encodeURIComponent(symbol)}`
+    `/tv/snapshot?symbol=${encodeURIComponent(symbol)}`,
   );
 }
 
@@ -2323,8 +2460,12 @@ export interface ShadowMetricsResponse {
   avg_loss: number;
 }
 
-export async function fetchShadowMetrics(strategyName?: string): Promise<ShadowMetricsResponse> {
-  const q = strategyName ? `?strategy_name=${encodeURIComponent(strategyName)}` : "";
+export async function fetchShadowMetrics(
+  strategyName?: string,
+): Promise<ShadowMetricsResponse> {
+  const q = strategyName
+    ? `?strategy_name=${encodeURIComponent(strategyName)}`
+    : "";
   return fetchEngine<ShadowMetricsResponse>(`/pipeline/shadow-metrics${q}`);
 }
 
@@ -2450,7 +2591,9 @@ export async function fetchBookmarksRecent(opts?: {
   if (opts?.hours != null) q.set("hours", String(opts.hours));
   if (opts?.limit != null) q.set("limit", String(opts.limit));
   const suffix = q.toString() ? `?${q.toString()}` : "";
-  return fetchEngine<BookmarkFeedResponse>(`/discord/bookmarks/recent${suffix}`);
+  return fetchEngine<BookmarkFeedResponse>(
+    `/discord/bookmarks/recent${suffix}`,
+  );
 }
 
 export async function fetchBookmarksSearch(opts: {
@@ -2461,7 +2604,9 @@ export async function fetchBookmarksSearch(opts: {
   const q = new URLSearchParams({ query: opts.query });
   if (opts.days != null) q.set("days", String(opts.days));
   if (opts.limit != null) q.set("limit", String(opts.limit));
-  return fetchEngine<BookmarkFeedResponse>(`/discord/bookmarks/search?${q.toString()}`);
+  return fetchEngine<BookmarkFeedResponse>(
+    `/discord/bookmarks/search?${q.toString()}`,
+  );
 }
 
 // ── QuantStats / Portfolio Tearsheet ─────────────────────────────────────────
@@ -2510,7 +2655,9 @@ export interface JarvisAskResponse {
   intent: string;
 }
 
-export async function fetchJarvisAsk(question: string): Promise<JarvisAskResponse> {
+export async function fetchJarvisAsk(
+  question: string,
+): Promise<JarvisAskResponse> {
   return postEngine<JarvisAskResponse>("/jarvis/ask", { question });
 }
 
@@ -2579,7 +2726,9 @@ export interface AgentWeightsResponse {
   timestamp: string;
 }
 
-export async function fetchAgentWeights(regime?: string): Promise<AgentWeightsResponse> {
+export async function fetchAgentWeights(
+  regime?: string,
+): Promise<AgentWeightsResponse> {
   const suffix = regime ? `?regime=${encodeURIComponent(regime)}` : "";
   return fetchEngine<AgentWeightsResponse>(`/analytics/agent-weights${suffix}`);
 }
@@ -2609,7 +2758,9 @@ export interface LlmDailyStats {
   per_provider: Record<string, LlmModelStats>;
 }
 
-export async function fetchLlmDailyStats(daysBack: number = 0): Promise<LlmDailyStats> {
+export async function fetchLlmDailyStats(
+  daysBack: number = 0,
+): Promise<LlmDailyStats> {
   return fetchEngine<LlmDailyStats>(`/llm/stats?days_back=${daysBack}`);
 }
 
@@ -2661,7 +2812,9 @@ export interface RegimeV2Response {
 }
 
 export async function fetchRegimeV2(symbol: string): Promise<RegimeV2Response> {
-  return fetchEngine<RegimeV2Response>(`/analytics/regime-v2/${encodeURIComponent(symbol)}`);
+  return fetchEngine<RegimeV2Response>(
+    `/analytics/regime-v2/${encodeURIComponent(symbol)}`,
+  );
 }
 
 // ── Legacy per-symbol regime classification (/analytics/regime/{symbol}) ─────
@@ -2680,8 +2833,12 @@ export interface SymbolRegimeResponse {
   error?: string;
 }
 
-export async function fetchSymbolRegime(symbol: string): Promise<SymbolRegimeResponse> {
-  return fetchEngine<SymbolRegimeResponse>(`/analytics/regime/${encodeURIComponent(symbol)}`);
+export async function fetchSymbolRegime(
+  symbol: string,
+): Promise<SymbolRegimeResponse> {
+  return fetchEngine<SymbolRegimeResponse>(
+    `/analytics/regime/${encodeURIComponent(symbol)}`,
+  );
 }
 
 // ── Portfolio correlation preview (/analytics/correlation-preview) ───────────
@@ -2699,10 +2856,10 @@ export interface CorrelationPreviewResponse {
 }
 
 export async function fetchCorrelationPreview(
-  symbols: string[] = ["MES", "MGC", "MCL", "MNQ"]
+  symbols: string[] = ["MES", "MGC", "MCL", "MNQ"],
 ): Promise<CorrelationPreviewResponse> {
   return fetchEngine<CorrelationPreviewResponse>(
-    `/analytics/correlation-preview?symbols=${encodeURIComponent(symbols.join(","))}`
+    `/analytics/correlation-preview?symbols=${encodeURIComponent(symbols.join(","))}`,
   );
 }
 
@@ -2767,9 +2924,10 @@ export interface ExcursionResponse {
   timestamp: string;
 }
 
-export async function fetchExcursion(
-  opts?: { symbol?: string; limit?: number }
-): Promise<ExcursionResponse> {
+export async function fetchExcursion(opts?: {
+  symbol?: string;
+  limit?: number;
+}): Promise<ExcursionResponse> {
   const qs = new URLSearchParams();
   if (opts?.symbol) qs.set("symbol", opts.symbol);
   if (opts?.limit) qs.set("limit", String(opts.limit));
@@ -2820,9 +2978,11 @@ export interface EntryTimingResponse {
   timestamp: string;
 }
 
-export async function fetchEntryTiming(
-  opts?: { symbol?: string; limit?: number; offsets?: string }
-): Promise<EntryTimingResponse> {
+export async function fetchEntryTiming(opts?: {
+  symbol?: string;
+  limit?: number;
+  offsets?: string;
+}): Promise<EntryTimingResponse> {
   const qs = new URLSearchParams();
   if (opts?.symbol) qs.set("symbol", opts.symbol);
   if (opts?.limit) qs.set("limit", String(opts.limit));
@@ -2913,7 +3073,7 @@ export interface BriefingResponse {
 
 export async function fetchDiscordBriefing(
   symbol: string,
-  opts?: { enriched?: boolean }
+  opts?: { enriched?: boolean },
 ): Promise<BriefingResponse> {
   const q = new URLSearchParams({ symbol });
   if (opts?.enriched) q.set("enriched", "true");
@@ -2942,10 +3102,10 @@ export interface AccountStatsResponse {
 
 export async function fetchAccountStats(
   accountId: "A" | "B",
-  days: 30 | 90 | 180 = 30
+  days: 30 | 90 | 180 = 30,
 ): Promise<AccountStatsResponse> {
   return fetchEngine<AccountStatsResponse>(
-    `/portfolio/paper/account/${accountId}/stats?days=${days}`
+    `/portfolio/paper/account/${accountId}/stats?days=${days}`,
   );
 }
 
@@ -3000,11 +3160,13 @@ export async function fetchRiskAttribution(opts?: {
   days?: number;
 }): Promise<RiskAttributionResponse> {
   const days = opts?.days ?? 30;
-  return fetchEngine<RiskAttributionResponse>(`/attribution/window?days=${days}`);
+  return fetchEngine<RiskAttributionResponse>(
+    `/attribution/window?days=${days}`,
+  );
 }
 
 export async function fetchDailyAttribution(
-  date?: string
+  date?: string,
 ): Promise<DailyAttributionResponse> {
   const suffix = date ? `?date=${date}` : "";
   return fetchEngine<DailyAttributionResponse>(`/attribution/daily${suffix}`);
@@ -3022,7 +3184,12 @@ export interface JournalTradeStats {
   risk_reward_ratio: number;
   expected_value_usd: number;
   trades_per_week: number;
-  diagnosis: "win_rate" | "avg_loss" | "avg_win" | "solid" | "insufficient_data";
+  diagnosis:
+    | "win_rate"
+    | "avg_loss"
+    | "avg_win"
+    | "solid"
+    | "insufficient_data";
 }
 
 export interface JournalBreakdownRow {
@@ -3069,22 +3236,28 @@ export interface MonthlyReview {
   trade_count: number;
 }
 
-export async function fetchJournalStats(limit = 30): Promise<JournalTradeStats> {
+export async function fetchJournalStats(
+  limit = 30,
+): Promise<JournalTradeStats> {
   return fetchEngine<JournalTradeStats>(`/journal/review/stats?limit=${limit}`);
 }
 
-export async function fetchJournalBreakdown(limit = 30): Promise<JournalBreakdown> {
-  return fetchEngine<JournalBreakdown>(`/journal/review/breakdown?limit=${limit}`);
+export async function fetchJournalBreakdown(
+  limit = 30,
+): Promise<JournalBreakdown> {
+  return fetchEngine<JournalBreakdown>(
+    `/journal/review/breakdown?limit=${limit}`,
+  );
 }
 
 export async function analyzeJournalPatterns(
-  limit = 100
+  limit = 100,
 ): Promise<JournalAnalysis> {
   return postEngine<JournalAnalysis>("/journal/review/analyze", { limit });
 }
 
 export async function formalizeInsight(
-  observation: string
+  observation: string,
 ): Promise<JournalFormalizeResult> {
   return postEngine<JournalFormalizeResult>("/journal/review/formalize", {
     observation,
@@ -3140,7 +3313,7 @@ export interface ScreenResponse {
 }
 
 export async function screenMovers(
-  input: ScreenerFilterInput
+  input: ScreenerFilterInput,
 ): Promise<ScreenResponse> {
   return postEngine<ScreenResponse>("/ib-scanner/screen", input);
 }
@@ -3178,10 +3351,10 @@ export interface SessionBriefResponse {
 
 export async function fetchSessionBrief(
   limit = 10,
-  maxActions = 3
+  maxActions = 3,
 ): Promise<SessionBriefResponse> {
   return fetchEngine<SessionBriefResponse>(
-    `/brief/session?limit=${limit}&max_actions=${maxActions}`
+    `/brief/session?limit=${limit}&max_actions=${maxActions}`,
   );
 }
 
@@ -3239,7 +3412,9 @@ export async function fetchAtrTrailTrades(params: {
     factor: String(params.factor ?? 3.5),
     max_points: String(params.maxPoints ?? 3000),
   });
-  return fetchEngine<AtrTrailTradesResponse>(`/backtest/atr-trail/trades?${qs.toString()}`);
+  return fetchEngine<AtrTrailTradesResponse>(
+    `/backtest/atr-trail/trades?${qs.toString()}`,
+  );
 }
 
 // ── Engine clean-run durability (GET /ops/durability) ─────────────────────────
@@ -3347,7 +3522,9 @@ export interface AuctionBiasResponse {
   stale_after_s?: number;
 }
 
-export async function fetchAuctionBias(symbol: string): Promise<AuctionBiasResponse> {
+export async function fetchAuctionBias(
+  symbol: string,
+): Promise<AuctionBiasResponse> {
   return fetchEngine<AuctionBiasResponse>(`/auction/bias/${symbol}`);
 }
 
@@ -3390,10 +3567,10 @@ export interface PipelineFunnelResponse {
 }
 
 export async function fetchPipelineFunnel(
-  days: number = 30
+  days: number = 30,
 ): Promise<PipelineFunnelResponse> {
   return fetchEngine<PipelineFunnelResponse>(
-    `/analytics/pipeline-funnel?days=${days}`
+    `/analytics/pipeline-funnel?days=${days}`,
   );
 }
 
@@ -3448,10 +3625,10 @@ export async function fetchThinkScriptRegistry(): Promise<ThinkScriptRegistryRes
 
 /** GET /thinkscript/registry/{script_id} — one entry plus its full markdown doc body. */
 export async function fetchThinkScriptRegistryEntry(
-  scriptId: string
+  scriptId: string,
 ): Promise<ThinkScriptWithDocs> {
   return fetchEngine<ThinkScriptWithDocs>(
-    `/thinkscript/registry/${encodeURIComponent(scriptId)}`
+    `/thinkscript/registry/${encodeURIComponent(scriptId)}`,
   );
 }
 
@@ -3488,7 +3665,7 @@ export interface ThinkScriptGenerateResponse {
 
 /** POST /thinkscript/generate — LLM-backed ThinkScript study generation. */
 export async function generateThinkScript(
-  body: ThinkScriptGenerateRequest
+  body: ThinkScriptGenerateRequest,
 ): Promise<ThinkScriptGenerateResponse> {
   return postEngine<ThinkScriptGenerateResponse>("/thinkscript/generate", body);
 }
@@ -3529,7 +3706,9 @@ export interface MesForwardSummaryResponse {
 
 /** GET /experiments/mes-forward/summary -- MES session forward-recorder aggregate. */
 export async function fetchMesForwardSummary(): Promise<MesForwardSummaryResponse> {
-  return fetchEngine<MesForwardSummaryResponse>("/experiments/mes-forward/summary");
+  return fetchEngine<MesForwardSummaryResponse>(
+    "/experiments/mes-forward/summary",
+  );
 }
 
 // ── Engine cache stats (GET /cache/stats) ────────────────────────────────────
