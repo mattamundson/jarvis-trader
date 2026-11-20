@@ -229,8 +229,11 @@ async def test_tpo_failed_survives_intraday_bounce_back_across_fail_target():
     derive_tpo_failed means a session that breached fail_target and then
     pulled back reports failed=False, losing the breach. This fixture is a
     genuine regression check -- the exact prices below were verified (see PR
-    history) to produce imbalance=BEAR_IMBAL, fail_target=7506.0, where the
-    session HIGH (7513, bar 5) breaches fail_target but the LAST bar's close
+    history) to produce imbalance=BEAR_IMBAL. Under point-in-time
+    per-session tick inference the completed prior session produces
+    fail_target=7505.0; the old 7506.0 value used day-2 close differences
+    before that day had occurred. The session HIGH (7513, bar 5) breaches
+    fail_target but the LAST bar's close
     (7485) does not: a last-price-only check would wrongly report
     failed=False, while the session-extreme check correctly reports True."""
 
@@ -255,7 +258,7 @@ async def test_tpo_failed_survives_intraday_bounce_back_across_fail_target():
 
     assert raw is not None
     assert raw["tpo"] is not None
-    assert raw["tpo"]["fail_target"] == 7506.0
+    assert raw["tpo"]["fail_target"] == 7505.0
     assert raw["tpo"]["failed"] is True  # the breach at bar 5 (high=7513) must not be forgotten
 
 
