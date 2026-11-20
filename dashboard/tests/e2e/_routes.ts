@@ -61,6 +61,8 @@ export const ROUTES: RouteSpec[] = [
 
   // ---- standard ------------------------------------------------------------
   { path: "/today", name: "today", kind: "page", criticality: "standard", landmark: /Today at a Glance/i },
+  { path: "/tape", name: "es tape", kind: "page", criticality: "critical", landmark: /ES TAPE/i },
+  { path: "/tape/lean", name: "es tape lean", kind: "page", criticality: "standard", landmark: /ES TAPE/i },
   { path: "/journal", name: "trade journal", kind: "page", criticality: "standard", landmark: /Trade Journal/i },
   { path: "/proof-record", name: "proof record", kind: "page", criticality: "standard", landmark: /ES Proof Record/i },
   { path: "/watchlist", name: "watchlist", kind: "page", criticality: "standard", landmark: null },
