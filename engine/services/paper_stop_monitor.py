@@ -379,7 +379,14 @@ class PaperStopMonitor:
         max_loss = _max_loss_usd_from_env()
         fired = 0
 
+        from execution.ledger_fill_sync import is_broker_managed
+
         for t in open_trades:
+            if is_broker_managed(t):
+                # IB's STP child owns this exit; execution.ledger_fill_sync
+                # books it from the real fill. A price-poll close here would
+                # record the theoretical stop level, not what IB filled.
+                continue
             stop = t.get("stop_loss")
             symbol = t.get("symbol")
             has_stop = stop not in (None, "", 0, 0.0)

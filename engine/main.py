@@ -2646,7 +2646,13 @@ async def lifespan(app: FastAPI):
                     _commission_per_contract as _commission_per_contract_fn,
                 )  # noqa: E501
 
+                from execution.ledger_fill_sync import is_broker_managed as _is_broker_managed
+
                 for _trade in open_trades:
+                    if _is_broker_managed(_trade):
+                        # IB's STP child owns this exit; the broker fill sync
+                        # books it from the real fill, not the stop level.
+                        continue
                     _stop = _trade.get("stop_loss")
                     _sym = (_trade.get("symbol") or "").upper()
                     if _stop is None:
@@ -2762,6 +2768,35 @@ async def lifespan(app: FastAPI):
             logger.info("✅ Stop monitor job registered — fires every 5 minutes")
     except Exception as _stop_mon_err:
         logger.warning(f"Stop monitor init failed (non-fatal): {_stop_mon_err}")
+
+    # ── Broker fill sync: ledger entry/exit/pnl from real IB executions ──────
+    # Bracketed rows are skipped by the stop monitors above; this job books
+    # their actual entry fill, slippage, exit fill and commission-net pnl.
+    # No-op on the in-process simulator gateway (no get_executions()).
+    try:
+        from execution.ledger_fill_sync import run_fill_sync_once
+
+        async def _sync_broker_fills() -> None:
+            try:
+                await run_fill_sync_once(
+                    getattr(safety_layer, "_ib_gateway", None), str(db_manager._db_path)
+                )
+            except Exception as exc:
+                logger.warning("[fill_sync] error: %s", exc, exc_info=True)
+
+        if scheduler is not None:
+            scheduler.add_job(
+                _sync_broker_fills,
+                "interval",
+                minutes=1,
+                id="sync_broker_fills",
+                name="Ledger Broker Fill Sync",
+                max_instances=1,
+                replace_existing=True,
+            )
+            logger.info("Broker fill sync job registered - fires every minute")
+    except Exception as _fill_sync_err:
+        logger.warning(f"Broker fill sync init failed (non-fatal): {_fill_sync_err}")
 
     # ── RL executor — MES paper validation (experimental, non-blocking) ───────
     try:
