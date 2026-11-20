@@ -97,11 +97,19 @@ def _create_minimal_db(path: Path, rows: dict[str, list[tuple]]) -> None:
     conn.close()
 
 
-def _make_ts_sequence(n: int, start: str = "2026-01-01T00:00:00") -> list[str]:
-    """Generate ``n`` hourly ISO-8601 timestamps starting from ``start``."""
-    from datetime import datetime, timedelta, timezone
+def _recent_start(days_ago: int = 30) -> str:
+    """Start timestamp inside the production 365-day lookback on every run.
 
-    dt = datetime.fromisoformat(start).replace(tzinfo=timezone.utc)
+    Hardcoded calendar dates expire: run_calibration filters against
+    datetime.now(), so a fixed start silently falls out of the window a year
+    later and the test fails (or passes vacuously) for the wrong reason.
+    """
+    return (datetime.now(timezone.utc) - timedelta(days=days_ago)).strftime("%Y-%m-%dT%H:%M:%S")
+
+
+def _make_ts_sequence(n: int, start: str | None = None) -> list[str]:
+    """Generate ``n`` hourly ISO-8601 timestamps starting from ``start`` (default: 30 days ago)."""
+    dt = datetime.fromisoformat(start or _recent_start()).replace(tzinfo=timezone.utc)
     result = []
     for i in range(n):
         result.append((dt + timedelta(hours=i)).strftime("%Y-%m-%dT%H:%M:%S"))
@@ -211,7 +219,7 @@ class TestPerInstrumentIsolation:
     def test_thresholds_are_positive(self, tmp_path: Path) -> None:
         db = tmp_path / "test.db"
         n = 50
-        timestamps = _make_ts_sequence(n, start="2025-11-01T00:00:00")
+        timestamps = _make_ts_sequence(n, start=_recent_start())
         closes = [200.0 + i * 0.1 for i in range(n)]
         rows = {"ALPHA": list(zip(timestamps, closes, strict=False))}
         _create_minimal_db(db, rows)
@@ -259,7 +267,7 @@ class TestHandlesEmptyData:
     def test_too_few_bars_returns_insufficient(self, tmp_path: Path) -> None:
         db = tmp_path / "test.db"
         n = 3  # fewer than MIN_BARS_REQUIRED + horizon = 25
-        timestamps = _make_ts_sequence(n, start="2026-01-01T00:00:00")
+        timestamps = _make_ts_sequence(n, start=_recent_start())
         closes = [100.0 + i for i in range(n)]
         _create_minimal_db(db, {"TINY": list(zip(timestamps, closes, strict=False))})
 
